@@ -247,6 +247,12 @@
          <version>2.0.1</version>
       </dependency>
 
+      <dependency>
+         <groupId>com.rabbitmq</groupId>
+         <artifactId>amqp-client</artifactId>
+         <version>5.21.0</version>
+      </dependency>
+
       <!-- Common deps for all qqq modules -->
       <dependency>
          <groupId>org.apache.maven.plugins</groupId>

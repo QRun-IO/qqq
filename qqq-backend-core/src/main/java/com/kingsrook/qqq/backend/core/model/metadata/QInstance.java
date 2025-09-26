@@ -67,6 +67,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.scheduleing.QSchedulerMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.topics.QTopicMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.topics.QTopicProviderMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.scheduler.schedulable.SchedulableType;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -110,6 +112,8 @@ public class QInstance
    private Map<String, QWidgetMetaDataInterface> widgets              = new LinkedHashMap<>();
    private Map<String, QQueueProviderMetaData>   queueProviders       = new LinkedHashMap<>();
    private Map<String, QQueueMetaData>           queues               = new LinkedHashMap<>();
+   private Map<String, QTopicProviderMetaData> topicProviders = new LinkedHashMap<>();
+   private Map<String, QTopicMetaData>         topics         = new LinkedHashMap<>();
 
    private Map<SupplementalCustomizerType, QCodeReference> supplementalCustomizers = new LinkedHashMap<>();
 
@@ -1151,6 +1155,108 @@ public class QInstance
    public void setQueues(Map<String, QQueueMetaData> queues)
    {
       this.queues = queues;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void addTopicProvider(QTopicProviderMetaData topicProvider)
+   {
+      String name = topicProvider.getName();
+      if(!StringUtils.hasContent(name))
+      {
+         throw (new IllegalArgumentException("Attempted to add a topicProvider without a name."));
+      }
+      if(this.topicProviders.containsKey(name))
+      {
+         throw (new IllegalArgumentException("Attempted to add a second topicProvider with name: " + name));
+      }
+      this.topicProviders.put(name, topicProvider);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public QTopicProviderMetaData getTopicProvider(String name)
+   {
+      return (this.topicProviders.get(name));
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for topicProviders
+    **
+    *******************************************************************************/
+   public Map<String, QTopicProviderMetaData> getTopicProviders()
+   {
+      return topicProviders;
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for topicProviders
+    **
+    *******************************************************************************/
+   public void setTopicProviders(Map<String, QTopicProviderMetaData> topicProviders)
+   {
+      this.topicProviders = topicProviders;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void addTopic(QTopicMetaData topic)
+   {
+      String name = topic.getName();
+      if(!StringUtils.hasContent(name))
+      {
+         throw (new IllegalArgumentException("Attempted to add a topic without a name."));
+      }
+      if(this.topics.containsKey(name))
+      {
+         throw (new IllegalArgumentException("Attempted to add a second topic with name: " + name));
+      }
+      this.topics.put(name, topic);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public QTopicMetaData getTopic(String name)
+   {
+      return (this.topics.get(name));
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for topics
+    **
+    *******************************************************************************/
+   public Map<String, QTopicMetaData> getTopics()
+   {
+      return topics;
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for topics
+    **
+    *******************************************************************************/
+   public void setTopics(Map<String, QTopicMetaData> topics)
+   {
+      this.topics = topics;
    }
 
 

@@ -33,7 +33,9 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
+import com.kingsrook.qqq.backend.core.scheduler.SchedulerTestUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,6 +53,17 @@ class BaseSyncToScheduledJobTableCustomizerTest extends BaseTest
    void beforeEach() throws QException
    {
       new AbstractRecordSyncToScheduledJobProcessTest().beforeEach();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void afterEach()
+   {
+      SchedulerTestUtils.afterEach();
    }
 
 

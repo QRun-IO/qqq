@@ -24,12 +24,15 @@ package com.kingsrook.qqq.backend.module.api;
 
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -45,6 +48,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 @DisabledOnOs(OS.LINUX)
 public class EasyPostApiTest extends BaseTest
 {
+   private static final QLogger LOG = QLogger.getLogger(EasyPostApiTest.class);
+
+
 
    /*******************************************************************************
     ** Supported Tracking Numbers (and their statuses)
@@ -61,6 +67,12 @@ public class EasyPostApiTest extends BaseTest
    @Test
    void testPostTrackerSuccess() throws QException
    {
+      if(!StringUtils.hasContent(((APIBackendMetaData) QContext.getQInstance().getBackend(TestUtils.EASYPOST_BACKEND_NAME)).getApiKey()))
+      {
+         LOG.warn("Missing API Key for easypost backend (env.EASYPOST_API_KEY) - unable to run testPostTrackerSuccess");
+         return;
+      }
+
       QRecord record = new QRecord()
          .withValue("__ignoreMe", "123")
          .withValue("carrier", "USPS")
@@ -83,6 +95,12 @@ public class EasyPostApiTest extends BaseTest
    @Test
    void testPostMultiple() throws QException
    {
+      if(!StringUtils.hasContent(((APIBackendMetaData) QContext.getQInstance().getBackend(TestUtils.EASYPOST_BACKEND_NAME)).getApiKey()))
+      {
+         LOG.warn("Missing API Key for easypost backend (env.EASYPOST_API_KEY) - unable to run testPostMultiple");
+         return;
+      }
+
       QRecord record1 = new QRecord().withValue("carrier", "USPS").withValue("trackingNo", "EZ1000000001");
       QRecord record2 = new QRecord().withValue("carrier", "USPS").withValue("trackingNo", "EZ2000000002");
 

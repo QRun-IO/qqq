@@ -240,6 +240,22 @@ public class QFrontendTableMetaData
 
 
    /*******************************************************************************
+    ** Alternative fluent setter for a single disabledCapabilities
+    **
+    *******************************************************************************/
+   public QFrontendTableMetaData withoutCapability(Capability capability)
+   {
+      if(this.capabilities == null)
+      {
+         this.capabilities = new HashSet<>();
+      }
+      this.capabilities.remove(capability);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for name
     **
     *******************************************************************************/

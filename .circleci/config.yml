@@ -1,34 +1,48 @@
+---
+
 version: 2.1
 
 orbs:
-  qqq-orb: kingsrook/qqq-orb@0.3.7
+  qqq-orb: kingsrook/qqq-orb@0.3.8
 
 workflows:
 
   test_only:
     jobs:
       - qqq-orb/mvn_test_only:
-          context: [ qqq-maven-registry-credentials, build-qqq-sample-app ]
+          context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           filters:
             branches:
               ignore: /(develop|main|release/.*|hotfix/.*|integration.*)/
             tags:
-              only: []  
+              only: []
 
   publish_snapshot:
     jobs:
       - qqq-orb/mvn_publish:
-          context: [ qqq-maven-registry-credentials, build-qqq-sample-app ]
+          context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: snapshot
           filters:
             branches:
               only:
                 - develop
 
+  publish_feature:
+    jobs:
+      - qqq-orb/mvn_publish:
+          context: [qqq-maven-registry-credentials]
+          branch_type: feature
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
+
   publish_release_candidate:
     jobs:
       - qqq-orb/mvn_publish:
-          context: [ qqq-maven-registry-credentials, build-qqq-sample-app ]
+          context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release_candidate
           filters:
             branches:
@@ -38,18 +52,18 @@ workflows:
   publish_release:
     jobs:
       - qqq-orb/mvn_publish:
-          context: [ qqq-maven-registry-credentials, build-qqq-sample-app ]
+          context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release
           filters:
             branches:
-              only: [ main ]
+              only: [main]
             tags:
-              only: [ /v.*/ ]
+              only: [/v.*/]
 
   publish_hotfix_release:
     jobs:
       - qqq-orb/mvn_publish:
-          context: [ qqq-maven-registry-credentials, build-qqq-sample-app ]
+          context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: hotfix
           filters:
             branches:

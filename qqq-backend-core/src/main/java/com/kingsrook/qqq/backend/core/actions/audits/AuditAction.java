@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -44,6 +45,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLockFilters;
@@ -70,6 +72,7 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
 
    private static boolean warnedAboutAuditMissingTables = false;
 
+   private static AuditActionCustomizerInterface defaultAuditActionCustomizerInterface = new AuditActionCustomizerInterface() {};
 
 
    /*******************************************************************************
@@ -256,8 +259,15 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
          {
             List<QRecord> auditRecords = new ArrayList<>();
 
+            AuditActionCustomizerInterface auditActionCustomizer = getAuditActionCustomizer();
+
             for(AuditSingleInput auditSingleInput : CollectionUtils.nonNullList(input.getAuditSingleInputList()))
             {
+               ///////////////////////////////////////////////////
+               // allow customizer a chance to adjust the input //
+               ///////////////////////////////////////////////////
+               auditActionCustomizer.customizeInput(auditSingleInput);
+
                /////////////////////////////////////////
                // validate table is known in instance //
                /////////////////////////////////////////
@@ -303,6 +313,11 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
                      record.setValue(entry.getKey(), entry.getValue());
                   }
                }
+
+               ///////////////////////////////////////////////////////////
+               // allow customizer to perform adjustments to the record //
+               ///////////////////////////////////////////////////////////
+               auditActionCustomizer.customizeRecord(record, auditSingleInput);
 
                auditRecords.add(record);
             }
@@ -352,6 +367,25 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
       }
 
       return (auditOutput);
+   }
+
+
+
+   /***************************************************************************
+    * if the instance has a customizer on it, get an instance - else - return
+    * the default no-op implementation.
+    ***************************************************************************/
+   private AuditActionCustomizerInterface getAuditActionCustomizer()
+   {
+      QCodeReference customizerCodeReference = QContext.getQInstance().getSupplementalCustomizer(AuditActionCustomizerInterface.CUSTOMIZER_TYPE);
+      if(customizerCodeReference == null)
+      {
+         return defaultAuditActionCustomizerInterface;
+      }
+      else
+      {
+         return QCodeLoader.getAdHoc(AuditActionCustomizerInterface.class, customizerCodeReference);
+      }
    }
 
 

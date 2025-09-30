@@ -22,11 +22,18 @@
 package com.kingsrook.qqq.backend.core.instances;
 
 
+import java.io.File;
+import java.io.IOException;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -125,13 +132,37 @@ class QMetaDataVariableInterpreterTest extends BaseTest
     **
     *******************************************************************************/
    @Test
-   void testDotEnvFile()
+   void testDotEnvFile() throws IOException
    {
-      QMetaDataVariableInterpreter secretReader = new QMetaDataVariableInterpreter();
-      String                       key          = "CUSTOM_PROPERTY";
-      String                       value        = "ABCD-9876";
-      assertNull(secretReader.interpret("${env.NOT-" + key + "}"));
-      assertEquals(value, secretReader.interpret("${env." + key + "}"));
+      boolean hadDotenvBefore = false;
+
+      Path dotEnv = Paths.get(".env");
+      Path dotEnvBak = Paths.get(".env.bak." + UUID.randomUUID());
+
+      try
+      {
+         if(Files.exists(dotEnv))
+         {
+            hadDotenvBefore = true;
+            Files.move(dotEnv, dotEnvBak);
+         }
+
+         FileUtils.writeStringToFile(dotEnv.toFile(), "CUSTOM_PROPERTY=ABCD-9876\n", "UTF-8");
+
+         QMetaDataVariableInterpreter secretReader = new QMetaDataVariableInterpreter();
+         String                       key          = "CUSTOM_PROPERTY";
+         String                       value        = "ABCD-9876";
+         assertNull(secretReader.interpret("${env.NOT-" + key + "}"));
+         assertEquals(value, secretReader.interpret("${env." + key + "}"));
+      }
+      finally
+      {
+         Files.deleteIfExists(dotEnv);
+         if(hadDotenvBefore)
+         {
+            Files.move(dotEnvBak, dotEnv);
+         }
+      }
    }
 
 

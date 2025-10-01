@@ -1,5 +1,0 @@
----
-class: FilesystemBackendMetaData
-version: 1.0
-name: filesystem
-basePath: /tmp/sample-filesystem

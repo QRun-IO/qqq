@@ -275,13 +275,25 @@
          <artifactId>assertj-core</artifactId>
          <scope>test</scope>
       </dependency>
-
       <dependency>
          <groupId>org.mockito</groupId>
          <artifactId>mockito-core</artifactId>
          <version>5.20.0</version>
          <scope>test</scope>
       </dependency>
+      <!-- force a matching Byte Buddy for mockito-core 5.20.0 -->
+      <dependency>
+         <groupId>net.bytebuddy</groupId>
+         <artifactId>byte-buddy</artifactId>
+         <version>1.17.7</version>
+      </dependency>
+      <dependency>
+         <groupId>net.bytebuddy</groupId>
+         <artifactId>byte-buddy-agent</artifactId>
+         <version>1.17.7</version>
+      </dependency>
+
+         
       <dependency>
          <groupId>org.testcontainers</groupId>
          <artifactId>testcontainers</artifactId>

@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.frontend;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -235,6 +236,22 @@ public class QFrontendTableMetaData
       }
 
       this.capabilities = enabledCapabilities.stream().map(Enum::name).collect(Collectors.toSet());
+   }
+
+
+
+   /*******************************************************************************
+    ** Alternative fluent setter for a single disabledCapabilities
+    **
+    *******************************************************************************/
+   public QFrontendTableMetaData withoutCapability(Capability capability)
+   {
+      if(this.capabilities == null)
+      {
+         this.capabilities = new HashSet<>();
+      }
+      this.capabilities.remove(capability);
+      return (this);
    }
 
 

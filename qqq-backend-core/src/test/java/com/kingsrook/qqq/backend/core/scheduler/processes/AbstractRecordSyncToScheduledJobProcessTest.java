@@ -40,7 +40,9 @@ import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJobsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
+import com.kingsrook.qqq.backend.core.scheduler.SchedulerTestUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -64,6 +66,17 @@ class AbstractRecordSyncToScheduledJobProcessTest extends BaseTest
       qInstance.addProcess(new SyncPersonToScheduledJobProcess().produce(qInstance));
       qInstance.addPossibleValueSource(new TimeZonePossibleValueSourceMetaDataProvider().produce());
       QScheduleManager.initInstance(qInstance, QSystemUserSession::new);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void afterEach()
+   {
+      SchedulerTestUtils.afterEach();
    }
 
 

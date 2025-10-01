@@ -38,6 +38,7 @@ public enum Capability
    TABLE_INSERT,
    TABLE_UPDATE,
    TABLE_DELETE,
+   TABLE_EXPORT,
    ///////////////////////////////////////////////////////////////////////
    // keep these values in sync with Capability.ts in qqq-frontend-core //
    ///////////////////////////////////////////////////////////////////////
@@ -51,7 +52,7 @@ public enum Capability
     *******************************************************************************/
    public static Set<Capability> allReadCapabilities()
    {
-      return (new HashSet<>(Set.of(TABLE_QUERY, TABLE_GET, TABLE_COUNT, QUERY_STATS)));
+      return (new HashSet<>(Set.of(TABLE_QUERY, TABLE_GET, TABLE_COUNT, TABLE_EXPORT, QUERY_STATS)));
    }
 
 

@@ -453,6 +453,8 @@ public class RunProcessInput extends AbstractActionInput
       return asyncJobCallback;
    }
 
+
+
    /*******************************************************************************
     ** Getter for startAtStep
     *******************************************************************************/
@@ -482,5 +484,60 @@ public class RunProcessInput extends AbstractActionInput
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    * Fluent setter for frontendStepBehavior
+    *
+    * @param frontendStepBehavior
+    * @return this
+    *******************************************************************************/
+   public RunProcessInput withFrontendStepBehavior(FrontendStepBehavior frontendStepBehavior)
+   {
+      this.frontendStepBehavior = frontendStepBehavior;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for startAfterStep
+    *
+    * @param startAfterStep
+    * @return this
+    *******************************************************************************/
+   public RunProcessInput withStartAfterStep(String startAfterStep)
+   {
+      this.startAfterStep = startAfterStep;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for processUUID
+    *
+    * @param processUUID
+    * @return this
+    *******************************************************************************/
+   public RunProcessInput withProcessUUID(String processUUID)
+   {
+      this.processUUID = processUUID;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for asyncJobCallback
+    *
+    * @param asyncJobCallback
+    * @return this
+    *******************************************************************************/
+   public RunProcessInput withAsyncJobCallback(AsyncJobCallback asyncJobCallback)
+   {
+      this.asyncJobCallback = asyncJobCallback;
+      return (this);
+   }
 
 }

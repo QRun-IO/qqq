@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.actions.audits.AuditSingleInput;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
@@ -51,6 +52,7 @@ import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -408,4 +410,64 @@ class AuditActionTest extends BaseTest
       assertTrue(AuditAction.validateSecurityKeys(inputWithRedAndBlueKeys, multiLevelLockTable));
    }
 
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testCustomizer() throws QException
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+      new AuditsMetaDataProvider().defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+      qInstance.addSupplementalCustomizer(AuditActionCustomizerInterface.CUSTOMIZER_TYPE, new QCodeReference(TestAuditActionCustomizer.class));
+      qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT)
+         .addField(new QFieldMetaData("customField", QFieldType.INTEGER));
+
+      String userName = "John Doe";
+      QContext.init(qInstance, new QSession().withUser(new QUser().withFullName(userName)));
+
+      Integer recordId = 1701;
+      AuditAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, recordId, Map.of(), "Test Audit");
+
+      /////////////////////////////////////
+      // make sure things can be fetched //
+      /////////////////////////////////////
+      GeneralProcessUtils.getRecordByFieldOrElseThrow("auditTable", "name", TestUtils.TABLE_NAME_PERSON_MEMORY);
+      assertThatThrownBy(() -> GeneralProcessUtils.getRecordByFieldOrElseThrow("auditUser", "name", userName));
+      QRecord auditRecord = GeneralProcessUtils.getRecordByFieldOrElseThrow("audit", "recordId", recordId);
+      assertEquals("Test Audit customized!", auditRecord.getValueString("message"));
+      Integer auditUserId = auditRecord.getValueInteger("auditUserId");
+      assertEquals("Q(not)Anon", GeneralProcessUtils.getRecordByFieldOrElseThrow("auditUser", "id", auditUserId).getValueString("name"));
+      assertEquals(42, auditRecord.getValueInteger("customField"));
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   public static class TestAuditActionCustomizer implements AuditActionCustomizerInterface
+   {
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public void customizeInput(AuditSingleInput auditSingleInput)
+      {
+         auditSingleInput.setAuditUserName("Q(not)Anon");
+         auditSingleInput.setMessage(auditSingleInput.getMessage() + " customized!");
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public void customizeRecord(QRecord auditRecord, AuditSingleInput auditSingleInput)
+      {
+         auditRecord.setValue("customField", 42);
+      }
+   }
 }

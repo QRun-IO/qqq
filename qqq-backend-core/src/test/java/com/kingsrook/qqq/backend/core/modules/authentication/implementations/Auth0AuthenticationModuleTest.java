@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
@@ -43,6 +44,7 @@ import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModu
 import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.ACCESS_TOKEN_KEY;
@@ -72,6 +74,8 @@ public class Auth0AuthenticationModuleTest extends BaseTest
    private static final String INVALID_TOKEN     = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IllrY2FkWTA0Q3RFVUFxQUdLNTk3ayJ9.eyJnaXZlbl9uYW1lIjoiVGltIiwiZmFtaWx5X25hbWUiOiJDaGFtYmVybGFpbiIsIm5pY2tuYW1lIjoidGltLmNoYW1iZXJsYWluIiwibmFtZSI6IlRpbSBDaGFtYmVybGFpbiIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS0vQUZkWnVjcXVSaUFvTzk1RG9URklnbUtseVA1akVBVnZmWXFnS0lHTkVubzE9czk2LWMiLCJsb2NhbGUiOiJlbiIsInVwZGF0ZWRfYXQiOiIyMDIyLTA3LTE5VDE2OjI0OjQ1LjgyMloiLCJlbWFpbCI6InRpbS5jaGFtYmVybGFpbkBraW5nc3Jvb2suY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlzcyI6Imh0dHBzOi8va2luZ3Nyb29rLnVzLmF1dGgwLmNvbS8iLCJzdWIiOiJnb29nbGUtb2F1dGgyfDEwODk2NDEyNjE3MjY1NzAzNDg2NyIsImF1ZCI6InNwQ1NtczAzcHpVZGRYN1BocHN4ZDlUd2FLMDlZZmNxIiwiaWF0IjoxNjU4MjQ3OTAyLCJleHAiOjE2NTgyODM5MDIsIm5vbmNlIjoiZUhOdFMxbEtUR2N5ZG5KS1VVY3RkRTFVT0ZKNmJFNUxVVkEwZEdsRGVXOXZkVkl4UW41eVRrUlJlZz09In0.hib7JR8NDU2kx8Fj1bnzo3IUuabE6Hb-Z7HHZAJPQuF_Zdg3L1KDypn6SY7HAd_dsz2N8RkXfvQto-Y2g2ukuz7FxzNFgcVL99cyEO3YqmyCa6JTOTCrxdeaIE8QZpCEKvC28oeJBv0wO1Dwc--OVJMsK2vSzyxj1WNok64YYjWKLL4c0dFf-nj0KWFr1IU-tMiyWLDDiJw2Sa8M4YxXZYqdlkgNmrBPExgcm9l9SiT2l3Ts3Sgc_IyMVyMrnV8XX50EWdsm6vuCOSUcqf0XhjDQ7urZveoVwVLnYq3GcLhVBcy1Hr9RL8zPdPynOzsbX6uCww2Esrv6iwWrgQ5zBA-thismakesinvalid";
    private static final String EXPIRED_TOKEN     = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IllrY2FkWTA0Q3RFVUFxQUdLNTk3ayJ9.eyJnaXZlbl9uYW1lIjoiVGltIiwiZmFtaWx5X25hbWUiOiJDaGFtYmVybGFpbiIsIm5pY2tuYW1lIjoidGltLmNoYW1iZXJsYWluIiwibmFtZSI6IlRpbSBDaGFtYmVybGFpbiIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS0vQUZkWnVjcXVSaUFvTzk1RG9URklnbUtseVA1akVBVnZmWXFnS0lHTkVubzE9czk2LWMiLCJsb2NhbGUiOiJlbiIsInVwZGF0ZWRfYXQiOiIyMDIyLTA3LTE4VDIxOjM4OjE1LjM4NloiLCJlbWFpbCI6InRpbS5jaGFtYmVybGFpbkBraW5nc3Jvb2suY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImlzcyI6Imh0dHBzOi8va2luZ3Nyb29rLnVzLmF1dGgwLmNvbS8iLCJzdWIiOiJnb29nbGUtb2F1dGgyfDEwODk2NDEyNjE3MjY1NzAzNDg2NyIsImF1ZCI6InNwQ1NtczAzcHpVZGRYN1BocHN4ZDlUd2FLMDlZZmNxIiwiaWF0IjoxNjU4MTgwNDc3LCJleHAiOjE2NTgyMTY0NzcsIm5vbmNlIjoiVkZkQlYzWmplR2hvY1cwMk9WZEtabHBLU0c1K1ZXbElhMEV3VkZaeFpVdEJVMDErZUZaT1RtMTNiZz09In0.fU7EwUgNrupOPz_PX_aQKON2xG1-LWD85xVo1Bn41WNEek-iMyJoch8l6NUihi7Bou14BoOfeWIG_sMqsLHqI2Pk7el7l1kigsjURx0wpiXadBt8piMxdIlxdToZEMuZCBzg7eJvXh4sM8tlV5cm0gPa6FT9Ih3VGJajNlXi5BcYS_JRpIvFvHn8-Bxj4KiAlZ5XPPkopjnDgP8kFfc4cMn_nxDkqWYlhj-5TaGW2xCLC9Qr_9UNxX0fm-CkKjYs3Z5ezbiXNkc-bxrCYvxeBeDPf8-T3EqrxCRVqCZSJ85BHdOc_E7UZC_g8bNj0umoplGwlCbzO4XIuOO-KlIaOg";
    private static final String UNDECODABLE_TOKEN = "UNDECODABLE";
+
+   private static final QLogger LOG = QLogger.getLogger(Auth0AuthenticationModuleTest.class);
 
 
 
@@ -135,7 +139,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       session.setIdReference(token);
 
       Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-      return (auth0AuthenticationModule.isSessionValid(getQInstance(), session));
+      return (auth0AuthenticationModule.isSessionValid(getQInstance(false), session));
    }
 
 
@@ -153,8 +157,12 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       try
       {
          Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-         auth0AuthenticationModule.createSession(getQInstance(), context);
+         auth0AuthenticationModule.createSession(getQInstance(true), context);
          fail("Should never get here");
+      }
+      catch(MissingEnvVarsException meve)
+      {
+         LOG.warn("Unable to execute testInvalidToken, due to missing env vars: " + meve.getMessage());
       }
       catch(QAuthenticationException qae)
       {
@@ -177,7 +185,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       try
       {
          Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-         auth0AuthenticationModule.createSession(getQInstance(), context);
+         auth0AuthenticationModule.createSession(getQInstance(false), context);
          fail("Should never get here");
       }
       catch(QAuthenticationException qae)
@@ -201,8 +209,12 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       try
       {
          Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-         auth0AuthenticationModule.createSession(getQInstance(), context);
+         auth0AuthenticationModule.createSession(getQInstance(true), context);
          fail("Should never get here");
+      }
+      catch(MissingEnvVarsException meve)
+      {
+         LOG.warn("Unable to execute testProperlyFormattedButExpiredToken, due to missing env vars: " + meve.getMessage());
       }
       catch(QAuthenticationException qae)
       {
@@ -222,7 +234,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       try
       {
          Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-         auth0AuthenticationModule.createSession(getQInstance(), new HashMap<>());
+         auth0AuthenticationModule.createSession(getQInstance(false), new HashMap<>());
          fail("Should never get here");
       }
       catch(QAuthenticationException qae)
@@ -246,7 +258,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       try
       {
          Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-         auth0AuthenticationModule.createSession(getQInstance(), context);
+         auth0AuthenticationModule.createSession(getQInstance(false), context);
          fail("Should never get here");
       }
       catch(QAuthenticationException qae)
@@ -266,13 +278,20 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       Map<String, String> context = new HashMap<>();
       context.put(BASIC_AUTH_KEY, encodeBasicAuth("darin.kelkhoff@gmail.com", "6-EQ!XzBJ!F*LRVDK6VZY__92!"));
 
-      QInstance qInstance = getQInstance();
+      try
+      {
+         QInstance qInstance = getQInstance(true);
 
-      Auth0AuthenticationModule auth0Spy = spy(Auth0AuthenticationModule.class);
-      auth0Spy.createSession(qInstance, context);
-      auth0Spy.createSession(qInstance, context);
-      auth0Spy.createSession(qInstance, context);
-      verify(auth0Spy, times(1)).getAccessTokenForUsernameAndPasswordFromAuth0(any(), any(), any());
+         Auth0AuthenticationModule auth0Spy = spy(Auth0AuthenticationModule.class);
+         auth0Spy.createSession(qInstance, context);
+         auth0Spy.createSession(qInstance, context);
+         auth0Spy.createSession(qInstance, context);
+         verify(auth0Spy, times(1)).getAccessTokenForUsernameAndPasswordFromAuth0(any(), any(), any());
+      }
+      catch(MissingEnvVarsException meve)
+      {
+         LOG.warn("Unable to execute testBasicAuthSuccess, due to missing env vars: " + meve.getMessage());
+      }
    }
 
 
@@ -345,7 +364,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
    @Test
    void testSetSecurityKeysInSessionFromJwtPayload()
    {
-      QInstance qInstance = getQInstance();
+      QInstance qInstance = getQInstance(false);
       QSession  qSession  = new QSession();
       JSONObject payload = new JSONObject("""
          {
@@ -441,12 +460,17 @@ public class Auth0AuthenticationModuleTest extends BaseTest
     ** utility method to prime a qInstance for auth0 tests
     **
     *******************************************************************************/
-   private QInstance getQInstance()
+   private QInstance getQInstance(boolean throwIfEnvMissing)
    {
       String auth0BaseUrl      = new QMetaDataVariableInterpreter().interpret("${env.AUTH0_BASE_URL}");
       String auth0ClientId     = new QMetaDataVariableInterpreter().interpret("${env.AUTH0_CLIENT_ID}");
       String auth0ClientSecret = new QMetaDataVariableInterpreter().interpret("${env.AUTH0_CLIENT_SECRET}");
       String auth0Audience     = new QMetaDataVariableInterpreter().interpret("${env.AUTH0_AUDIENCE}");
+
+      if(throwIfEnvMissing && (!StringUtils.hasContent(auth0BaseUrl) || !StringUtils.hasContent(auth0ClientId) || !StringUtils.hasContent(auth0ClientSecret) || !StringUtils.hasContent(auth0Audience)))
+      {
+         throw new MissingEnvVarsException("You must set the following environment variables to run this test: AUTH0_BASE_URL, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, AUTH0_AUDIENCE");
+      }
 
       QAuthenticationMetaData authenticationMetaData = new Auth0AuthenticationMetaData()
          .withBaseUrl(auth0BaseUrl)
@@ -541,6 +565,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
    }
 
 
+
    /*******************************************************************************
     **
     *******************************************************************************/
@@ -563,4 +588,19 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       }
    }
 
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   public static class MissingEnvVarsException extends RuntimeException
+   {
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      public MissingEnvVarsException(String message)
+      {
+         super(message);
+      }
+   }
 }

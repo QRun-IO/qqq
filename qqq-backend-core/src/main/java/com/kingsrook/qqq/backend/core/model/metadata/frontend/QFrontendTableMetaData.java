@@ -250,7 +250,9 @@ public class QFrontendTableMetaData
       {
          this.capabilities = new HashSet<>();
       }
+
       this.capabilities.remove(capability.toString());
+
       return (this);
    }
 

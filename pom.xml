@@ -61,6 +61,7 @@
       <module>qqq-backend-module-filesystem</module>
       <module>qqq-backend-module-rdbms</module>
       <module>qqq-backend-module-sqlite</module>
+      <module>qqq-backend-module-postgres</module>
       <module>qqq-backend-module-mongodb</module>
       <module>qqq-language-support-javascript</module>
       <module>qqq-openapi</module>

@@ -985,8 +985,8 @@ public class PostgreSQLQueryActionTest extends BaseTest
    @Test
    void testRecordSecurityNullValues() throws Exception
    {
-      runTestSql("INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (9, NULL, 1, 6)", null);
-      runTestSql("INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (10, NULL, 6, 5)", null);
+      runTestSql("INSERT INTO \"order\" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (9, NULL, 1, 6)", null);
+      runTestSql("INSERT INTO \"order\" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (10, NULL, 6, 5)", null);
 
       QInstance  qInstance  = TestUtils.defineInstance();
       QueryInput queryInput = new QueryInput();

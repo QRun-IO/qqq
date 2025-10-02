@@ -151,7 +151,7 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
    @Override
    public String getIdentifierQuoteString()
    {
-      return "";
+      return "\"";
    }
 
 }

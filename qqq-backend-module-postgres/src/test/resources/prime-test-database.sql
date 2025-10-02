@@ -22,7 +22,7 @@
 -- Drop all tables and sequences in correct order (reverse dependency)
 DROP SEQUENCE IF EXISTS line_item_extrinsic_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS order_line_id_seq CASCADE;
-DROP SEQUENCE IF EXISTS order_table_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS order_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS order_instructions_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS item_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS warehouse_store_int_id_seq CASCADE;
@@ -34,7 +34,7 @@ DROP SEQUENCE IF EXISTS person_id_seq CASCADE;
 
 DROP TABLE IF EXISTS line_item_extrinsic CASCADE;
 DROP TABLE IF EXISTS order_line CASCADE;
-DROP TABLE IF EXISTS order_table CASCADE;
+DROP TABLE IF EXISTS "order" CASCADE;
 DROP TABLE IF EXISTS order_instructions CASCADE;
 DROP TABLE IF EXISTS item CASCADE;
 DROP TABLE IF EXISTS warehouse_store_int CASCADE;
@@ -143,7 +143,7 @@ INSERT INTO item (id, sku, description, store_id) VALUES (8, 'QD-2', 'QDepot Ite
 INSERT INTO item (id, sku, description, store_id) VALUES (9, 'QD-3', 'QDepot Item 9', 3);
 ALTER SEQUENCE item_id_seq RESTART WITH 10;
 
-CREATE TABLE order_table
+CREATE TABLE "order"
 (
    id SERIAL PRIMARY KEY,
    store_id INT REFERENCES store,
@@ -153,15 +153,15 @@ CREATE TABLE order_table
 );
 
 -- variable orders
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (1, 1, 1, 1);
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (2, 1, 1, 2);
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (3, 1, 2, 3);
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (4, 2, 4, 5);
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (5, 2, 5, 4);
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (6, 3, 5, null);
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (7, 3, null, 5);
-INSERT INTO order_table (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (8, 3, null, 5);
-ALTER SEQUENCE order_table_id_seq RESTART WITH 9;
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (1, 1, 1, 1);
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (2, 1, 1, 2);
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (3, 1, 2, 3);
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (4, 2, 4, 5);
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (5, 2, 5, 4);
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (6, 3, 5, null);
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (7, 3, null, 5);
+INSERT INTO "order" (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (8, 3, null, 5);
+ALTER SEQUENCE order_id_seq RESTART WITH 9;
 
 CREATE TABLE order_instructions
 (
@@ -173,26 +173,26 @@ CREATE TABLE order_instructions
 -- give orders 1 & 2 multiple versions of the instruction record
 INSERT INTO order_instructions (id, order_id, instructions) VALUES (1, 1, 'order 1 v1');
 INSERT INTO order_instructions (id, order_id, instructions) VALUES (2, 1, 'order 1 v2');
-UPDATE order_table SET current_order_instructions_id = 2 WHERE id=1;
+UPDATE "order" SET current_order_instructions_id = 2 WHERE id=1;
 
 INSERT INTO order_instructions (id, order_id, instructions) VALUES (3, 2, 'order 2 v1');
 INSERT INTO order_instructions (id, order_id, instructions) VALUES (4, 2, 'order 2 v2');
 INSERT INTO order_instructions (id, order_id, instructions) VALUES (5, 2, 'order 2 v3');
-UPDATE order_table SET current_order_instructions_id = 5 WHERE id=2;
+UPDATE "order" SET current_order_instructions_id = 5 WHERE id=2;
 
 -- Set sequence before dynamic inserts
 ALTER SEQUENCE order_instructions_id_seq RESTART WITH 6;
 
 -- give all other orders just 1 instruction
 INSERT INTO order_instructions (order_id, instructions) 
-SELECT id, 'order ' || id || ' v1' FROM order_table WHERE current_order_instructions_id IS NULL;
-UPDATE order_table SET current_order_instructions_id = (SELECT MIN(id) FROM order_instructions WHERE order_id = order_table.id) 
+SELECT id, 'order ' || id || ' v1' FROM "order" WHERE current_order_instructions_id IS NULL;
+UPDATE "order" SET current_order_instructions_id = (SELECT MIN(id) FROM order_instructions WHERE order_id = "order".id)
 WHERE current_order_instructions_id is null;
 
 CREATE TABLE order_line
 (
    id SERIAL PRIMARY KEY,
-   order_id INT REFERENCES order_table,
+   order_id INT REFERENCES "order",
    sku VARCHAR(80),
    store_id INT REFERENCES store,
    quantity INT

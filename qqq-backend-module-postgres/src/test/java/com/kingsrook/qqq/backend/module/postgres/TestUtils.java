@@ -79,7 +79,7 @@ public class TestUtils
    public static final String TABLE_NAME_PERSON              = "personTable";
    public static final String TABLE_NAME_PERSONAL_ID_CARD    = "personalIdCard";
    public static final String TABLE_NAME_STORE               = "store";
-   public static final String TABLE_NAME_ORDER               = "orderTable";
+   public static final String TABLE_NAME_ORDER               = "order";
    public static final String TABLE_NAME_ORDER_INSTRUCTIONS  = "orderInstructions";
    public static final String TABLE_NAME_ITEM                = "item";
    public static final String TABLE_NAME_ORDER_LINE          = "orderLine";
@@ -335,7 +335,7 @@ public class TestUtils
          .withField(new QFieldMetaData("name", QFieldType.STRING))
       );
 
-      qInstance.addTable(defineBaseTable(TABLE_NAME_ORDER, "order_table")
+      qInstance.addTable(defineBaseTable(TABLE_NAME_ORDER, "order")
          .withRecordSecurityLock(new RecordSecurityLock().withSecurityKeyType(TABLE_NAME_STORE).withFieldName("storeId"))
          .withAssociation(new Association().withName("orderLine").withAssociatedTableName(TABLE_NAME_ORDER_LINE).withJoinName("orderJoinOrderLine"))
          .withExposedJoin(new ExposedJoin().withJoinTable(TABLE_NAME_ITEM).withJoinPath(List.of("orderJoinOrderLine", "orderLineJoinItem")))
@@ -349,7 +349,7 @@ public class TestUtils
       qInstance.addTable(defineBaseTable(TABLE_NAME_ORDER_INSTRUCTIONS, "order_instructions")
          .withRecordSecurityLock(new RecordSecurityLock()
             .withSecurityKeyType(TABLE_NAME_STORE)
-            .withFieldName("orderTable.storeId")
+            .withFieldName(TABLE_NAME_ORDER + ".storeId")
             .withJoinNameChain(List.of("orderInstructionsJoinOrder")))
          .withField(new QFieldMetaData("orderId", QFieldType.INTEGER).withBackendName("order_id"))
          .withField(new QFieldMetaData("instructions", QFieldType.STRING))
@@ -367,7 +367,7 @@ public class TestUtils
       qInstance.addTable(defineBaseTable(TABLE_NAME_ORDER_LINE, "order_line")
          .withRecordSecurityLock(new RecordSecurityLock()
             .withSecurityKeyType(TABLE_NAME_STORE)
-            .withFieldName("orderTable.storeId")
+            .withFieldName(TABLE_NAME_ORDER + ".storeId")
             .withJoinNameChain(List.of("orderJoinOrderLine")))
          .withAssociation(new Association().withName("extrinsics").withAssociatedTableName(TABLE_NAME_LINE_ITEM_EXTRINSIC).withJoinName("orderLineJoinLineItemExtrinsic"))
          .withField(new QFieldMetaData("orderId", QFieldType.INTEGER).withBackendName("order_id"))
@@ -379,7 +379,7 @@ public class TestUtils
       qInstance.addTable(defineBaseTable(TABLE_NAME_LINE_ITEM_EXTRINSIC, "line_item_extrinsic")
          .withRecordSecurityLock(new RecordSecurityLock()
             .withSecurityKeyType(TABLE_NAME_STORE)
-            .withFieldName("orderTable.storeId")
+            .withFieldName(TABLE_NAME_ORDER + ".storeId")
             .withJoinNameChain(List.of("orderJoinOrderLine", "orderLineJoinLineItemExtrinsic")))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
          .withField(new QFieldMetaData("orderLineId", QFieldType.INTEGER).withBackendName("order_line_id"))

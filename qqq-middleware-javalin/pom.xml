@@ -34,11 +34,8 @@
    </parent>
 
    <properties>
-      <!-- props specifically to this module -->
-
-      <!-- When updating to javalin 6.3.0, we received classNotFound errors - which this fixed. -->
-      <kotlin.version>1.9.10</kotlin.version>
-      <javalin.version>6.3.0</javalin.version>
+      <kotlin.version>1.9.25</kotlin.version>
+      <javalin.version>6.7.0</javalin.version>
    </properties>
 
    <dependencies>

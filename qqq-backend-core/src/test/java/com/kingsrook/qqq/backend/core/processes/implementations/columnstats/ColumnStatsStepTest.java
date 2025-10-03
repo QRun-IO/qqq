@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -188,6 +189,63 @@ class ColumnStatsStepTest extends BaseTest
          .rootCause()
          .hasMessageContaining("Field [lastName] was not found in table");
 
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFailIfCountOverLimit() throws QException
+   {
+      InsertInput insertInput = new InsertInput();
+      insertInput.setTableName(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      insertInput.setRecords(List.of(
+         new QRecord().withValue("lastName", "Simpson"),
+         new QRecord().withValue("lastName", "Burns"),
+         new QRecord().withValue("lastName", "Smithers"),
+         new QRecord().withValue("lastName", "Flanders")
+      ));
+      new InsertAction().execute(insertInput);
+
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("tableName", TestUtils.TABLE_NAME_PERSON_MEMORY);
+      input.addValue("fieldName", "lastName");
+      input.addValue("orderBy", "count.desc");
+
+      /////////////////////////////////////////////////////////////////
+      // with a limit smaller than the # of rows, should throw error //
+      /////////////////////////////////////////////////////////////////
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      ColumnStatsTableConfig.ofOrWithNew(table).withFailIfCountOverLimit(3);
+      assertThatThrownBy(() -> new ColumnStatsStep().run(input, new RunBackendStepOutput()))
+         .rootCause().hasMessageContaining("Unable to calculate Column Statistics.  Your filter matches too many rows (4). The limit for this table is 3.");
+
+      ///////////////////////////////////////////////
+      // change limit higher, and confirm no error //
+      ///////////////////////////////////////////////
+      ColumnStatsTableConfig.ofOrWithNew(table).withFailIfCountOverLimit(5);
+      new ColumnStatsStep().run(input, new RunBackendStepOutput());
+
+      /////////////////////////
+      // null limit no error //
+      /////////////////////////
+      ColumnStatsTableConfig.ofOrWithNew(table).withFailIfCountOverLimit(null);
+      new ColumnStatsStep().run(input, new RunBackendStepOutput());
+
+      //////////////////////////////////////////////////////
+      // no ColumnStatsTableConfig on the table works too //
+      //////////////////////////////////////////////////////
+      table.getSupplementalMetaData().remove(ColumnStatsTableConfig.NAME);
+      new ColumnStatsStep().run(input, new RunBackendStepOutput());
+
+      ///////////////////////////////////////////////
+      // verify config can be set as process value //
+      ///////////////////////////////////////////////
+      input.addValue("ColumnStatsTableConfig", new ColumnStatsTableConfig().withFailIfCountOverLimit(2));
+      assertThatThrownBy(() -> new ColumnStatsStep().run(input, new RunBackendStepOutput()))
+         .rootCause().hasMessageContaining("Unable to calculate Column Statistics.  Your filter matches too many rows (4). The limit for this table is 2.");
    }
 
 }

@@ -41,16 +41,19 @@ import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
+import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
@@ -59,6 +62,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateRe
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
@@ -70,6 +75,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QFunctionInputMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -81,13 +87,17 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** This is a single-step process used to provide Column Statistics.  These include
- ** counts per-value for a field, plus things like total count, min, max, avg, based
- ** on the field type.
+ * This is a single-step process used to provide Column Statistics.  These include
+ * counts per-value for a field, plus things like total count, min, max, avg, based
+ * on the field type.
+ *
+ * See {@link ColumnStatsTableConfig} for some configuration options for the process.
  *******************************************************************************/
 public class ColumnStatsStep implements BackendStep
 {
    private static final QLogger LOG = QLogger.getLogger(ColumnStatsStep.class);
+
+   private static ColumnStatsTableConfig defaultColumnStatsTableConfig = new ColumnStatsTableConfig();
 
 
 
@@ -101,7 +111,10 @@ public class ColumnStatsStep implements BackendStep
          .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
          .withStepList(List.of(new QBackendStepMetaData()
             .withName("step")
-            .withCode(new QCodeReference(ColumnStatsStep.class)))));
+            .withCode(new QCodeReference(ColumnStatsStep.class))
+            .withInputData(new QFunctionInputMetaData()
+               .withField(new QFieldMetaData("ColumnStatsTableConfig", QFieldType.STRING)))
+         )));
    }
 
 
@@ -139,12 +152,10 @@ public class ColumnStatsStep implements BackendStep
             filter = new QQueryFilter();
          }
 
-         QTableMetaData table = QContext.getQInstance().getTable(tableName);
-
-         //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // make sure user personalization is applied to the table - e.g., so user can't request a column they aren't allowed to see //
-         //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         table = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableName(tableName).withInputSource(QInputSource.USER));
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // apply user personalization to the table - e.g., so user can't request a column they aren't allowed to see //
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         QTableMetaData table = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableName(tableName).withInputSource(QInputSource.USER));
 
          FieldAndQueryJoin fieldAndQueryJoin = getFieldAndQueryJoin(table, fieldName);
          QFieldMetaData    field             = fieldAndQueryJoin.field();
@@ -159,6 +170,21 @@ public class ColumnStatsStep implements BackendStep
          {
             throw (new QException("Column stats are not supported for this field's data type."));
          }
+
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         // get the config for this table, if there is one -                                      //
+         // then (if the config says so) check if the filter's count is over the configured limit //
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         ColumnStatsTableConfig columnStatsTableConfig;
+         if(runBackendStepInput.getValue("ColumnStatsTableConfig") != null)
+         {
+            columnStatsTableConfig = (ColumnStatsTableConfig) runBackendStepInput.getValue("ColumnStatsTableConfig");
+         }
+         else
+         {
+            columnStatsTableConfig = Objects.requireNonNullElse(ColumnStatsTableConfig.of(table), defaultColumnStatsTableConfig);
+         }
+         checkIfCountIsOverLimit(columnStatsTableConfig, table, filter);
 
          ////////////////////////////////////////////
          // do a count query grouped by this field //
@@ -219,6 +245,9 @@ public class ColumnStatsStep implements BackendStep
             fieldAndQueryJoin = getFieldAndQueryJoin(table, fieldName);
             aggregateInput.withQueryJoin(fieldAndQueryJoin.queryJoin());
          }
+
+         aggregateInput.setTimeoutSeconds(columnStatsTableConfig.getQueryTimeoutSeconds());
+         aggregateInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
 
          AggregateOutput aggregateOutput = new AggregateAction().execute(aggregateInput);
 
@@ -374,6 +403,10 @@ public class ColumnStatsStep implements BackendStep
             {
                statsAggregateInput.withQueryJoin(queryJoin);
             }
+
+            statsAggregateInput.setTimeoutSeconds(columnStatsTableConfig.getQueryTimeoutSeconds());
+            statsAggregateInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
+
             AggregateOutput statsAggregateOutput = new AggregateAction().execute(statsAggregateInput);
             if(CollectionUtils.nullSafeHasContents(statsAggregateOutput.getResults()))
             {
@@ -454,7 +487,38 @@ public class ColumnStatsStep implements BackendStep
       }
       catch(Exception e)
       {
-         throw new QException("Error calculating stats", e);
+         throw new QException("Error calculating column stats", e);
+      }
+   }
+
+
+
+   /***************************************************************************
+    * if a {@link ColumnStatsTableConfig#withFailIfCountOverLimit(Integer)}
+    * value is set, do a count on the table with the input filter, and throw
+    * an error if the coutn is over the limit.
+    *
+    * @param columnStatsTableConfig the config object to check for a limit.
+    * if null, or limit is null, method returns with noop.
+    * @param table the table being worked on - note - may
+    ***************************************************************************/
+   private void checkIfCountIsOverLimit(ColumnStatsTableConfig columnStatsTableConfig, QTableMetaData table, QQueryFilter filter) throws QException
+   {
+      if(columnStatsTableConfig == null || columnStatsTableConfig.getFailIfCountOverLimit() == null)
+      {
+         return;
+      }
+
+      CountInput countInput = new CountInput();
+      countInput.setTableMetaData(table);
+      countInput.setFilter(filter == null ? null : filter.clone()); // clone filter, in case it gets modified (e.g., for security)
+      countInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
+      countInput.withTimeoutSeconds(columnStatsTableConfig.getQueryTimeoutSeconds());
+      CountOutput countOutput = new CountAction().execute(countInput);
+      Integer     count       = countOutput.getCount();
+      if(count > columnStatsTableConfig.getFailIfCountOverLimit())
+      {
+         throw (new QUserFacingException("Unable to calculate Column Statistics.  Your filter matches too many rows (" + String.format("%,d", count) + "). The limit for this table is " + String.format("%,d", columnStatsTableConfig.getFailIfCountOverLimit()) + "."));
       }
    }
 

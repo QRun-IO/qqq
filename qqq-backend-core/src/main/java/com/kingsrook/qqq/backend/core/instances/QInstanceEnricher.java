@@ -1736,7 +1736,10 @@ public class QInstanceEnricher
       {
          @SuppressWarnings("unchecked")
          QInstanceEnricherPluginInterface<T> castedPlugin = (QInstanceEnricherPluginInterface<T>) plugin;
-         castedPlugin.enrich(t, qInstance);
+         if(castedPlugin.isEnabled())
+         {
+            castedPlugin.enrich(t, qInstance);
+         }
       }
    }
 

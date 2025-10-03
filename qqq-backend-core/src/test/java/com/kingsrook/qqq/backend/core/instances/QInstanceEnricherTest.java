@@ -596,13 +596,34 @@ class QInstanceEnricherTest extends BaseTest
    {
       QInstance qInstance = TestUtils.defineInstance();
 
-      QInstanceEnricher.addEnricherPlugin(new TestEnricherPlugin());
+      QInstanceEnricher.addEnricherPlugin(new TestEnricherPlugin(true));
 
       new QInstanceEnricher(qInstance).enrich();
 
       qInstance.getTables().values().forEach(table -> table.getFields().values().forEach(field -> assertThat(field.getLabel()).endsWith("Plugged")));
       qInstance.getProcesses().values().forEach(process -> process.getInputFields().forEach(field -> assertThat(field.getLabel()).endsWith("Plugged")));
       qInstance.getProcesses().values().forEach(process -> process.getOutputFields().forEach(field -> assertThat(field.getLabel()).endsWith("Plugged")));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testPluginIsEnabled()
+   {
+      /////////////////////////////////////////////////////////////////////
+      // add the plugin - but in a disabled state (param to constructor) //
+      /////////////////////////////////////////////////////////////////////
+      QInstanceEnricher.addEnricherPlugin(new TestEnricherPlugin(false));
+
+      QInstance qInstance = TestUtils.defineInstance();
+      new QInstanceEnricher(qInstance).enrich();
+
+      qInstance.getTables().values().forEach(table -> table.getFields().values().forEach(field -> assertThat(field.getLabel()).doesNotEndWith("Plugged")));
+      qInstance.getProcesses().values().forEach(process -> process.getInputFields().forEach(field -> assertThat(field.getLabel()).doesNotEndWith("Plugged")));
+      qInstance.getProcesses().values().forEach(process -> process.getOutputFields().forEach(field -> assertThat(field.getLabel()).doesNotEndWith("Plugged")));
    }
 
 

@@ -436,6 +436,7 @@ public class QJavalinImplementation
          post("/possibleValues/{possibleValueSourceName}", QJavalinImplementation::possibleValuesStandalone);
 
          get("/widget/{name}", QJavalinImplementation::widget); // todo - can we just do a slow log here?
+         post("/widget/{name}", QJavalinImplementation::widget);
 
          get("/serverInfo", QJavalinImplementation::serverInfo);
 
@@ -443,14 +444,6 @@ public class QJavalinImplementation
          // process routes //
          ////////////////////
          path("", QJavalinProcessHandler.getRoutes());
-
-         // todo... ? ////////////////
-         // todo... ? // api routes //
-         // todo... ? ////////////////
-         // todo... ? if(qInstance.getApiMetaData() != null)
-         // todo... ? {
-         // todo... ?    path("", QJavalinApiHandler.getRoutes());
-         // todo... ? }
       });
    }
 
@@ -1574,6 +1567,19 @@ public class QJavalinImplementation
          {
             String       fieldName = queryParam.getKey();
             List<String> values    = queryParam.getValue();
+            if(CollectionUtils.nullSafeHasContents(values))
+            {
+               input.addQueryParam(fieldName, values.get(0));
+            }
+         }
+
+         ////////////////////////////
+         // process form/post body //
+         ////////////////////////////
+         for(Map.Entry<String, List<String>> formParam : context.formParamMap().entrySet())
+         {
+            String       fieldName = formParam.getKey();
+            List<String> values    = formParam.getValue();
             if(CollectionUtils.nullSafeHasContents(values))
             {
                input.addQueryParam(fieldName, values.get(0));

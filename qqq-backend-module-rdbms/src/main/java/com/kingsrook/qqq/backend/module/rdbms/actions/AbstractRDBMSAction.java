@@ -639,11 +639,61 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
-    **
+    ** Escape an identifier (table name, column name) with the appropriate quote
+    ** character for the database vendor.
+    ** 
+    ** Uses the action strategy's getIdentifierQuoteString() method to determine
+    ** the appropriate quote character. Falls back to backtick if strategy not available.
     *******************************************************************************/
    protected String escapeIdentifier(String id)
    {
-      return ("`" + id + "`");
+      String quoteString = "`"; // Default for MySQL/H2/SQLite
+      
+      try
+      {
+         /////////////////////////////////////////////////////////////
+         // Primary: Try to get from action strategy if initialized //
+         /////////////////////////////////////////////////////////////
+         RDBMSActionStrategyInterface strategy = getActionStrategy();
+         if(strategy != null)
+         {
+            quoteString = strategy.getIdentifierQuoteString();
+         }
+         ////////////////////////////////////////////////////////////////////
+         // Fallback: If strategy is null, get it from backend in QContext //
+         ////////////////////////////////////////////////////////////////////
+         else if(QContext.getQInstance() != null && QContext.getQInstance().getBackends() != null)
+         {
+            for(QBackendMetaData backend : QContext.getQInstance().getBackends().values())
+            {
+               if(backend instanceof RDBMSBackendMetaData rdbmsBackend)
+               {
+                  RDBMSActionStrategyInterface backendStrategy = rdbmsBackend.getActionStrategy();
+                  if(backendStrategy != null)
+                  {
+                     quoteString = backendStrategy.getIdentifierQuoteString();
+                     break; // Use first RDBMS backend found
+                  }
+               }
+            }
+         }
+      }
+      catch(Exception e)
+      {
+         // Ignore - will use default
+      }
+      
+      ////////////////////////////////////////////////
+      // Return identifier with appropriate quoting //
+      ////////////////////////////////////////////////
+      if(quoteString == null || quoteString.isEmpty())
+      {
+         return id;
+      }
+      else
+      {
+         return quoteString + id + quoteString;
+      }
    }
 
 

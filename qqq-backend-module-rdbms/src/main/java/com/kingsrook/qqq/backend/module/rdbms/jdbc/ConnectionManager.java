@@ -199,7 +199,7 @@ public class ConnectionManager
     ** reset the map of connection providers - not necessarily meant to be useful
     ** in production code - written for use in qqq tests.
     *******************************************************************************/
-   static void resetConnectionProviders()
+   public static void resetConnectionProviders()
    {
       connectionProviderMap.clear();
    }

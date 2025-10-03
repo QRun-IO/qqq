@@ -167,13 +167,6 @@
             </plugins>
          </build>
       </profile>
-      <profile>
-         <!-- Optional sample app module: activate with -P withSample -->
-         <id>withSample</id>
-         <modules>
-            <module>qqq-sample-project</module>
-         </modules>
-      </profile>
    </profiles>
 
    <dependencyManagement>

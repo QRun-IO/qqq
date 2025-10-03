@@ -1425,6 +1425,11 @@ public class TestUtils
       @Override
       public QPossibleValue<String> getPossibleValue(Serializable idValue)
       {
+         if(idValue instanceof Integer i && i < 0)
+         {
+            return (null);
+         }
+
          return (new QPossibleValue<>(ValueUtils.getValueAsString(idValue), "Custom[" + idValue + "]"));
       }
 

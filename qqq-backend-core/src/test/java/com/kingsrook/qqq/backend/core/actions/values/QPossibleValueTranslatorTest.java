@@ -308,7 +308,8 @@ public class QPossibleValueTranslatorTest extends BaseTest
       List<QRecord> personRecords = List.of(
          new QRecord().withTableName(TestUtils.TABLE_NAME_PERSON).withValue(fieldName, 1),
          new QRecord().withTableName(TestUtils.TABLE_NAME_PERSON).withValue(fieldName, 2),
-         new QRecord().withTableName(TestUtils.TABLE_NAME_PERSON).withValue(fieldName, "Buckle my shoe")
+         new QRecord().withTableName(TestUtils.TABLE_NAME_PERSON).withValue(fieldName, "Buckle my shoe"),
+         new QRecord().withTableName(TestUtils.TABLE_NAME_PERSON).withValue(fieldName, -1) // should come out of the CustomPossibleProvider as null
       );
 
       /////////////////////////
@@ -322,6 +323,7 @@ public class QPossibleValueTranslatorTest extends BaseTest
       assertEquals("Custom[1]", personRecords.get(0).getDisplayValue(fieldName));
       assertEquals("Custom[2]", personRecords.get(1).getDisplayValue(fieldName));
       assertEquals("Custom[Buckle my shoe]", personRecords.get(2).getDisplayValue(fieldName));
+      assertNull(personRecords.get(3).getDisplayValue(fieldName));
    }
 
 

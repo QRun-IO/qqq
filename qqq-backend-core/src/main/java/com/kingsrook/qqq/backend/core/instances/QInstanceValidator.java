@@ -349,8 +349,11 @@ public class QInstanceValidator
       for(QInstanceValidatorPluginInterface<?> plugin : CollectionUtils.nonNullList(validatorPlugins.get(c)))
       {
          @SuppressWarnings("unchecked")
-         QInstanceValidatorPluginInterface<T> processPlugin = (QInstanceValidatorPluginInterface<T>) plugin;
-         processPlugin.validate(t, qInstance, this);
+         QInstanceValidatorPluginInterface<T> castedPlugin = (QInstanceValidatorPluginInterface<T>) plugin;
+         if(castedPlugin.isEnabled())
+         {
+            castedPlugin.validate(t, qInstance, this);
+         }
       }
    }
 
@@ -2208,7 +2211,7 @@ public class QInstanceValidator
                   }
                }
 
-               if(widget.getValidatorPlugin() != null)
+               if(widget.getValidatorPlugin() != null && widget.getValidatorPlugin().isEnabled())
                {
                   widget.getValidatorPlugin().validate(widget, qInstance, this);
                }

@@ -48,6 +48,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.validation.plugins.AlwaysFailsProcessValidatorPlugin;
+import com.kingsrook.qqq.backend.core.instances.validation.plugins.FailsIfEnabledProcessValidatorPlugin;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
@@ -161,6 +162,7 @@ public class QInstanceValidatorTest extends BaseTest
       assertValidationSuccess((qInstance) -> qInstance.setMetaDataFilter(new QCodeReference(AllowAllMetaDataFilter.class)));
       assertValidationSuccess((qInstance) -> qInstance.setMetaDataFilter(null));
    }
+
 
 
    /*******************************************************************************
@@ -346,6 +348,7 @@ public class QInstanceValidatorTest extends BaseTest
          return null;
       }
    }
+
 
 
    /***************************************************************************
@@ -798,6 +801,47 @@ public class QInstanceValidatorTest extends BaseTest
          assertValidationSuccess((qInstance) ->
          {
          });
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void test_validatorPluginIsEnabled()
+   {
+      try
+      {
+         ////////////////////////////////////////////////////////////////////
+         // enable this plugin, then make sure it runs (causing a failure) //
+         ////////////////////////////////////////////////////////////////////
+         QInstanceValidator.addValidatorPlugin(new FailsIfEnabledProcessValidatorPlugin(true));
+
+         ///////////////////////////////////////////////
+         // make sure it fails, because it is enabled //
+         ///////////////////////////////////////////////
+         assertValidationFailureReasonsAllowingExtraReasons((qInstance) ->
+         {
+         }, "I fail, because i am enabled.");
+
+         ///////////////////////////////////////////////////
+         // try again, this time with the plugin disabled //
+         ///////////////////////////////////////////////////
+         QInstanceValidator.removeAllValidatorPlugins();
+         QInstanceValidator.addValidatorPlugin(new FailsIfEnabledProcessValidatorPlugin(false));
+
+         ///////////////////////////////////////////////////////////////////////////////
+         // make sure it doesn't fail - because it didn't run, because it is disabled //
+         ///////////////////////////////////////////////////////////////////////////////
+         assertValidationSuccess((qInstance) ->
+         {
+         });
+      }
+      finally
+      {
+         QInstanceValidator.removeAllValidatorPlugins();
       }
    }
 

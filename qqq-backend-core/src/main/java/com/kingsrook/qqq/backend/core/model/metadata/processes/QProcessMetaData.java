@@ -25,8 +25,10 @@ package com.kingsrook.qqq.backend.core.model.metadata.processes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -40,6 +42,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRule
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.SourceQBitAware;
 import com.kingsrook.qqq.backend.core.model.metadata.scheduleing.QScheduleMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.basepull.BasepullConfiguration;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
@@ -264,7 +267,7 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
 
       if(this.steps == null)
       {
-         this.steps = new HashMap<>();
+         this.steps = new LinkedHashMap<>();
       }
 
       if(!StringUtils.hasContent(step.getName()))
@@ -299,7 +302,7 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
    {
       if(this.steps == null)
       {
-         this.steps = new HashMap<>();
+         this.steps = new LinkedHashMap<>();
       }
 
       if(!StringUtils.hasContent(step.getName()))
@@ -340,7 +343,7 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
       else
       {
          this.stepList = new ArrayList<>();
-         this.steps = new HashMap<>();
+         this.steps = new LinkedHashMap<>();
       }
 
       withStepList(stepList);
@@ -405,9 +408,13 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
    {
       Set<String>          usedFieldNames = new HashSet<>();
       List<QFieldMetaData> rs             = new ArrayList<>();
-      if(steps != null)
+
+      ////////////////////////////////////////////////////////////////////////////////////////////////////
+      // first iterate over the step list - doing this so we get the fields back in a predictable order //
+      ////////////////////////////////////////////////////////////////////////////////////////////////////
+      if(stepList != null)
       {
-         for(QStepMetaData step : steps.values())
+         for(QStepMetaData step : stepList)
          {
             for(QFieldMetaData field : step.getInputFields())
             {
@@ -419,7 +426,53 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
             }
          }
       }
+
+      /////////////////////////////////////////////////////////////////////////////////////
+      // if the step map ('steps') is bigger than the stepList, that would mean          //
+      // we have some optional steps in the process.  in that case, add their fields too //
+      /////////////////////////////////////////////////////////////////////////////////////
+      if(steps != null && steps.size() > CollectionUtils.nonNullList(stepList).size())
+      {
+         for(QStepMetaData step : steps.values())
+         {
+            if(stepList != null && stepList.stream().anyMatch(s -> s.getName().equals(step.getName())))
+            {
+               ////////////////////////////////////////////////////////
+               // skip steps we already processed from the step list //
+               ////////////////////////////////////////////////////////
+               continue;
+            }
+
+            for(QFieldMetaData field : step.getInputFields())
+            {
+               if(!usedFieldNames.contains(field.getName()))
+               {
+                  rs.add(field);
+                  usedFieldNames.add(field.getName());
+               }
+            }
+         }
+      }
+
       return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get the (optional, first) input field on this process with the given name.
+    *
+    * @param name name of the field to be returned
+    * @return the first input field found in the process's steps that has that name,
+    * or empty if none are found (where first is based on:  the order of steps in
+    * the stepList, then any optional steps, in the order in which they come out
+    * of the step map (which internally is always built as LinkedHashMap, so it
+    * preserves insertion order - but - if the caller supplied their own map, then
+    * results could potentially get into undefined behavior!)
+    *******************************************************************************/
+   public Optional<QFieldMetaData> getInputField(String name)
+   {
+      return getInputFields().stream().filter(f -> f.getName().equals(name)).findFirst();
    }
 
 
@@ -916,6 +969,7 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
    }
 
 
+
    /*******************************************************************************
     ** Getter for sourceQBitName
     *******************************************************************************/
@@ -947,6 +1001,5 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
       this.sourceQBitName = sourceQBitName;
       return (this);
    }
-
 
 }

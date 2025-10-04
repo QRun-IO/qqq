@@ -24,40 +24,48 @@ package com.kingsrook.qqq.backend.core.instances.validation.plugins;
 
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 
 
 /*******************************************************************************
- ** Interface for additional / optional q instance validators.  Some will be
- ** provided by QQQ - others can be defined by applications.
+ * test implementation of a validator plugin, that fails if it is enabled, per
+ * the param to its constructor.
  *******************************************************************************/
-public interface QInstanceValidatorPluginInterface<T>
+public class FailsIfEnabledProcessValidatorPlugin implements QInstanceValidatorPluginInterface<QProcessMetaData>
 {
+   private final boolean isEnabled;
+
+
+
+   /*******************************************************************************
+    ** Constructor
+    **
+    *******************************************************************************/
+   public FailsIfEnabledProcessValidatorPlugin(boolean isEnabled)
+   {
+      this.isEnabled = isEnabled;
+   }
+
+
 
    /***************************************************************************
-    * allow a plugin to be disabled at runtime.
     *
-    * <p>Default implementation here in the interface is true.</p>
-    *
-    * @return true if enabled; false if not.
     ***************************************************************************/
-   default boolean isEnabled()
+   @Override
+   public boolean isEnabled()
    {
-      return (true);
+      return isEnabled;
    }
+
 
 
    /*******************************************************************************
     **
     *******************************************************************************/
-   void validate(T object, QInstance qInstance, QInstanceValidator qInstanceValidator);
-
-
-   /***************************************************************************
-    **
-    ***************************************************************************/
-   default String getPluginIdentifier()
+   @Override
+   public void validate(QProcessMetaData object, QInstance qInstance, QInstanceValidator qInstanceValidator)
    {
-      return getClass().getName();
+      qInstanceValidator.getErrors().add("I fail, because i am enabled.");
    }
 
 }

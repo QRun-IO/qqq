@@ -32,6 +32,41 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
  *******************************************************************************/
 public class TestEnricherPlugin implements QInstanceEnricherPluginInterface<QFieldMetaData>
 {
+   private final boolean isEnabled;
+
+
+   /*******************************************************************************
+    * Default Constructor - makes plugin be enabled
+    *
+    *******************************************************************************/
+   public TestEnricherPlugin()
+   {
+      this(true);
+   }
+
+
+   /*******************************************************************************
+    * Constructor
+    *
+    * @param isEnabled - if false, the plugin will not be enabled, so will not run.
+    *******************************************************************************/
+   public TestEnricherPlugin(boolean isEnabled)
+   {
+      this.isEnabled = isEnabled;
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   @Override
+   public boolean isEnabled()
+   {
+      return isEnabled;
+   }
+
+
 
    /***************************************************************************
     **

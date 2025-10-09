@@ -22,7 +22,12 @@
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -30,6 +35,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
@@ -39,6 +45,7 @@ import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
 import io.javalin.http.staticfiles.Location;
 import io.javalin.http.staticfiles.StaticFileConfig;
+import org.apache.commons.io.IOUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -48,14 +55,19 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInterface
 {
-   private static final QLogger LOG = QLogger.getLogger(SimpleFileSystemDirectoryRouter.class);
-   public static boolean loadStaticFilesFromJar = false;
+   private static final QLogger LOG                    = QLogger.getLogger(SimpleFileSystemDirectoryRouter.class);
+   public static        boolean loadStaticFilesFromJar = false;
 
 
    private final String hostedPath;
    private final String fileSystemPath;
+   private       String spaRootPath;
+   private       String spaRootFile;
+
    private QCodeReference routeAuthenticator;
-   private QInstance qInstance;
+   private QInstance      qInstance;
+
+
 
    /*******************************************************************************
     ** Constructor
@@ -93,6 +105,8 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
    public SimpleFileSystemDirectoryRouter(JavalinRouteProviderMetaData routeProvider)
    {
       this(routeProvider.getHostedPath(), routeProvider.getFileSystemPath());
+      setSpaRootPath(routeProvider.getSpaRootPath());
+      setSpaRootFile(routeProvider.getSpaRootFile());
       setRouteAuthenticator(routeProvider.getRouteAuthenticator());
    }
 
@@ -120,9 +134,9 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
          LOG.warn("hostedPath [" + hostedPath + "] should probably start with a leading slash...");
       }
 
-      /// /////////////////////////////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////////////////////////////////
       // Handle loading static files from the jar OR the filesystem based on system property //
-      /// /////////////////////////////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////////////////////////////////
       if(SimpleFileSystemDirectoryRouter.loadStaticFilesFromJar)
       {
          staticFileConfig.directory = fileSystemPath;
@@ -206,11 +220,86 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
 
    /***************************************************************************
-    **
+    ** Setup SPA deep linking support and authentication handlers.
+    ** This method is called AFTER Javalin config phase, which allows us to
+    ** register handlers that run after static file serving. This is critical
+    ** for proper SPA deep linking support with multiple SPAs.
     ***************************************************************************/
    @Override
    public void acceptJavalinService(Javalin service)
    {
+      ///////////////////////////////////////////////////////////////////////////////////////////
+      // If this is configured as an SPA, use Javalin's error handler (404) to catch unmatched //
+      // routes and serve index.html. This enables deep linking to work properly while still   //
+      // allowing static files to be served normally.                                          //
+      //                                                                                       //
+      // KEY INSIGHT: Using error(404) ensures this runs AFTER static file serving, which is   //
+      // critical for the feature to work correctly with multiple SPAs.                        //
+      ///////////////////////////////////////////////////////////////////////////////////////////
+      if(StringUtils.hasContent(spaRootPath) && StringUtils.hasContent(spaRootFile))
+      {
+         LOG.info("Registering SPA deep linking handler via 404 error handler",
+            logPair("spaRootPath", spaRootPath),
+            logPair("spaRootFile", spaRootFile));
+
+         service.error(404, ctx ->
+         {
+            String requestPath = ctx.path();
+
+            ///////////////////////////////////////////////////
+            // Only handle 404s for paths under our SPA root //
+            ///////////////////////////////////////////////////
+            if(!requestPath.startsWith(spaRootPath))
+            {
+               LOG.debug("404 path not under our SPA root, skipping", logPair("path", requestPath), logPair("spaRoot", spaRootPath));
+               return;
+            }
+
+            /////////////////////////////////////////////////////////////////////////////
+            // Check if this looks like a static asset request (js, css, images, etc.) //
+            // If so, let the 404 stand (assets should 404 if they don't exist).       //
+            // Otherwise, serve the SPA's index.html to support client-side routing.   //
+            /////////////////////////////////////////////////////////////////////////////
+            if(isStaticAssetRequest(requestPath))
+            {
+               LOG.debug("404 for static asset, letting 404 stand", logPair("path", requestPath));
+               return;
+            }
+
+            LOG.debug("Serving SPA index for client-side route (404 handler)",
+               logPair("path", requestPath),
+               logPair("spaRoot", spaRootPath));
+
+            try
+            {
+               InputStream indexStream = loadSpaIndex();
+               if(indexStream != null)
+               {
+                  String indexHtml = IOUtils.toString(indexStream, StandardCharsets.UTF_8);
+                  ctx.html(indexHtml);
+                  ctx.status(200);
+               }
+               else
+               {
+                  LOG.error("Could not load SPA index file", logPair("spaRootFile", spaRootFile));
+                  ///////////////////////////////////////////
+                  // Don't change status - leave it as 404 //
+                  ///////////////////////////////////////////
+               }
+            }
+            catch(IOException e)
+            {
+               LOG.error("Error serving SPA index", e, logPair("spaRootFile", spaRootFile));
+               ///////////////////////////////////////////
+               // Don't change status - leave it as 404 //
+               ///////////////////////////////////////////
+            }
+         });
+      }
+
+      ////////////////////////////////////////////////////////////////////
+      // Set up authentication before/after handlers for all requests  //
+      ////////////////////////////////////////////////////////////////////
       String javalinPath = hostedPath;
       if(!javalinPath.endsWith("/"))
       {
@@ -219,7 +308,143 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
       javalinPath += "<subPath>";
 
       service.before(javalinPath, this::before);
-      service.before(javalinPath, this::after);
+      service.after(javalinPath, this::after);
+   }
+
+
+
+   /***************************************************************************
+    ** Determines if a request path looks like a static asset based on file
+    ** extension and common asset path patterns.
+    **
+    ** Returns true for common asset file extensions (.js, .css, images, fonts, etc.)
+    ** and for paths that contain common asset directory names.
+    ***************************************************************************/
+   private boolean isStaticAssetRequest(String path)
+   {
+      String lowerPath = path.toLowerCase();
+
+      ////////////////////////////////////////////////
+      // Check for common web asset file extensions //
+      ////////////////////////////////////////////////
+      String[] assetExtensions = {
+         //////////////////
+         // Code/Scripts //
+         //////////////////
+         ".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".sass", ".less", ".map",
+
+         ////////////
+         // Images //
+         ////////////
+         ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".bmp", ".tiff",
+
+         ///////////
+         // Fonts //
+         ///////////
+         ".woff", ".woff2", ".ttf", ".eot", ".otf",
+
+         ////////////////
+         // Data files //
+         ////////////////
+         ".json", ".xml", ".csv", ".txt",
+
+         ///////////
+         // Video //
+         ///////////
+         ".mp4", ".webm", ".ogg", ".avi", ".mov",
+
+         ///////////
+         // Audio //
+         ///////////
+         ".mp3", ".wav", ".ogg", ".m4a", ".flac"
+      };
+
+      for(String ext : assetExtensions)
+      {
+         if(lowerPath.endsWith(ext))
+         {
+            return true;
+         }
+      }
+
+      //////////////////////////////////////////
+      // Check for common asset path patterns //
+      //////////////////////////////////////////
+      if(lowerPath.contains("/assets/")
+         || lowerPath.contains("/static/")
+         || lowerPath.contains("/public/")
+         || lowerPath.contains("/dist/")
+         || lowerPath.contains("/build/")
+         || lowerPath.contains("/img/")
+         || lowerPath.contains("/images/")
+         || lowerPath.contains("/css/")
+         || lowerPath.contains("/js/")
+         || lowerPath.contains("/fonts/")
+         || lowerPath.contains("/media/"))
+      {
+         return true;
+      }
+
+      return false;
+   }
+
+
+
+   /***************************************************************************
+    ** Loads the SPA index.html from either the classpath (for JAR deployments)
+    ** or the filesystem (for development).
+    **
+    ** @return InputStream of the index.html file, or null if not found
+    ***************************************************************************/
+   private InputStream loadSpaIndex()
+   {
+      try
+      {
+         if(loadStaticFilesFromJar)
+         {
+            ///////////////////////////////////
+            // Load from classpath (in JAR) //
+            ///////////////////////////////////
+            LOG.debug("Loading SPA index from classpath", logPair("spaRootFile", spaRootFile));
+            return getClass().getClassLoader().getResourceAsStream(spaRootFile);
+         }
+         else
+         {
+            ////////////////////////////////////
+            // Load from filesystem (for dev) //
+            ////////////////////////////////////
+            URL resource = getClass().getClassLoader().getResource(fileSystemPath);
+            if(resource != null)
+            {
+               // Extract just the filename from spaRootFile (remove directory prefix if present)
+               String fileName = spaRootFile;
+               if(spaRootFile.contains("/"))
+               {
+                  fileName = spaRootFile.substring(spaRootFile.lastIndexOf('/') + 1);
+               }
+
+               File indexFile = new File(resource.getFile(), fileName);
+               LOG.debug("Loading SPA index from filesystem",
+                  logPair("indexFile", indexFile.getAbsolutePath()),
+                  logPair("exists", indexFile.exists()));
+
+               if(indexFile.exists())
+               {
+                  return new FileInputStream(indexFile);
+               }
+            }
+            else
+            {
+               LOG.warn("Could not find fileSystemPath resource", logPair("fileSystemPath", fileSystemPath));
+            }
+         }
+      }
+      catch(IOException e)
+      {
+         LOG.error("Error loading SPA index", e, logPair("spaRootFile", spaRootFile));
+      }
+
+      return null;
    }
 
 
@@ -250,6 +475,68 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
    public SimpleFileSystemDirectoryRouter withRouteAuthenticator(QCodeReference routeAuthenticator)
    {
       this.routeAuthenticator = routeAuthenticator;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for spaRootPath
+    *******************************************************************************/
+   public String getSpaRootPath()
+   {
+      return (this.spaRootPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaRootPath
+    *******************************************************************************/
+   public void setSpaRootPath(String spaRootPath)
+   {
+      this.spaRootPath = spaRootPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaRootPath
+    *******************************************************************************/
+   public SimpleFileSystemDirectoryRouter withSpaRootPath(String spaRootPath)
+   {
+      this.spaRootPath = spaRootPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for spaRootFile
+    *******************************************************************************/
+   public String getSpaRootFile()
+   {
+      return (this.spaRootFile);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaRootFile
+    *******************************************************************************/
+   public void setSpaRootFile(String spaRootFile)
+   {
+      this.spaRootFile = spaRootFile;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaRootFile
+    *******************************************************************************/
+   public SimpleFileSystemDirectoryRouter withSpaRootFile(String spaRootFile)
+   {
+      this.spaRootFile = spaRootFile;
       return (this);
    }
 

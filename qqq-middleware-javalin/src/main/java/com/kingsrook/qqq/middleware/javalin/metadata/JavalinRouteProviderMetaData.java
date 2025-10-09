@@ -41,6 +41,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
    private String hostedPath;
 
    private String fileSystemPath;
+   private String spaRootPath;
+   private String spaRootFile;
+   
    private String processName;
 
    private List<String> methods;
@@ -117,6 +120,68 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
    public JavalinRouteProviderMetaData withFileSystemPath(String fileSystemPath)
    {
       this.fileSystemPath = fileSystemPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for spaRootPath
+    *******************************************************************************/
+   public String getSpaRootPath()
+   {
+      return (this.spaRootPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaRootPath
+    *******************************************************************************/
+   public void setSpaRootPath(String spaRootPath)
+   {
+      this.spaRootPath = spaRootPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaRootPath
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withSpaRootPath(String spaRootPath)
+   {
+      this.spaRootPath = spaRootPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for spaRootFile
+    *******************************************************************************/
+   public String getSpaRootFile()
+   {
+      return (this.spaRootFile);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaRootFile
+    *******************************************************************************/
+   public void setSpaRootFile(String spaRootFile)
+   {
+      this.spaRootFile = spaRootFile;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaRootFile
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withSpaRootFile(String spaRootFile)
+   {
+      this.spaRootFile = spaRootFile;
       return (this);
    }
 

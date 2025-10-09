@@ -72,13 +72,14 @@ public class QApplicationJavalinServer
 
    private final AbstractQQQApplication application;
 
-   private Integer                              port                                = 8000;
-   private boolean                              serveFrontendMaterialDashboard      = true;
-   private boolean                              serveLegacyUnversionedMiddlewareAPI = true;
-   private List<AbstractMiddlewareVersion>      middlewareVersionList               = List.of(new MiddlewareVersionV1());
-   private List<QJavalinRouteProviderInterface> additionalRouteProviders            = null;
-   private Consumer<Javalin>                    javalinConfigurationCustomizer      = null;
-   private QJavalinMetaData                     javalinMetaData                     = null;
+   private Integer                              port                                     = 8000;
+   private boolean                              serveFrontendMaterialDashboard           = true;
+   private String                               frontendMaterialDashboardHostedPath      = "/";
+   private boolean                              serveLegacyUnversionedMiddlewareAPI      = true;
+   private List<AbstractMiddlewareVersion>      middlewareVersionList                    = List.of(new MiddlewareVersionV1());
+   private List<QJavalinRouteProviderInterface> additionalRouteProviders                 = null;
+   private Consumer<Javalin>                    javalinConfigurationCustomizer           = null;
+   private QJavalinMetaData                     javalinMetaData                          = null;
 
    private long                lastQInstanceHotSwapMillis;
    private long                millisBetweenHotSwaps = 2500;
@@ -140,12 +141,16 @@ public class QApplicationJavalinServer
             // tell javalin where to find material-dashboard static web assets                //
             // in this case, this path is coming from the qqq-frontend-material-dashboard jar //
             ////////////////////////////////////////////////////////////////////////////////////
-            config.staticFiles.add("/material-dashboard");
+            config.staticFiles.add(staticFileConfig ->
+            {
+               staticFileConfig.hostedPath = frontendMaterialDashboardHostedPath;
+               staticFileConfig.directory = "/material-dashboard";
+            });
 
             ////////////////////////////////////////////////////////////
             // set the index page for the SPA from material dashboard //
             ////////////////////////////////////////////////////////////
-            config.spaRoot.addFile("/", "material-dashboard/index.html");
+            config.spaRoot.addFile(frontendMaterialDashboardHostedPath, "material-dashboard/index.html");
          }
 
          ///////////////////////////////////////////
@@ -465,6 +470,37 @@ public class QApplicationJavalinServer
    public QApplicationJavalinServer withServeFrontendMaterialDashboard(boolean serveFrontendMaterialDashboard)
    {
       this.serveFrontendMaterialDashboard = serveFrontendMaterialDashboard;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for frontendMaterialDashboardHostedPath
+    *******************************************************************************/
+   public String getFrontendMaterialDashboardHostedPath()
+   {
+      return (this.frontendMaterialDashboardHostedPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for frontendMaterialDashboardHostedPath
+    *******************************************************************************/
+   public void setFrontendMaterialDashboardHostedPath(String frontendMaterialDashboardHostedPath)
+   {
+      this.frontendMaterialDashboardHostedPath = frontendMaterialDashboardHostedPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for frontendMaterialDashboardHostedPath
+    *******************************************************************************/
+   public QApplicationJavalinServer withFrontendMaterialDashboardHostedPath(String frontendMaterialDashboardHostedPath)
+   {
+      this.frontendMaterialDashboardHostedPath = frontendMaterialDashboardHostedPath;
       return (this);
    }
 

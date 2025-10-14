@@ -57,7 +57,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
-import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
 import com.kingsrook.qqq.backend.core.processes.implementations.savedreports.RenderSavedReportMetaDataProducer;
 import com.kingsrook.qqq.backend.core.processes.implementations.savedreports.RunScheduledReportMetaDataProducer;
 
@@ -141,7 +140,7 @@ public class SavedReportsMetaDataProvider
     ***************************************************************************/
    private QWidgetMetaDataInterface defineScheduledReportCronWidget()
    {
-      CronUISetupData cronUISetupData = new CronUISetupData(ScheduledJob.TABLE_NAME, "cronExpression", "cronTimeZoneId");
+      CronUISetupData cronUISetupData = new CronUISetupData(ScheduledReport.TABLE_NAME, "cronExpression", "cronTimeZoneId");
       return (CronUIWidgetRenderer.buildWidgetMetaData(SCHEDULED_REPORT_CRON_WIDGET, "Schedule", cronUISetupData));
    }
 

@@ -72,8 +72,7 @@ public class CronUIWidgetRenderer extends AbstractWidgetRenderer
          .withDefaultValue("cronExpressionFieldName", setupData.getCronExpressionFieldName())
          .withDefaultValue("timeZoneFieldName", setupData.getTimeZoneFieldName())
          .withDefaultValue("includeOnRecordEditScreen", true)
-         .withValidatorPlugin(new CronUIWidgetValidator())
-      );
+         .withValidatorPlugin(new CronUIWidgetValidator()));
    }
 
 

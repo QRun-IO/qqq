@@ -23,7 +23,7 @@ package com.kingsrook.qqq.backend.core.scheduler;
 
 
 import java.text.ParseException;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,71 +31,107 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
- ** class to give a human-friendly descriptive string from a cron expression.
- ** (written in half by my friend Mr. Chatty G)
+ * class to give a human-friendly descriptive string from a cron expression.
+ * Note that this implementation is written specifically for quartz, without much
+ * thought to other cron variants.
  *******************************************************************************/
 public class CronDescriber
 {
-   private static final Map<String, String> DAY_OF_WEEK_MAP = new HashMap<>();
-   private static final Map<String, String> MONTH_MAP       = new HashMap<>();
+   private static final Map<Integer, String> weekdayNameMap           = new HashMap<>();
+   private static final Map<String, Integer> weekdayByAbbreviationMap = new HashMap<>();
+   private static final Map<Integer, String> monthNameMap             = new HashMap<>();
+   private static final Map<String, Integer> monthByAbbreviationMap   = new HashMap<>();
 
    static
    {
-      DAY_OF_WEEK_MAP.put("1", "Sunday");
-      DAY_OF_WEEK_MAP.put("2", "Monday");
-      DAY_OF_WEEK_MAP.put("3", "Tuesday");
-      DAY_OF_WEEK_MAP.put("4", "Wednesday");
-      DAY_OF_WEEK_MAP.put("5", "Thursday");
-      DAY_OF_WEEK_MAP.put("6", "Friday");
-      DAY_OF_WEEK_MAP.put("7", "Saturday");
+      weekdayNameMap.put(1, "Sunday");
+      weekdayNameMap.put(2, "Monday");
+      weekdayNameMap.put(3, "Tuesday");
+      weekdayNameMap.put(4, "Wednesday");
+      weekdayNameMap.put(5, "Thursday");
+      weekdayNameMap.put(6, "Friday");
+      weekdayNameMap.put(7, "Saturday");
 
-      ////////////////////////////////
-      // Quartz also allows SUN-SAT //
-      ////////////////////////////////
-      DAY_OF_WEEK_MAP.put("SUN", "Sunday");
-      DAY_OF_WEEK_MAP.put("MON", "Monday");
-      DAY_OF_WEEK_MAP.put("TUE", "Tuesday");
-      DAY_OF_WEEK_MAP.put("WED", "Wednesday");
-      DAY_OF_WEEK_MAP.put("THU", "Thursday");
-      DAY_OF_WEEK_MAP.put("FRI", "Friday");
-      DAY_OF_WEEK_MAP.put("SAT", "Saturday");
+      weekdayByAbbreviationMap.put("SUN", 1);
+      weekdayByAbbreviationMap.put("MON", 2);
+      weekdayByAbbreviationMap.put("TUE", 3);
+      weekdayByAbbreviationMap.put("WED", 4);
+      weekdayByAbbreviationMap.put("THU", 5);
+      weekdayByAbbreviationMap.put("FRI", 6);
+      weekdayByAbbreviationMap.put("SAT", 7);
 
-      MONTH_MAP.put("1", "January");
-      MONTH_MAP.put("2", "February");
-      MONTH_MAP.put("3", "March");
-      MONTH_MAP.put("4", "April");
-      MONTH_MAP.put("5", "May");
-      MONTH_MAP.put("6", "June");
-      MONTH_MAP.put("7", "July");
-      MONTH_MAP.put("8", "August");
-      MONTH_MAP.put("9", "September");
-      MONTH_MAP.put("10", "October");
-      MONTH_MAP.put("11", "November");
-      MONTH_MAP.put("12", "December");
+      monthNameMap.put(1, "January");
+      monthNameMap.put(2, "February");
+      monthNameMap.put(3, "March");
+      monthNameMap.put(4, "April");
+      monthNameMap.put(5, "May");
+      monthNameMap.put(6, "June");
+      monthNameMap.put(7, "July");
+      monthNameMap.put(8, "August");
+      monthNameMap.put(9, "September");
+      monthNameMap.put(10, "October");
+      monthNameMap.put(11, "November");
+      monthNameMap.put(12, "December");
 
-      ////////////////////////////////
-      // Quartz also allows JAN-DEC //
-      ////////////////////////////////
-      MONTH_MAP.put("JAN", "January");
-      MONTH_MAP.put("FEB", "February");
-      MONTH_MAP.put("MAR", "March");
-      MONTH_MAP.put("APR", "April");
-      MONTH_MAP.put("MAY", "May");
-      MONTH_MAP.put("JUN", "June");
-      MONTH_MAP.put("JUL", "July");
-      MONTH_MAP.put("AUG", "August");
-      MONTH_MAP.put("SEP", "September");
-      MONTH_MAP.put("OCT", "October");
-      MONTH_MAP.put("NOV", "November");
-      MONTH_MAP.put("DEC", "December");
+      monthByAbbreviationMap.put("JAN", 1);
+      monthByAbbreviationMap.put("FEB", 2);
+      monthByAbbreviationMap.put("MAR", 3);
+      monthByAbbreviationMap.put("APR", 4);
+      monthByAbbreviationMap.put("MAY", 5);
+      monthByAbbreviationMap.put("JUN", 6);
+      monthByAbbreviationMap.put("JUL", 7);
+      monthByAbbreviationMap.put("AUG", 8);
+      monthByAbbreviationMap.put("SEP", 9);
+      monthByAbbreviationMap.put("OCT", 10);
+      monthByAbbreviationMap.put("NOV", 11);
+      monthByAbbreviationMap.put("DEC", 12);
    }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   enum Field
+   {
+      SECONDS(0, 59, "second", "to"),
+      MINUTES(0, 59, "minute", "to"),
+      HOURS(0, 23, "hour", "to"),
+      DAY_OF_MONTH(1, 31, "day", "through"),
+      MONTH(1, 12, "month", "through"),
+      DAY_OF_WEEK(1, 7, "day", "through"),
+      YEAR(1970, Integer.MAX_VALUE, "year", "through");
+
+      final int    minValue;
+      final int    maxValue;
+      final String singularLabel;
+      final String pluralLabel;
+      final String rangeWord;
+
+
+
+      /*******************************************************************************
+       ** Constructor
+       **
+       *******************************************************************************/
+      Field(int minValue, int maxValue, String singularLabel, String rangeWord)
+      {
+         this.minValue = minValue;
+         this.maxValue = maxValue;
+         this.singularLabel = singularLabel;
+         this.pluralLabel = singularLabel + "s";
+         this.rangeWord = rangeWord;
+      }
+   }
+
+
 
    /***************************************************************************
     **
     ***************************************************************************/
    public static String getDescription(String cronExpression) throws ParseException
    {
-      String[] parts = cronExpression.trim().toUpperCase().split("\\s+");
+      String[] parts = cronExpression.trim().split("\\s+");
       if(parts.length < 6 || parts.length > 7)
       {
          throw new ParseException("Invalid cron expression: " + cronExpression, 0);
@@ -109,235 +145,676 @@ public class CronDescriber
       String dayOfWeek  = parts[5];
       String year       = parts.length == 7 ? parts[6] : "*";
 
-      StringBuilder description = new StringBuilder();
+      List<String> phrases = new ArrayList<>();
 
-      description.append("At ");
-      description.append(describeTime(seconds, minutes, hours));
-      description.append(", on ");
-      description.append(describeDayOfMonth(dayOfMonth));
-      description.append(" of ");
-      description.append(describeMonth(month));
-      description.append(", ");
-      description.append(describeDayOfWeek(dayOfWeek));
-      if(!year.equals("*"))
-      {
-         description.append(", in ").append(year);
-      }
-      description.append(".");
+      phrases.addAll(buildDayPhrases(dayOfMonth, month, dayOfWeek, year));
+      phrases.addAll(buildTimePhrases(seconds, minutes, hours));
 
-      return description.toString();
+      String description = StringUtils.join(", ", phrases);
+      return StringUtils.ucFirst(description);
    }
 
 
 
    /***************************************************************************
-    **
+    *
     ***************************************************************************/
-   private static String describeTime(String seconds, String minutes, String hours)
+   static List<String> buildTimePhrases(String seconds, String minutes, String hours) throws ParseException
    {
-      return String.format("%s, %s, %s", describePart(seconds, "second"), describePart(minutes, "minute"), describePart(hours, "hour"));
-   }
+      List<String> rs = new ArrayList<>();
 
+      List<Token> hourTokens   = tokenize(hours, Field.HOURS);
+      List<Token> minuteTokens = tokenize(minutes, Field.MINUTES);
+      List<Token> secondTokens = tokenize(seconds, Field.SECONDS);
+      boolean     secondsIs0   = secondTokens.equals(List.of(new Scalar(0)));
 
+      boolean hoursIsStar   = hours.equals("*");
+      boolean minutesIsStar = minutes.equals("*");
+      boolean secondsIsStar = seconds.equals("*");
 
-   /***************************************************************************
-    **
-    ***************************************************************************/
-   private static String describeDayOfMonth(String dayOfMonth)
-   {
-      if(dayOfMonth.equals("?"))
-      {
-         return "every day";
-      }
-      else if(dayOfMonth.equals("L"))
-      {
-         return "the last day";
-      }
-      else if(dayOfMonth.contains("W"))
-      {
-         return "the nearest weekday to day " + dayOfMonth.replace("W", "");
-      }
-      else
-      {
-         return (describePart(dayOfMonth, "day"));
-      }
-   }
+      boolean minutesIsOneScalar = minuteTokens.size() == 1 && minuteTokens.get(0) instanceof Scalar;
+      boolean secondsIsOneScalar = secondTokens.size() == 1 && secondTokens.get(0) instanceof Scalar;
 
-
-
-   /***************************************************************************
-    **
-    ***************************************************************************/
-   private static String describeMonth(String month)
-   {
-      if(month.equals("*"))
+      if(hoursIsStar && minutesIsStar && secondsIsStar)
       {
-         return "every month";
+         return (List.of("every second"));
       }
-      else if(month.contains("-"))
+      else if(hoursIsStar && minutesIsStar && secondsIs0)
       {
-         String[] parts = month.split("-");
-         return String.format("%s to %s", MONTH_MAP.getOrDefault(parts[0], parts[0]), MONTH_MAP.getOrDefault(parts[1], parts[1]));
+         return (List.of("every minute"));
       }
-      else
+      else if(!isPlural(hourTokens) && !isPlural(minuteTokens))
       {
-         String[]     months     = month.split(",");
-         List<String> monthNames = Arrays.stream(months).map(m -> MONTH_MAP.getOrDefault(m, m)).toList();
-         return StringUtils.joinWithCommasAndAnd(monthNames);
-      }
-   }
-
-
-
-   /***************************************************************************
-    **
-    ***************************************************************************/
-   private static String describeDayOfWeek(String dayOfWeek)
-   {
-      if(dayOfWeek.equals("?") || dayOfWeek.equals("*"))
-      {
-         return "every day of the week";
-      }
-      else if(dayOfWeek.equals("L"))
-      {
-         return "the last day of the week";
-      }
-      else if(dayOfWeek.contains("#"))
-      {
-         String[] parts = dayOfWeek.split("#");
-         return String.format("the %s %s of the month", ordinal(parts[1]), DAY_OF_WEEK_MAP.getOrDefault(parts[0], parts[0]));
-      }
-      else if(dayOfWeek.contains("-"))
-      {
-         String[] parts = dayOfWeek.split("-");
-         return String.format("from %s to %s", DAY_OF_WEEK_MAP.getOrDefault(parts[0], parts[0]), DAY_OF_WEEK_MAP.getOrDefault(parts[1], parts[1]));
-      }
-      else
-      {
-         String[]     days     = dayOfWeek.split(",");
-         List<String> dayNames = Arrays.stream(days).map(d -> DAY_OF_WEEK_MAP.getOrDefault(d, d)).toList();
-         return StringUtils.joinWithCommasAndAnd(dayNames);
-      }
-   }
-
-
-
-   /***************************************************************************
-    **
-    ***************************************************************************/
-   private static String describePart(String part, String label)
-   {
-      if(part.equals("*"))
-      {
-         return "every " + label;
-      }
-      else if(part.contains("/"))
-      {
-         String[] parts = part.split("/");
-         if(parts[0].equals("*"))
+         int h = ((Scalar) hourTokens.get(0)).value;
+         int m = ((Scalar) minuteTokens.get(0)).value;
+         if(secondsIs0)
          {
-            parts[0] = "0";
-         }
-         return String.format("every %s " + label + "s starting at %s", parts[1], parts[0]);
-      }
-      else if(part.contains(","))
-      {
-         List<String> partsList = Arrays.stream(part.split(",")).toList();
-
-         if(label.equals("hour"))
-         {
-            List<String> hourNames = partsList.stream().map(p -> hourToAmPm(p)).toList();
-            return StringUtils.joinWithCommasAndAnd(hourNames);
+            /////////////////
+            // at 12:00 am //
+            /////////////////
+            rs.add("at " + get12Hour(h) + ":" + getZeroPadded(m) + " " + getAmPm(h));
          }
          else
          {
-            if(label.equals("day"))
+            if(isPlural(secondTokens))
             {
-               return "days " + StringUtils.joinWithCommasAndAnd(partsList);
+               //////////////////////////////////////
+               // at 12:00 am, at seconds 10 to 15 //
+               //////////////////////////////////////
+               rs.add("at " + hmToTime(h, m));
+               rs.add(buildSecondPhrase(secondTokens));
             }
             else
             {
-               return StringUtils.joinWithCommasAndAnd(partsList) + " " + label + "s";
+               ////////////////////
+               // at 12:00:15 am //
+               ////////////////////
+               int s = ((Scalar) secondTokens.get(0)).value;
+               rs.add("at " + hmsToTime(h, m, s));
             }
          }
       }
-      else if(part.contains("-"))
+      else if(minutesIsStar && secondsIsStar)
       {
-         String[] parts = part.split("-");
-         if(label.equals("day"))
+         rs.add(buildHourPhrase(hourTokens));
+         rs.add("every second");
+      }
+      else if(minutesIsStar && secondsIs0)
+      {
+         rs.add(buildHourPhrase(hourTokens));
+         rs.add("every minute");
+      }
+      else if(hourTokens.stream().allMatch(t -> t instanceof Scalar) && minutesIsOneScalar && secondsIsOneScalar)
+      {
+         List<String> parts = new ArrayList<>();
+         int          m     = ((Scalar) minuteTokens.get(0)).value;
+         for(Token hourToken : hourTokens)
          {
-            return String.format("%ss from %s to %s", label, parts[0], parts[1]);
+            int h = ((Scalar) hourToken).value;
+            if(secondsIs0)
+            {
+               parts.add(hmToTime(h, m));
+            }
+            else
+            {
+               int s = ((Scalar) secondTokens.get(0)).value;
+               parts.add(hmsToTime(h, m, s));
+            }
          }
-         else if(label.equals("hour"))
-         {
-            return String.format("from %s to %s", hourToAmPm(parts[0]), hourToAmPm(parts[1]));
-         }
-         else
-         {
-            return String.format("from %s to %s %s", parts[0], parts[1], label + "s");
-         }
+         rs.add("at " + StringUtils.joinWithCommasAndAnd(parts));
       }
       else
       {
-         if(label.equals("day"))
+         rs.add(buildHourPhrase(hourTokens));
+         rs.add(buildMinutePhrase(minuteTokens));
+         if(!secondsIs0)
          {
-            return label + " " + part;
+            rs.add(buildSecondPhrase(secondTokens));
          }
-         if(label.equals("hour"))
+      }
+
+      return (rs);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static String hmToTime(int h, int m)
+   {
+      return get12Hour(h) + ":" + getZeroPadded(m) + " " + getAmPm(h);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static String hmsToTime(int h, int m, int s)
+   {
+      return get12Hour(h) + ":" + getZeroPadded(m) + ":" + getZeroPadded(s) + " " + getAmPm(h);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String buildHourPhrase(List<Token> tokens)
+   {
+      if(tokens.size() == 1 && new Range(0, 23).equals(tokens.get(0)))
+      {
+         return "every hour";
+      }
+
+      StringBuilder rs = new StringBuilder("at ");
+      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.HOURS)).toList()));
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String buildMinutePhrase(List<Token> tokens)
+   {
+      StringBuilder rs = new StringBuilder("at minute").append(isPlural(tokens) ? "s" : "").append(" ");
+      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.MINUTES)).toList()));
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String buildSecondPhrase(List<Token> tokens)
+   {
+      StringBuilder rs = new StringBuilder("at second").append(isPlural(tokens) ? "s" : "").append(" ");
+      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.SECONDS)).toList()));
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static List<String> buildDayPhrases(String dayOfMonth, String month, String dayOfWeek, String year) throws ParseException
+   {
+      boolean monthIsStar                = month.equals("*");
+      boolean yearIsStar                 = year.equals("*");
+      boolean dayOfMonthIsQuestion       = dayOfMonth.equals("?");
+      boolean dayOfWeekIsQuestion        = dayOfWeek.equals("?");
+      boolean dayOfMonthIsStarOrQuestion = dayOfMonth.equals("*") || dayOfMonthIsQuestion;
+      boolean dayOfWeekIsStarOrQuestion  = dayOfWeek.equals("*") || dayOfWeekIsQuestion;
+
+      if(!dayOfWeekIsQuestion && !dayOfMonthIsQuestion)
+      {
+         throw (new ParseException("Cannot specify both day of month and day of week (one must be \"?\")", 0));
+      }
+      if(dayOfWeekIsQuestion && dayOfMonthIsQuestion)
+      {
+         throw (new ParseException("Cannot specify both day of month and day of week (only one can be \"?\")", 0));
+      }
+
+      if(dayOfMonthIsStarOrQuestion && dayOfWeekIsStarOrQuestion && monthIsStar && yearIsStar)
+      {
+         return (List.of("every day"));
+      }
+
+      List<String> rs = new ArrayList<>();
+      if(!yearIsStar)
+      {
+         rs.add(buildYearPhrase(year));
+      }
+
+      if(!monthIsStar)
+      {
+         rs.add(buildMonthPhrase(month));
+      }
+
+      if(!dayOfWeekIsStarOrQuestion)
+      {
+         if(yearIsStar && monthIsStar)
          {
-            return hourToAmPm(part);
+            rs.add("every week");
+         }
+         rs.add(buildWeekdayPhrase(dayOfWeek));
+      }
+
+      if(!dayOfMonthIsStarOrQuestion)
+      {
+         if(yearIsStar && monthIsStar)
+         {
+            rs.add("every month");
+         }
+         rs.add(buildDayOfMonthPhrase(dayOfMonth));
+      }
+
+      return (rs);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String buildYearPhrase(String year) throws ParseException
+   {
+      List<Token>   tokens = tokenize(year, Field.YEAR);
+      StringBuilder rs     = new StringBuilder("in the year").append(isPlural(tokens) ? "s" : "").append(" ");
+      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.YEAR)).toList()));
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String buildMonthPhrase(String month) throws ParseException
+   {
+      List<Token>   tokens = tokenize(month, Field.MONTH);
+      StringBuilder rs     = new StringBuilder("in ");
+      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.MONTH)).toList()));
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String buildWeekdayPhrase(String dayOfWeek) throws ParseException
+   {
+      List<Token>   tokens = tokenize(dayOfWeek, Field.DAY_OF_WEEK);
+      StringBuilder rs     = new StringBuilder("on ");
+      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.DAY_OF_WEEK)).toList()));
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String buildDayOfMonthPhrase(String dayOfMonth) throws ParseException
+   {
+      List<Token>   tokens = tokenize(dayOfMonth, Field.DAY_OF_MONTH);
+      StringBuilder rs     = new StringBuilder("on the ");
+      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.DAY_OF_MONTH)).toList()));
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static boolean isPlural(List<Token> tokens)
+   {
+      if(tokens.size() == 1 && !tokens.get(0).isPlural())
+      {
+         return false;
+      }
+
+      return (true);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static List<Token> tokenize(String input, Field field) throws ParseException
+   {
+      List<Token> rs = new ArrayList<>();
+      for(String part : input.split(","))
+      {
+         if(part.contains("/"))
+         {
+            rs.add(Step.of(part, field));
+         }
+         else if(part.contains("-"))
+         {
+            rs.add(Range.of(part, field));
+         }
+         else if(part.equals("*"))
+         {
+            rs.add(new Range(field.minValue, field.maxValue));
          }
          else
          {
-            return part + " " + label + "s";
+            rs.add(new Scalar(Token.parseToInt(part, field)));
          }
       }
+      return (rs);
    }
 
 
 
    /***************************************************************************
-    **
+    *
     ***************************************************************************/
-   private static String hourToAmPm(String part)
+   static int get12Hour(int value)
    {
-      try
+      if(value == 0 || value == 12)
       {
-         int hour = Integer.parseInt(part);
-         return switch(hour)
+         return 12;
+      }
+      else if(value < 12)
+      {
+         return value;
+      }
+      else
+      {
+         return (value - 12);
+      }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String getAmPm(int value)
+   {
+      if(value < 12)
+      {
+         return ("am");
+      }
+      else
+      {
+         return ("pm");
+      }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   static String getZeroPadded(int value)
+   {
+      return value < 10 ? "0" + value : String.valueOf(value);
+   }
+
+
+
+   /***************************************************************************
+    * Token:
+    * - Scalar (single value)
+    * - Step (1/10 or * /10 or 5-10/10)
+    *    - Scalar or Range, with stepSize
+    * - Range (1-10, Mon-Thu)
+    ***************************************************************************/
+   interface Token
+   {
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      static int parseToInt(String input, Field field) throws ParseException
+      {
+         try
          {
-            case 0 -> "midnight";
-            case 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 -> hour + " AM";
-            case 12 -> "noon";
-            case 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 -> (hour - 12) + " PM";
-            default -> hour + " hours";
+            return (Integer.parseInt(input));
+         }
+         catch(Exception e)
+         {
+            String inputForMaps = StringUtils.safeTruncate(input.toUpperCase(), 3);
+            return switch(field)
+            {
+               case DAY_OF_WEEK ->
+               {
+                  if(weekdayByAbbreviationMap.containsKey(inputForMaps))
+                  {
+                     yield (weekdayByAbbreviationMap.get(inputForMaps));
+                  }
+                  else
+                  {
+                     throw new ParseException("Invalid day of week: [" + input + "]", 0);
+                  }
+               }
+               case MONTH ->
+               {
+                  if(monthByAbbreviationMap.containsKey(inputForMaps))
+                  {
+                     yield (monthByAbbreviationMap.get(inputForMaps));
+                  }
+                  else
+                  {
+                     throw new ParseException("Invalid month: [" + input + "]", 0);
+                  }
+               }
+               default -> throw e instanceof ParseException pe ? pe :
+                  e instanceof NumberFormatException ? new ParseException("Invalid number: [" + input + "]", 0) :
+                     new ParseException("Error parsing [" + input + "]: " + e, 0);
+            };
+         }
+      }
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      static boolean isInt(String input)
+      {
+         try
+         {
+            Integer.parseInt(input);
+            return true;
+         }
+         catch(Exception e)
+         {
+            return false;
+         }
+      }
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      boolean isPlural();
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      String toString(Field field);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   record Scalar(int value) implements Token
+   {
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public boolean isPlural()
+      {
+         return false;
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public String toString(Field field)
+      {
+         return switch(field)
+         {
+            case MONTH -> monthNameMap.get(value);
+            case DAY_OF_WEEK -> weekdayNameMap.get(value);
+            case DAY_OF_MONTH ->
+            {
+               if(value % 10 == 1 && value != 11)
+               {
+                  yield (value + "st");
+               }
+               else if(value % 10 == 2 && value != 12)
+               {
+                  yield (value + "nd");
+               }
+               else if(value % 10 == 3)
+               {
+                  yield (value + "rd");
+               }
+
+               yield (value + "th");
+            }
+            case MINUTES, SECONDS -> getZeroPadded(value);
+            case HOURS -> get12Hour(value) + getAmPm(value);
+            default -> String.valueOf(value);
          };
       }
-      catch(Exception e)
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   record Range(int from, int to) implements Token
+   {
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      public static Token of(int from, int to) throws ParseException
       {
-         return part + " hours";
+         if(from == to)
+         {
+            return new Scalar(from);
+         }
+
+         return new Range(from, to);
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      public static Token of(String input, Field field) throws ParseException
+      {
+         if(input.equals("*"))
+         {
+            return Range.of(field.minValue, field.maxValue);
+         }
+         else if(input.contains("-"))
+         {
+            String[] parts = input.split("-", 2);
+            if(parts.length != 2 || parts[0].isEmpty() || parts[1].isEmpty())
+            {
+               throw new ParseException("Incomplete range expression: [" + input + "]", 0);
+            }
+
+            if(parts[0].equals("*"))
+            {
+               ////////////////////////////////////////////////////////////////////////////////////////////////
+               // if quartz sees * in first part, you get the whole range - not clear if others do the same? //
+               ////////////////////////////////////////////////////////////////////////////////////////////////
+               return Range.of(field.minValue, field.maxValue);
+            }
+
+            if(field.equals(Field.DAY_OF_WEEK) || field.equals(Field.MONTH))
+            {
+               ///////////////////////////////////////////////////////////////////////////////
+               // in weekday and month, it fails upon mixes of numbers (or stars) and names //
+               ///////////////////////////////////////////////////////////////////////////////
+               boolean isIntOrStar0      = Token.isInt(parts[0]) || parts[0].equals("*");
+               boolean isIntOrStar1      = Token.isInt(parts[1]) || parts[1].equals("*");
+               boolean bothIntOrStar     = isIntOrStar0 && isIntOrStar1;
+               boolean neitherIntNorStar = !isIntOrStar0 && !isIntOrStar1;
+               if(!bothIntOrStar && !neitherIntNorStar)
+               {
+                  throw new ParseException("Range may not mix words and numbers: [" + input + "]", 0);
+               }
+
+               //////////////////////////////////////////////////////////////////////////////////
+               // in weekday and month, if part 0 is > 3 long, you just get that value, scalar //
+               //////////////////////////////////////////////////////////////////////////////////
+               if(parts[0].length() > 3)
+               {
+                  return new Scalar(Token.parseToInt(parts[0], field));
+               }
+            }
+
+            ////////////////////////////////////////////////////
+            // okay, try to parse both parts and return range //
+            ////////////////////////////////////////////////////
+            return Range.of(Token.parseToInt(parts[0], field), Token.parseToInt(parts[1], field));
+         }
+         else
+         {
+            return Range.of(Token.parseToInt(input, field), field.maxValue);
+         }
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public boolean isPlural()
+      {
+         return from != to;
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public String toString(Field field)
+      {
+         return new Scalar(from).toString(field) + " " + field.rangeWord + " " + new Scalar(to).toString(field);
       }
    }
 
 
 
    /***************************************************************************
-    **
+    *
     ***************************************************************************/
-   private static String ordinal(String number)
+   record Step(Token range, int stepSize) implements Token
    {
-      int n = Integer.parseInt(number);
-      if(n >= 11 && n <= 13)
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      public static Token of(String part, Field field) throws ParseException
       {
-         return n + "th";
+         String[] parts = part.split("/", 2);
+         if(parts.length != 2)
+         {
+            throw new IllegalArgumentException("Incomplete step expression");
+         }
+
+         Token range = Range.of(parts[0], field);
+         return new Step(range, Token.parseToInt(parts[1], field));
       }
 
-      return switch(n % 10)
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public boolean isPlural()
       {
-         case 1 -> n + "st";
-         case 2 -> n + "nd";
-         case 3 -> n + "rd";
-         default -> n + "th";
-      };
+         return range.isPlural();
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public String toString(Field field)
+      {
+         if(stepSize == 1)
+         {
+            return range.toString(field);
+         }
+         if(range instanceof Scalar)
+         {
+            return range.toString(field);
+         }
+
+         return range.toString(field) + " every " + stepSize + " " + field.pluralLabel;
+      }
    }
+
 }

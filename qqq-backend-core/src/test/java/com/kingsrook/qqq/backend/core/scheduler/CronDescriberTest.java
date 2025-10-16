@@ -66,23 +66,22 @@ class CronDescriberTest extends BaseTest
       assertDescription("Every day, at 11:00 pm", "0 0 23, * * ?");
       assertDescription("Every month, on the 10th, at 12:00 am", "0 0 0 10 * ?");
       assertDescription("Every month, on the 10th and 20th, at 12:00 am", "0 0 0 10,20 * ?");
-      assertDescription("Every month, on the 10th through 15th, at 12:00 am", "0 0 0 10-15 * ?");
-      assertDescription("Every day, at 12:00 am, at seconds 10 to 15", "10-15 0 0 * * ?");
-      assertDescription("Every day, at 8am to 4pm, at minute 30, at second 30", "30 30 8-16 * * ?");
-      assertDescription("Every month, on the 1st through 31st every 3 days, at 12:00 am", "0 0 0 */3 * ?");
-      assertDescription("Every day, at 12:00 am, at seconds 00 to 59 every 5 seconds", "0/5 0 0 * * ?");
-      assertDescription("Every day, at 12am, at minutes 03 to 59 every 30 minutes", "0 3/30 0 * * ?");
+      assertDescription("Every month, every day between the 10th and 15th, at 12:00 am", "0 0 0 10-15 * ?");
+      assertDescription("Every day, at 12:00 am, every second between 10 and 15", "10-15 0 0 * * ?");
+      assertDescription("Every day, every hour between 8am and 4pm, at minute 30, at second 30", "30 30 8-16 * * ?");
+      assertDescription("Every day, at 12:00 am, every 5 seconds between 00 and 59", "0/5 0 0 * * ?");
+      assertDescription("Every day, at 12am, every 30 minutes between 03 and 59", "0 3/30 0 * * ?");
       assertDescription("Every week, on Monday, Wednesday, and Friday, at 12:00 am", "0 0 0 ? * MON,WED,FRI");
-      assertDescription("Every week, on Monday through Friday, at 12:00 am", "0 0 0 ? * MON-FRI");
+      assertDescription("Every week, every day between Monday and Friday, at 12:00 am", "0 0 0 ? * MON-FRI");
       assertDescription("Every week, on Sunday and Saturday, at 12:00 am", "0 0 0 ? * 1,7");
       assertDescription("Every day, at 2:05 am, 6:05 am, 12:05 pm, 4:05 pm, and 8:05 pm", "0 5 2,6,12,16,20 * * ?");
       assertDescription("Every day, at 2:15:30 am and 6:15:30 am", "30 15 2,6 * * ?");
-      assertDescription("In the years 2002 through 2010, in January, March, and September, on Monday through Friday, every hour, at minutes 14, 18, 03 to 39, and 52, at seconds 00 to 59 every 5 seconds", "0/5 14,18,3-39,52 * ? JAN,MAR,SEP MON-FRI 2002-2010");
-      assertDescription("In January through June, every second", "* * * ? 1-6 *");
-      assertDescription("In March and January through July every 3 months, every second", "* * * ? 3,1-7/3 *");
+      assertDescription("Every year between 2002 and 2010, in January, March, and September, every day between Monday and Friday, every hour, at minutes 14, 18, every minute between 03 and 39, and at minute 52, every 5 seconds between 00 and 59", "0/5 14,18,3-39,52 * ? JAN,MAR,SEP MON-FRI 2002-2010");
+      assertDescription("Every month between January and June, every second", "* * * ? 1-6 *");
+      assertDescription("In March and every 3 months between January and July, every second", "* * * ? 3,1-7/3 *");
       assertDescription("Every month, on the 1st, 3rd, and 5th, every second", "* * * 1,3,5 * ?");
-      assertDescription("Every month, on the 1st, 3rd, 5th, and 7th through 9th, every second", "* * * 1,3,5,7-9 * ?");
-      assertDescription("Every month, on the 1st, 3rd, and 5th, at 2am to 4am and 3pm, every second", "* * 2-4,15 1,3,5 * ?");
+      assertDescription("Every month, on the 1st, 3rd, 5th, and every day between the 7th and 9th, every second", "* * * 1,3,5,7-9 * ?");
+      assertDescription("Every month, on the 1st, 3rd, and 5th, every hour between 2am and 4am and at 3pm, every second", "* * 2-4,15 1,3,5 * ?");
       assertDescription("In January, on the 1st, at 12:00 am", "0 0 0 1 1 ?");
       // todo might be good for single-date expressions: assertDescription("On January 1st, at 12:00 am", "0 0 0 1 1 ?");
 
@@ -125,9 +124,10 @@ class CronDescriberTest extends BaseTest
       assertEquals(List.of("every minute"), CronDescriber.buildTimePhrases("0", "*", "*"));
       assertEquals(List.of("every hour", "at minute 00"), CronDescriber.buildTimePhrases("0", "0", "*"));
       assertEquals(List.of("every hour", "at minute 00", "at second 05"), CronDescriber.buildTimePhrases("05", "0", "*"));
-      assertEquals(List.of("every hour", "at minutes 00 to 15", "at second 05"), CronDescriber.buildTimePhrases("05", "0-15", "*"));
-      assertEquals(List.of("every hour", "at minutes 00 to 15", "at seconds 05 to 55 every 5 seconds"), CronDescriber.buildTimePhrases("05-55/5", "0-15", "*"));
-      assertEquals(List.of("at 8am to 4pm", "at minute 00"), CronDescriber.buildTimePhrases("0", "0", "8-16"));
+      assertEquals(List.of("every hour", "every minute between 00 and 15", "at second 05"), CronDescriber.buildTimePhrases("05", "0-15", "*"));
+      assertEquals(List.of("every hour", "every minute between 00 and 15", "every 5 seconds between 05 and 55"), CronDescriber.buildTimePhrases("05-55/5", "0-15", "*"));
+      assertEquals(List.of("every hour", "at minute 00", "every 3 seconds between 00 and 10, at seconds 15, 17, 24, and every second between 40 and 57"), CronDescriber.buildTimePhrases("0-10/3,15,17,24,40-57", "0", "*"));
+      assertEquals(List.of("every hour between 8am and 4pm", "at minute 00"), CronDescriber.buildTimePhrases("0", "0", "8-16"));
       assertEquals(List.of("at 12:00 am"), CronDescriber.buildTimePhrases("0", "0", "0"));
       assertEquals(List.of("at 11:59:59 pm"), CronDescriber.buildTimePhrases("59", "59", "23"));
    }
@@ -153,14 +153,14 @@ class CronDescriberTest extends BaseTest
    void testYearPhrase() throws ParseException
    {
       assertEquals("in the year 2000", CronDescriber.buildYearPhrase("2000"));
-      assertEquals("in the years 2000 through 2005", CronDescriber.buildYearPhrase("2000-2005"));
+      assertEquals("every year between 2000 and 2005", CronDescriber.buildYearPhrase("2000-2005"));
       assertEquals("in the years 2000, 2004, and 2008", CronDescriber.buildYearPhrase("2000,2004,2008"));
-      assertEquals("in the years 2000 through 2100 every 4 years", CronDescriber.buildYearPhrase("2000-2100/4"));
-      assertEquals("in the years 2000 through 2100", CronDescriber.buildYearPhrase("2000-2100/1"));
+      assertEquals("every 4 years between 2000 and 2100", CronDescriber.buildYearPhrase("2000-2100/4"));
+      assertEquals("every year between 2000 and 2100", CronDescriber.buildYearPhrase("2000-2100/1"));
       assertEquals("in the year 2000", CronDescriber.buildYearPhrase("2000-2000/5"));
 
       String complexYears = "2000,2010-2020,2030-2100/10";
-      assertEquals("in the years 2000, 2010 through 2020, and 2030 through 2100 every 10 years", CronDescriber.buildYearPhrase(complexYears));
+      assertEquals("in the year 2000, every year between 2010 and 2020, and every 10 years between 2030 and 2100", CronDescriber.buildYearPhrase(complexYears));
       assertThat(new CronExpression("0 0 0 1 1 ? " + complexYears).getExpressionSummary()).contains("2000,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2030,2040,2050,2060,2070,2080,2090,2100");
    }
 
@@ -173,11 +173,11 @@ class CronDescriberTest extends BaseTest
    void testMonthPhrase() throws ParseException
    {
       assertEquals("in January", CronDescriber.buildMonthPhrase("Jan"));
-      assertEquals("in January through March", CronDescriber.buildMonthPhrase("Jan-Mar"));
+      assertEquals("every month between January and March", CronDescriber.buildMonthPhrase("Jan-Mar"));
       assertEquals("in January, March, and May", CronDescriber.buildMonthPhrase("1,3,5"));
-      assertEquals("in January through September every 2 months", CronDescriber.buildMonthPhrase("Jan-Sep/2"));
-      assertEquals("in January through November", CronDescriber.buildMonthPhrase("Jan-Nov/1"));
-      assertEquals("in May through December", CronDescriber.buildMonthPhrase("May/1"));
+      assertEquals("every 2 months between January and September", CronDescriber.buildMonthPhrase("Jan-Sep/2"));
+      assertEquals("every month between January and November", CronDescriber.buildMonthPhrase("Jan-Nov/1"));
+      assertEquals("every month between May and December", CronDescriber.buildMonthPhrase("May/1"));
       assertEquals("in May", CronDescriber.buildMonthPhrase("May-May/1"));
    }
 
@@ -190,11 +190,11 @@ class CronDescriberTest extends BaseTest
    void testWeekdayPhrase() throws ParseException
    {
       assertEquals("on Monday", CronDescriber.buildWeekdayPhrase("Mon"));
-      assertEquals("on Monday through Friday", CronDescriber.buildWeekdayPhrase("MON-FRI"));
+      assertEquals("every day between Monday and Friday", CronDescriber.buildWeekdayPhrase("MON-FRI"));
       assertEquals("on Monday, Thursday, and Saturday", CronDescriber.buildWeekdayPhrase("2,5,7"));
-      assertEquals("on Monday through Saturday every 2 days", CronDescriber.buildWeekdayPhrase("Mon-Sat/2"));
-      assertEquals("on Monday through Friday", CronDescriber.buildWeekdayPhrase("Mon-Fri/1"));
-      assertEquals("on Wednesday through Saturday", CronDescriber.buildWeekdayPhrase("4/1"));
+      assertEquals("every 2 days between Monday and Saturday", CronDescriber.buildWeekdayPhrase("Mon-Sat/2"));
+      assertEquals("every day between Monday and Friday", CronDescriber.buildWeekdayPhrase("Mon-Fri/1"));
+      assertEquals("every day between Wednesday and Saturday", CronDescriber.buildWeekdayPhrase("4/1"));
       assertEquals("on Thursday", CronDescriber.buildWeekdayPhrase("5-5/1"));
    }
 
@@ -207,11 +207,11 @@ class CronDescriberTest extends BaseTest
    void testDayOfMonthPhrase() throws ParseException
    {
       assertEquals("on the 1st", CronDescriber.buildDayOfMonthPhrase("1"));
-      assertEquals("on the 2nd through 5th", CronDescriber.buildDayOfMonthPhrase("2-5"));
+      assertEquals("every day between the 2nd and 5th", CronDescriber.buildDayOfMonthPhrase("2-5"));
       assertEquals("on the 3rd, 4th, and 7th", CronDescriber.buildDayOfMonthPhrase("3,4,7"));
-      assertEquals("on the 6th through 21st every 2 days", CronDescriber.buildDayOfMonthPhrase("6-21/2"));
-      assertEquals("on the 7th through 22nd", CronDescriber.buildDayOfMonthPhrase("7-22/1"));
-      assertEquals("on the 21st through 31st", CronDescriber.buildDayOfMonthPhrase("21/1"));
+      assertEquals("every 2 days between the 6th and 21st", CronDescriber.buildDayOfMonthPhrase("6-21/2"));
+      assertEquals("every day between the 7th and 22nd", CronDescriber.buildDayOfMonthPhrase("7-22/1"));
+      assertEquals("every day between the 21st and 31st", CronDescriber.buildDayOfMonthPhrase("21/1"));
       assertEquals("on the 11th", CronDescriber.buildDayOfMonthPhrase("11-11/1"));
    }
 
@@ -248,7 +248,7 @@ class CronDescriberTest extends BaseTest
       assertEquals(new Step(new Range(1, 10), 2), Step.of("1-10/2", Field.HOURS));
       assertEquals(new Step(new Range(0, 59), 3), Step.of("*/3", Field.MINUTES));
       assertEquals(new Step(new Range(3, 59), 4), Step.of("3/4", Field.MINUTES));
-      assertEquals(new Step(new Scalar(5), 5), Step.of("5-5/5", Field.MINUTES));
+      assertEquals(new Scalar(5), Step.of("5-5/5", Field.MINUTES));
    }
 
 

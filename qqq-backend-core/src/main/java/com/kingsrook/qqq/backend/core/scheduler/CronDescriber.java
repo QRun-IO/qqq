@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
@@ -34,6 +35,15 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  * class to give a human-friendly descriptive string from a cron expression.
  * Note that this implementation is written specifically for quartz, without much
  * thought to other cron variants.
+ *
+ * <p>description strings are like, for example:</p>
+ * <ul>
+ *    <li>Every day, at 11:00 am</li>
+ *    <li>Every day, at 12:00 am, every 5 seconds between 00 and 59</li>
+ *    <li>Every week, every day between Monday and Friday, at 12:00 am</li>
+ *    <li>Every month, every day between the 10th and 15th, at 12:00 am</li>
+ *    <li>In January, on the 1st, at 12:00 am</li>
+ * </ul>
  *******************************************************************************/
 public class CronDescriber
 {
@@ -94,19 +104,18 @@ public class CronDescriber
     ***************************************************************************/
    enum Field
    {
-      SECONDS(0, 59, "second", "to"),
-      MINUTES(0, 59, "minute", "to"),
-      HOURS(0, 23, "hour", "to"),
-      DAY_OF_MONTH(1, 31, "day", "through"),
-      MONTH(1, 12, "month", "through"),
-      DAY_OF_WEEK(1, 7, "day", "through"),
-      YEAR(1970, Integer.MAX_VALUE, "year", "through");
+      SECONDS(0, 59, "second"),
+      MINUTES(0, 59, "minute"),
+      HOURS(0, 23, "hour"),
+      DAY_OF_MONTH(1, 31, "day"),
+      MONTH(1, 12, "month"),
+      DAY_OF_WEEK(1, 7, "day"),
+      YEAR(1970, Integer.MAX_VALUE, "year");
 
       final int    minValue;
       final int    maxValue;
       final String singularLabel;
       final String pluralLabel;
-      final String rangeWord;
 
 
 
@@ -114,20 +123,23 @@ public class CronDescriber
        ** Constructor
        **
        *******************************************************************************/
-      Field(int minValue, int maxValue, String singularLabel, String rangeWord)
+      Field(int minValue, int maxValue, String singularLabel)
       {
          this.minValue = minValue;
          this.maxValue = maxValue;
          this.singularLabel = singularLabel;
          this.pluralLabel = singularLabel + "s";
-         this.rangeWord = rangeWord;
       }
    }
 
 
 
    /***************************************************************************
-    **
+    * Generate a human-readable description for the given cron expression
+    *
+    * @param cronExpression cron string to describe.  Must be a valid (quartz) cron string.
+    * @return human-readable description of the cron string
+    * @throws ParseException if wrong number of parts, or invalid values, etc.
     ***************************************************************************/
    public static String getDescription(String cronExpression) throws ParseException
    {
@@ -152,6 +164,41 @@ public class CronDescriber
 
       String description = StringUtils.join(", ", phrases);
       return StringUtils.ucFirst(description);
+   }
+
+
+
+   /***************************************************************************
+    * set the specified fieldName to the description for the given cronExpression
+    * in the given record - and if there's an error generating the description,
+    * then set the fieldName to an error message (don't throw).
+    *
+    * This gives a little degree of safety in case we can't describe a valid
+    * cron string (it could happen!) e.g., to prevent an error from saving a
+    * record if you were just calling record.setValue(fieldName, getDescription(...))
+    * directly (e.g., and it threw).
+    *
+    * @param record record to set the value in
+    * @param fieldName field name to set in the record
+    * @param cronExpression cron string to describe
+    ***************************************************************************/
+   public static void setDescriptionInRecord(QRecord record, String fieldName, String cronExpression)
+   {
+      try
+      {
+         if(!StringUtils.hasContent(cronExpression))
+         {
+            record.setValue(fieldName, null);
+         }
+         else
+         {
+            record.setValue(fieldName, CronDescriber.getDescription(cronExpression));
+         }
+      }
+      catch(Exception e)
+      {
+         record.setValue(fieldName, "Error generating description: " + e.getMessage());
+      }
    }
 
 
@@ -185,6 +232,9 @@ public class CronDescriber
       }
       else if(!isPlural(hourTokens) && !isPlural(minuteTokens))
       {
+         ////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // at a single hour and minute (like at 12:00 am or at 11:59:59 pm, or even at 3:45 am, every second) //
+         ////////////////////////////////////////////////////////////////////////////////////////////////////////
          int h = ((Scalar) hourTokens.get(0)).value;
          int m = ((Scalar) minuteTokens.get(0)).value;
          if(secondsIs0)
@@ -261,26 +311,6 @@ public class CronDescriber
    /***************************************************************************
     *
     ***************************************************************************/
-   private static String hmToTime(int h, int m)
-   {
-      return get12Hour(h) + ":" + getZeroPadded(m) + " " + getAmPm(h);
-   }
-
-
-
-   /***************************************************************************
-    *
-    ***************************************************************************/
-   private static String hmsToTime(int h, int m, int s)
-   {
-      return get12Hour(h) + ":" + getZeroPadded(m) + ":" + getZeroPadded(s) + " " + getAmPm(h);
-   }
-
-
-
-   /***************************************************************************
-    *
-    ***************************************************************************/
    static String buildHourPhrase(List<Token> tokens)
    {
       if(tokens.size() == 1 && new Range(0, 23).equals(tokens.get(0)))
@@ -288,9 +318,7 @@ public class CronDescriber
          return "every hour";
       }
 
-      StringBuilder rs = new StringBuilder("at ");
-      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.HOURS)).toList()));
-      return rs.toString();
+      return (buildPhrase(tokens, Field.HOURS, "at", "", null));
    }
 
 
@@ -300,9 +328,7 @@ public class CronDescriber
     ***************************************************************************/
    static String buildMinutePhrase(List<Token> tokens)
    {
-      StringBuilder rs = new StringBuilder("at minute").append(isPlural(tokens) ? "s" : "").append(" ");
-      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.MINUTES)).toList()));
-      return rs.toString();
+      return (buildPhrase(tokens, Field.MINUTES, "at", null, null));
    }
 
 
@@ -312,9 +338,7 @@ public class CronDescriber
     ***************************************************************************/
    static String buildSecondPhrase(List<Token> tokens)
    {
-      StringBuilder rs = new StringBuilder("at second").append(isPlural(tokens) ? "s" : "").append(" ");
-      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.SECONDS)).toList()));
-      return rs.toString();
+      return (buildPhrase(tokens, Field.SECONDS, "at", null, null));
    }
 
 
@@ -384,10 +408,8 @@ public class CronDescriber
     ***************************************************************************/
    static String buildYearPhrase(String year) throws ParseException
    {
-      List<Token>   tokens = tokenize(year, Field.YEAR);
-      StringBuilder rs     = new StringBuilder("in the year").append(isPlural(tokens) ? "s" : "").append(" ");
-      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.YEAR)).toList()));
-      return rs.toString();
+      List<Token> tokens = tokenize(year, Field.YEAR);
+      return (buildPhrase(tokens, Field.YEAR, "in the", null, null));
    }
 
 
@@ -397,10 +419,8 @@ public class CronDescriber
     ***************************************************************************/
    static String buildMonthPhrase(String month) throws ParseException
    {
-      List<Token>   tokens = tokenize(month, Field.MONTH);
-      StringBuilder rs     = new StringBuilder("in ");
-      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.MONTH)).toList()));
-      return rs.toString();
+      List<Token> tokens = tokenize(month, Field.MONTH);
+      return (buildPhrase(tokens, Field.MONTH, "in", "", null));
    }
 
 
@@ -410,10 +430,8 @@ public class CronDescriber
     ***************************************************************************/
    static String buildWeekdayPhrase(String dayOfWeek) throws ParseException
    {
-      List<Token>   tokens = tokenize(dayOfWeek, Field.DAY_OF_WEEK);
-      StringBuilder rs     = new StringBuilder("on ");
-      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.DAY_OF_WEEK)).toList()));
-      return rs.toString();
+      List<Token> tokens = tokenize(dayOfWeek, Field.DAY_OF_WEEK);
+      return (buildPhrase(tokens, Field.DAY_OF_WEEK, "on", "", null));
    }
 
 
@@ -423,10 +441,60 @@ public class CronDescriber
     ***************************************************************************/
    static String buildDayOfMonthPhrase(String dayOfMonth) throws ParseException
    {
-      List<Token>   tokens = tokenize(dayOfMonth, Field.DAY_OF_MONTH);
-      StringBuilder rs     = new StringBuilder("on the ");
-      rs.append(StringUtils.joinWithCommasAndAnd(tokens.stream().map(t -> t.toString(Field.DAY_OF_MONTH)).toList()));
-      return rs.toString();
+      List<Token> tokens = tokenize(dayOfMonth, Field.DAY_OF_MONTH);
+      return (buildPhrase(tokens, Field.DAY_OF_MONTH, "on", "the", "the"));
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static String buildPhrase(List<Token> tokens, Field field, String prefixLikeAt, String overrideSingularOrPluralLabelAfterAt, String wordAfterBetween)
+   {
+      boolean      needAnAt = true;
+      List<String> parts    = new ArrayList<>();
+
+      for(int i = 0; i < tokens.size(); i++)
+      {
+         Token token     = tokens.get(i);
+         Token nextToken = i < tokens.size() - 1 ? tokens.get(i + 1) : null;
+
+         if(token instanceof Range range)
+         {
+            parts.add("every " + field.singularLabel + " between " + (wordAfterBetween == null ? "" : (wordAfterBetween + " ")) + range.toString(field));
+            needAnAt = true;
+         }
+         else if(token instanceof Step step)
+         {
+            parts.add(token.toString(field));
+            needAnAt = true;
+         }
+         else
+         {
+            ////////////////////////////////////////////////////////////////////
+            // peek at next to see if we want a singular or plural label here //
+            ////////////////////////////////////////////////////////////////////
+            String label = field.singularLabel;
+            if(nextToken != null && nextToken instanceof Scalar)
+            {
+               label = field.pluralLabel;
+            }
+            if(overrideSingularOrPluralLabelAfterAt != null)
+            {
+               label = overrideSingularOrPluralLabelAfterAt;
+            }
+            if(!"".equals(label))
+            {
+               label += " ";
+            }
+
+            parts.add((needAnAt ? (prefixLikeAt + " " + label) : "") + token.toString(field));
+            needAnAt = false;
+         }
+      }
+
+      return (StringUtils.joinWithCommasAndAnd(parts));
    }
 
 
@@ -472,6 +540,26 @@ public class CronDescriber
          }
       }
       return (rs);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static String hmToTime(int h, int m)
+   {
+      return get12Hour(h) + ":" + getZeroPadded(m) + " " + getAmPm(h);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static String hmsToTime(int h, int m, int s)
+   {
+      return get12Hour(h) + ":" + getZeroPadded(m) + ":" + getZeroPadded(s) + " " + getAmPm(h);
    }
 
 
@@ -668,7 +756,7 @@ public class CronDescriber
       /***************************************************************************
        *
        ***************************************************************************/
-      public static Token of(int from, int to) throws ParseException
+      public static Token of(int from, int to)
       {
          if(from == to)
          {
@@ -758,7 +846,7 @@ public class CronDescriber
       @Override
       public String toString(Field field)
       {
-         return new Scalar(from).toString(field) + " " + field.rangeWord + " " + new Scalar(to).toString(field);
+         return new Scalar(from).toString(field) + " and " + new Scalar(to).toString(field);
       }
    }
 
@@ -782,6 +870,11 @@ public class CronDescriber
          }
 
          Token range = Range.of(parts[0], field);
+         if(range instanceof Scalar scalar)
+         {
+            return scalar;
+         }
+
          return new Step(range, Token.parseToInt(parts[1], field));
       }
 
@@ -804,16 +897,18 @@ public class CronDescriber
       @Override
       public String toString(Field field)
       {
-         if(stepSize == 1)
-         {
-            return range.toString(field);
-         }
          if(range instanceof Scalar)
          {
             return range.toString(field);
          }
 
-         return range.toString(field) + " every " + stepSize + " " + field.pluralLabel;
+         String stepString = stepSize + " " + field.pluralLabel;
+         if(stepSize == 1)
+         {
+            stepString = field.singularLabel;
+         }
+
+         return "every " + stepString + " between " + (field.equals(Field.DAY_OF_MONTH) ? "the " : "") + range.toString(field);
       }
    }
 

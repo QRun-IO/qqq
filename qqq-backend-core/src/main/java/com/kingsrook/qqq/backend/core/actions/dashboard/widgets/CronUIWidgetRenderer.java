@@ -87,7 +87,7 @@ public class CronUIWidgetRenderer extends AbstractWidgetRenderer
       String                    tableName               = ValueUtils.getValueAsString(defaultValues.get("tableName"));
       String                    cronExpressionFieldName = ValueUtils.getValueAsString(defaultValues.get("cronExpressionFieldName"));
 
-      String cronDescription = "No description available";
+      String cronDescription = null;
       String cronExpression  = null;
       String error           = null;
 

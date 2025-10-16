@@ -162,17 +162,64 @@ public interface RecordCustomizerUtilityInterface
    }
 
 
+
    /***************************************************************************
     **
     ***************************************************************************/
+   @SuppressWarnings("unchecked")
+   @Deprecated(since = "Preferred to use getValueFromRecordElseFromOldRecord, wrapping with a ValueUtils.getValueAsXyz wrapper, instead of this method's internal cast.")
    static <T extends Serializable> T getValueFromRecordOrOldRecord(String fieldName, QRecord record, Serializable primaryKey, Optional<Map<Serializable, QRecord>> oldRecordMap)
    {
-      T value = (T) record.getValue(fieldName);
-      if(value == null && primaryKey != null && oldRecordMap.isPresent() && oldRecordMap.get().containsKey(primaryKey))
+      if(record.getValues().containsKey(fieldName))
       {
-         value = (T) oldRecordMap.get().get(primaryKey).getValue(fieldName);
+         return (T) record.getValue(fieldName);
       }
-      return value;
+
+      if(primaryKey != null && oldRecordMap.isPresent() && oldRecordMap.get().containsKey(primaryKey))
+      {
+         return (T) oldRecordMap.get().get(primaryKey).getValue(fieldName);
+      }
+
+      return null;
+   }
+
+
+
+   /***************************************************************************
+    * For an update customizer, in the case the record being updated is sparse
+    * (e.g., don't have all fields), but if you need a value from a field,
+    * you might want it from the old record if it's available.  This method
+    * does that - returning the value from the input record (e.g, the one being
+    * passed to UpdateAction eventually), but if the field isn't set in that
+    * record, then it gets the value from the corresponding old record if it can.
+    *
+    * <p>Returns value as Serializable, so recommended to wrap calls in
+    * {@link ValueUtils}'s various getValueAsXyz methods (e.g., to nicely convert
+    * strings (which may be in the record from frontends) to, e.g., Integer, etc</p>
+    *
+    * @param fieldName name of the field to get from the record or old record
+    * @param record the record to be stored, which may be sparsely populated
+    * @param primaryKey pkey value of the record being stored
+    * @param oldRecordMap optional map of old records, e.g., as built by
+    * {@link #getOldRecordMap(List, UpdateInput)} or
+    * {@link TableCustomizerInterface#oldRecordListToMap(String, Optional)}
+    * @return value from new record if it was set there (even if set to null,
+    * as that would signal the field is being set to null), else value from old
+    * record, else null.
+    ***************************************************************************/
+   static Serializable getValueFromRecordElseFromOldRecord(String fieldName, QRecord record, Serializable primaryKey, Optional<Map<Serializable, QRecord>> oldRecordMap)
+   {
+      if(record.getValues().containsKey(fieldName))
+      {
+         return record.getValue(fieldName);
+      }
+
+      if(primaryKey != null && oldRecordMap.isPresent() && oldRecordMap.get().containsKey(primaryKey))
+      {
+         return oldRecordMap.get().get(primaryKey).getValue(fieldName);
+      }
+
+      return null;
    }
 
 }

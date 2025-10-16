@@ -40,7 +40,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.CronExpressionDisplayValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -401,10 +400,8 @@ public class SavedReportsMetaDataProvider
          .withSection(new QFieldSection("schedule", new QIcon().withName("schedule"), Tier.T2).withWidgetName(SCHEDULED_REPORT_CRON_WIDGET))
          .withSection(new QFieldSection("email", new QIcon().withName("email"), Tier.T2, List.of("toAddresses", "subject")))
          .withSection(new QFieldSection("variableValues", new QIcon().withName("data_object"), Tier.T2).withWidgetName(SCHEDULED_REPORT_VALUES_WIDGET))
-         .withSection(new QFieldSection("hidden", new QIcon().withName("visibility_off"), Tier.T2, List.of("inputValues", "userId", "cronExpression", "cronTimeZoneId")).withIsHidden(true))
+         .withSection(new QFieldSection("hidden", new QIcon().withName("visibility_off"), Tier.T2, List.of("inputValues", "userId", "cronExpression", "cronDescription", "cronTimeZoneId")).withIsHidden(true))
          .withSection(new QFieldSection("dates", new QIcon().withName("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
-
-      table.getField("cronExpression").withBehavior(new CronExpressionDisplayValueBehavior());
 
       if(backendDetailEnricher != null)
       {

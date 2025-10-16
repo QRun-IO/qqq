@@ -34,7 +34,6 @@ import com.kingsrook.qqq.backend.core.model.dashboard.widgets.CronUISetupData;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.CronExpressionDisplayValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
@@ -177,12 +176,10 @@ public class ScheduledJobsMetaDataProvider
          .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "label", "description")))
          .withSection(new QFieldSection("repeat", new QIcon().withName("alarm"), Tier.T2, List.of("repeatSeconds")))
          .withSection(new QFieldSection("schedule", new QIcon().withName("schedule"), Tier.T2).withWidgetName(CRON_WIDGET_NAME))
-         .withSection(new QFieldSection("hidden", new QIcon().withName("visibility_off"), Tier.T2, List.of("cronExpression", "cronTimeZoneId")).withIsHidden(true))
+         .withSection(new QFieldSection("hidden", new QIcon().withName("visibility_off"), Tier.T2, List.of("cronExpression", "cronDescription", "cronTimeZoneId")).withIsHidden(true))
          .withSection(new QFieldSection("settings", new QIcon().withName("tune"), Tier.T2, List.of("type", "isActive", "schedulerName", "foreignKeyType", "foreignKeyValue")))
          .withSection(new QFieldSection("parameters", new QIcon().withName("list"), Tier.T2).withWidgetName(JOB_PARAMETER_JOIN_NAME))
          .withSection(new QFieldSection("dates", new QIcon().withName("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
-
-      tableMetaData.getField("cronExpression").withBehavior(new CronExpressionDisplayValueBehavior());
 
       QCodeReference customizerReference = new QCodeReference(ScheduledJobTableCustomizer.class);
       tableMetaData.withCustomizer(TableCustomizers.PRE_INSERT_RECORD, customizerReference);

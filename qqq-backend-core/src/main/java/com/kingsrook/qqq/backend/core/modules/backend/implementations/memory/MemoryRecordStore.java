@@ -119,8 +119,8 @@ public class MemoryRecordStore
     *******************************************************************************/
    private MemoryRecordStore()
    {
-      data = new HashMap<>();
-      nextSerials = new HashMap<>();
+      data = Collections.synchronizedMap(new HashMap<>());
+      nextSerials = Collections.synchronizedMap(new HashMap<>());
    }
 
 

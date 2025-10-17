@@ -26,10 +26,12 @@ import java.util.List;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
+import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.CronUIWidgetRenderer;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DefaultWidgetRenderer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormatPossibleValueEnum;
 import com.kingsrook.qqq.backend.core.model.common.TimeZonePossibleValueSourceMetaDataProvider;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.CronUISetupData;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
@@ -69,6 +71,7 @@ public class SavedReportsMetaDataProvider
    public static final String SHARED_SAVED_REPORT_JOIN_SAVED_REPORT = "sharedSavedReportJoinSavedReport";
 
    public static final String SCHEDULED_REPORT_VALUES_WIDGET      = "scheduledReportValuesWidget";
+   public static final String SCHEDULED_REPORT_CRON_WIDGET        = "scheduledReportCronWidget";
    public static final String RENDER_REPORT_PROCESS_VALUES_WIDGET = "renderReportProcessValuesWidget";
 
 
@@ -108,6 +111,7 @@ public class SavedReportsMetaDataProvider
       QProcessMetaData scheduledReportSyncToScheduledJobProcess = new ScheduledReportSyncToScheduledJobProcess().produce(instance);
       instance.addProcess(scheduledReportSyncToScheduledJobProcess);
       instance.addWidget(defineScheduledReportValuesWidget());
+      instance.addWidget(defineScheduledReportCronWidget());
 
       QProcessMetaData runScheduledReportProcess = new RunScheduledReportMetaDataProducer().produce(instance);
       instance.addProcess(runScheduledReportProcess);
@@ -126,6 +130,17 @@ public class SavedReportsMetaDataProvider
       {
          instance.addPossibleValueSource(new ShareScopePossibleValueMetaDataProducer().produce(new QInstance()));
       }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private QWidgetMetaDataInterface defineScheduledReportCronWidget()
+   {
+      CronUISetupData cronUISetupData = new CronUISetupData(ScheduledReport.TABLE_NAME, "cronExpression", "cronTimeZoneId");
+      return (CronUIWidgetRenderer.buildWidgetMetaData(SCHEDULED_REPORT_CRON_WIDGET, "Schedule", cronUISetupData));
    }
 
 
@@ -381,10 +396,11 @@ public class SavedReportsMetaDataProvider
          .withPrimaryKeyField("id")
          .withFieldsFromEntity(ScheduledReport.class)
          .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "savedReportId")))
-         .withSection(new QFieldSection("settings", new QIcon().withName("settings"), Tier.T2, List.of("cronExpression", "cronTimeZoneId", "isActive", "format")))
+         .withSection(new QFieldSection("settings", new QIcon().withName("settings"), Tier.T2, List.of("isActive", "format")))
+         .withSection(new QFieldSection("schedule", new QIcon().withName("schedule"), Tier.T2).withWidgetName(SCHEDULED_REPORT_CRON_WIDGET))
          .withSection(new QFieldSection("email", new QIcon().withName("email"), Tier.T2, List.of("toAddresses", "subject")))
          .withSection(new QFieldSection("variableValues", new QIcon().withName("data_object"), Tier.T2).withWidgetName(SCHEDULED_REPORT_VALUES_WIDGET))
-         .withSection(new QFieldSection("hidden", new QIcon().withName("visibility_off"), Tier.T2, List.of("inputValues", "userId")).withIsHidden(true))
+         .withSection(new QFieldSection("hidden", new QIcon().withName("visibility_off"), Tier.T2, List.of("inputValues", "userId", "cronExpression", "cronDescription", "cronTimeZoneId")).withIsHidden(true))
          .withSection(new QFieldSection("dates", new QIcon().withName("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
 
       if(backendDetailEnricher != null)

@@ -25,7 +25,9 @@ package com.kingsrook.qqq.backend.core.model.savedreports;
 import java.io.Serializable;
 import java.text.ParseException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import com.kingsrook.qqq.backend.core.actions.customizers.RecordCustomizerUtilityInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -46,9 +48,11 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
+import com.kingsrook.qqq.backend.core.scheduler.CronDescriber;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValidationUtils;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.quartz.CronScheduleBuilder;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -68,7 +72,7 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preInsert(InsertInput insertInput, List<QRecord> records, boolean isPreview) throws QException
    {
-      preInsertOrUpdate(records);
+      preInsertOrUpdate(records, Optional.empty());
       return (records);
    }
 
@@ -80,7 +84,7 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preUpdate(UpdateInput updateInput, List<QRecord> records, boolean isPreview, Optional<List<QRecord>> oldRecordList) throws QException
    {
-      preInsertOrUpdate(records);
+      preInsertOrUpdate(records, oldRecordList);
       return (records);
    }
 
@@ -89,11 +93,13 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void preInsertOrUpdate(List<QRecord> records)
+   private void preInsertOrUpdate(List<QRecord> records, Optional<List<QRecord>> oldRecordList)
    {
+      Optional<Map<Serializable, QRecord>> oldRecordMap = oldRecordListToMap("id", oldRecordList);
+
       for(QRecord record : records)
       {
-         String cronExpression = record.getValueString("cronExpression");
+         String cronExpression = ValueUtils.getValueAsString(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("cronExpression", record, record.getValue("id"), oldRecordMap));
          try
          {
             CronScheduleBuilder.cronScheduleNonvalidatedExpression(cronExpression);
@@ -102,6 +108,8 @@ public class ScheduledReportTableCustomizer implements TableCustomizerInterface
          {
             record.addError(new BadInputStatusMessage("Cron Expression [" + cronExpression + "] is not valid: " + e.getMessage()));
          }
+
+         CronDescriber.setDescriptionInRecord(record, "cronDescription", cronExpression);
 
          try
          {

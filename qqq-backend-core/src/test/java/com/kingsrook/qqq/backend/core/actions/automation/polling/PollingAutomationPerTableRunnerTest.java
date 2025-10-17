@@ -36,6 +36,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -44,6 +46,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.automation.TableTrigger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
@@ -56,6 +59,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.Automatio
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.QTableAutomationDetails;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.TableAutomationAction;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.TriggerEvent;
+import com.kingsrook.qqq.backend.core.model.savedviews.SavedView;
+import com.kingsrook.qqq.backend.core.model.savedviews.SavedViewsMetaDataProvider;
+import com.kingsrook.qqq.backend.core.model.scripts.ScriptsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.LoadViaInsertStep;
@@ -67,6 +73,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -642,7 +649,68 @@ class PollingAutomationPerTableRunnerTest extends BaseTest
          PollingAutomationPerTableRunner.addOrderByToQueryFilter(table, AutomationStatus.PENDING_UPDATE_AUTOMATIONS, filter);
          assertEquals("modifyDate", filter.getOrderBys().get(0).getFieldName());
       }
+   }
 
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testTableTriggers() throws QException
+   {
+      new SavedViewsMetaDataProvider().defineAll(QContext.getQInstance(), TestUtils.MEMORY_BACKEND_NAME, null);
+      new ScriptsMetaDataProvider().defineAll(QContext.getQInstance(), TestUtils.MEMORY_BACKEND_NAME, null);
+
+      /////////////////////////////////////////////////////////////////////////////////
+      // let's set up 2 triggers & view/filters - one with a malformed criteria,     //
+      // which, in the previous/broken code, would not find the record (even though  //
+      // it should); the other as a control, has no criteria, and finds all records. //
+      /////////////////////////////////////////////////////////////////////////////////
+      Integer testViewId = new InsertAction().execute(new InsertInput(SavedView.TABLE_NAME).withRecordEntity(new SavedView()
+         .withTableName(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withViewJson("""
+            {"queryFilter": { "criteria": [ { "fieldName":"id", "operator":"EQUALS", "values":[""] } ] } }
+            """)
+         .withLabel("Test"))).getRecords().get(0).getValueInteger("id");
+
+      Integer controlViewId = new InsertAction().execute(new InsertInput(SavedView.TABLE_NAME).withRecordEntity(new SavedView()
+         .withTableName(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withViewJson("""
+            {"queryFilter": { "criteria": [] } }
+            """)
+         .withLabel("Test"))).getRecords().get(0).getValueInteger("id");
+
+      Integer testScriptId = -1;
+      new InsertAction().execute(new InsertInput(TableTrigger.TABLE_NAME).withRecordEntity(new TableTrigger()
+         .withTableName(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withPostInsert(true)
+         .withFilterId(testViewId)
+         .withScriptId(testScriptId)
+      ));
+
+      Integer controlScriptId = -2;
+      new InsertAction().execute(new InsertInput(TableTrigger.TABLE_NAME).withRecordEntity(new TableTrigger()
+         .withTableName(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withPostInsert(true)
+         .withFilterId(controlViewId)
+         .withScriptId(controlScriptId)
+      ));
+
+      ////////////////////////////////////////////////////////
+      // insert the record that triggers should run against //
+      ////////////////////////////////////////////////////////
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("firstName", "Homer")));
+
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // assume we can't run scripts (no script language support repo is available...)                                                   //
+      // so if a trigger's filter finds a record, it'll warn that it couldn't run the script - that'll be our check of "did trigger run" //
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      QCollectingLogger collectingLogger = QLogger.activateCollectingLoggerForClass(PollingAutomationPerTableRunner.class);
+      runAllTableActions(QContext.getQInstance());
+      assertTrue(collectingLogger.getCollectedMessages().stream().anyMatch(clm -> clm.getMessage().contains("scriptId: " + controlScriptId)));
+      assertTrue(collectingLogger.getCollectedMessages().stream().anyMatch(clm -> clm.getMessage().contains("scriptId: " + testScriptId)));
+      QLogger.deactivateCollectingLoggerForClass(PollingAutomationPerTableRunner.class);
    }
 
 }

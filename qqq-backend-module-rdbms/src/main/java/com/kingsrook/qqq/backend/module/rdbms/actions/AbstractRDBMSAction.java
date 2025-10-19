@@ -198,7 +198,15 @@ public abstract class AbstractRDBMSAction
       //////////////////////////////////////////////////////////////////////////////
       // value utils is good at making values from strings - jdbc, not as much... //
       //////////////////////////////////////////////////////////////////////////////
-      if(field.getType().equals(QFieldType.DATE) && value instanceof String)
+      if(field.getType().equals(QFieldType.INTEGER) && value instanceof String)
+      {
+         value = ValueUtils.getValueAsInteger(value);
+      }
+      else if(field.getType().equals(QFieldType.LONG) && value instanceof String)
+      {
+         value = ValueUtils.getValueAsLong(value);
+      }
+      else if(field.getType().equals(QFieldType.DATE) && value instanceof String)
       {
          value = ValueUtils.getValueAsLocalDate(value);
       }

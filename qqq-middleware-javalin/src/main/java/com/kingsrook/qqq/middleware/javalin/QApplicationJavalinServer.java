@@ -185,6 +185,42 @@ public class QApplicationJavalinServer
             }
          }
 
+         /////////////////////////////////////////////////////////////////////////
+         // application API routes (from ApiInstanceMetaData in the QInstance) //
+         /////////////////////////////////////////////////////////////////////////
+         try
+         {
+            Class<?> apiContainerClass = Class.forName("com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer");
+            Object   apiContainer      = apiContainerClass.getMethod("of", com.kingsrook.qqq.backend.core.model.metadata.QInstance.class).invoke(null, qInstance);
+            
+            if(apiContainer != null)
+            {
+               @SuppressWarnings("unchecked")
+               java.util.Map<String, ?> apis = (java.util.Map<String, ?>) apiContainerClass.getMethod("getApis").invoke(apiContainer);
+               
+               if(apis != null && !apis.isEmpty())
+               {
+                  Class<?> apiHandlerClass = Class.forName("com.kingsrook.qqq.api.javalin.QJavalinApiHandler");
+                  Object   apiHandler      = apiHandlerClass.getConstructor(com.kingsrook.qqq.backend.core.model.metadata.QInstance.class).newInstance(qInstance);
+                  io.javalin.apibuilder.EndpointGroup routes = (io.javalin.apibuilder.EndpointGroup) apiHandlerClass.getMethod("getRoutes").invoke(apiHandler);
+                  
+                  config.router.apiBuilder(routes);
+                  LOG.info("Registered application API routes from ApiInstanceMetaDataContainer");
+               }
+            }
+         }
+         catch(ClassNotFoundException e)
+         {
+            ///////////////////////////////////////////////////////////////////////////////
+            // qqq-middleware-api module not on classpath - no application APIs to serve //
+            ///////////////////////////////////////////////////////////////////////////////
+            LOG.debug("qqq-middleware-api not available - skipping application API registration");
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error registering application API routes", e);
+         }
+
          ////////////////////////////////////////////////////////////////////////////
          // additional route providers (e.g., application-apis, other middlewares) //
          ////////////////////////////////////////////////////////////////////////////

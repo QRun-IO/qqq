@@ -246,10 +246,20 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
          {
             String requestPath = ctx.path();
 
-            ///////////////////////////////////////////////////
-            // Only handle 404s for paths under our SPA root //
-            ///////////////////////////////////////////////////
-            if(!requestPath.startsWith(spaRootPath))
+            /////////////////////////////////////////////////////////////////////////////////////
+            // Only handle 404s for paths under our SPA root                                  //
+            // Special case: if spaRootPath is "/", we need to be more careful to avoid       //
+            // catching API routes and other non-SPA paths                                    //
+            /////////////////////////////////////////////////////////////////////////////////////
+            boolean isUnderSpaRoot = requestPath.startsWith(spaRootPath);
+            
+            // If SPA root is "/", check that it's not explicitly for other route types
+            if("/".equals(spaRootPath))
+            {
+               // For root-level SPAs, only proceed if it's not an API or static asset
+               // The isApiRequest() check below will handle this
+            }
+            else if(!isUnderSpaRoot)
             {
                LOG.debug("404 path not under our SPA root, skipping", logPair("path", requestPath), logPair("spaRoot", spaRootPath));
                return;
@@ -263,6 +273,17 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
             if(isStaticAssetRequest(requestPath))
             {
                LOG.debug("404 for static asset, letting 404 stand", logPair("path", requestPath));
+               return;
+            }
+
+            /////////////////////////////////////////////////////////////////////////////
+            // Check if this looks like an API request (e.g., /qqq-api/...).          //
+            // If so, let the 404 stand (API routes should 404 if they don't exist).  //
+            // This prevents API 404s from being caught by the SPA fallback.          //
+            /////////////////////////////////////////////////////////////////////////////
+            if(isApiRequest(requestPath))
+            {
+               LOG.debug("404 for API path, letting 404 stand", logPair("path", requestPath));
                return;
             }
 
@@ -386,6 +407,41 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
       }
 
       return false;
+   }
+
+
+
+   /***************************************************************************
+    ** Determines if a request path looks like an API request.
+    **
+    ** Returns true for paths that start with common API prefixes like:
+    ** - /qqq-api/       (versioned application APIs)
+    ** - /api/           (generic API paths)
+    ** - /metaData       (legacy qqq middleware)
+    ** - /data/          (legacy qqq middleware)
+    ** - /processes/     (legacy qqq middleware)
+    ** - /reports/       (legacy qqq middleware)
+    ** - /download/      (legacy qqq middleware)
+    **
+    ** This prevents API 404s from being caught by SPA fallback handlers.
+    ***************************************************************************/
+   private boolean isApiRequest(String path)
+   {
+      String lowerPath = path.toLowerCase();
+
+      //////////////////////////////////////////////////////
+      // Check for common API path prefixes               //
+      //////////////////////////////////////////////////////
+      return lowerPath.startsWith("/qqq-api/")
+         || lowerPath.startsWith("/api/")
+         || lowerPath.equals("/metadata")
+         || lowerPath.startsWith("/metadata/")
+         || lowerPath.startsWith("/data/")
+         || lowerPath.startsWith("/processes/")
+         || lowerPath.startsWith("/reports/")
+         || lowerPath.startsWith("/download/")
+         || lowerPath.startsWith("/possiblevalues/")
+         || lowerPath.startsWith("/widget/");
    }
 
 

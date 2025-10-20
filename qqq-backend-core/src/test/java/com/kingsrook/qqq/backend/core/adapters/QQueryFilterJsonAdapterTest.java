@@ -112,16 +112,16 @@ class QQueryFilterJsonAdapterTest extends BaseTest
          {"criteria": [{"fieldName": "id", "operator": "IN", "values": ["1", "2"]}]}
          """)).usingRecursiveComparison().isEqualTo(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IN, "1", "2")));
 
-      ////////////////////////////////////////////////////////////////////////////////////
-      // for this operator, values aren't required, so the criteria should come through //
-      ////////////////////////////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////////////////////////////
+      // for these operator, values aren't required, so the criteria should come through //
+      /////////////////////////////////////////////////////////////////////////////////////
       assertThat(adapter.jsonToQQueryFilter("""
-         {"criteria": [{"fieldName": "id", "operator": "TRUE", "values": [""]}]}
-         """)).usingRecursiveComparison().isEqualTo(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.TRUE, "")));
+         {"criteria": [{"fieldName": "id", "operator": "IS_BLANK", "values": [""]}]}
+         """)).usingRecursiveComparison().isEqualTo(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IS_BLANK, "")));
 
       assertThat(adapter.jsonToQQueryFilter("""
-         {"criteria": [{"fieldName": "id", "operator": "TRUE", "values": []}]}
-         """)).usingRecursiveComparison().isEqualTo(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.TRUE).withValues(new ArrayList<>())));
+         {"criteria": [{"fieldName": "id", "operator": "IS_NOT_BLANK", "values": []}]}
+         """)).usingRecursiveComparison().isEqualTo(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IS_NOT_BLANK).withValues(new ArrayList<>())));
 
       assertThat(adapter.jsonToQQueryFilter("""
          {"criteria": [{"fieldName": "id", "operator": "TRUE"}]}

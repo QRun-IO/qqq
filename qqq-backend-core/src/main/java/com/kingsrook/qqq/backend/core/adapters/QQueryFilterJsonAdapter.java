@@ -117,7 +117,7 @@ public class QQueryFilterJsonAdapter
             // for an operator that doesn't use or need values                        //
             ////////////////////////////////////////////////////////////////////////////
             boolean requireValues = true;
-            if(QCriteriaOperator.TRUE.equals(next.getOperator()) || QCriteriaOperator.FALSE.equals(next.getOperator()))
+            if(QCriteriaOperator.TRUE.equals(next.getOperator()) || QCriteriaOperator.FALSE.equals(next.getOperator()) || QCriteriaOperator.IS_BLANK.equals(next.getOperator()) || QCriteriaOperator.IS_NOT_BLANK.equals(next.getOperator()))
             {
                requireValues = false;
             }

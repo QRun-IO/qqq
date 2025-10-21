@@ -26,19 +26,33 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
- ** Model containing data structure expected by frontend ChildRecordList widget
- **
+ * Model containing data structure expected by frontend ChildRecordList widget
+ * See {@link ChildRecordListRenderer.Builder} for definitions of several properties
+ * in here.
  *******************************************************************************/
 public class ChildRecordListData extends QWidgetData
 {
    private String         title;
    private QueryOutput    queryOutput;
    private QTableMetaData childTableMetaData;
+
+   /////////////////////////////////////////////////////////////////////////////////////////////
+   // Migrate away from childTableMetaData, being a QTableMetaData (which is not designed to  //
+   // send) to a frontend instead of a QFrontendTableMetaData.                                //
+   // Doing this specifically to get exposed joins sent to frontend, to support joins herein. //
+   /////////////////////////////////////////////////////////////////////////////////////////////
+   private QFrontendTableMetaData childFrontendTableMetaData;
 
    private String  tableName;
    private String  tablePath;
@@ -54,6 +68,8 @@ public class ChildRecordListData extends QWidgetData
    private Set<String>               disabledFieldsForNewChildRecords;
    private Map<String, String>       defaultValuesForNewChildRecordsFromParentFields;
    private List<String>              omitFieldNames;
+   private List<String>              onlyIncludeFieldNames;
+   private List<String>              includeExposedJoinTables;
 
 
 
@@ -68,6 +84,11 @@ public class ChildRecordListData extends QWidgetData
       this.tablePath = tablePath;
       this.viewAllLink = viewAllLink;
       this.totalRows = totalRows;
+
+      AbstractTableActionInput tableMetaDataInput    = new TableMetaDataInput().withTableName(childTableMetaData.getName());
+      QBackendMetaData         backendForTable       = QContext.getQInstance().getBackendForTable(childTableMetaData.getName());
+      QFrontendTableMetaData   frontendTableMetaData = new QFrontendTableMetaData(tableMetaDataInput, backendForTable, childTableMetaData, true, true);
+      this.childFrontendTableMetaData = frontendTableMetaData;
    }
 
 
@@ -587,6 +608,114 @@ public class ChildRecordListData extends QWidgetData
       this.omitFieldNames = omitFieldNames;
       return (this);
    }
+
+
+   /*******************************************************************************
+    * Getter for includeExposedJoinTables
+    * @see #withIncludeExposedJoinTables(List)
+    *******************************************************************************/
+   public List<String> getIncludeExposedJoinTables()
+   {
+      return (this.includeExposedJoinTables);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for includeExposedJoinTables
+    * @see #withIncludeExposedJoinTables(List)
+    *******************************************************************************/
+   public void setIncludeExposedJoinTables(List<String> includeExposedJoinTables)
+   {
+      this.includeExposedJoinTables = includeExposedJoinTables;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for includeExposedJoinTables
+    *
+    * @param includeExposedJoinTables
+    * @return this
+    *******************************************************************************/
+   public ChildRecordListData withIncludeExposedJoinTables(List<String> includeExposedJoinTables)
+   {
+      this.includeExposedJoinTables = includeExposedJoinTables;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for onlyIncludeFieldNames
+    * @see #withOnlyIncludeFieldNames(List)
+    *******************************************************************************/
+   public List<String> getOnlyIncludeFieldNames()
+   {
+      return (this.onlyIncludeFieldNames);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for onlyIncludeFieldNames
+    * @see #withOnlyIncludeFieldNames(List)
+    *******************************************************************************/
+   public void setOnlyIncludeFieldNames(List<String> onlyIncludeFieldNames)
+   {
+      this.onlyIncludeFieldNames = onlyIncludeFieldNames;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for onlyIncludeFieldNames
+    *
+    * @param onlyIncludeFieldNames
+    * @return this
+    *******************************************************************************/
+   public ChildRecordListData withOnlyIncludeFieldNames(List<String> onlyIncludeFieldNames)
+   {
+      this.onlyIncludeFieldNames = onlyIncludeFieldNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for childFrontendTableMetaData
+    * @see #withChildFrontendTableMetaData(QFrontendTableMetaData)
+    *******************************************************************************/
+   public QFrontendTableMetaData getChildFrontendTableMetaData()
+   {
+      return (this.childFrontendTableMetaData);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for childFrontendTableMetaData
+    * @see #withChildFrontendTableMetaData(QFrontendTableMetaData)
+    *******************************************************************************/
+   public void setChildFrontendTableMetaData(QFrontendTableMetaData childFrontendTableMetaData)
+   {
+      this.childFrontendTableMetaData = childFrontendTableMetaData;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for childFrontendTableMetaData
+    *
+    * @param childFrontendTableMetaData
+    * @return this
+    *******************************************************************************/
+   public ChildRecordListData withChildFrontendTableMetaData(QFrontendTableMetaData childFrontendTableMetaData)
+   {
+      this.childFrontendTableMetaData = childFrontendTableMetaData;
+      return (this);
+   }
+
 
 }
 

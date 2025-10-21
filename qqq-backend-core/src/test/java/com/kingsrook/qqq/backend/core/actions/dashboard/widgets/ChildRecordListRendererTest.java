@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.ChildRecordListData;
@@ -46,6 +47,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -134,16 +137,8 @@ class ChildRecordListRendererTest extends BaseTest
          .getWidgetMetaData();
       qInstance.addWidget(widget);
 
-      insertTwoOrdersAndThreeLines(qInstance);
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, widget);
 
-      RenderWidgetInput input = new RenderWidgetInput();
-      input.setWidgetMetaData(widget);
-      input.setQueryParams(new HashMap<>(Map.of("id", "1")));
-
-      RenderWidgetAction renderWidgetAction = new RenderWidgetAction();
-      RenderWidgetOutput output             = renderWidgetAction.execute(input);
-
-      ChildRecordListData childRecordListData = (ChildRecordListData) output.getWidgetData();
       assertThat(childRecordListData.getChildTableMetaData()).hasFieldOrPropertyWithValue("name", TestUtils.TABLE_NAME_LINE_ITEM);
       assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
       assertThat(childRecordListData.getQueryOutput().getRecords().get(0).getValueString("sku")).isEqualTo("BCD");
@@ -171,16 +166,8 @@ class ChildRecordListRendererTest extends BaseTest
          .getWidgetMetaData();
       qInstance.addWidget(widget);
 
-      insertTwoOrdersAndThreeLines(qInstance);
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, widget);
 
-      RenderWidgetInput input = new RenderWidgetInput();
-      input.setWidgetMetaData(widget);
-      input.setQueryParams(new HashMap<>(Map.of("id", "1")));
-
-      RenderWidgetAction renderWidgetAction = new RenderWidgetAction();
-      RenderWidgetOutput output             = renderWidgetAction.execute(input);
-
-      ChildRecordListData childRecordListData = (ChildRecordListData) output.getWidgetData();
       assertThat(childRecordListData.getChildTableMetaData()).hasFieldOrPropertyWithValue("name", TestUtils.TABLE_NAME_LINE_ITEM);
       assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
 
@@ -194,6 +181,112 @@ class ChildRecordListRendererTest extends BaseTest
       ////////////////////////////////////////////////////////////////////////////////////////////////////
       assertTrue(childRecordListData.getOmitFieldNames().contains("orderId"));
       assertTrue(childRecordListData.getOmitFieldNames().contains("lineNumber"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testKeepJoinField() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+         .withLabel("Line Items")
+         .withKeepJoinField(true)
+         .getWidgetMetaData();
+      qInstance.addWidget(widget);
+
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, widget);
+
+      ////////////////////////////////////////////////////////////////////////////////////////////
+      // there should be no omitted fields, due to the config that said to keep the join field. //
+      ////////////////////////////////////////////////////////////////////////////////////////////
+      assertThat(childRecordListData.getOmitFieldNames()).isNullOrEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testKeepJoinFieldOmitOtherFields() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+         .withLabel("Line Items")
+         .withKeepJoinField(true)
+         .withOmitFieldNames(List.of("lineNumber"))
+         .getWidgetMetaData();
+      qInstance.addWidget(widget);
+
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, widget);
+
+      //////////////////////////////////////////////////////
+      // there should only be the specified omitted field //
+      //////////////////////////////////////////////////////
+      assertEquals(1, childRecordListData.getOmitFieldNames().size());
+      assertTrue(childRecordListData.getOmitFieldNames().contains("lineNumber"));
+      assertFalse(childRecordListData.getOmitFieldNames().contains("orderId"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testWithExposedJoin() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+         .withLabel("Line Items")
+         .withQueryJoins(List.of(new QueryJoin(TestUtils.TABLE_NAME_ORDER).withType(QueryJoin.Type.LEFT).withSelect(true)))
+         .getWidgetMetaData();
+      qInstance.addWidget(widget);
+
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, widget);
+
+      assertThat(childRecordListData.getChildTableMetaData()).hasFieldOrPropertyWithValue("name", TestUtils.TABLE_NAME_LINE_ITEM);
+      assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(0).getValueString("sku")).isEqualTo("BCD");
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(1).getValueString("sku")).isEqualTo("ABC");
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(0).getValueString("order.orderNo")).isEqualTo("ORD001");
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(1).getValueString("order.orderNo")).isEqualTo("ORD001");
+
+      assertEquals(List.of(TestUtils.TABLE_NAME_ORDER), childRecordListData.getIncludeExposedJoinTables());
+      assertTrue(childRecordListData.getOmitFieldNames().contains("orderId"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testOnlyIncludeFieldNames() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+         .withLabel("Line Items")
+         .withOnlyIncludeFieldNames(List.of("sku", "quantity"))
+         .getWidgetMetaData();
+      qInstance.addWidget(widget);
+
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, widget);
+
+      assertThat(childRecordListData.getChildTableMetaData()).hasFieldOrPropertyWithValue("name", TestUtils.TABLE_NAME_LINE_ITEM);
+      assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(0).getValueString("sku")).isEqualTo("BCD");
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(1).getValueString("sku")).isEqualTo("ABC");
+
+      assertEquals(List.of("sku", "quantity"), childRecordListData.getOnlyIncludeFieldNames());
    }
 
 
@@ -256,8 +349,8 @@ class ChildRecordListRendererTest extends BaseTest
    private static void insertTwoOrdersAndThreeLines(QInstance qInstance) throws QException
    {
       TestUtils.insertRecords(qInstance.getTable(TestUtils.TABLE_NAME_ORDER), List.of(
-         new QRecord().withValue("id", 1),
-         new QRecord().withValue("id", 2)
+         new QRecord().withValue("id", 1).withValue("orderNo", "ORD001"),
+         new QRecord().withValue("id", 2).withValue("orderNo", "ORD002")
       ));
 
       TestUtils.insertRecords(qInstance.getTable(TestUtils.TABLE_NAME_LINE_ITEM), List.of(
@@ -265,6 +358,26 @@ class ChildRecordListRendererTest extends BaseTest
          new QRecord().withValue("orderId", 1).withValue("sku", "BCD").withValue("lineNumber", 1),
          new QRecord().withValue("orderId", 2).withValue("sku", "XYZ")
       ));
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static ChildRecordListData insertOrdersAndRenderWidget(QInstance qInstance, QWidgetMetaData widget) throws QException
+   {
+      insertTwoOrdersAndThreeLines(qInstance);
+
+      RenderWidgetInput input = new RenderWidgetInput();
+      input.setWidgetMetaData(widget);
+      input.setQueryParams(new HashMap<>(Map.of("id", "1")));
+
+      RenderWidgetAction renderWidgetAction = new RenderWidgetAction();
+      RenderWidgetOutput output             = renderWidgetAction.execute(input);
+
+      ChildRecordListData childRecordListData = (ChildRecordListData) output.getWidgetData();
+      return childRecordListData;
    }
 
 }

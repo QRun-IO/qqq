@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test SPA 2</title>
+</head>
+<body>
+    <h1>Test SPA 2</h1>
+    <p>This is the second test SPA application at /testSpa2.</p>
+    <div id="app"></div>
+    <script>
+        // Simple SPA routing simulation
+        const path = window.location.pathname;
+        document.getElementById('app').innerHTML = `<p>Current path: ${path}</p>`;
+    </script>
+</body>
+</html>

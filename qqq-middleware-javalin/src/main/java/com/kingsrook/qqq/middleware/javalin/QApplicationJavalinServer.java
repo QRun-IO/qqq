@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.backend.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.ProcessBasedRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
@@ -331,7 +332,35 @@ public class QApplicationJavalinServer
 
       for(JavalinRouteProviderMetaData routeProviderMetaData : CollectionUtils.nonNullList(qJavalinMetaData.getRouteProviders()))
       {
-         if(StringUtils.hasContent(routeProviderMetaData.getProcessName()) && StringUtils.hasContent(routeProviderMetaData.getHostedPath()))
+         if(StringUtils.hasContent(routeProviderMetaData.getSpaPath()) && StringUtils.hasContent(routeProviderMetaData.getStaticFilesPath()))
+         {
+            // IsolatedSpaRouteProvider configuration
+            IsolatedSpaRouteProvider spaProvider = new IsolatedSpaRouteProvider(
+               routeProviderMetaData.getSpaPath(),
+               routeProviderMetaData.getStaticFilesPath()
+            );
+            
+            if(StringUtils.hasContent(routeProviderMetaData.getSpaIndexFile()))
+            {
+               spaProvider.withSpaIndexFile(routeProviderMetaData.getSpaIndexFile());
+            }
+            
+            if(routeProviderMetaData.getExcludedPaths() != null && !routeProviderMetaData.getExcludedPaths().isEmpty())
+            {
+               spaProvider.withExcludedPaths(routeProviderMetaData.getExcludedPaths());
+            }
+            
+            spaProvider.withDeepLinking(routeProviderMetaData.getEnableDeepLinking());
+            spaProvider.withLoadFromJar(routeProviderMetaData.getLoadFromJar());
+            
+            if(routeProviderMetaData.getRouteAuthenticator() != null)
+            {
+               spaProvider.withAuthenticator(routeProviderMetaData.getRouteAuthenticator());
+            }
+            
+            withAdditionalRouteProvider(spaProvider);
+         }
+         else if(StringUtils.hasContent(routeProviderMetaData.getProcessName()) && StringUtils.hasContent(routeProviderMetaData.getHostedPath()))
          {
             withAdditionalRouteProvider(new ProcessBasedRouter(routeProviderMetaData));
          }
@@ -646,6 +675,27 @@ public class QApplicationJavalinServer
       }
       this.additionalRouteProviders.add(additionalRouteProvider);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter to add an IsolatedSpaRouteProvider
+    *******************************************************************************/
+   public QApplicationJavalinServer withIsolatedSpaRouteProvider(String spaPath, String staticFilesPath)
+   {
+      return withAdditionalRouteProvider(new IsolatedSpaRouteProvider(spaPath, staticFilesPath));
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter to add an IsolatedSpaRouteProvider with full configuration
+    *******************************************************************************/
+   public QApplicationJavalinServer withIsolatedSpaRouteProvider(String spaPath, String staticFilesPath, String spaIndexFile)
+   {
+      return withAdditionalRouteProvider(new IsolatedSpaRouteProvider(spaPath, staticFilesPath)
+         .withSpaIndexFile(spaIndexFile));
    }
 
 

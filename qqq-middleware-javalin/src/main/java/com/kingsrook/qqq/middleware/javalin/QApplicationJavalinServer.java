@@ -35,12 +35,15 @@ import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.backend.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.ProcessBasedRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.Javalin;
@@ -356,6 +359,46 @@ public class QApplicationJavalinServer
             if(routeProviderMetaData.getRouteAuthenticator() != null)
             {
                spaProvider.withAuthenticator(routeProviderMetaData.getRouteAuthenticator());
+            }
+            
+            // Add before handlers from metadata
+            if(routeProviderMetaData.getBeforeHandlers() != null && !routeProviderMetaData.getBeforeHandlers().isEmpty())
+            {
+               for(com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference handlerRef : routeProviderMetaData.getBeforeHandlers())
+               {
+                  try
+                  {
+                     RouteProviderBeforeHandlerInterface handler = QCodeLoader.getAdHoc(RouteProviderBeforeHandlerInterface.class, handlerRef);
+                     spaProvider.withBeforeHandler(handler);
+                  }
+                  catch(Exception e)
+                  {
+                     LOG.error("Error loading before handler for route provider", e, 
+                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
+                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("handler", handlerRef.toString()));
+                     throw new QException("Error loading before handler: " + e.getMessage(), e);
+                  }
+               }
+            }
+            
+            // Add after handlers from metadata
+            if(routeProviderMetaData.getAfterHandlers() != null && !routeProviderMetaData.getAfterHandlers().isEmpty())
+            {
+               for(com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference handlerRef : routeProviderMetaData.getAfterHandlers())
+               {
+                  try
+                  {
+                     RouteProviderAfterHandlerInterface handler = QCodeLoader.getAdHoc(RouteProviderAfterHandlerInterface.class, handlerRef);
+                     spaProvider.withAfterHandler(handler);
+                  }
+                  catch(Exception e)
+                  {
+                     LOG.error("Error loading after handler for route provider", e,
+                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
+                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("handler", handlerRef.toString()));
+                     throw new QException("Error loading after handler: " + e.getMessage(), e);
+                  }
+               }
             }
             
             withAdditionalRouteProvider(spaProvider);

@@ -30,6 +30,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.contexthandlers.RouteProviderContextHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
 
 
 /*******************************************************************************
@@ -58,6 +60,10 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    private QCodeReference routeAuthenticator;
    private QCodeReference contextHandler;
+   
+   // IsolatedSpaRouteProvider handler support
+   private List<QCodeReference> beforeHandlers;
+   private List<QCodeReference> afterHandlers;
 
 
 
@@ -536,6 +542,68 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
 
 
+   /*******************************************************************************
+    ** Getter for beforeHandlers
+    *******************************************************************************/
+   public List<QCodeReference> getBeforeHandlers()
+   {
+      return (this.beforeHandlers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for beforeHandlers
+    *******************************************************************************/
+   public void setBeforeHandlers(List<QCodeReference> beforeHandlers)
+   {
+      this.beforeHandlers = beforeHandlers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for beforeHandlers
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withBeforeHandlers(List<QCodeReference> beforeHandlers)
+   {
+      this.beforeHandlers = beforeHandlers;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for afterHandlers
+    *******************************************************************************/
+   public List<QCodeReference> getAfterHandlers()
+   {
+      return (this.afterHandlers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for afterHandlers
+    *******************************************************************************/
+   public void setAfterHandlers(List<QCodeReference> afterHandlers)
+   {
+      this.afterHandlers = afterHandlers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for afterHandlers
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withAfterHandlers(List<QCodeReference> afterHandlers)
+   {
+      this.afterHandlers = afterHandlers;
+      return (this);
+   }
+
+
+
    /***************************************************************************
     **
     ***************************************************************************/
@@ -555,6 +623,32 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
       if(contextHandler != null)
       {
          validator.validateSimpleCodeReference(prefix + "contextHandler ", contextHandler, RouteProviderContextHandlerInterface.class);
+      }
+
+      // Validate before handlers
+      if(beforeHandlers != null)
+      {
+         for(int i = 0; i < beforeHandlers.size(); i++)
+         {
+            QCodeReference handler = beforeHandlers.get(i);
+            if(handler != null)
+            {
+               validator.validateSimpleCodeReference(prefix + "beforeHandlers[" + i + "] ", handler, RouteProviderBeforeHandlerInterface.class);
+            }
+         }
+      }
+
+      // Validate after handlers
+      if(afterHandlers != null)
+      {
+         for(int i = 0; i < afterHandlers.size(); i++)
+         {
+            QCodeReference handler = afterHandlers.get(i);
+            if(handler != null)
+            {
+               validator.validateSimpleCodeReference(prefix + "afterHandlers[" + i + "] ", handler, RouteProviderAfterHandlerInterface.class);
+            }
+         }
       }
 
       // Validate IsolatedSpaRouteProvider specific fields

@@ -29,8 +29,6 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.javalin.TestUtils;
-import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
-import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.http.HttpStatus;
@@ -355,7 +353,7 @@ class QApplicationJavalinServerTest
 
    /*******************************************************************************
     ** Test Material Dashboard at custom hosted path
-    ** 
+    **
     ** Note: This test verifies the API but doesn't fully test because 
     ** material-dashboard resources don't exist in test classpath
     *******************************************************************************/
@@ -371,7 +369,7 @@ class QApplicationJavalinServerTest
 
       // Verify the configuration is accepted
       assertEquals("/app", javalinServer.getFrontendMaterialDashboardHostedPath());
-      
+
       // Root should not serve anything
       HttpResponse<String> rootResponse = Unirest.get("http://localhost:" + PORT + "/").asString();
       assertEquals(404, rootResponse.getStatus());
@@ -381,7 +379,7 @@ class QApplicationJavalinServerTest
 
    /*******************************************************************************
     ** CRITICAL TEST: Test deep linking with multiple SPAs
-    ** 
+    **
     ** This is the blocker feature - users must be able to navigate directly to 
     ** deep routes within SPAs (e.g., /app/users/123) without getting 404s.
     *******************************************************************************/
@@ -473,7 +471,7 @@ class QApplicationJavalinServerTest
       /////////////////////////////////////////////////////////////////////////////
       // Test 9: Paths with and without trailing slashes should both work       //
       /////////////////////////////////////////////////////////////////////////////
-      HttpResponse<String> withSlash = Unirest.get("http://localhost:" + PORT + "/app/users/").asString();
+      HttpResponse<String> withSlash    = Unirest.get("http://localhost:" + PORT + "/app/users/").asString();
       HttpResponse<String> withoutSlash = Unirest.get("http://localhost:" + PORT + "/app/users").asString();
       assertEquals(200, withSlash.getStatus());
       assertEquals(200, withoutSlash.getStatus());
@@ -574,7 +572,7 @@ class QApplicationJavalinServerTest
 
    /*******************************************************************************
     ** CRITICAL TEST: Verify that API routes and SPA deep linking coexist properly
-    ** 
+    **
     ** This test ensures that:
     ** 1. API routes like /metaData, /data/* always work (never caught by SPA handler)
     ** 2. SPA deep linking works for unmatched routes

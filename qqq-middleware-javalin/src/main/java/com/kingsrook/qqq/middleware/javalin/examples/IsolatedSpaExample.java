@@ -21,6 +21,7 @@
 
 package com.kingsrook.qqq.middleware.javalin.examples;
 
+
 import java.util.List;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -47,6 +48,9 @@ import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvi
  *******************************************************************************/
 public class IsolatedSpaExample
 {
+   /***************************************************************************
+    **
+    ***************************************************************************/
    public static void main(String[] args) throws Exception
    {
       // Create the QQQ application
@@ -57,16 +61,16 @@ public class IsolatedSpaExample
          .withPort(8080)
          .withServeFrontendMaterialDashboard(false)  // Disable default dashboard
          .withServeLegacyUnversionedMiddlewareAPI(true)  // Keep APIs enabled
-         
+
          // Root SPA - serves the main public website
          .withAdditionalRouteProvider(
             new IsolatedSpaRouteProvider("/", "public-site/")
                .withSpaIndexFile("public-site/index.html")
-               .withExcludedPaths(List.of("/admin", "/customer", "/api", "/qqq-api", 
-                                        "/metaData", "/data", "/processes", "/reports", "/download"))
+               .withExcludedPaths(List.of("/admin", "/customer", "/api", "/qqq-api",
+                  "/metaData", "/data", "/processes", "/reports", "/download"))
                .withDeepLinking(true)
                .withLoadFromJar(false))  // Load from filesystem for development
-         
+
          // Admin SPA - requires authentication
          .withAdditionalRouteProvider(
             new IsolatedSpaRouteProvider("/admin", "admin-spa/dist/")
@@ -74,7 +78,7 @@ public class IsolatedSpaExample
                .withAuthenticator(new QCodeReference(AdminAuthenticator.class))
                .withDeepLinking(true)
                .withLoadFromJar(true))  // Load from JAR for production
-         
+
          // Customer SPA - no authentication required
          .withAdditionalRouteProvider(
             new IsolatedSpaRouteProvider("/customer", "customer-spa/build/")
@@ -84,13 +88,14 @@ public class IsolatedSpaExample
 
       // Start the server
       server.start();
-      
+
       System.out.println("Server started with multiple SPAs:");
       System.out.println("- Root SPA: http://localhost:8080/");
       System.out.println("- Admin SPA: http://localhost:8080/admin/");
       System.out.println("- Customer SPA: http://localhost:8080/customer/");
       System.out.println("- APIs: http://localhost:8080/metaData, /data, /processes, etc.");
    }
+
 
 
    /*******************************************************************************
@@ -106,6 +111,7 @@ public class IsolatedSpaExample
          return null;  // Replace with actual implementation
       }
    }
+
 
 
    /*******************************************************************************

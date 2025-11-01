@@ -22,14 +22,14 @@
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 
-import com.kingsrook.qqq.backend.core.logging.QLogger;
-import io.javalin.Javalin;
-import io.javalin.http.Context;
-import io.javalin.http.HttpStatus;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+import io.javalin.http.HttpStatus;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -66,7 +66,8 @@ public class SpaNotFoundHandlerRegistry
    private static final SpaNotFoundHandlerRegistry INSTANCE = new SpaNotFoundHandlerRegistry();
 
    private final List<SpaNotFoundHandler> handlers = new ArrayList<>();
-   private boolean                        globalHandlerRegistered;
+   private       boolean                  globalHandlerRegistered;
+
 
 
    /*******************************************************************************
@@ -77,6 +78,7 @@ public class SpaNotFoundHandlerRegistry
    }
 
 
+
    /*******************************************************************************
     ** Get the singleton instance
     *******************************************************************************/
@@ -84,6 +86,7 @@ public class SpaNotFoundHandlerRegistry
    {
       return INSTANCE;
    }
+
 
 
    /*******************************************************************************
@@ -98,6 +101,7 @@ public class SpaNotFoundHandlerRegistry
          LOG.info("Registered global SPA 404 handler");
       }
    }
+
 
 
    /*******************************************************************************
@@ -123,6 +127,7 @@ public class SpaNotFoundHandlerRegistry
    }
 
 
+
    /*******************************************************************************
     ** Clear all registered handlers (useful for testing)
     *******************************************************************************/
@@ -132,6 +137,7 @@ public class SpaNotFoundHandlerRegistry
       globalHandlerRegistered = false;
       LOG.info("Cleared all SPA 404 handlers");
    }
+
 
 
    /*******************************************************************************
@@ -170,6 +176,7 @@ public class SpaNotFoundHandlerRegistry
    }
 
 
+
    /*******************************************************************************
     ** Check if a request path matches a SPA path
     **
@@ -201,6 +208,7 @@ public class SpaNotFoundHandlerRegistry
    }
 
 
+
    /*******************************************************************************
     ** Normalize a path (ensure it starts with / and doesn't end with /)
     *******************************************************************************/
@@ -227,6 +235,7 @@ public class SpaNotFoundHandlerRegistry
    }
 
 
+
    /*******************************************************************************
     ** Internal class to hold a path and its handler
     *******************************************************************************/
@@ -236,6 +245,10 @@ public class SpaNotFoundHandlerRegistry
       private final Consumer<Context> handleNotFound;
 
 
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
       public SpaNotFoundHandler(String path, Consumer<Context> handleNotFound)
       {
          this.path = path;
@@ -243,4 +256,3 @@ public class SpaNotFoundHandlerRegistry
       }
    }
 }
-

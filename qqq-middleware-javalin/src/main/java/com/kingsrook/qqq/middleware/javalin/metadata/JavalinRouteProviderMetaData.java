@@ -30,8 +30,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.contexthandlers.RouteProviderContextHandlerInterface;
-import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 
 
 /*******************************************************************************
@@ -45,22 +45,22 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
    private String fileSystemPath;
    private String spaRootPath;
    private String spaRootFile;
-   
+
    private String processName;
-   
+
    // IsolatedSpaRouteProvider specific fields
-   private String spaPath;
-   private String staticFilesPath;
-   private String spaIndexFile;
+   private String       spaPath;
+   private String       staticFilesPath;
+   private String       spaIndexFile;
    private List<String> excludedPaths;
-   private boolean enableDeepLinking = true;
-   private boolean loadFromJar = false;
+   private boolean      enableDeepLinking = true;
+   private boolean      loadFromJar       = false;
 
    private List<String> methods;
 
    private QCodeReference routeAuthenticator;
    private QCodeReference contextHandler;
-   
+
    // IsolatedSpaRouteProvider handler support
    private List<QCodeReference> beforeHandlers;
    private List<QCodeReference> afterHandlers;

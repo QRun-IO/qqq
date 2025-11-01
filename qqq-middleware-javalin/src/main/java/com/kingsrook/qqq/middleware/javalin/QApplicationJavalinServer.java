@@ -26,6 +26,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
@@ -35,15 +36,14 @@ import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
-import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.backend.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.ProcessBasedRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
-import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.Javalin;
@@ -76,14 +76,14 @@ public class QApplicationJavalinServer
 
    private final AbstractQQQApplication application;
 
-   private Integer                              port                                     = 8000;
-   private boolean                              serveFrontendMaterialDashboard           = true;
-   private String                               frontendMaterialDashboardHostedPath      = "/";
-   private boolean                              serveLegacyUnversionedMiddlewareAPI      = true;
-   private List<AbstractMiddlewareVersion>      middlewareVersionList                    = List.of(new MiddlewareVersionV1());
-   private List<QJavalinRouteProviderInterface> additionalRouteProviders                 = null;
-   private Consumer<Javalin>                    javalinConfigurationCustomizer           = null;
-   private QJavalinMetaData                     javalinMetaData                          = null;
+   private Integer                              port                                = 8000;
+   private boolean                              serveFrontendMaterialDashboard      = true;
+   private String                               frontendMaterialDashboardHostedPath = "/";
+   private boolean                              serveLegacyUnversionedMiddlewareAPI = true;
+   private List<AbstractMiddlewareVersion>      middlewareVersionList               = List.of(new MiddlewareVersionV1());
+   private List<QJavalinRouteProviderInterface> additionalRouteProviders            = null;
+   private Consumer<Javalin>                    javalinConfigurationCustomizer      = null;
+   private QJavalinMetaData                     javalinMetaData                     = null;
 
    private long                lastQInstanceHotSwapMillis;
    private long                millisBetweenHotSwaps = 2500;
@@ -196,18 +196,18 @@ public class QApplicationJavalinServer
          {
             Class<?> apiContainerClass = Class.forName("com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer");
             Object   apiContainer      = apiContainerClass.getMethod("of", com.kingsrook.qqq.backend.core.model.metadata.QInstance.class).invoke(null, qInstance);
-            
+
             if(apiContainer != null)
             {
                @SuppressWarnings("unchecked")
                java.util.Map<String, ?> apis = (java.util.Map<String, ?>) apiContainerClass.getMethod("getApis").invoke(apiContainer);
-               
+
                if(apis != null && !apis.isEmpty())
                {
-                  Class<?> apiHandlerClass = Class.forName("com.kingsrook.qqq.api.javalin.QJavalinApiHandler");
-                  Object   apiHandler      = apiHandlerClass.getConstructor(com.kingsrook.qqq.backend.core.model.metadata.QInstance.class).newInstance(qInstance);
-                  io.javalin.apibuilder.EndpointGroup routes = (io.javalin.apibuilder.EndpointGroup) apiHandlerClass.getMethod("getRoutes").invoke(apiHandler);
-                  
+                  Class<?>                            apiHandlerClass = Class.forName("com.kingsrook.qqq.api.javalin.QJavalinApiHandler");
+                  Object                              apiHandler      = apiHandlerClass.getConstructor(com.kingsrook.qqq.backend.core.model.metadata.QInstance.class).newInstance(qInstance);
+                  io.javalin.apibuilder.EndpointGroup routes          = (io.javalin.apibuilder.EndpointGroup) apiHandlerClass.getMethod("getRoutes").invoke(apiHandler);
+
                   config.router.apiBuilder(routes);
                   LOG.info("Registered application API routes from ApiInstanceMetaDataContainer");
                }
@@ -289,7 +289,7 @@ public class QApplicationJavalinServer
          LOG.warn("JavalinMetaData is defined both in the QInstance and the QApplicationJavalinServer.  The one from the QInstance will be ignored - the one from the QJavalinApplicationServer will be used.");
          return (this.javalinMetaData);
       }
-      else if (this.javalinMetaData != null)
+      else if(this.javalinMetaData != null)
       {
          return (this.javalinMetaData);
       }
@@ -342,25 +342,25 @@ public class QApplicationJavalinServer
                routeProviderMetaData.getSpaPath(),
                routeProviderMetaData.getStaticFilesPath()
             );
-            
+
             if(StringUtils.hasContent(routeProviderMetaData.getSpaIndexFile()))
             {
                spaProvider.withSpaIndexFile(routeProviderMetaData.getSpaIndexFile());
             }
-            
+
             if(routeProviderMetaData.getExcludedPaths() != null && !routeProviderMetaData.getExcludedPaths().isEmpty())
             {
                spaProvider.withExcludedPaths(routeProviderMetaData.getExcludedPaths());
             }
-            
+
             spaProvider.withDeepLinking(routeProviderMetaData.getEnableDeepLinking());
             spaProvider.withLoadFromJar(routeProviderMetaData.getLoadFromJar());
-            
+
             if(routeProviderMetaData.getRouteAuthenticator() != null)
             {
                spaProvider.withAuthenticator(routeProviderMetaData.getRouteAuthenticator());
             }
-            
+
             // Add before handlers from metadata
             if(routeProviderMetaData.getBeforeHandlers() != null && !routeProviderMetaData.getBeforeHandlers().isEmpty())
             {
@@ -373,14 +373,14 @@ public class QApplicationJavalinServer
                   }
                   catch(Exception e)
                   {
-                     LOG.error("Error loading before handler for route provider", e, 
+                     LOG.error("Error loading before handler for route provider", e,
                         com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
                         com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("handler", handlerRef.toString()));
                      throw new QException("Error loading before handler: " + e.getMessage(), e);
                   }
                }
             }
-            
+
             // Add after handlers from metadata
             if(routeProviderMetaData.getAfterHandlers() != null && !routeProviderMetaData.getAfterHandlers().isEmpty())
             {
@@ -400,7 +400,7 @@ public class QApplicationJavalinServer
                   }
                }
             }
-            
+
             withAdditionalRouteProvider(spaProvider);
          }
          else if(StringUtils.hasContent(routeProviderMetaData.getProcessName()) && StringUtils.hasContent(routeProviderMetaData.getHostedPath()))
@@ -538,16 +538,6 @@ public class QApplicationJavalinServer
    {
       this.port = port;
       return (this);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public void setMillisBetweenHotSwaps(long millisBetweenHotSwaps)
-   {
-      this.millisBetweenHotSwaps = millisBetweenHotSwaps;
    }
 
 
@@ -749,6 +739,16 @@ public class QApplicationJavalinServer
    public long getMillisBetweenHotSwaps()
    {
       return (millisBetweenHotSwaps);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void setMillisBetweenHotSwaps(long millisBetweenHotSwaps)
+   {
+      this.millisBetweenHotSwaps = millisBetweenHotSwaps;
    }
 
 

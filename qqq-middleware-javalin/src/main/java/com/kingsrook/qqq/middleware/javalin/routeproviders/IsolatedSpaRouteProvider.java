@@ -32,7 +32,6 @@ import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.QContext;
-import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -49,9 +48,6 @@ import io.javalin.http.staticfiles.Location;
 import io.javalin.http.staticfiles.StaticFileConfig;
 import org.apache.commons.io.IOUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
-import static io.javalin.apibuilder.ApiBuilder.after;
-import static io.javalin.apibuilder.ApiBuilder.before;
-import static io.javalin.apibuilder.ApiBuilder.path;
 
 
 /*******************************************************************************
@@ -84,14 +80,14 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    private final String spaPath;
    private final String staticFilesPath;
 
-   private String                spaIndexFile;
-   private QCodeReference        authenticator;
-   private QInstance             qInstance;
-   private List<String>          excludedPaths     = new ArrayList<>();
-   private List<Handler>         beforeHandlers    = new ArrayList<>();
-   private List<Handler>         afterHandlers     = new ArrayList<>();
-   private boolean               loadFromJar       = false;
-   private boolean               enableDeepLinking = true;
+   private String         spaIndexFile;
+   private QCodeReference authenticator;
+   private QInstance      qInstance;
+   private List<String>   excludedPaths     = new ArrayList<>();
+   private List<Handler>  beforeHandlers    = new ArrayList<>();
+   private List<Handler>  afterHandlers     = new ArrayList<>();
+   private boolean        loadFromJar       = false;
+   private boolean        enableDeepLinking = true;
 
 
 
@@ -384,8 +380,8 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       ////////////////////////////////////////////////////////////////
       if(!checkExclusions && !"/".equals(spaPath) && !requestPath.startsWith(spaPath))
       {
-         LOG.debug("404 not under SPA path, not serving index", 
-            logPair("path", requestPath), 
+         LOG.debug("404 not under SPA path, not serving index",
+            logPair("path", requestPath),
             logPair("spaPath", spaPath));
          return;
       }
@@ -411,13 +407,13 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          if(indexStream != null)
          {
             String indexHtml = IOUtils.toString(indexStream, StandardCharsets.UTF_8);
-            
+
             // Rewrite relative asset paths for SPAs at subpaths (deep linking)
             if(!"/".equals(spaPath))
             {
                indexHtml = rewriteIndexHtmlPaths(indexHtml, spaPath);
             }
-            
+
             ctx.html(indexHtml);
             ctx.status(HttpStatus.OK);
          }
@@ -450,7 +446,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       html = html.replaceAll("href='\\./", "href='" + basePath + "/");
       html = html.replaceAll("src=\"\\./", "src=\"" + basePath + "/");
       html = html.replaceAll("src='\\./", "src='" + basePath + "/");
-      LOG.debug("Rewrote HTML asset paths for deep linking support", 
+      LOG.debug("Rewrote HTML asset paths for deep linking support",
          logPair("basePath", basePath),
          logPair("htmlLength", html.length()));
       return html;
@@ -739,4 +735,3 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       return spaIndexFile;
    }
 }
-

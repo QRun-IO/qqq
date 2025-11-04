@@ -84,7 +84,7 @@ public class CountAction
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       countInput.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, countInput.getFilter(), Collections.emptySet()));
 
-      QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, countInput.getFilter());
+      QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, countInput.getFilter(), CountAction.class.getSimpleName());
 
       QBackendModuleDispatcher qBackendModuleDispatcher = new QBackendModuleDispatcher();
       QBackendModuleInterface  qModule                  = qBackendModuleDispatcher.getQBackendModule(countInput.getBackend());
@@ -93,7 +93,11 @@ public class CountAction
       countInterface.setQueryStat(queryStat);
       CountOutput countOutput = countInterface.execute(countInput);
 
-      QueryStatManager.getInstance().add(queryStat);
+      if(queryStat != null)
+      {
+         queryStat.setRecordCount(1);
+         QueryStatManager.getInstance().add(queryStat);
+      }
 
       return countOutput;
    }

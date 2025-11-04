@@ -485,6 +485,10 @@ public class BackendQueryFilterUtils
       {
          value = String.valueOf(value);
       }
+      else if(criteriaValue instanceof String && value instanceof Boolean)
+      {
+         criteriaValue = ValueUtils.getValueAsBoolean(criteriaValue);
+      }
 
       if(criterion.hasOption(CriteriaOption.CASE_INSENSITIVE))
       {

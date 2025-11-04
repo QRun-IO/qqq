@@ -85,6 +85,7 @@ public class QueryStatManager
    private int jobInitialDelay  = 60;
    private int minMillisToStore = 0;
 
+   private List<QueryStatConsumerInterface> queryStatConsumers = new ArrayList<>();
 
 
    /*******************************************************************************
@@ -135,7 +136,7 @@ public class QueryStatManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QueryStat newQueryStat(QBackendMetaData backend, QTableMetaData table, QQueryFilter filter)
+   public static QueryStat newQueryStat(QBackendMetaData backend, QTableMetaData table, QQueryFilter filter, String backendActionName)
    {
       QueryStat queryStat = null;
 
@@ -145,6 +146,7 @@ public class QueryStatManager
          queryStat.setTableName(table.getName());
          queryStat.setQueryFilter(Objects.requireNonNullElse(filter, new QQueryFilter()));
          queryStat.setStartTimestamp(Instant.now());
+         queryStat.setBackendAction(backendActionName);
       }
 
       return (queryStat);
@@ -232,14 +234,6 @@ public class QueryStatManager
                queryStat.setFirstResultMillis((int) millis);
             }
 
-            if(queryStat.getFirstResultMillis() != null && queryStat.getFirstResultMillis() < minMillisToStore)
-            {
-               //////////////////////////////////////////////////////////////
-               // discard this record if it's under the min millis setting //
-               //////////////////////////////////////////////////////////////
-               return;
-            }
-
             if(queryStat.getSessionId() == null && QContext.getQSession() != null)
             {
                queryStat.setSessionId(QContext.getQSession().getUuid());
@@ -272,6 +266,23 @@ public class QueryStatManager
                }
             }
 
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // send the query stat through any consumers that exist                                                                       //
+            // note we do that regardless of the minMillisToStore - which only applies to this class's own storage of query stat records. //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            if(CollectionUtils.nullSafeHasContents(queryStatConsumers))
+            {
+               processConsumers(queryStat);
+            }
+
+            if(queryStat.getFirstResultMillis() != null && queryStat.getFirstResultMillis() < minMillisToStore)
+            {
+               //////////////////////////////////////////////////////////////
+               // discard this record if it's under the min millis setting //
+               //////////////////////////////////////////////////////////////
+               return;
+            }
+
             synchronized(this)
             {
                queryStats.add(queryStat);
@@ -281,6 +292,26 @@ public class QueryStatManager
       catch(Exception e)
       {
          LOG.debug("Error adding query stat", e);
+      }
+   }
+
+
+
+   /***************************************************************************
+    * send the query stat through any consumers that we have.
+    ***************************************************************************/
+   private void processConsumers(QueryStat queryStat)
+   {
+      for(QueryStatConsumerInterface queryStatConsumer : queryStatConsumers)
+      {
+         try
+         {
+            queryStatConsumer.accept(queryStat);
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error processing query stat consumer", e, logPair("consumerClass", queryStatConsumer.getClass().getName()));
+         }
       }
    }
 
@@ -598,6 +629,54 @@ public class QueryStatManager
    public QueryStatManager withMinMillisToStore(int minMillisToStore)
    {
       this.minMillisToStore = minMillisToStore;
+      return (this);
+   }
+
+
+   /***************************************************************************
+    * package-private accessor to current list of query stats.
+    * originally adding for tests to access.
+    ***************************************************************************/
+   List<QueryStat> getQueryStats()
+   {
+      return (queryStats);
+   }
+
+
+   /*******************************************************************************
+    * Getter for queryStatConsumers
+    * @see #withQueryStatConsumers(List)
+    *******************************************************************************/
+   public List<QueryStatConsumerInterface> getQueryStatConsumers()
+   {
+      return (this.queryStatConsumers);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for queryStatConsumers
+    * @see #withQueryStatConsumers(List)
+    *******************************************************************************/
+   public void setQueryStatConsumers(List<QueryStatConsumerInterface> queryStatConsumers)
+   {
+      this.queryStatConsumers = queryStatConsumers;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for queryStatConsumers
+    *
+    * @param queryStatConsumers
+    * List of instances of QueryStateConsumerInterface - e.g., classes that want to
+    * be invoked when a query stat object is being added to the manager here (e.g.,
+    * after its query is complete).
+    * @return this
+    *******************************************************************************/
+   public QueryStatManager withQueryStatConsumers(List<QueryStatConsumerInterface> queryStatConsumers)
+   {
+      this.queryStatConsumers = queryStatConsumers;
       return (this);
    }
 

@@ -77,9 +77,16 @@ public class QueryStat extends QRecordEntity
 
    ///////////////////////////////////////////////////////////
    // non-persistent fields - used to help build the record //
+   // and available to QueryStatConsumers                   //
    ///////////////////////////////////////////////////////////
    @QIgnore
    private String tableName;
+
+   @QIgnore
+   private String backendAction;
+
+   @QIgnore
+   private Integer recordCount;
 
    private Set<String>  joinTableNames;
    private QQueryFilter queryFilter;
@@ -480,7 +487,8 @@ public class QueryStat extends QRecordEntity
 
 
    /*******************************************************************************
-    ** Getter for action
+    * Getter for action
+    * @see #withAction(String)
     *******************************************************************************/
    public String getAction()
    {
@@ -490,7 +498,8 @@ public class QueryStat extends QRecordEntity
 
 
    /*******************************************************************************
-    ** Setter for action
+    * Setter for action
+    * @see #withAction(String)
     *******************************************************************************/
    public void setAction(String action)
    {
@@ -500,13 +509,22 @@ public class QueryStat extends QRecordEntity
 
 
    /*******************************************************************************
-    ** Fluent setter for action
+    * Fluent setter for action
+    *
+    * @param action
+    * This is the top-level action that was being performed when the query was
+    * executed - so that may often be a process (or, it could be a lower-level
+    * action, like a query or insert from middleware).
+    * <p>Contrasted with {@link #withBackendAction(String)}, which is the low-level
+    * "backend" action (always an insert/update/delete table action)</p>
+    * @return this
     *******************************************************************************/
    public QueryStat withAction(String action)
    {
       this.action = action;
       return (this);
    }
+
 
 
 
@@ -536,6 +554,84 @@ public class QueryStat extends QRecordEntity
    public QueryStat withSessionId(String sessionId)
    {
       this.sessionId = sessionId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for backendAction
+    * @see #withBackendAction(String)
+    *******************************************************************************/
+   public String getBackendAction()
+   {
+      return (this.backendAction);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for backendAction
+    * @see #withBackendAction(String)
+    *******************************************************************************/
+   public void setBackendAction(String backendAction)
+   {
+      this.backendAction = backendAction;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for backendAction
+    *
+    * @param backendAction
+    * e.g., "InsertAction" or "QueryAction" - the low-level table action that generated
+    * the query.
+    * <p>Contrast with action above, which is the initiating action, e.g., a process
+    * or middleware/user initiated query</p>
+    * @return this
+    *******************************************************************************/
+   public QueryStat withBackendAction(String backendAction)
+   {
+      this.backendAction = backendAction;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for recordCount
+    * @see #withRecordCount(Integer)
+    *******************************************************************************/
+   public Integer getRecordCount()
+   {
+      return (this.recordCount);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for recordCount
+    * @see #withRecordCount(Integer)
+    *******************************************************************************/
+   public void setRecordCount(Integer recordCount)
+   {
+      this.recordCount = recordCount;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for recordCount
+    *
+    * @param recordCount
+    * number of records impacted by this query (e.g., returned from a select, or
+    * given as input to a DML statement).
+    * @return this
+    *******************************************************************************/
+   public QueryStat withRecordCount(Integer recordCount)
+   {
+      this.recordCount = recordCount;
       return (this);
    }
 

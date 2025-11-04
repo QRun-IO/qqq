@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.model.tables.QQQTableTableManager;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.PrefixedDefaultThreadFactory;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import org.apache.logging.log4j.Level;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -84,6 +85,8 @@ public class QueryStatManager
    private int jobPeriodSeconds = 60;
    private int jobInitialDelay  = 60;
    private int minMillisToStore = 0;
+
+   private Level emptyActionStackLogLevel = Level.OFF;
 
    private List<QueryStatConsumerInterface> queryStatConsumers = new ArrayList<>();
 
@@ -247,21 +250,24 @@ public class QueryStatManager
                }
                else
                {
-                  boolean   expected = false;
-                  Exception e        = new Exception("Unexpected empty action stack");
-                  for(StackTraceElement stackTraceElement : e.getStackTrace())
+                  if(!Objects.equals(emptyActionStackLogLevel, Level.OFF))
                   {
-                     String className = stackTraceElement.getClassName();
-                     if(className.contains(QueryStatManagerInsertJob.class.getName()))
+                     boolean   expected = false;
+                     Exception e        = new Exception("Unexpected empty action stack");
+                     for(StackTraceElement stackTraceElement : e.getStackTrace())
                      {
-                        expected = true;
-                        break;
+                        String className = stackTraceElement.getClassName();
+                        if(className.contains(QueryStatManagerInsertJob.class.getName()))
+                        {
+                           expected = true;
+                           break;
+                        }
                      }
-                  }
 
-                  if(!expected)
-                  {
-                     LOG.debug(e);
+                     if(!expected)
+                     {
+                        LOG.log(emptyActionStackLogLevel, e);
+                     }
                   }
                }
             }
@@ -679,5 +685,63 @@ public class QueryStatManager
       this.queryStatConsumers = queryStatConsumers;
       return (this);
    }
+
+
+
+   /***************************************************************************
+    * add one query stat consumer to the list.
+    * @see #withQueryStatConsumers(List)
+    ***************************************************************************/
+   public void addQueryStatConsumer(QueryStatConsumerInterface queryStatConsumer)
+   {
+      if(this.queryStatConsumers == null)
+      {
+         this.queryStatConsumers = new ArrayList<>();
+      }
+      this.queryStatConsumers.add(queryStatConsumer);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for emptyActionStackLogLevel
+    * @see #withEmptyActionStackLogLevel(Level)
+    *******************************************************************************/
+   public Level getEmptyActionStackLogLevel()
+   {
+      return (this.emptyActionStackLogLevel);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for emptyActionStackLogLevel
+    * @see #withEmptyActionStackLogLevel(Level)
+    *******************************************************************************/
+   public void setEmptyActionStackLogLevel(Level emptyActionStackLogLevel)
+   {
+      this.emptyActionStackLogLevel = emptyActionStackLogLevel;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for emptyActionStackLogLevel
+    *
+    * @param emptyActionStackLogLevel
+    * log level to use to log out if there's ever a query stat being recorded when
+    * the actionStack in QContext is empty.
+    * <p>Originally that was thought to be an unexpected condition, so it used to
+    * always warn.  but, it turns out to be more common maybe, and not necessarily
+    * of any concern, so the default level is OFF - but it can be upgraded by setting
+    * this property.</p>
+    * @return this
+    *******************************************************************************/
+   public QueryStatManager withEmptyActionStackLogLevel(Level emptyActionStackLogLevel)
+   {
+      this.emptyActionStackLogLevel = emptyActionStackLogLevel;
+      return (this);
+   }
+
 
 }

@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.apache.logging.log4j.Level;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -40,6 +41,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 class QueryOutputListTest extends BaseTest
 {
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void afterEach()
+   {
+      QueryOutputList.resetDefaultLogSizeOverValues();
+   }
+
+
 
    /*******************************************************************************
     **

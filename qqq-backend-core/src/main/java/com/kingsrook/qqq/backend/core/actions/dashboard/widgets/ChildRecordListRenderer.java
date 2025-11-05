@@ -71,6 +71,7 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.core.utils.collections.ListBuilder;
 import com.kingsrook.qqq.backend.core.utils.collections.MutableList;
 import org.apache.commons.lang.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -322,7 +323,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
             for(JoinOn joinOn : join.getJoinOns())
             {
                String rightField = joinOn.getRightField();
-               filter.addCriteria(new QFilterCriteria(rightField, QCriteriaOperator.EQUALS, List.of(primaryRecord.getValue(joinOn.getLeftField()))));
+               filter.addCriteria(new QFilterCriteria(rightField, QCriteriaOperator.EQUALS, ListBuilder.of(primaryRecord.getValue(joinOn.getLeftField()))));
 
                Boolean keepJoinField = ValueUtils.getValueAsBoolean(widgetMetaDataDefaultValues.get("keepJoinField"));
                if(!BooleanUtils.isTrue(keepJoinField))

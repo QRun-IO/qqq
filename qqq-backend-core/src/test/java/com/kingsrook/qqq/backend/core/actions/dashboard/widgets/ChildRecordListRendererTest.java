@@ -29,9 +29,11 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.dashboard.RenderWidgetAction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
@@ -40,6 +42,12 @@ import com.kingsrook.qqq.backend.core.model.dashboard.widgets.ChildRecordListDat
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -339,6 +347,53 @@ class ChildRecordListRendererTest extends BaseTest
 
       assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
       assertThat(childRecordListData.getQueryOutput().getRecords()).allMatch(record -> !record.getValues().containsKey("lineNumber"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testJoinFieldNull() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      qInstance.addTable(new QTableMetaData()
+         .withName("foo")
+         .withBackendName(TestUtils.MEMORY_BACKEND_NAME)
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("barId", QFieldType.INTEGER)));
+
+      qInstance.addTable(new QTableMetaData()
+         .withName("bar")
+         .withBackendName(TestUtils.MEMORY_BACKEND_NAME)
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("baz", QFieldType.STRING)));
+
+      QJoinMetaData fooJoinBar = new QJoinMetaData()
+         .withName("fooJoinBar")
+         .withLeftTable("foo")
+         .withRightTable("bar")
+         .withType(JoinType.ONE_TO_MANY)
+         .withJoinOn(new JoinOn("barId", "id"));
+      qInstance.addJoin(fooJoinBar);
+
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(fooJoinBar).getWidgetMetaData();
+      qInstance.addWidget(widget);
+
+      new InsertAction().execute(new InsertInput("foo").withRecord(new QRecord().withValue("id", 1)));
+
+      RenderWidgetInput input = new RenderWidgetInput();
+      input.setWidgetMetaData(widget);
+      input.setQueryParams(new HashMap<>(Map.of("id", "1")));
+
+      RenderWidgetAction  renderWidgetAction  = new RenderWidgetAction();
+      RenderWidgetOutput  output              = renderWidgetAction.execute(input);
+      ChildRecordListData childRecordListData = (ChildRecordListData) output.getWidgetData();
+
+      assertThat(childRecordListData.getQueryOutput().getRecords()).isEmpty();
    }
 
 

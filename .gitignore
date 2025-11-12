@@ -4,6 +4,14 @@ target/
 
 .idea
 
+#####################################
+## Eclipse / NVIM Modules for Java ##
+#####################################
+**/.settings/
+**/.classpath
+**/.factorypath
+**/.project
+
 #############################################
 ## Original contents from github template: ##
 #############################################

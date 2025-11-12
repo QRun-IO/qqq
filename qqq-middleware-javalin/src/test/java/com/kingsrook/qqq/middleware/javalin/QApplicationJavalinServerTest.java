@@ -72,6 +72,7 @@ class QApplicationJavalinServerTest
       javalinServer.stop();
       TestApplication.callCount = 0;
       System.clearProperty("qqq.javalin.enableStaticFilesFromJar");
+      Unirest.config().reset();
    }
 
 
@@ -346,6 +347,301 @@ class QApplicationJavalinServerTest
          .asString();
       assertEquals(200, response.getStatus());
       assertEquals("So you've done a GET for: /protected-served-by-process/foo.html", response.getBody());
+   }
+
+
+
+   /*******************************************************************************
+    ** Test Material Dashboard at custom hosted path
+    **
+    ** Note: This test verifies the API but doesn't fully test because 
+    ** material-dashboard resources don't exist in test classpath
+    *******************************************************************************/
+   @Test
+   void testMaterialDashboardAtCustomPath() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)  // Disable to avoid classpath errors
+         .withServeLegacyUnversionedMiddlewareAPI(false)
+         .withFrontendMaterialDashboardHostedPath("/app");
+      javalinServer.start();
+
+      // Verify the configuration is accepted
+      assertEquals("/app", javalinServer.getFrontendMaterialDashboardHostedPath());
+
+      // Root should not serve anything
+      HttpResponse<String> rootResponse = Unirest.get("http://localhost:" + PORT + "/").asString();
+      assertEquals(404, rootResponse.getStatus());
+   }
+
+
+
+   /*******************************************************************************
+    ** CRITICAL TEST: Test deep linking with multiple SPAs
+    **
+    ** This is the blocker feature - users must be able to navigate directly to 
+    ** deep routes within SPAs (e.g., /app/users/123) without getting 404s.
+    *******************************************************************************/
+   @Test
+   void testMultipleSPAsWithDeepLinking() throws Exception
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)
+         .withServeLegacyUnversionedMiddlewareAPI(false)
+         .withAdditionalRouteProvider(
+            new SimpleFileSystemDirectoryRouter("/app", "test-spa-app/")
+               .withSpaRootPath("/app")
+               .withSpaRootFile("test-spa-app/index.html"))
+         .withAdditionalRouteProvider(
+            new SimpleFileSystemDirectoryRouter("/admin", "test-spa-admin/")
+               .withSpaRootPath("/admin")
+               .withSpaRootFile("test-spa-admin/index.html"));
+      javalinServer.start();
+
+      Unirest.config().setDefaultResponseEncoding("UTF-8");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 1: Root path of first SPA should work                             //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> appRootResponse = Unirest.get("http://localhost:" + PORT + "/app/").asString();
+      assertEquals(200, appRootResponse.getStatus());
+      assertThat(appRootResponse.getBody()).contains("Test SPA - App");
+      assertThat(appRootResponse.getBody()).contains("<html");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 2: Deep link in first SPA should serve index.html (NOT 404)       //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> appDeepLink1 = Unirest.get("http://localhost:" + PORT + "/app/users/123").asString();
+      assertEquals(200, appDeepLink1.getStatus(), "Deep link /app/users/123 should return 200");
+      assertThat(appDeepLink1.getBody()).contains("<html");
+      assertThat(appDeepLink1.getBody()).contains("Test SPA - App");
+      assertThat(appDeepLink1.getBody()).doesNotContain("404");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 3: Another deep link with multiple segments                       //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> appDeepLink2 = Unirest.get("http://localhost:" + PORT + "/app/users/123/edit/profile").asString();
+      assertEquals(200, appDeepLink2.getStatus(), "Deep link /app/users/123/edit/profile should return 200");
+      assertThat(appDeepLink2.getBody()).contains("<html");
+      assertThat(appDeepLink2.getBody()).contains("Test SPA - App");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 4: Deep link with query parameters                                //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> appDeepLink3 = Unirest.get("http://localhost:" + PORT + "/app/search?q=test&filter=active").asString();
+      assertEquals(200, appDeepLink3.getStatus(), "Deep link with query params should return 200");
+      assertThat(appDeepLink3.getBody()).contains("<html");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 5: Root path of second SPA should work                            //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> adminRootResponse = Unirest.get("http://localhost:" + PORT + "/admin/").asString();
+      assertEquals(200, adminRootResponse.getStatus());
+      assertThat(adminRootResponse.getBody()).contains("Test SPA - Admin");
+      assertThat(adminRootResponse.getBody()).contains("<html");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 6: Deep link in second SPA should also work                       //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> adminDeepLink = Unirest.get("http://localhost:" + PORT + "/admin/settings/profile").asString();
+      assertEquals(200, adminDeepLink.getStatus(), "Deep link /admin/settings/profile should return 200");
+      assertThat(adminDeepLink.getBody()).contains("<html");
+      assertThat(adminDeepLink.getBody()).contains("Test SPA - Admin");
+      assertThat(adminDeepLink.getBody()).doesNotContain("404");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 7: Static asset in first SPA should load (NOT serve index.html)   //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> appJs = Unirest.get("http://localhost:" + PORT + "/app/assets/app.js").asString();
+      assertEquals(200, appJs.getStatus(), "Static asset app.js should return 200");
+      assertThat(appJs.getBody()).contains("console.log");
+      assertThat(appJs.getBody()).doesNotContain("<html");
+      assertThat(appJs.getBody()).doesNotContain("<!DOCTYPE");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 8: Static asset in second SPA should load                         //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> adminCss = Unirest.get("http://localhost:" + PORT + "/admin/assets/admin.css").asString();
+      assertEquals(200, adminCss.getStatus(), "Static asset admin.css should return 200");
+      assertThat(adminCss.getBody()).contains("font-family");
+      assertThat(adminCss.getBody()).doesNotContain("<html");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 9: Paths with and without trailing slashes should both work       //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> withSlash    = Unirest.get("http://localhost:" + PORT + "/app/users/").asString();
+      HttpResponse<String> withoutSlash = Unirest.get("http://localhost:" + PORT + "/app/users").asString();
+      assertEquals(200, withSlash.getStatus());
+      assertEquals(200, withoutSlash.getStatus());
+      assertThat(withSlash.getBody()).contains("<html");
+      assertThat(withoutSlash.getBody()).contains("<html");
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that static asset detection correctly identifies assets vs SPA routes
+    *******************************************************************************/
+   @Test
+   void testStaticAssetDetectionInSPA() throws Exception
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)
+         .withServeLegacyUnversionedMiddlewareAPI(false)
+         .withAdditionalRouteProvider(
+            new SimpleFileSystemDirectoryRouter("/app", "test-spa-app/")
+               .withSpaRootPath("/app")
+               .withSpaRootFile("test-spa-app/index.html"));
+      javalinServer.start();
+
+      Unirest.config().setDefaultResponseEncoding("UTF-8");
+
+      /////////////////////////////////////////////////////////////////////
+      // These paths should serve index.html (SPA routes)               //
+      /////////////////////////////////////////////////////////////////////
+      String[] spaRoutes = {
+         "/app/users",
+         "/app/users/123",
+         "/app/dashboard",
+         "/app/settings/profile"
+      };
+
+      for(String route : spaRoutes)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + route).asString();
+         assertEquals(200, response.getStatus(), "SPA route " + route + " should return 200");
+         assertThat(response.getBody()).contains("<html");
+         assertThat(response.getBody()).contains("Test SPA - App");
+      }
+
+      /////////////////////////////////////////////////////////////////////
+      // These paths should be treated as assets (even if they 404)     //
+      /////////////////////////////////////////////////////////////////////
+      String[] assetPaths = {
+         "/app/assets/missing.js",
+         "/app/assets/missing.css",
+         "/app/static/image.png"
+      };
+
+      for(String assetPath : assetPaths)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + assetPath).asString();
+         // Assets may 404 if they don't exist, but they should NOT serve index.html
+         if(response.getStatus() == 200)
+         {
+            // If the asset exists, it should not be HTML
+            assertThat(response.getBody()).doesNotContain("<html");
+         }
+         // Either way, it should not serve the SPA index
+         assertThat(response.getBody()).doesNotContain("Test SPA - App");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Test SPA configuration without spaRootPath (should work as regular static site)
+    *******************************************************************************/
+   @Test
+   void testStaticSiteWithoutSPAConfiguration() throws Exception
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)
+         .withServeLegacyUnversionedMiddlewareAPI(false)
+         .withAdditionalRouteProvider(
+            new SimpleFileSystemDirectoryRouter("/static", "static-site/"));
+      javalinServer.start();
+
+      Unirest.config().setDefaultResponseEncoding("UTF-8");
+
+      // Existing file should work
+      HttpResponse<String> existingFile = Unirest.get("http://localhost:" + PORT + "/static/foo.html").asString();
+      assertEquals(200, existingFile.getStatus());
+      assertThat(existingFile.getBody()).contains("Foo? Bar!");
+
+      // Non-existing file should 404 (NOT serve index.html because no SPA config)
+      HttpResponse<String> missingFile = Unirest.get("http://localhost:" + PORT + "/static/nonexistent").asString();
+      assertEquals(404, missingFile.getStatus());
+   }
+
+
+
+   /*******************************************************************************
+    ** CRITICAL TEST: Verify that API routes and SPA deep linking coexist properly
+    **
+    ** This test ensures that:
+    ** 1. API routes like /metaData, /data/* always work (never caught by SPA handler)
+    ** 2. SPA deep linking works for unmatched routes
+    ** 3. The two systems don't interfere with each other
+    *******************************************************************************/
+   @Test
+   void testAPIsAndSPAsCoexist() throws Exception
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)
+         .withServeLegacyUnversionedMiddlewareAPI(true)  // Enable legacy API routes
+         .withAdditionalRouteProvider(
+            new SimpleFileSystemDirectoryRouter("/app", "test-spa-app/")
+               .withSpaRootPath("/app")
+               .withSpaRootFile("test-spa-app/index.html"));
+      javalinServer.start();
+
+      Unirest.config().setDefaultResponseEncoding("UTF-8");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 1: API routes should return JSON and work normally                //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> metaDataResponse = Unirest.get("http://localhost:" + PORT + "/metaData").asString();
+      assertEquals(200, metaDataResponse.getStatus(), "API route /metaData should return 200");
+      assertThat(metaDataResponse.getBody()).contains("tables");  // Should be JSON with tables
+      assertThat(metaDataResponse.getBody()).contains("processes");  // Should be JSON with processes
+      assertThat(metaDataResponse.getBody()).doesNotContain("<html");  // Should NOT be HTML
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 2: SPA root path should work and return HTML                      //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> spaRootResponse = Unirest.get("http://localhost:" + PORT + "/app/").asString();
+      assertEquals(200, spaRootResponse.getStatus(), "SPA root /app/ should return 200");
+      assertThat(spaRootResponse.getBody()).contains("<html");  // Should be HTML
+      assertThat(spaRootResponse.getBody()).contains("Test SPA - App");  // Should be our test SPA
+      assertThat(spaRootResponse.getBody()).doesNotContain("\"tables\"");  // Should NOT be JSON
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 3: SPA deep link should serve index.html (client-side routing)    //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> spaDeepLinkResponse = Unirest.get("http://localhost:" + PORT + "/app/users/123").asString();
+      assertEquals(200, spaDeepLinkResponse.getStatus(), "SPA deep link /app/users/123 should return 200");
+      assertThat(spaDeepLinkResponse.getBody()).contains("<html");  // Should be HTML (index.html)
+      assertThat(spaDeepLinkResponse.getBody()).contains("Test SPA - App");  // Should be our test SPA
+      assertThat(spaDeepLinkResponse.getBody()).doesNotContain("404");  // Should NOT be 404 page
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 4: Another SPA deep link with different path structure            //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> anotherDeepLink = Unirest.get("http://localhost:" + PORT + "/app/dashboard/analytics").asString();
+      assertEquals(200, anotherDeepLink.getStatus(), "SPA deep link /app/dashboard/analytics should return 200");
+      assertThat(anotherDeepLink.getBody()).contains("<html");
+      assertThat(anotherDeepLink.getBody()).contains("Test SPA - App");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 5: Verify SPA static assets still load correctly                  //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> spaAsset = Unirest.get("http://localhost:" + PORT + "/app/assets/app.js").asString();
+      assertEquals(200, spaAsset.getStatus(), "SPA static asset should return 200");
+      assertThat(spaAsset.getBody()).contains("console.log");  // Should be JavaScript
+      assertThat(spaAsset.getBody()).doesNotContain("<html");  // Should NOT be HTML
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Test 6: Verify that paths outside SPA root don't get caught            //
+      /////////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> outsideSpaResponse = Unirest.get("http://localhost:" + PORT + "/some/random/path").asString();
+      assertEquals(404, outsideSpaResponse.getStatus(), "Paths outside SPA root should 404");
+      assertThat(outsideSpaResponse.getBody()).doesNotContain("Test SPA - App");  // Should NOT serve SPA index
    }
 
 

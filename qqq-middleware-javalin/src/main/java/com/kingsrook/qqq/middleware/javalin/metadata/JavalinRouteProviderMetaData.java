@@ -30,6 +30,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.contexthandlers.RouteProviderContextHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 
 
 /*******************************************************************************
@@ -41,12 +43,27 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
    private String hostedPath;
 
    private String fileSystemPath;
+   private String spaRootPath;
+   private String spaRootFile;
+
    private String processName;
+
+   // IsolatedSpaRouteProvider specific fields
+   private String       spaPath;
+   private String       staticFilesPath;
+   private String       spaIndexFile;
+   private List<String> excludedPaths;
+   private boolean      enableDeepLinking = true;
+   private boolean      loadFromJar       = false;
 
    private List<String> methods;
 
    private QCodeReference routeAuthenticator;
    private QCodeReference contextHandler;
+
+   // IsolatedSpaRouteProvider handler support
+   private List<QCodeReference> beforeHandlers;
+   private List<QCodeReference> afterHandlers;
 
 
 
@@ -117,6 +134,68 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
    public JavalinRouteProviderMetaData withFileSystemPath(String fileSystemPath)
    {
       this.fileSystemPath = fileSystemPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for spaRootPath
+    *******************************************************************************/
+   public String getSpaRootPath()
+   {
+      return (this.spaRootPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaRootPath
+    *******************************************************************************/
+   public void setSpaRootPath(String spaRootPath)
+   {
+      this.spaRootPath = spaRootPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaRootPath
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withSpaRootPath(String spaRootPath)
+   {
+      this.spaRootPath = spaRootPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for spaRootFile
+    *******************************************************************************/
+   public String getSpaRootFile()
+   {
+      return (this.spaRootFile);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaRootFile
+    *******************************************************************************/
+   public void setSpaRootFile(String spaRootFile)
+   {
+      this.spaRootFile = spaRootFile;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaRootFile
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withSpaRootFile(String spaRootFile)
+   {
+      this.spaRootFile = spaRootFile;
       return (this);
    }
 
@@ -277,6 +356,254 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
 
 
+   /*******************************************************************************
+    ** Getter for spaPath
+    *******************************************************************************/
+   public String getSpaPath()
+   {
+      return (this.spaPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaPath
+    *******************************************************************************/
+   public void setSpaPath(String spaPath)
+   {
+      this.spaPath = spaPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaPath
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withSpaPath(String spaPath)
+   {
+      this.spaPath = spaPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for staticFilesPath
+    *******************************************************************************/
+   public String getStaticFilesPath()
+   {
+      return (this.staticFilesPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for staticFilesPath
+    *******************************************************************************/
+   public void setStaticFilesPath(String staticFilesPath)
+   {
+      this.staticFilesPath = staticFilesPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for staticFilesPath
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withStaticFilesPath(String staticFilesPath)
+   {
+      this.staticFilesPath = staticFilesPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for spaIndexFile
+    *******************************************************************************/
+   public String getSpaIndexFile()
+   {
+      return (this.spaIndexFile);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for spaIndexFile
+    *******************************************************************************/
+   public void setSpaIndexFile(String spaIndexFile)
+   {
+      this.spaIndexFile = spaIndexFile;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for spaIndexFile
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withSpaIndexFile(String spaIndexFile)
+   {
+      this.spaIndexFile = spaIndexFile;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for excludedPaths
+    *******************************************************************************/
+   public List<String> getExcludedPaths()
+   {
+      return (this.excludedPaths);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for excludedPaths
+    *******************************************************************************/
+   public void setExcludedPaths(List<String> excludedPaths)
+   {
+      this.excludedPaths = excludedPaths;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for excludedPaths
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withExcludedPaths(List<String> excludedPaths)
+   {
+      this.excludedPaths = excludedPaths;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for enableDeepLinking
+    *******************************************************************************/
+   public boolean getEnableDeepLinking()
+   {
+      return (this.enableDeepLinking);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for enableDeepLinking
+    *******************************************************************************/
+   public void setEnableDeepLinking(boolean enableDeepLinking)
+   {
+      this.enableDeepLinking = enableDeepLinking;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for enableDeepLinking
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withEnableDeepLinking(boolean enableDeepLinking)
+   {
+      this.enableDeepLinking = enableDeepLinking;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for loadFromJar
+    *******************************************************************************/
+   public boolean getLoadFromJar()
+   {
+      return (this.loadFromJar);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for loadFromJar
+    *******************************************************************************/
+   public void setLoadFromJar(boolean loadFromJar)
+   {
+      this.loadFromJar = loadFromJar;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for loadFromJar
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withLoadFromJar(boolean loadFromJar)
+   {
+      this.loadFromJar = loadFromJar;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for beforeHandlers
+    *******************************************************************************/
+   public List<QCodeReference> getBeforeHandlers()
+   {
+      return (this.beforeHandlers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for beforeHandlers
+    *******************************************************************************/
+   public void setBeforeHandlers(List<QCodeReference> beforeHandlers)
+   {
+      this.beforeHandlers = beforeHandlers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for beforeHandlers
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withBeforeHandlers(List<QCodeReference> beforeHandlers)
+   {
+      this.beforeHandlers = beforeHandlers;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for afterHandlers
+    *******************************************************************************/
+   public List<QCodeReference> getAfterHandlers()
+   {
+      return (this.afterHandlers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for afterHandlers
+    *******************************************************************************/
+   public void setAfterHandlers(List<QCodeReference> afterHandlers)
+   {
+      this.afterHandlers = afterHandlers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for afterHandlers
+    *******************************************************************************/
+   public JavalinRouteProviderMetaData withAfterHandlers(List<QCodeReference> afterHandlers)
+   {
+      this.afterHandlers = afterHandlers;
+      return (this);
+   }
+
+
+
    /***************************************************************************
     **
     ***************************************************************************/
@@ -296,6 +623,38 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
       if(contextHandler != null)
       {
          validator.validateSimpleCodeReference(prefix + "contextHandler ", contextHandler, RouteProviderContextHandlerInterface.class);
+      }
+
+      // Validate before handlers
+      if(beforeHandlers != null)
+      {
+         for(int i = 0; i < beforeHandlers.size(); i++)
+         {
+            QCodeReference handler = beforeHandlers.get(i);
+            if(handler != null)
+            {
+               validator.validateSimpleCodeReference(prefix + "beforeHandlers[" + i + "] ", handler, RouteProviderBeforeHandlerInterface.class);
+            }
+         }
+      }
+
+      // Validate after handlers
+      if(afterHandlers != null)
+      {
+         for(int i = 0; i < afterHandlers.size(); i++)
+         {
+            QCodeReference handler = afterHandlers.get(i);
+            if(handler != null)
+            {
+               validator.validateSimpleCodeReference(prefix + "afterHandlers[" + i + "] ", handler, RouteProviderAfterHandlerInterface.class);
+            }
+         }
+      }
+
+      // Validate IsolatedSpaRouteProvider specific fields
+      if(StringUtils.hasContent(spaPath) && StringUtils.hasContent(staticFilesPath))
+      {
+         validator.assertCondition(StringUtils.hasContent(spaIndexFile), prefix + "spaIndexFile is required when using IsolatedSpaRouteProvider");
       }
    }
 

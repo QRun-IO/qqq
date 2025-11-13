@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -44,6 +45,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.automation.QAutomationProviderMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
@@ -95,6 +97,12 @@ public class QInstance
    private QBrandingMetaData                        branding            = null;
    private Map<String, QAutomationProviderMetaData> automationProviders = new HashMap<>();
    private Map<String, QMessagingProviderMetaData>  messagingProviders  = new HashMap<>();
+
+   ////////////////////////////////////////////////////////////////////////////////////////////
+   // Scoped authentication providers - keyed by AuthScope, preserves registration order    //
+   ////////////////////////////////////////////////////////////////////////////////////////////
+   @JsonIgnore
+   private Map<AuthScope, QAuthenticationMetaData> scopedAuthenticationProviders = new LinkedHashMap<>();
 
    ////////////////////////////////////////////////////////////////////////////////////////////
    // Important to use LinkedHashmap here, to preserve the order in which entries are added. //
@@ -998,10 +1006,92 @@ public class QInstance
    /*******************************************************************************
     ** Setter for authentication
     **
+    ** @deprecated Use {@link #registerAuthenticationProvider(AuthScope, QAuthenticationMetaData)}
+    **             with {@link AuthScope#instanceDefault()} instead, or use
+    **             {@link #withInstanceDefaultAuthentication(QAuthenticationMetaData)} for fluent chaining.
+    **             This method automatically registers the provider under the instance default scope.
     *******************************************************************************/
-   public void setAuthentication(QAuthenticationMetaData authentication)
+   @Deprecated(since = "Use registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData) instead")
+   public QInstance setAuthentication(QAuthenticationMetaData authentication)
    {
       this.authentication = authentication;
+      if(authentication != null)
+      {
+         registerAuthenticationProvider(AuthScope.instanceDefault(), authentication);
+      }
+      return this; // Enable chaining
+   }
+
+
+   /*******************************************************************************
+    ** Fluent setter for instance default authentication.
+    **
+    ** <p>This is a convenience method that registers the authentication provider
+    ** under the instance default scope. Equivalent to calling:
+    ** {@code registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData)}</p>
+    **
+    ** @param authMetaData The authentication metadata to register as instance default
+    ** @return This QInstance for method chaining
+    *******************************************************************************/
+   public QInstance withInstanceDefaultAuthentication(QAuthenticationMetaData authMetaData)
+   {
+      return setAuthentication(authMetaData);
+   }
+
+
+   /*******************************************************************************
+    ** Register an authentication provider for a specific scope.
+    **
+    ** <p>Scopes allow different authentication providers to be registered for
+    ** different parts of the application (instance default, specific APIs, or
+    ** route providers). The resolver will check scopes in order of specificity
+    ** when resolving authentication for a request.</p>
+    **
+    ** @param scope The scope to register the provider for (must not be null)
+    ** @param authMetaData The authentication metadata to register (must not be null)
+    *******************************************************************************/
+   public void registerAuthenticationProvider(AuthScope scope, QAuthenticationMetaData authMetaData)
+   {
+      if(scope == null)
+      {
+         throw new IllegalArgumentException("scope must not be null");
+      }
+      if(authMetaData == null)
+      {
+         throw new IllegalArgumentException("authMetaData must not be null");
+      }
+
+      scopedAuthenticationProviders.put(scope, authMetaData);
+
+      ///////////////////////////////////////////////////////////////////////////
+      // If registering instance default, also update the legacy field       //
+      // for backward compatibility                                           //
+      ///////////////////////////////////////////////////////////////////////////
+      if(scope instanceof AuthScope.InstanceDefault)
+      {
+         this.authentication = authMetaData;
+      }
+
+      LOG.info("Registered authentication provider for scope",
+         logPair("scope", scope.toString()),
+         logPair("authName", authMetaData.getName()),
+         logPair("authType", authMetaData.getType() != null ? authMetaData.getType().getName() : "null"));
+   }
+
+
+   /*******************************************************************************
+    ** Find an authentication provider for a specific scope.
+    **
+    ** @param scope The scope to look up (must not be null)
+    ** @return Optional containing the authentication metadata if found, empty otherwise
+    *******************************************************************************/
+   public Optional<QAuthenticationMetaData> findAuthenticationProvider(AuthScope scope)
+   {
+      if(scope == null)
+      {
+         return Optional.empty();
+      }
+      return Optional.ofNullable(scopedAuthenticationProviders.get(scope));
    }
 
 

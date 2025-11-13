@@ -361,6 +361,9 @@ public class QApplicationJavalinServer
                spaProvider.withAuthenticator(routeProviderMetaData.getRouteAuthenticator());
             }
 
+            // Store route metadata for scoped authentication resolution
+            spaProvider.withRouteMetaData(routeProviderMetaData);
+
             // Add before handlers from metadata
             if(routeProviderMetaData.getBeforeHandlers() != null && !routeProviderMetaData.getBeforeHandlers().isEmpty())
             {

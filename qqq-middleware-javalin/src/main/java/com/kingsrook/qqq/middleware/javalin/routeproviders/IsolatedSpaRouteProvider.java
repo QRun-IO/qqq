@@ -32,11 +32,16 @@ import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthResolutionContext;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthenticationResolver;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
 import io.javalin.Javalin;
@@ -83,6 +88,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    private String         spaIndexFile;
    private QCodeReference authenticator;
    private QInstance      qInstance;
+   private Object         routeMetaData; // JavalinRouteProviderMetaData (stored as Object to avoid module dependency)
    private List<String>   excludedPaths     = new ArrayList<>();
    private List<Handler>  beforeHandlers    = new ArrayList<>();
    private List<Handler>  afterHandlers     = new ArrayList<>();
@@ -569,15 +575,13 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Authenticate request using configured authenticator
+    ** Authenticate request using precedence logic:
+    ** 1. Explicit routeAuthenticator (if set) - highest priority
+    ** 2. Scoped auth provider via AuthScope.routeProvider (if routeMetaData available)
+    ** 3. Instance default provider - fallback
     *******************************************************************************/
    private void authenticateRequest(Context ctx) throws Exception
    {
-      if(authenticator == null)
-      {
-         return;
-      }
-
       if(qInstance == null)
       {
          LOG.error("QInstance is null in authenticateRequest", logPair("path", ctx.path()), logPair("spaPath", spaPath));
@@ -585,29 +589,84 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          return;
       }
 
-      RouteAuthenticatorInterface authenticatorInstance = QCodeLoader.getAdHoc(RouteAuthenticatorInterface.class, authenticator);
-
-      ////////////////////////////////////////////////
-      // Set up QContext for authentication check //
-      ////////////////////////////////////////////////
-      QContext.init(qInstance, new QSystemUserSession());
-
-      try
+      ///////////////////////////////////////////////////////////////////////////
+      // Precedence 1: Explicit routeAuthenticator (highest priority)        //
+      ///////////////////////////////////////////////////////////////////////////
+      if(authenticator != null)
       {
-         boolean authenticated = authenticatorInstance.authenticateRequest(ctx);
-         if(!authenticated)
+         RouteAuthenticatorInterface authenticatorInstance =
+            QCodeLoader.getAdHoc(RouteAuthenticatorInterface.class, authenticator);
+
+         ////////////////////////////////////////////////
+         // Set up QContext for authentication check //
+         ////////////////////////////////////////////////
+         QContext.init(qInstance, new QSystemUserSession());
+
+         try
          {
-            LOG.warn("Authentication failed for request", logPair("path", ctx.path()), logPair("spaPath", spaPath));
+            boolean authenticated = authenticatorInstance.authenticateRequest(ctx);
+            if(!authenticated)
+            {
+               LOG.warn("Authentication failed for request",
+                  logPair("path", ctx.path()),
+                  logPair("spaPath", spaPath),
+                  logPair("authType", "routeAuthenticator"));
+            }
+         }
+         catch(Exception e)
+         {
+            LOG.error("Exception in authentication handler", e,
+               logPair("path", ctx.path()),
+               logPair("spaPath", spaPath));
+            throw e;
+         }
+         finally
+         {
+            QContext.clear();
+         }
+         return;
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Precedence 2: Scoped auth provider (if routeMetaData available)    //
+      ///////////////////////////////////////////////////////////////////////////
+      if(routeMetaData != null)
+      {
+         try
+         {
+            AuthResolutionContext resolutionContext = new AuthResolutionContext()
+               .withRequestPath(ctx.path())
+               .withRouteMetaData(routeMetaData);
+
+            QAuthenticationMetaData authMetaData =
+               AuthenticationResolver.resolve(qInstance, resolutionContext);
+
+            // Use the resolved auth provider to set up session
+            QJavalinImplementation.setupSession(ctx, null, authMetaData);
+            return;
+         }
+         catch(QException e)
+         {
+            // If resolver fails, fall through to instance default
+            LOG.trace("No scoped auth provider found, falling back to instance default",
+               logPair("path", ctx.path()),
+               logPair("spaPath", spaPath));
          }
       }
-      catch(Exception e)
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Precedence 3: Instance default provider (fallback)                 //
+      ///////////////////////////////////////////////////////////////////////////
+      QAuthenticationMetaData defaultAuth = qInstance.getAuthentication();
+      if(defaultAuth != null)
       {
-         LOG.error("Exception in authentication handler", e, logPair("path", ctx.path()), logPair("spaPath", spaPath));
-         throw e;
+         QJavalinImplementation.setupSession(ctx, null, defaultAuth);
       }
-      finally
+      else
       {
-         QContext.clear();
+         LOG.warn("No authentication provider available for request",
+            logPair("path", ctx.path()),
+            logPair("spaPath", spaPath));
       }
    }
 
@@ -683,6 +742,19 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       return this;
    }
 
+
+
+   /*******************************************************************************
+    ** Fluent setter: Set the route provider metadata (for scoped auth resolution)
+    **
+    ** @param routeMetaData The JavalinRouteProviderMetaData instance
+    ** @return This provider for method chaining
+    *******************************************************************************/
+   public IsolatedSpaRouteProvider withRouteMetaData(Object routeMetaData)
+   {
+      this.routeMetaData = routeMetaData;
+      return this;
+   }
 
 
    /*******************************************************************************

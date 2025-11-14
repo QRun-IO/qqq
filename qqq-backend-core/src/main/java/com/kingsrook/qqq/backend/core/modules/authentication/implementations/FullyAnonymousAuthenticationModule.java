@@ -30,9 +30,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
-import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 
 
 /*******************************************************************************
@@ -46,9 +46,10 @@ import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 public class FullyAnonymousAuthenticationModule implements QAuthenticationModuleInterface
 {
    public static final String TEST_ACCESS_TOKEN = "b0a88d00-8439-48e8-8b48-e0ef40c40ed9";
-   public static final String SESSION_UUID_KEY = "sessionUUID";
+   public static final String SESSION_UUID_KEY  = "sessionUUID";
 
    private static final String SESSION_STATE_KEY_PREFIX = "FullyAnonymousSession:";
+
 
 
    /*******************************************************************************
@@ -61,6 +62,32 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
       // TODO: Could be configurable via metadata in the future
       return InMemoryStateProvider.getInstance();
    }
+
+
+
+   /*******************************************************************************
+    ** Persist session data to StateProvider.
+    **
+    ** <p>This should be called after modifying session values to ensure
+    ** they persist across requests.</p>
+    **
+    ** @param session The session to persist
+    *******************************************************************************/
+   public static void persistSession(QSession session)
+   {
+      if(session == null || session.getUuid() == null)
+      {
+         return;
+      }
+
+      SessionData sessionData = new SessionData();
+      sessionData.values = session.getValues();
+      sessionData.valuesForFrontend = session.getValuesForFrontend();
+
+      SimpleStateKey<String> stateKey = new SimpleStateKey<>(SESSION_STATE_KEY_PREFIX + session.getUuid());
+      getStateProvider().put(stateKey, sessionData);
+   }
+
 
 
    /*******************************************************************************
@@ -80,8 +107,8 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
       qUser.setIdReference("anonymous");
       qUser.setFullName("Anonymous");
 
-      QSession qSession = new QSession();
-      String sessionUuid = null;
+      QSession qSession    = new QSession();
+      String   sessionUuid = null;
 
       ///////////////////////////////////////////////////////////////////////////
       // Check for existing session UUID in context                          //
@@ -109,8 +136,8 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
          qSession.setIdReference(sessionUuid);
 
          // Try to restore session data from StateProvider
-         SimpleStateKey<String> stateKey = new SimpleStateKey<>(SESSION_STATE_KEY_PREFIX + sessionUuid);
-         Optional<SessionData> sessionData = getStateProvider().get(SessionData.class, stateKey);
+         SimpleStateKey<String> stateKey    = new SimpleStateKey<>(SESSION_STATE_KEY_PREFIX + sessionUuid);
+         Optional<SessionData>  sessionData = getStateProvider().get(SessionData.class, stateKey);
          if(sessionData.isPresent())
          {
             // Restore session values
@@ -140,41 +167,6 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
    }
 
 
-   /*******************************************************************************
-    ** Persist session data to StateProvider.
-    **
-    ** <p>This should be called after modifying session values to ensure
-    ** they persist across requests.</p>
-    **
-    ** @param session The session to persist
-    *******************************************************************************/
-   public static void persistSession(QSession session)
-   {
-      if(session == null || session.getUuid() == null)
-      {
-         return;
-      }
-
-      SessionData sessionData = new SessionData();
-      sessionData.values = session.getValues();
-      sessionData.valuesForFrontend = session.getValuesForFrontend();
-
-      SimpleStateKey<String> stateKey = new SimpleStateKey<>(SESSION_STATE_KEY_PREFIX + session.getUuid());
-      getStateProvider().put(stateKey, sessionData);
-   }
-
-
-   /*******************************************************************************
-    ** Data class for storing session state in StateProvider.
-    *******************************************************************************/
-   private static class SessionData implements Serializable
-   {
-      private static final long serialVersionUID = 1L;
-      Map<String, String> values;
-      Map<String, Serializable> valuesForFrontend;
-   }
-
-
 
    /*******************************************************************************
     **
@@ -186,6 +178,7 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
    }
 
 
+
    /*******************************************************************************
     ** Indicates that this module uses session ID cookies for session management.
     **
@@ -195,6 +188,18 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
    public boolean usesSessionIdCookie()
    {
       return true;
+   }
+
+
+
+   /*******************************************************************************
+    ** Data class for storing session state in StateProvider.
+    *******************************************************************************/
+   private static class SessionData implements Serializable
+   {
+      private static final long serialVersionUID = 1L;
+      Map<String, String>       values;
+      Map<String, Serializable> valuesForFrontend;
    }
 
 }

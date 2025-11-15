@@ -356,7 +356,8 @@ public class QJavalinImplementation
          QContext.init(qInstance, null);
          QSession session = authenticationModule.createSession(qInstance, authContext);
 
-         context.cookie(SESSION_UUID_COOKIE_NAME, session.getUuid(), SESSION_COOKIE_AGE);
+         // Set cookie with path="/" to make it accessible from all paths (/, /admin, /dashboard, etc.)
+         context.cookie(SESSION_UUID_COOKIE_NAME, session.getUuid(), SESSION_COOKIE_AGE, "/");
 
          Map<String, Serializable> resultMap = new HashMap<>();
          resultMap.put("uuid", session.getUuid());

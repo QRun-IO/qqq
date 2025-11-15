@@ -140,6 +140,7 @@ import com.kingsrook.qqq.middleware.javalin.misc.DownloadFileSupplementalAction;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
+import io.javalin.http.Cookie;
 import io.javalin.http.UploadedFile;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jetty.http.HttpStatus;
@@ -357,7 +358,10 @@ public class QJavalinImplementation
          QSession session = authenticationModule.createSession(qInstance, authContext);
 
          // Set cookie with path="/" to make it accessible from all paths (/, /admin, /dashboard, etc.)
-         context.cookie(SESSION_UUID_COOKIE_NAME, session.getUuid(), SESSION_COOKIE_AGE, "/");
+         Cookie sessionCookie = new Cookie(SESSION_UUID_COOKIE_NAME, session.getUuid());
+         sessionCookie.setMaxAge(SESSION_COOKIE_AGE);
+         sessionCookie.setPath("/");
+         context.cookie(sessionCookie);
 
          Map<String, Serializable> resultMap = new HashMap<>();
          resultMap.put("uuid", session.getUuid());

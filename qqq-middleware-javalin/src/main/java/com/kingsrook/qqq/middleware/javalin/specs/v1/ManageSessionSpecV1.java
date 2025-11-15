@@ -46,6 +46,7 @@ import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
+import io.javalin.http.Cookie;
 import io.javalin.http.HttpStatus;
 
 
@@ -98,7 +99,10 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       {
          String sessionUuid = result.getUuid();
          // Set cookie with path="/" to make it accessible from all paths (/, /admin, /dashboard, etc.)
-         context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME, sessionUuid, QJavalinImplementation.SESSION_COOKIE_AGE, "/");
+         Cookie sessionCookie = new Cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME, sessionUuid);
+         sessionCookie.setMaxAge(QJavalinImplementation.SESSION_COOKIE_AGE);
+         sessionCookie.setPath("/");
+         context.cookie(sessionCookie);
       }
       return (result);
    }

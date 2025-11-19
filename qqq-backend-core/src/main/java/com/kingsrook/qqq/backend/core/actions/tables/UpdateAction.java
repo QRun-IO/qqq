@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -69,6 +70,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLockFilters;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.NotFoundStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QErrorMessage;
@@ -162,7 +164,14 @@ public class UpdateAction
       ////////////////////////////////////
       // have the backend do the update //
       ////////////////////////////////////
+      QueryStat    queryStat    = QueryStatManager.newQueryStat(updateInput.getBackend(), table, null, UpdateAction.class.getSimpleName());
       UpdateOutput updateOutput = runUpdateInBackend(updateInput, updateInterface);
+
+      if(queryStat != null)
+      {
+         queryStat.setRecordCount(updateInput.getRecords().size());
+         QueryStatManager.getInstance().add(queryStat);
+      }
 
       if(updateOutput.getRecords() == null)
       {

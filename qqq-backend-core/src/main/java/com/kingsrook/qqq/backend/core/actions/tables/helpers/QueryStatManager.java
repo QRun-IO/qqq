@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.model.tables.QQQTableTableManager;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.PrefixedDefaultThreadFactory;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import org.apache.logging.log4j.Level;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -85,6 +86,9 @@ public class QueryStatManager
    private int jobInitialDelay  = 60;
    private int minMillisToStore = 0;
 
+   private Level emptyActionStackLogLevel = Level.OFF;
+
+   private List<QueryStatConsumerInterface> queryStatConsumers = new ArrayList<>();
 
 
    /*******************************************************************************
@@ -135,7 +139,7 @@ public class QueryStatManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QueryStat newQueryStat(QBackendMetaData backend, QTableMetaData table, QQueryFilter filter)
+   public static QueryStat newQueryStat(QBackendMetaData backend, QTableMetaData table, QQueryFilter filter, String backendActionName)
    {
       QueryStat queryStat = null;
 
@@ -145,6 +149,7 @@ public class QueryStatManager
          queryStat.setTableName(table.getName());
          queryStat.setQueryFilter(Objects.requireNonNullElse(filter, new QQueryFilter()));
          queryStat.setStartTimestamp(Instant.now());
+         queryStat.setBackendAction(backendActionName);
       }
 
       return (queryStat);
@@ -232,14 +237,6 @@ public class QueryStatManager
                queryStat.setFirstResultMillis((int) millis);
             }
 
-            if(queryStat.getFirstResultMillis() != null && queryStat.getFirstResultMillis() < minMillisToStore)
-            {
-               //////////////////////////////////////////////////////////////
-               // discard this record if it's under the min millis setting //
-               //////////////////////////////////////////////////////////////
-               return;
-            }
-
             if(queryStat.getSessionId() == null && QContext.getQSession() != null)
             {
                queryStat.setSessionId(QContext.getQSession().getUuid());
@@ -253,23 +250,43 @@ public class QueryStatManager
                }
                else
                {
-                  boolean   expected = false;
-                  Exception e        = new Exception("Unexpected empty action stack");
-                  for(StackTraceElement stackTraceElement : e.getStackTrace())
+                  if(!Objects.equals(emptyActionStackLogLevel, Level.OFF))
                   {
-                     String className = stackTraceElement.getClassName();
-                     if(className.contains(QueryStatManagerInsertJob.class.getName()))
+                     boolean   expected = false;
+                     Exception e        = new Exception("Unexpected empty action stack");
+                     for(StackTraceElement stackTraceElement : e.getStackTrace())
                      {
-                        expected = true;
-                        break;
+                        String className = stackTraceElement.getClassName();
+                        if(className.contains(QueryStatManagerInsertJob.class.getName()))
+                        {
+                           expected = true;
+                           break;
+                        }
+                     }
+
+                     if(!expected)
+                     {
+                        LOG.log(emptyActionStackLogLevel, e);
                      }
                   }
-
-                  if(!expected)
-                  {
-                     LOG.debug(e);
-                  }
                }
+            }
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // send the query stat through any consumers that exist                                                                       //
+            // note we do that regardless of the minMillisToStore - which only applies to this class's own storage of query stat records. //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            if(CollectionUtils.nullSafeHasContents(queryStatConsumers))
+            {
+               processConsumers(queryStat);
+            }
+
+            if(queryStat.getFirstResultMillis() != null && queryStat.getFirstResultMillis() < minMillisToStore)
+            {
+               //////////////////////////////////////////////////////////////
+               // discard this record if it's under the min millis setting //
+               //////////////////////////////////////////////////////////////
+               return;
             }
 
             synchronized(this)
@@ -281,6 +298,26 @@ public class QueryStatManager
       catch(Exception e)
       {
          LOG.debug("Error adding query stat", e);
+      }
+   }
+
+
+
+   /***************************************************************************
+    * send the query stat through any consumers that we have.
+    ***************************************************************************/
+   private void processConsumers(QueryStat queryStat)
+   {
+      for(QueryStatConsumerInterface queryStatConsumer : queryStatConsumers)
+      {
+         try
+         {
+            queryStatConsumer.accept(queryStat);
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error processing query stat consumer", e, logPair("consumerClass", queryStatConsumer.getClass().getName()));
+         }
       }
    }
 
@@ -600,5 +637,111 @@ public class QueryStatManager
       this.minMillisToStore = minMillisToStore;
       return (this);
    }
+
+
+   /***************************************************************************
+    * package-private accessor to current list of query stats.
+    * originally adding for tests to access.
+    ***************************************************************************/
+   List<QueryStat> getQueryStats()
+   {
+      return (queryStats);
+   }
+
+
+   /*******************************************************************************
+    * Getter for queryStatConsumers
+    * @see #withQueryStatConsumers(List)
+    *******************************************************************************/
+   public List<QueryStatConsumerInterface> getQueryStatConsumers()
+   {
+      return (this.queryStatConsumers);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for queryStatConsumers
+    * @see #withQueryStatConsumers(List)
+    *******************************************************************************/
+   public void setQueryStatConsumers(List<QueryStatConsumerInterface> queryStatConsumers)
+   {
+      this.queryStatConsumers = queryStatConsumers;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for queryStatConsumers
+    *
+    * @param queryStatConsumers
+    * List of instances of QueryStateConsumerInterface - e.g., classes that want to
+    * be invoked when a query stat object is being added to the manager here (e.g.,
+    * after its query is complete).
+    * @return this
+    *******************************************************************************/
+   public QueryStatManager withQueryStatConsumers(List<QueryStatConsumerInterface> queryStatConsumers)
+   {
+      this.queryStatConsumers = queryStatConsumers;
+      return (this);
+   }
+
+
+
+   /***************************************************************************
+    * add one query stat consumer to the list.
+    * @see #withQueryStatConsumers(List)
+    ***************************************************************************/
+   public void addQueryStatConsumer(QueryStatConsumerInterface queryStatConsumer)
+   {
+      if(this.queryStatConsumers == null)
+      {
+         this.queryStatConsumers = new ArrayList<>();
+      }
+      this.queryStatConsumers.add(queryStatConsumer);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for emptyActionStackLogLevel
+    * @see #withEmptyActionStackLogLevel(Level)
+    *******************************************************************************/
+   public Level getEmptyActionStackLogLevel()
+   {
+      return (this.emptyActionStackLogLevel);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for emptyActionStackLogLevel
+    * @see #withEmptyActionStackLogLevel(Level)
+    *******************************************************************************/
+   public void setEmptyActionStackLogLevel(Level emptyActionStackLogLevel)
+   {
+      this.emptyActionStackLogLevel = emptyActionStackLogLevel;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for emptyActionStackLogLevel
+    *
+    * @param emptyActionStackLogLevel
+    * log level to use to log out if there's ever a query stat being recorded when
+    * the actionStack in QContext is empty.
+    * <p>Originally that was thought to be an unexpected condition, so it used to
+    * always warn.  but, it turns out to be more common maybe, and not necessarily
+    * of any concern, so the default level is OFF - but it can be upgraded by setting
+    * this property.</p>
+    * @return this
+    *******************************************************************************/
+   public QueryStatManager withEmptyActionStackLogLevel(Level emptyActionStackLogLevel)
+   {
+      this.emptyActionStackLogLevel = emptyActionStackLogLevel;
+      return (this);
+   }
+
 
 }

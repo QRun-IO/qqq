@@ -337,6 +337,13 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       user.setIdReference(email);
       user.setFullName(name);
 
+      //////////////////////////////////////////////////////////////////////////
+      // Set idReference on session to match UUID for compatibility with     //
+      // ExecutorSessionUtils which expects getIdReference() to be non-null  //
+      // when usesSessionIdCookie() returns true                              //
+      //////////////////////////////////////////////////////////////////////////
+      session.setIdReference(session.getUuid());
+
       ////////////////////////////////////////////////////////////
       // todo wip - this needs to be much better standardized w/ fe //
       ////////////////////////////////////////////////////////////

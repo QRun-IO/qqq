@@ -143,7 +143,13 @@ public class ExecutorSessionUtils
          /////////////////////////////////////////////////////////////////////////////////
          if(authenticationModule.usesSessionIdCookie())
          {
-            context.cookie(SESSION_ID_COOKIE_NAME, session.getIdReference(), SESSION_COOKIE_AGE);
+            // Use getIdReference() if available, otherwise fallback to getUuid() for OAuth2 sessions
+            String sessionId = session.getIdReference();
+            if(sessionId == null)
+            {
+               sessionId = session.getUuid();
+            }
+            context.cookie(SESSION_ID_COOKIE_NAME, sessionId, SESSION_COOKIE_AGE);
          }
 
          setUserTimezoneOffsetMinutesInSession(context, session);

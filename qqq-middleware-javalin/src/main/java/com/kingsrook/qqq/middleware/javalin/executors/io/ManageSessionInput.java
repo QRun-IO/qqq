@@ -22,12 +22,19 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import java.util.Map;
+
+
 /*******************************************************************************
  **
  *******************************************************************************/
 public class ManageSessionInput extends AbstractMiddlewareInput
 {
    private String accessToken;
+   private String code;
+   private String codeVerifier;
+   private String redirectUri;
+   private Map<String, String> allFields;
 
 
 
@@ -57,6 +64,130 @@ public class ManageSessionInput extends AbstractMiddlewareInput
    public ManageSessionInput withAccessToken(String accessToken)
    {
       this.accessToken = accessToken;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for code
+    *******************************************************************************/
+   public String getCode()
+   {
+      return (this.code);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for code
+    *******************************************************************************/
+   public void setCode(String code)
+   {
+      this.code = code;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for code
+    *******************************************************************************/
+   public ManageSessionInput withCode(String code)
+   {
+      this.code = code;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for codeVerifier
+    *******************************************************************************/
+   public String getCodeVerifier()
+   {
+      return (this.codeVerifier);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for codeVerifier
+    *******************************************************************************/
+   public void setCodeVerifier(String codeVerifier)
+   {
+      this.codeVerifier = codeVerifier;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for codeVerifier
+    *******************************************************************************/
+   public ManageSessionInput withCodeVerifier(String codeVerifier)
+   {
+      this.codeVerifier = codeVerifier;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for redirectUri
+    *******************************************************************************/
+   public String getRedirectUri()
+   {
+      return (this.redirectUri);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for redirectUri
+    *******************************************************************************/
+   public void setRedirectUri(String redirectUri)
+   {
+      this.redirectUri = redirectUri;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for redirectUri
+    *******************************************************************************/
+   public ManageSessionInput withRedirectUri(String redirectUri)
+   {
+      this.redirectUri = redirectUri;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allFields
+    *******************************************************************************/
+   public Map<String, String> getAllFields()
+   {
+      return (this.allFields);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allFields
+    *******************************************************************************/
+   public void setAllFields(Map<String, String> allFields)
+   {
+      this.allFields = allFields;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allFields
+    *******************************************************************************/
+   public ManageSessionInput withAllFields(Map<String, String> allFields)
+   {
+      this.allFields = allFields;
       return (this);
    }
 

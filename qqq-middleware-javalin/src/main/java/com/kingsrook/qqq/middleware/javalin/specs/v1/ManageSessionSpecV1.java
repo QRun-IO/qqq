@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +49,7 @@ import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import io.javalin.http.Cookie;
 import io.javalin.http.HttpStatus;
+import org.json.JSONObject;
 
 
 /*******************************************************************************
@@ -125,6 +127,18 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
                   .withType(Type.STRING)
                   .withDescription("An access token from a downstream authentication provider (e.g., Auth0), to use as the basis for authentication and authorization.")
                )
+               .withProperty("code", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("An authorization code from an OAuth2 provider (for PKCE flow). Required along with codeVerifier and redirectUri.")
+               )
+               .withProperty("codeVerifier", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("The PKCE code verifier that was used to generate the code challenge (for OAuth2 PKCE flow).")
+               )
+               .withProperty("redirectUri", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("The redirect URI that was used in the OAuth2 authorization request (for OAuth2 PKCE flow).")
+               )
             )
          ));
    }
@@ -138,7 +152,32 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
    public ManageSessionInput buildInput(Context context) throws Exception
    {
       ManageSessionInput manageSessionInput = new ManageSessionInput();
+
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // Extract all fields from request body, similar to legacy endpoint - this allows any auth module     //
+      // to receive whatever fields it needs without needing explicit extraction here                        //
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      JSONObject requestBody = getRequestBodyAsJsonObject(context);
+      if(requestBody != null)
+      {
+         Map<String, String> allFields = new HashMap<>();
+         for(String key : requestBody.keySet())
+         {
+            Object value = requestBody.get(key);
+            if(value != null)
+            {
+               allFields.put(key, String.valueOf(value));
+            }
+         }
+         manageSessionInput.setAllFields(allFields);
+      }
+
+      // Also set individual fields for backward compatibility and explicit access
       manageSessionInput.setAccessToken(getRequestParam(context, "accessToken"));
+      manageSessionInput.setCode(getRequestParam(context, "code"));
+      manageSessionInput.setCodeVerifier(getRequestParam(context, "codeVerifier"));
+      manageSessionInput.setRedirectUri(getRequestParam(context, "redirectUri"));
+
       return (manageSessionInput);
    }
 

@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionOutputInterface;
 
@@ -52,8 +53,20 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(QContext.getQInstance().getAuthentication());
 
       Map<String, String> authContext = new HashMap<>();
-      authContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, input.getAccessToken());
       authContext.put(Auth0AuthenticationModule.DO_STORE_USER_SESSION_KEY, "true");
+
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // Loop over all fields from request body, similar to legacy endpoint - this allows any auth module    //
+      // to receive whatever fields it needs (accessToken, code, codeVerifier, redirectUri, etc.)          //
+      // without needing explicit extraction here                                                             //
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////
+      if(input.getAllFields() != null)
+      {
+         for(Map.Entry<String, String> entry : input.getAllFields().entrySet())
+         {
+            authContext.put(ValueUtils.getValueAsString(entry.getKey()), ValueUtils.getValueAsString(entry.getValue()));
+         }
+      }
 
       /////////////////////////////////
       // (try to) create the session //

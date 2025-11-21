@@ -1212,6 +1212,14 @@ public class QInstanceValidator
                      }
                   }
                }
+               case WIDGET ->
+               {
+                  String widgetName = ValueUtils.getValueAsString(adornmentValues.get(AdornmentType.WidgetValues.WIDGET_NAME));
+                  if(assertCondition(StringUtils.hasContent(widgetName), adornmentPrefix + "is missing a widget name, which is required."))
+                  {
+                     assertCondition(qInstance.getWidget(widgetName) != null, adornmentPrefix + "specifies an unrecognized widgetName [" + widgetName + "]");
+                  }
+               }
                default ->
                {
                   // no validations by default

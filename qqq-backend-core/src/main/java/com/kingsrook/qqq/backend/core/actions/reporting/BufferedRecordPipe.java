@@ -34,8 +34,8 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
  *******************************************************************************/
 public class BufferedRecordPipe extends RecordPipe
 {
-   private List<QRecord> buffer     = new ArrayList<>();
-   private Integer       bufferSize = 100;
+   protected List<QRecord> buffer     = new ArrayList<>();
+   private   Integer       bufferSize = 100;
 
 
 
@@ -69,9 +69,34 @@ public class BufferedRecordPipe extends RecordPipe
       buffer.add(record);
       if(buffer.size() >= bufferSize)
       {
-         addRecords(buffer);
-         buffer.clear();
+         flush();
       }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public void addRecords(List<QRecord> records) throws QException
+   {
+      buffer.addAll(records);
+      if(buffer.size() >= bufferSize)
+      {
+         flush();
+      }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   protected void flush() throws QException
+   {
+      super.addRecords(buffer);
+      buffer.clear();
    }
 
 
@@ -83,8 +108,7 @@ public class BufferedRecordPipe extends RecordPipe
    {
       if(!buffer.isEmpty())
       {
-         addRecords(buffer);
-         buffer.clear();
+         flush();
       }
    }
 }

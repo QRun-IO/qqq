@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.GetInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.GetActionCacheHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -54,6 +55,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldFilterBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -124,7 +126,19 @@ public class GetAction
       getInput = applyFieldBehaviors(getInput);
 
       getInterface.validateInput(getInput);
+
+      QueryStat queryStat = QueryStatManager.newQueryStat(getInput.getBackend(), table, null, GetAction.class.getSimpleName());
       getOutput = getInterface.execute(getInput);
+
+      if(!usingDefaultGetInterface && queryStat != null)
+      {
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         // if we did the get ourselves here, then record a query stat                             //
+         // (vs, the default GetInterface, it does a query, which would have stored its own stats) //
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         queryStat.setRecordCount(getOutput.getRecord() == null ? 0 : 1);
+         QueryStatManager.getInstance().add(queryStat);
+      }
 
       ////////////////////////////
       // handle cache use-cases //

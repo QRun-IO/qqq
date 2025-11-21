@@ -92,7 +92,7 @@ public class AggregateAction
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       aggregateInput.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, aggregateInput.getFilter(), Collections.emptySet()));
 
-      QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, aggregateInput.getFilter());
+      QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, aggregateInput.getFilter(), AggregateAction.class.getSimpleName());
 
       QBackendModuleDispatcher qBackendModuleDispatcher = new QBackendModuleDispatcher();
       QBackendModuleInterface  qModule                  = qBackendModuleDispatcher.getQBackendModule(aggregateInput.getBackend());
@@ -105,7 +105,11 @@ public class AggregateAction
       //  issue being, the signature there... it takes a list of QRecords, which aren't what we have...
       //  do we want to ... idk, refactor all these behavior deals?  hmm... maybe a new interface/ for ones that do reads?  not sure.
 
-      QueryStatManager.getInstance().add(queryStat);
+      if(queryStat != null)
+      {
+         queryStat.setRecordCount(aggregateOutput.getResults().size());
+         QueryStatManager.getInstance().add(queryStat);
+      }
 
       return aggregateOutput;
    }

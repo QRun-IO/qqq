@@ -947,7 +947,7 @@ public abstract class AbstractRDBMSAction
       {
          queryStat.setQueryText(sql.toString());
 
-         if(CollectionUtils.nullSafeHasContents(joinsContext.getQueryJoins()))
+         if(joinsContext != null && CollectionUtils.nullSafeHasContents(joinsContext.getQueryJoins()))
          {
             Set<String> joinTableNames = new HashSet<>();
             for(QueryJoin queryJoin : joinsContext.getQueryJoins())

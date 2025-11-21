@@ -39,6 +39,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -57,6 +58,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
 import com.kingsrook.qqq.backend.core.model.statusmessages.NotFoundStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
@@ -192,7 +194,14 @@ public class DeleteAction
       ////////////////////////////////////
       // have the backend do the delete //
       ////////////////////////////////////
+      QueryStat    queryStat    = QueryStatManager.newQueryStat(deleteInput.getBackend(), table, null, DeleteAction.class.getSimpleName());
       DeleteOutput deleteOutput = deleteInterface.execute(deleteInput);
+
+      if(queryStat != null)
+      {
+         queryStat.setRecordCount(deleteOutput.getDeletedRecordCount() + CollectionUtils.nonNullList(deleteOutput.getRecordsWithErrors()).size());
+         QueryStatManager.getInstance().add(queryStat);
+      }
 
       /////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // reset the input's list of primary keys -- callers may use & expect that to be what they had passed in!! //

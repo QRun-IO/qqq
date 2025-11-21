@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -62,6 +63,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
+import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.DuplicateKeyBadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QErrorMessage;
@@ -137,7 +139,14 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       //////////////////////////////////////////////////////
       // use the backend module to actually do the insert //
       //////////////////////////////////////////////////////
+      QueryStat    queryStat    = QueryStatManager.newQueryStat(insertInput.getBackend(), table, null, InsertAction.class.getSimpleName());
       InsertOutput insertOutput = runInsertInBackend(insertInput);
+
+      if(queryStat != null)
+      {
+         queryStat.setRecordCount(insertInput.getRecords().size());
+         QueryStatManager.getInstance().add(queryStat);
+      }
 
       if(insertOutput.getRecords() == null)
       {

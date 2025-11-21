@@ -189,7 +189,7 @@ public class QueryAction
       }
       else
       {
-         recordCount = queryOutput.getRecords().size();
+         recordCount = queryOutput.getRecords() == null ? 0 : queryOutput.getRecords().size();
       }
 
       queryStat.setRecordCount(recordCount);

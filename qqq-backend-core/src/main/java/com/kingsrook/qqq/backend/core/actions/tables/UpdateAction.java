@@ -169,7 +169,7 @@ public class UpdateAction
 
       if(queryStat != null)
       {
-         queryStat.setRecordCount(updateInput.getRecords().size());
+         queryStat.setRecordCount(updateInput.getRecords() == null ? 0 : updateInput.getRecords().size());
          QueryStatManager.getInstance().add(queryStat);
       }
 

@@ -163,7 +163,9 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
             value = scrubValue(table.getField(fieldName), value);
             rowValues.add(value);
          }
-         rowValues.add(record.getValue(table.getPrimaryKeyField()));
+         Serializable idValue = record.getValue(table.getPrimaryKeyField());
+         idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+         rowValues.add(idValue);
       }
 
       if(values.isEmpty())
@@ -246,7 +248,9 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          //////////////////////////////////////////////////////////////////////
          for(QRecord record : page)
          {
-            params.add(record.getValue(table.getPrimaryKeyField()));
+            Serializable idValue = record.getValue(table.getPrimaryKeyField());
+            idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+            params.add(idValue);
          }
 
          Long mark = System.currentTimeMillis();

@@ -87,7 +87,8 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
 
    /***************************************************************************
     ** Override parameter binding for PostgreSQL-specific handling.
-    ** PostgreSQL JDBC driver requires explicit handling of temporal types.
+    ** PostgreSQL JDBC driver requires explicit handling of temporal types
+    ** and is stricter about type matching than other databases.
     **
     ** For null values, PostgreSQL needs Types.OTHER (not Types.CHAR) so it
     ** can infer the correct type from the column definition.
@@ -110,6 +111,31 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
          // type mismatch errors.                                          //
          ////////////////////////////////////////////////////////////////////
          statement.setNull(index, Types.OTHER);
+         return 1;
+      }
+      else if(value instanceof Integer i)
+      {
+         statement.setInt(index, i);
+         return 1;
+      }
+      else if(value instanceof Short s)
+      {
+         statement.setShort(index, s);
+         return 1;
+      }
+      else if(value instanceof Long l)
+      {
+         statement.setLong(index, l);
+         return 1;
+      }
+      else if(value instanceof Double d)
+      {
+         statement.setDouble(index, d);
+         return 1;
+      }
+      else if(value instanceof Float f)
+      {
+         statement.setFloat(index, f);
          return 1;
       }
       else if(value instanceof Instant instant)
@@ -143,10 +169,105 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
 
 
    /***************************************************************************
-    ** PostgreSQL doesn't require identifier quoting for standard identifiers.
-    ** Return empty string to not quote identifiers.
+    ** Override bindParam for Integer to use Types.OTHER for nulls.
+    ** This allows PostgreSQL to properly infer types in all contexts.
     **
-    ** @return empty string (no quoting)
+    ** @param statement the prepared statement
+    ** @param index the parameter index
+    ** @param value the integer value (may be null)
+    ** @throws SQLException if a database error occurs
+    ***************************************************************************/
+   @Override
+   protected void bindParam(PreparedStatement statement, int index, Integer value) throws SQLException
+   {
+      if(value == null)
+      {
+         statement.setNull(index, Types.OTHER);
+      }
+      else
+      {
+         statement.setInt(index, value);
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Override bindParam for Long to use Types.OTHER for nulls.
+    ** This allows PostgreSQL to properly infer types in all contexts.
+    **
+    ** @param statement the prepared statement
+    ** @param index the parameter index
+    ** @param value the long value (may be null)
+    ** @throws SQLException if a database error occurs
+    ***************************************************************************/
+   @Override
+   protected void bindParam(PreparedStatement statement, int index, Long value) throws SQLException
+   {
+      if(value == null)
+      {
+         statement.setNull(index, Types.OTHER);
+      }
+      else
+      {
+         statement.setLong(index, value);
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Override bindParam for Double to use Types.OTHER for nulls.
+    ** This allows PostgreSQL to properly infer types in all contexts.
+    **
+    ** @param statement the prepared statement
+    ** @param index the parameter index
+    ** @param value the double value (may be null)
+    ** @throws SQLException if a database error occurs
+    ***************************************************************************/
+   @Override
+   protected void bindParam(PreparedStatement statement, int index, Double value) throws SQLException
+   {
+      if(value == null)
+      {
+         statement.setNull(index, Types.OTHER);
+      }
+      else
+      {
+         statement.setDouble(index, value);
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Override bindParam for String to use Types.OTHER for nulls.
+    ** This allows PostgreSQL to properly infer types in all contexts.
+    **
+    ** @param statement the prepared statement
+    ** @param index the parameter index
+    ** @param value the string value (may be null)
+    ** @throws SQLException if a database error occurs
+    ***************************************************************************/
+   @Override
+   protected void bindParam(PreparedStatement statement, int index, String value) throws SQLException
+   {
+      if(value == null)
+      {
+         statement.setNull(index, Types.OTHER);
+      }
+      else
+      {
+         statement.setString(index, value);
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** PostgreSQL uses double quotes for identifier quoting.
+    **
+    ** @return double quote string for identifier quoting
     ***************************************************************************/
    @Override
    public String getIdentifierQuoteString()

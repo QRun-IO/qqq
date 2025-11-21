@@ -50,6 +50,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.AbstractWidgetMet
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -97,6 +98,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * editing.  Requires an orderByFieldName to be specified.</dd>
  * <dt>orderByFieldName</dt><dd>if using mayReorderRows = true, then this field receives
  * the ordering - e.g., 1, 2, 3.</dd>
+ * <dt>requiresFormWrapper</dt><dd>In material dashboard, if an error is shown
+ * referencing a FormikContext, set this property to true to provide one.</dd>
  * </dl>
  *******************************************************************************/
 public class RowBuilderWidgetRenderer extends AbstractWidgetRenderer
@@ -253,6 +256,18 @@ public class RowBuilderWidgetRenderer extends AbstractWidgetRenderer
 
 
       /*******************************************************************************
+       * set if the row builder form requires a "wrapper" form to be output in the
+       * material dashboard frontend (use if FormikContext error appears)
+       *******************************************************************************/
+      public Builder withRequiresFormWrapper(Boolean requiresFormWrapper)
+      {
+         widgetMetaData.withDefaultValue("requiresFormWrapper", requiresFormWrapper);
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
        * set the fieldName that the records are written to when data comes out of the
        * widget, e.g., into process values, or a parent-record.
        *******************************************************************************/
@@ -394,6 +409,7 @@ public class RowBuilderWidgetRenderer extends AbstractWidgetRenderer
          Map<String, Serializable> defaultValues = widgetMetaData.getDefaultValues();
 
          Set<String> fieldNames = new HashSet<>();
+         ArrayList<QFrontendFieldMetaData> frontendFields = new ArrayList<>();
          try
          {
             List<QFieldMetaData> fields = (List<QFieldMetaData>) defaultValues.get("fields");
@@ -408,6 +424,8 @@ public class RowBuilderWidgetRenderer extends AbstractWidgetRenderer
                   }
                   fieldNames.add(fieldMetaData.getName());
                   qInstanceValidator.validateField(qInstance, prefix + " Field " + fieldMetaData.getName() + ": ", Optional.empty(), fieldMetaData);
+
+                  frontendFields.add(new QFrontendFieldMetaData(fieldMetaData));
                }
             }
          }
@@ -415,6 +433,8 @@ public class RowBuilderWidgetRenderer extends AbstractWidgetRenderer
          {
             qInstanceValidator.getErrors().add(prefix + "Error validating fields: " + e.getMessage());
          }
+
+         widgetMetaData.withDefaultValue("frontendFields", frontendFields);
 
          //////////////////////////////
          // validate table use-cases //

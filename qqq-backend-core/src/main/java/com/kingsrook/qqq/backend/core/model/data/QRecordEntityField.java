@@ -142,6 +142,11 @@ public class QRecordEntityField
             return (ValueUtils.getValueAsInteger(value));
          }
 
+         if(type.equals(Long.class) || type.equals(long.class))
+         {
+            return (ValueUtils.getValueAsLong(value));
+         }
+
          if(type.equals(Boolean.class) || type.equals(boolean.class))
          {
             return (ValueUtils.getValueAsBoolean(value));

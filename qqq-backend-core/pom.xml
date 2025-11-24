@@ -43,7 +43,7 @@
          <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>bom</artifactId>
-            <version>2.17.259</version>
+            <version>2.39.2</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
@@ -65,7 +65,7 @@
       <dependency>
          <groupId>com.amazonaws</groupId>
          <artifactId>aws-java-sdk-secretsmanager</artifactId>
-         <version>1.12.385</version>
+         <version>1.12.793</version>
       </dependency>
       <dependency>
          <groupId>com.ibm.icu</groupId>
@@ -75,17 +75,17 @@
       <dependency>
          <groupId>com.fasterxml.jackson.core</groupId>
          <artifactId>jackson-databind</artifactId>
-         <version>2.14.0</version>
+         <version>2.20.1</version>
       </dependency>
       <dependency>
          <groupId>com.fasterxml.jackson.datatype</groupId>
          <artifactId>jackson-datatype-jsr310</artifactId>
-         <version>2.14.0</version>
+         <version>2.20.1</version>
       </dependency>
       <dependency>
          <groupId>com.fasterxml.jackson.dataformat</groupId>
          <artifactId>jackson-dataformat-yaml</artifactId>
-         <version>2.14.0</version>
+         <version>2.20.1</version>
       </dependency>
       <dependency>
          <groupId>org.json</groupId>
@@ -95,7 +95,7 @@
       <dependency>
          <groupId>org.apache.commons</groupId>
          <artifactId>commons-csv</artifactId>
-         <version>1.8</version>
+         <version>1.14.1</version>
       </dependency>
       <dependency>
          <!-- generates Method objects from method references, used initially by QFieldMetaData to make fields from getter method refs -->
@@ -106,56 +106,56 @@
       <dependency>
          <groupId>org.dhatim</groupId>
          <artifactId>fastexcel</artifactId>
-         <version>0.18.4</version>
+         <version>0.19.0</version>
       </dependency>
       <dependency>
          <groupId>org.dhatim</groupId>
          <artifactId>fastexcel-reader</artifactId>
-         <version>0.18.4</version>
+         <version>0.19.0</version>
       </dependency>
       <dependency>
          <groupId>org.apache.poi</groupId>
          <artifactId>poi</artifactId>
-         <version>5.2.5</version>
+         <version>5.5.0</version>
       </dependency>
       <dependency>
          <groupId>org.apache.poi</groupId>
          <artifactId>poi-ooxml</artifactId>
-         <version>5.2.5</version>
+         <version>5.5.0</version>
       </dependency>
       <dependency>
          <groupId>org.commonmark</groupId>
          <artifactId>commonmark</artifactId>
-         <version>0.25.0</version>
+         <version>0.27.0</version>
       </dependency>
 
       <!-- adding to help FastExcel -->
       <dependency>
          <groupId>commons-io</groupId>
          <artifactId>commons-io</artifactId>
-         <version>2.16.0</version>
+         <version>2.21.0</version>
       </dependency>
 
       <dependency>
          <groupId>com.nimbusds</groupId>
          <artifactId>oauth2-oidc-sdk</artifactId>
-         <version>11.23.1</version>
+         <version>11.30.1</version>
       </dependency>
 
       <dependency>
          <groupId>com.auth0</groupId>
          <artifactId>auth0</artifactId>
-         <version>2.18.0</version>
+         <version>2.26.0</version>
       </dependency>
       <dependency>
          <groupId>com.auth0</groupId>
          <artifactId>java-jwt</artifactId>
-         <version>4.4.0</version>
+         <version>4.5.0</version>
       </dependency>
       <dependency>
          <groupId>com.auth0</groupId>
          <artifactId>jwks-rsa</artifactId>
-         <version>0.22.1</version>
+         <version>0.23.0</version>
       </dependency>
       <dependency>
          <groupId>io.github.cdimascio</groupId>
@@ -165,14 +165,14 @@
       <dependency>
          <groupId>org.apache.velocity</groupId>
          <artifactId>velocity-engine-core</artifactId>
-         <version>2.3</version>
+         <version>2.4.1</version>
       </dependency>
 
       <!-- the next 3 deps are for html to pdf -->
       <dependency>
          <groupId>org.jsoup</groupId>
          <artifactId>jsoup</artifactId>
-         <version>1.15.3</version>
+         <version>1.21.2</version>
       </dependency>
       <dependency>
          <groupId>com.openhtmltopdf</groupId>
@@ -194,7 +194,7 @@
       <dependency>
          <groupId>com.google.auth</groupId>
          <artifactId>google-auth-library-oauth2-http</artifactId>
-         <version>1.11.0</version>
+         <version>1.40.0</version>
       </dependency>
       <dependency>
          <groupId>com.google.apis</groupId>
@@ -205,46 +205,46 @@
       <dependency>
          <groupId>com.amazonaws</groupId>
          <artifactId>aws-java-sdk-sqs</artifactId>
-         <version>1.12.321</version>
+         <version>1.12.793</version>
       </dependency>
 
       <dependency>
          <groupId>com.amazonaws</groupId>
          <artifactId>aws-java-sdk-ses</artifactId>
-         <version>1.12.705</version>
+         <version>1.12.793</version>
       </dependency>
 
       <dependency>
          <groupId>cloud.localstack</groupId>
          <artifactId>localstack-utils</artifactId>
-         <version>0.2.20</version>
+         <version>0.2.23</version>
          <scope>test</scope>
       </dependency>
 
       <dependency>
          <groupId>org.quartz-scheduler</groupId>
          <artifactId>quartz</artifactId>
-         <version>2.3.2</version>
+         <version>2.5.1</version>
       </dependency>
 
       <!-- bring in a newer version of this lib, which quartz transitively loads through c3p0 -->
       <dependency>
          <groupId>com.mchange</groupId>
          <artifactId>mchange-commons-java</artifactId>
-         <version>0.3.0</version>
+         <version>0.3.2</version>
       </dependency>
 
       <!-- Many of the deps we bring in use slf4j.  This dep maps slf4j to our logger, log4j -->
       <dependency>
          <groupId>org.apache.logging.log4j</groupId>
          <artifactId>log4j-slf4j-impl</artifactId>
-         <version>2.23.0</version>
+         <version>2.25.2</version>
       </dependency>
 
       <dependency>
          <groupId>com.sun.mail</groupId>
          <artifactId>jakarta.mail</artifactId>
-         <version>2.0.1</version>
+         <version>2.0.2</version>
       </dependency>
 
       <!-- Common deps for all qqq modules -->

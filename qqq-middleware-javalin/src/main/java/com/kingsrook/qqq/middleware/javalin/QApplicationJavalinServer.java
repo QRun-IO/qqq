@@ -189,9 +189,31 @@ public class QApplicationJavalinServer
             }
          }
 
-         /////////////////////////////////////////////////////////////////////////
-         // application API routes (from ApiInstanceMetaData in the QInstance) //
-         /////////////////////////////////////////////////////////////////////////
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         // application API routes (from ApiInstanceMetaData in the QInstance)                    //
+         //                                                                                       //
+         // WHY REFLECTION IS REQUIRED HERE:                                                      //
+         //                                                                                       //
+         // 1. CIRCULAR DEPENDENCY PREVENTION:                                                    //
+         // qqq-middleware-api depends on qqq-middleware-javalin (for Javalin types).             //
+         // If qqq-middleware-javalin also depended on qqq-middleware-api, Maven would fail       //
+         // to build due to circular dependency. Reflection breaks this cycle by allowing         //
+         // runtime discovery without compile-time dependency.                                    //
+         //                                                                                       //
+         // 2. OPTIONAL DEPENDENCY PATTERN:                                                       //
+         // The qqq-middleware-api module is OPTIONAL. Applications can choose to include it      //
+         // or not based on whether they need custom API functionality. Using direct imports      //
+         // would force ALL applications to include qqq-middleware-api even if they don't use it. //
+         //                                                                                       //
+         // By using reflection with Class.forName():                                             //
+         // - Applications WITHOUT the API module: Code gracefully skips (ClassNotFoundException) //
+         // - Applications WITH the API module: Code dynamically loads and registers APIs         //
+         // - No circular dependency between qqq-middleware-javalin ↔ qqq-middleware-api          //
+         // - Core middleware remains lightweight and modular                                     //
+         //                                                                                       //
+         // This is a classic "optional plugin" pattern commonly used in extensible frameworks    //
+         // (e.g., SLF4J, JDBC drivers, servlet containers).                                      //
+         ///////////////////////////////////////////////////////////////////////////////////////////
          try
          {
             Class<?> apiContainerClass = Class.forName("com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer");

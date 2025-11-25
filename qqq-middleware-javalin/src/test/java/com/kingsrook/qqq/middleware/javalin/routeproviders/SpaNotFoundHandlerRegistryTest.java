@@ -21,13 +21,15 @@
 
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
+import java.lang.reflect.Method;
 import io.javalin.Javalin;
-import io.javalin.http.Context;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -132,6 +134,187 @@ class SpaNotFoundHandlerRegistryTest
       {
          service.stop();
       }
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // Path Matching Tests (using reflection to test private method)             //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private isPathUnderPrefix method via reflection
+    *******************************************************************************/
+   private boolean callIsPathUnderPrefix(String requestPath, String pathPrefix) throws Exception
+   {
+      Method method = SpaNotFoundHandlerRegistry.class.getDeclaredMethod("isPathUnderPrefix", String.class, String.class);
+      method.setAccessible(true);
+      return (Boolean) method.invoke(null, requestPath, pathPrefix);
+   }
+
+
+   /*******************************************************************************
+    ** Test exact path match
+    *******************************************************************************/
+   @Test
+   void testPathMatching_ExactMatch() throws Exception
+   {
+      assertTrue(callIsPathUnderPrefix("/admin", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/api", "/api"));
+      assertTrue(callIsPathUnderPrefix("/customer", "/customer"));
+      assertTrue(callIsPathUnderPrefix("/", "/"));
+   }
+
+
+   /*******************************************************************************
+    ** Test sub-path matching
+    *******************************************************************************/
+   @Test
+   void testPathMatching_SubPath() throws Exception
+   {
+      assertTrue(callIsPathUnderPrefix("/admin/users", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/admin/users/123", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/api/v1/data", "/api"));
+      assertTrue(callIsPathUnderPrefix("/customer/settings", "/customer"));
+   }
+
+
+   /*******************************************************************************
+    ** Test deep nested sub-paths
+    *******************************************************************************/
+   @Test
+   void testPathMatching_DeepNested() throws Exception
+   {
+      assertTrue(callIsPathUnderPrefix("/admin/portal/settings/users/123/edit", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/api/v1/users/123/profile/settings", "/api"));
+   }
+
+
+   /*******************************************************************************
+    ** Test prefix collision prevention (critical test)
+    *******************************************************************************/
+   @Test
+   void testPathMatching_NoPrefixCollision() throws Exception
+   {
+      /////////////////////////////////////////////////////////////////////
+      // These should NOT match - different paths despite shared prefix  //
+      /////////////////////////////////////////////////////////////////////
+      assertFalse(callIsPathUnderPrefix("/administrator", "/admin"));
+      assertFalse(callIsPathUnderPrefix("/admin-panel", "/admin"));
+      assertFalse(callIsPathUnderPrefix("/admins", "/admin"));
+      assertFalse(callIsPathUnderPrefix("/api-docs", "/api"));
+      assertFalse(callIsPathUnderPrefix("/api2", "/api"));
+      assertFalse(callIsPathUnderPrefix("/customer-portal", "/customer"));
+   }
+
+
+   /*******************************************************************************
+    ** Test with query parameters
+    *******************************************************************************/
+   @Test
+   void testPathMatching_QueryParameters() throws Exception
+   {
+      assertTrue(callIsPathUnderPrefix("/admin?tab=users", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/admin/users?id=123", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/api/data?format=json&limit=10", "/api"));
+   }
+
+
+   /*******************************************************************************
+    ** Test with trailing slashes
+    *******************************************************************************/
+   @Test
+   void testPathMatching_TrailingSlash() throws Exception
+   {
+      assertTrue(callIsPathUnderPrefix("/admin/", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/admin/users/", "/admin"));
+      assertTrue(callIsPathUnderPrefix("/api/", "/api"));
+   }
+
+
+   /*******************************************************************************
+    ** Test paths that should not match
+    *******************************************************************************/
+   @Test
+   void testPathMatching_NoMatch() throws Exception
+   {
+      assertFalse(callIsPathUnderPrefix("/users", "/admin"));
+      assertFalse(callIsPathUnderPrefix("/dashboard", "/admin"));
+      assertFalse(callIsPathUnderPrefix("/products/123", "/admin"));
+      assertFalse(callIsPathUnderPrefix("/admin", "/customer"));
+   }
+
+
+   /*******************************************************************************
+    ** Test root path behavior
+    *******************************************************************************/
+   @Test
+   void testPathMatching_RootPath() throws Exception
+   {
+      /////////////////////////////////////////////////////////////////////
+      // Root path should match itself                                   //
+      /////////////////////////////////////////////////////////////////////
+      assertTrue(callIsPathUnderPrefix("/", "/"));
+
+      /////////////////////////////////////////////////////////////////////
+      // Root path prefix matches EVERYTHING - this is the special case //
+      // that allows "/" SPA to be a catch-all fallback                  //
+      /////////////////////////////////////////////////////////////////////
+      assertTrue(callIsPathUnderPrefix("/admin", "/"));
+      assertTrue(callIsPathUnderPrefix("/anything", "/"));
+      assertTrue(callIsPathUnderPrefix("/deep/nested/path", "/"));
+   }
+
+
+   /*******************************************************************************
+    ** Test similar prefixes
+    *******************************************************************************/
+   @Test
+   void testPathMatching_SimilarPrefixes() throws Exception
+   {
+      /////////////////////////////////////////////////////////////////////
+      // Test with nested/similar paths                                  //
+      /////////////////////////////////////////////////////////////////////
+      assertTrue(callIsPathUnderPrefix("/api/v1", "/api"));
+      assertTrue(callIsPathUnderPrefix("/api/v1/users", "/api"));
+      assertTrue(callIsPathUnderPrefix("/api/v1", "/api/v1"));
+      assertFalse(callIsPathUnderPrefix("/api/v2", "/api/v1"));
+   }
+
+
+   /*******************************************************************************
+    ** Test empty and edge case paths
+    *******************************************************************************/
+   @Test
+   void testPathMatching_EdgeCases() throws Exception
+   {
+      /////////////////////////////////////////////////////////////////////
+      // Single character paths                                          //
+      /////////////////////////////////////////////////////////////////////
+      assertTrue(callIsPathUnderPrefix("/a", "/a"));
+      assertTrue(callIsPathUnderPrefix("/a/b", "/a"));
+      assertFalse(callIsPathUnderPrefix("/ab", "/a"));
+
+      /////////////////////////////////////////////////////////////////////
+      // Numbers in paths                                                //
+      /////////////////////////////////////////////////////////////////////
+      assertTrue(callIsPathUnderPrefix("/v1", "/v1"));
+      assertTrue(callIsPathUnderPrefix("/v1/users", "/v1"));
+      assertFalse(callIsPathUnderPrefix("/v12", "/v1"));
+   }
+
+
+   /*******************************************************************************
+    ** Test case sensitivity
+    *******************************************************************************/
+   @Test
+   void testPathMatching_CaseSensitive() throws Exception
+   {
+      /////////////////////////////////////////////////////////////////////
+      // URLs are case-sensitive per HTTP spec                           //
+      /////////////////////////////////////////////////////////////////////
+      assertTrue(callIsPathUnderPrefix("/Admin", "/Admin"));
+      assertFalse(callIsPathUnderPrefix("/Admin", "/admin"));
+      assertFalse(callIsPathUnderPrefix("/admin", "/Admin"));
    }
 
 }

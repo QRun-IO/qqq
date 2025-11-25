@@ -178,33 +178,125 @@ public class SpaNotFoundHandlerRegistry
 
 
    /*******************************************************************************
-    ** Check if a request path matches a SPA path
+    ** Check if a request path should be handled by a given SPA.
     **
-    ** Rules:
-    ** - Root path ("/") matches everything
-    ** - Other paths must start with the SPA path
-    ** - /admin matches /admin/anything but not /administrator
+    ** Used by the global 404 handler to route requests to the appropriate SPA
+    ** provider. The registry maintains multiple SPAs (e.g., /admin, /customer, /)
+    ** and this method determines which SPA should handle a 404 for a given path.
+    **
+    ** SPECIAL CASE - ROOT PATH:
+    ** The root path ("/") is a catch-all that matches EVERYTHING. This allows
+    ** a root SPA to serve as a fallback for any path not handled by other SPAs.
+    **
+    ** BOUNDARY CHECKING:
+    ** Uses proper prefix matching to prevent false matches like "/administrator"
+    ** matching SPA path "/admin". This is critical for correct routing.
+    **
+    ** Examples:
+    **   spaPath="/", requestPath="/anything"          → TRUE (root catches all)
+    **   spaPath="/admin", requestPath="/admin"        → TRUE (exact match)
+    **   spaPath="/admin", requestPath="/admin/users"  → TRUE (sub-path)
+    **   spaPath="/admin", requestPath="/administrator"→ FALSE (different path)
+    **
+    ** @param requestPath The incoming 404 request path
+    ** @param spaPath The registered SPA's base path
+    ** @return true if this SPA should handle the 404 for this request
     *******************************************************************************/
    private boolean pathMatches(String requestPath, String spaPath)
    {
+      /////////////////////////////////////////////////////////
+      // Root path is special - it matches EVERYTHING       //
+      // This allows "/" SPA to be a catch-all fallback     //
+      /////////////////////////////////////////////////////////
       if("/".equals(spaPath))
       {
-         // Root path matches everything
          return true;
       }
 
-      // Path must start with spaPath and be followed by / or be exact match
-      if(requestPath.equals(spaPath))
+      /////////////////////////////////////////////////////////
+      // For non-root SPAs, check if request is under SPA  //
+      // Uses boundary checking to prevent false matches    //
+      /////////////////////////////////////////////////////////
+      return isPathUnderPrefix(requestPath, spaPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Check if a request path is under a given path prefix.
+    **
+    ** This is the correct way to check path prefixes with boundary checking
+    ** to prevent false matches like "/administrator" matching "/admin".
+    **
+    ** Handles query parameters and hash fragments by stripping them before
+    ** comparison, so "/admin?tab=users" correctly matches prefix "/admin".
+    **
+    ** SPECIAL CASE - ROOT PATH:
+    ** The root path "/" matches everything when used as a prefix. This allows
+    ** root-level exclusions or catch-all behaviors.
+    **
+    ** RULES:
+    ** 1. Exact match: "/admin" matches "/admin"
+    ** 2. Sub-path: "/admin/users" matches prefix "/admin"
+    ** 3. Boundary check: "/administrator" does NOT match prefix "/admin"
+    ** 4. Query params ignored: "/admin?tab=users" matches prefix "/admin"
+    ** 5. Root matches all: anything matches prefix "/"
+    **
+    ** This method ensures consistent path matching behavior across the routing
+    ** system. Any code that needs to check "is path X under path Y" should use
+    ** this logic to avoid prefix collision bugs.
+    **
+    ** Examples:
+    **   isPathUnderPrefix("/admin", "/admin")              → TRUE (exact)
+    **   isPathUnderPrefix("/admin/users", "/admin")        → TRUE (sub-path)
+    **   isPathUnderPrefix("/admin?tab=users", "/admin")    → TRUE (query param ignored)
+    **   isPathUnderPrefix("/administrator", "/admin")      → FALSE (different path)
+    **   isPathUnderPrefix("/api-docs", "/api")             → FALSE (different path)
+    **   isPathUnderPrefix("/anything", "/")                → TRUE (root matches all)
+    **
+    ** @param requestPath The request path to check (may include query params/hash)
+    ** @param pathPrefix The path prefix to match against
+    ** @return true if requestPath is equal to or under pathPrefix
+    *******************************************************************************/
+   private static boolean isPathUnderPrefix(String requestPath, String pathPrefix)
+   {
+      ///////////////////////////////////////////////////
+      // Special case: root path matches everything   //
+      ///////////////////////////////////////////////////
+      if("/".equals(pathPrefix))
       {
          return true;
       }
 
-      if(requestPath.startsWith(spaPath + "/"))
+      ///////////////////////////////////////////////////
+      // Normalize request path: strip query params   //
+      // and hash fragments for comparison            //
+      ///////////////////////////////////////////////////
+      String normalizedPath = requestPath;
+      int queryIndex = normalizedPath.indexOf('?');
+      if(queryIndex != -1)
+      {
+         normalizedPath = normalizedPath.substring(0, queryIndex);
+      }
+      int hashIndex = normalizedPath.indexOf('#');
+      if(hashIndex != -1)
+      {
+         normalizedPath = normalizedPath.substring(0, hashIndex);
+      }
+
+      ////////////////////////////
+      // Exact match case       //
+      ////////////////////////////
+      if(normalizedPath.equals(pathPrefix))
       {
          return true;
       }
 
-      return false;
+      /////////////////////////////////////////////////////////////
+      // Sub-path match with boundary check                     //
+      // Ensures "/administrator" doesn't match prefix "/admin" //
+      /////////////////////////////////////////////////////////////
+      return normalizedPath.startsWith(pathPrefix + "/");
    }
 
 

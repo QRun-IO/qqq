@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 
+import java.lang.reflect.Method;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -685,6 +686,186 @@ class IsolatedSpaRouteProviderTest
          index += substring.length();
       }
       return count;
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // Path Prefix Matching Tests                                                //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private isExcludedPath method via reflection
+    *******************************************************************************/
+   private boolean callIsExcludedPath(IsolatedSpaRouteProvider provider, String path) throws Exception
+   {
+      Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("isExcludedPath", String.class);
+      method.setAccessible(true);
+      return (Boolean) method.invoke(provider, path);
+   }
+
+
+   /*******************************************************************************
+    ** Test exact path match
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_ExactMatch() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/admin", "/api", "/customer"));
+
+      assertTrue(callIsExcludedPath(provider, "/admin"));
+      assertTrue(callIsExcludedPath(provider, "/api"));
+      assertTrue(callIsExcludedPath(provider, "/customer"));
+   }
+
+
+   /*******************************************************************************
+    ** Test sub-path matching
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_SubPath() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/admin", "/api"));
+
+      assertTrue(callIsExcludedPath(provider, "/admin/users"));
+      assertTrue(callIsExcludedPath(provider, "/admin/users/123"));
+      assertTrue(callIsExcludedPath(provider, "/api/v1/users"));
+      assertTrue(callIsExcludedPath(provider, "/api/data/fetch"));
+   }
+
+
+   /*******************************************************************************
+    ** Test that prefix collision is prevented (the bug we're fixing)
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_NoPrefixCollision() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/admin", "/api"));
+
+      /////////////////////////////////////////////////////////////////////
+      // These should NOT be excluded - they're different paths          //
+      /////////////////////////////////////////////////////////////////////
+      assertFalse(callIsExcludedPath(provider, "/administrator"));
+      assertFalse(callIsExcludedPath(provider, "/admin-panel"));
+      assertFalse(callIsExcludedPath(provider, "/api-docs"));
+      assertFalse(callIsExcludedPath(provider, "/api2"));
+      assertFalse(callIsExcludedPath(provider, "/admins"));
+   }
+
+
+   /*******************************************************************************
+    ** Test paths that should not be excluded
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_NotExcluded() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/admin", "/api"));
+
+      assertFalse(callIsExcludedPath(provider, "/"));
+      assertFalse(callIsExcludedPath(provider, "/users"));
+      assertFalse(callIsExcludedPath(provider, "/dashboard"));
+      assertFalse(callIsExcludedPath(provider, "/products/123"));
+   }
+
+
+   /*******************************************************************************
+    ** Test with query parameters
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_WithQueryParameters() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/admin", "/api"));
+
+      assertTrue(callIsExcludedPath(provider, "/admin?tab=users"));
+      assertTrue(callIsExcludedPath(provider, "/api/users?id=123"));
+      assertTrue(callIsExcludedPath(provider, "/admin/settings?view=profile"));
+   }
+
+
+   /*******************************************************************************
+    ** Test with trailing slashes
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_TrailingSlash() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/admin", "/api"));
+
+      assertTrue(callIsExcludedPath(provider, "/admin/"));
+      assertTrue(callIsExcludedPath(provider, "/api/"));
+      assertTrue(callIsExcludedPath(provider, "/admin/users/"));
+   }
+
+
+   /*******************************************************************************
+    ** Test deep nested paths
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_DeepNested() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/admin"));
+
+      assertTrue(callIsExcludedPath(provider, "/admin/portal/settings/users/123/edit"));
+      assertTrue(callIsExcludedPath(provider, "/admin/a/b/c/d/e/f"));
+   }
+
+
+   /*******************************************************************************
+    ** Test empty exclusion list
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_EmptyList() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      // No exclusions added
+
+      assertFalse(callIsExcludedPath(provider, "/admin"));
+      assertFalse(callIsExcludedPath(provider, "/api"));
+      assertFalse(callIsExcludedPath(provider, "/anything"));
+   }
+
+
+   /*******************************************************************************
+    ** Test multiple similar prefixes
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_MultipleSimilarPrefixes() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      provider.withExcludedPaths(List.of("/api", "/api/v1", "/api/v2"));
+
+      assertTrue(callIsExcludedPath(provider, "/api"));
+      assertTrue(callIsExcludedPath(provider, "/api/users"));
+      assertTrue(callIsExcludedPath(provider, "/api/v1"));
+      assertTrue(callIsExcludedPath(provider, "/api/v1/users"));
+      assertTrue(callIsExcludedPath(provider, "/api/v2"));
+      assertTrue(callIsExcludedPath(provider, "/api/v2/users"));
+
+      assertFalse(callIsExcludedPath(provider, "/api-docs"));
+      assertFalse(callIsExcludedPath(provider, "/api_internal"));
+   }
+
+
+   /*******************************************************************************
+    ** Test root path exclusion (edge case)
+    *******************************************************************************/
+   @Test
+   void testIsExcludedPath_RootExclusion() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "admin-spa/");
+      provider.withExcludedPath("/");
+
+      /////////////////////////////////////////////////////////////////////
+      // If "/" is excluded, everything should be excluded               //
+      /////////////////////////////////////////////////////////////////////
+      assertTrue(callIsExcludedPath(provider, "/"));
+      assertTrue(callIsExcludedPath(provider, "/users"));
+      assertTrue(callIsExcludedPath(provider, "/anything"));
    }
 
 }

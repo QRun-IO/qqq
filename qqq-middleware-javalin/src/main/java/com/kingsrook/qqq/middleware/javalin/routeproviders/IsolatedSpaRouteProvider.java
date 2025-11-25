@@ -80,15 +80,15 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    private final String spaPath;
    private final String staticFilesPath;
 
-   private String                spaIndexFile;
-   private QCodeReference        authenticator;
-   private QInstance             qInstance;
-   private List<String>          excludedPaths     = new ArrayList<>();
-   private List<Handler>         beforeHandlers    = new ArrayList<>();
-   private List<Handler>         afterHandlers     = new ArrayList<>();
-   private boolean               loadFromJar       = false;
-   private boolean               enableDeepLinking = true;
-   private StaticAssetDetector   staticAssetDetector;
+   private String              spaIndexFile;
+   private QCodeReference      authenticator;
+   private QInstance           qInstance;
+   private List<String>        excludedPaths     = new ArrayList<>();
+   private List<Handler>       beforeHandlers    = new ArrayList<>();
+   private List<Handler>       afterHandlers     = new ArrayList<>();
+   private boolean             loadFromJar       = false;
+   private boolean             enableDeepLinking = true;
+   private StaticAssetDetector staticAssetDetector;
 
 
 
@@ -116,6 +116,84 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       {
          LOG.warn("Error reading system property", e);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Check if a request path is under a given path prefix.
+    **
+    ** This is the correct way to check path prefixes with boundary checking
+    ** to prevent false matches like "/administrator" matching "/admin".
+    **
+    ** Handles query parameters and hash fragments by stripping them before
+    ** comparison, so "/admin?tab=users" correctly matches prefix "/admin".
+    **
+    ** SPECIAL CASE - ROOT PATH:
+    ** The root path "/" matches everything when used as a prefix. This allows
+    ** root-level exclusions or catch-all behaviors.
+    **
+    ** RULES:
+    ** 1. Exact match: "/admin" matches "/admin"
+    ** 2. Sub-path: "/admin/users" matches prefix "/admin"
+    ** 3. Boundary check: "/administrator" does NOT match prefix "/admin"
+    ** 4. Query params ignored: "/admin?tab=users" matches prefix "/admin"
+    ** 5. Root matches all: anything matches prefix "/"
+    **
+    ** This method is used by both exclusion checking and path matching to ensure
+    ** consistent behavior across the codebase.
+    **
+    ** Examples:
+    **   isPathUnderPrefix("/admin", "/admin")              → TRUE (exact)
+    **   isPathUnderPrefix("/admin/users", "/admin")        → TRUE (sub-path)
+    **   isPathUnderPrefix("/admin?tab=users", "/admin")    → TRUE (query param ignored)
+    **   isPathUnderPrefix("/administrator", "/admin")      → FALSE (different path)
+    **   isPathUnderPrefix("/api-docs", "/api")             → FALSE (different path)
+    **   isPathUnderPrefix("/anything", "/")                → TRUE (root matches all)
+    **
+    ** @param requestPath The request path to check (may include query params/hash)
+    ** @param pathPrefix The path prefix to match against
+    ** @return true if requestPath is equal to or under pathPrefix
+    *******************************************************************************/
+   private static boolean isPathUnderPrefix(String requestPath, String pathPrefix)
+   {
+      ////////////////////////////////////////////////
+      // Special case: root path matches everything //
+      ////////////////////////////////////////////////
+      if("/".equals(pathPrefix))
+      {
+         return true;
+      }
+
+      ////////////////////////////////////////////////
+      // Normalize request path: strip query params //
+      // and hash fragments for comparison          //
+      ////////////////////////////////////////////////
+      String normalizedPath = requestPath;
+      int    queryIndex     = normalizedPath.indexOf('?');
+      if(queryIndex != -1)
+      {
+         normalizedPath = normalizedPath.substring(0, queryIndex);
+      }
+      int hashIndex = normalizedPath.indexOf('#');
+      if(hashIndex != -1)
+      {
+         normalizedPath = normalizedPath.substring(0, hashIndex);
+      }
+
+      //////////////////////
+      // Exact match case //
+      //////////////////////
+      if(normalizedPath.equals(pathPrefix))
+      {
+         return true;
+      }
+
+      ////////////////////////////////////////////////////////////
+      // Sub-path match with boundary check                     //
+      // Ensures "/administrator" doesn't match prefix "/admin" //
+      ////////////////////////////////////////////////////////////
+      return normalizedPath.startsWith(pathPrefix + "/");
    }
 
 
@@ -377,9 +455,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          return;
       }
 
-      ////////////////////////////////////////////////////////////////
-      // For path-scoped SPAs, only handle 404s under our path    //
-      ////////////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////////
+      // For path-scoped SPAs, only handle 404s under our path //
+      ///////////////////////////////////////////////////////////
       if(!checkExclusions && !"/".equals(spaPath) && !requestPath.startsWith(spaPath))
       {
          LOG.debug("404 not under SPA path, not serving index",
@@ -509,13 +587,27 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Check if a path should be excluded (for root SPA)
+    ** Check if a request path should be excluded from this SPA's handling.
+    **
+    ** Used by root SPAs ("/") to exclude specific sub-paths that are handled
+    ** by other SPAs or route providers (e.g., exclude /admin, /api from root SPA).
+    **
+    ** Uses proper path prefix matching with boundary checking to prevent
+    ** false matches like /administrator matching /admin.
+    **
+    ** Examples:
+    **   excludedPath="/admin", requestPath="/admin"          → TRUE (exact match)
+    **   excludedPath="/admin", requestPath="/admin/users"    → TRUE (sub-path)
+    **   excludedPath="/admin", requestPath="/administrator"  → FALSE (different path)
+    **
+    ** @param path The request path to check
+    ** @return true if this path should be excluded from SPA handling
     *******************************************************************************/
    private boolean isExcludedPath(String path)
    {
       for(String excludedPath : excludedPaths)
       {
-         if(path.startsWith(excludedPath))
+         if(isPathUnderPrefix(path, excludedPath))
          {
             return true;
          }

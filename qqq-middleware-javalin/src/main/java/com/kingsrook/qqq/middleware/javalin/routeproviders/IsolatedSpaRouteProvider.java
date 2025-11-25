@@ -102,9 +102,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       this.spaPath = normalizePath(spaPath);
       this.staticFilesPath = staticFilesPath;
 
-      ///////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////
       // Check system property for loading files from JAR vs file //
-      ///////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////
       try
       {
          String propertyValue = System.getProperty("qqq.javalin.enableStaticFilesFromJar", "false");
@@ -173,9 +173,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    {
       if(loadFromJar)
       {
-         /////////////////////////////////
+         ////////////////////////////////
          // Load from classpath in JAR //
-         /////////////////////////////////
+         ////////////////////////////////
          staticFileConfig.directory = staticFilesPath;
          staticFileConfig.hostedPath = spaPath;
          staticFileConfig.location = Location.CLASSPATH;
@@ -186,9 +186,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       }
       else
       {
-         //////////////////////////////////////
+         ////////////////////////////////////
          // Load from filesystem (for dev) //
-         //////////////////////////////////////
+         ////////////////////////////////////
          URL resource = getClass().getClassLoader().getResource(staticFilesPath);
          if(resource == null)
          {
@@ -218,26 +218,26 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    @Override
    public void acceptJavalinService(Javalin service)
    {
-      /////////////////////////////////////////////////////////////////////
-      // Ensure global 404 handler is registered with Javalin           //
-      // (Safe to call multiple times - only registers once)            //
-      /////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////
+      // Ensure global 404 handler is registered with Javalin //
+      // (Safe to call multiple times - only registers once)  //
+      //////////////////////////////////////////////////////////
       SpaNotFoundHandlerRegistry.getInstance().registerGlobalHandler(service);
 
       if("/".equals(spaPath))
       {
-         ////////////////////////////////////////////
-         // Special handling for root path SPAs   //
-         // Need to exclude other SPA paths       //
-         ////////////////////////////////////////////
+         /////////////////////////////////////////
+         // Special handling for root path SPAs //
+         // Need to exclude other SPA paths     //
+         /////////////////////////////////////////
          registerRootSpaHandlers(service);
       }
       else
       {
-         ////////////////////////////////////////////
-         // Standard path-scoped SPA              //
-         // Everything is nicely isolated         //
-         ////////////////////////////////////////////
+         ///////////////////////////////////
+         // Standard path-scoped SPA      //
+         // Everything is nicely isolated //
+         ///////////////////////////////////
          registerPathScopedHandlers(service);
       }
    }
@@ -254,9 +254,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          logPair("spaPath", spaPath),
          logPair("enableDeepLinking", enableDeepLinking));
 
-      /////////////////////////////////////////////////////////
-      // Register before handlers (auth, logging, etc.)    //
-      /////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////
+      // Register before handlers (auth, logging, etc.) //
+      ////////////////////////////////////////////////////
       String pathPattern = spaPath + "/*";
       for(Handler handler : beforeHandlers)
       {
@@ -271,18 +271,18 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          service.before(pathPattern, this::authenticateRequest);
       }
 
-      //////////////////////////////////
-      // Register after handlers      //
-      //////////////////////////////////
+      /////////////////////////////
+      // Register after handlers //
+      /////////////////////////////
       for(Handler handler : afterHandlers)
       {
          service.after(pathPattern, handler);
       }
 
-      ///////////////////////////////////////////////////////////////
-      // Register 404 handler for deep linking support           //
+      /////////////////////////////////////////////////////////////////
+      // Register 404 handler for deep linking support               //
       // Uses centralized registry to avoid global handler conflicts //
-      ///////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////////
       if(enableDeepLinking && StringUtils.hasContent(spaIndexFile))
       {
          SpaNotFoundHandlerRegistry.getInstance().registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, false));
@@ -302,9 +302,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          logPair("excludedPaths", excludedPaths),
          logPair("enableDeepLinking", enableDeepLinking));
 
-      /////////////////////////////////////////////////////////
-      // Register before handlers (with exclusions)        //
-      /////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////
+      // Register before handlers (with exclusions) //
+      ////////////////////////////////////////////////
       for(Handler handler : beforeHandlers)
       {
          service.before("/*", ctx ->
@@ -330,9 +330,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          });
       }
 
-      //////////////////////////////////
-      // Register after handlers      //
-      //////////////////////////////////
+      /////////////////////////////
+      // Register after handlers //
+      /////////////////////////////
       for(Handler handler : afterHandlers)
       {
          service.after("/*", ctx ->
@@ -344,10 +344,10 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          });
       }
 
-      ///////////////////////////////////////////////////////////////
-      // Register 404 handler for deep linking support           //
+      /////////////////////////////////////////////////////////////////
+      // Register 404 handler for deep linking support               //
       // Uses centralized registry to avoid global handler conflicts //
-      ///////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////////
       if(enableDeepLinking && StringUtils.hasContent(spaIndexFile))
       {
          SpaNotFoundHandlerRegistry.getInstance().registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, true));
@@ -366,9 +366,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    {
       String requestPath = ctx.path();
 
-      ////////////////////////////////////////////////////////////////
-      // For root SPAs, skip if path is excluded (e.g., /admin)   //
-      ////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////
+      // For root SPAs, skip if path is excluded (e.g., /admin) //
+      ////////////////////////////////////////////////////////////
       if(checkExclusions && isExcludedPath(requestPath))
       {
          LOG.debug("404 on excluded path, not serving SPA index", logPair("path", requestPath));
@@ -386,19 +386,19 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          return;
       }
 
-      ////////////////////////////////////////////////////////////////
-      // Don't serve index.html for static asset requests         //
-      // (let them 404 naturally)                                 //
-      ////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // Don't serve index.html for static asset requests //
+      // (let them 404 naturally)                         //
+      //////////////////////////////////////////////////////
       if(isStaticAsset(requestPath))
       {
          LOG.debug("404 for static asset, letting it 404", logPair("path", requestPath));
          return;
       }
 
-      ////////////////////////////////////////////////////////////////
-      // Serve index.html for SPA client-side routing             //
-      ////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////
+      // Serve index.html for SPA client-side routing //
+      //////////////////////////////////////////////////
       LOG.debug("Serving SPA index for deep link", logPair("path", requestPath), logPair("spaPath", spaPath));
 
       try
@@ -408,7 +408,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          {
             String indexHtml = IOUtils.toString(indexStream, StandardCharsets.UTF_8);
 
-            // Rewrite relative asset paths for SPAs at subpaths (deep linking)
+            //////////////////////////////////////////////////////////////////////
+            // Rewrite relative asset paths for SPAs at subpaths (deep linking) //
+            //////////////////////////////////////////////////////////////////////
             if(!"/".equals(spaPath))
             {
                indexHtml = rewriteIndexHtmlPaths(indexHtml, spaPath);
@@ -431,24 +433,74 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Rewrite relative asset paths in HTML to absolute paths based on SPA path
+    ** Inject or update the HTML <base> tag to fix relative URL resolution for SPAs
+    ** hosted at subpaths with deep linking support.
     **
-    ** Converts paths like "./static/js/main.js" to "/admin/static/js/main.js"
-    ** This ensures assets load correctly from any deep route.
+    ** THE PROBLEM:
+    ** When an SPA is hosted at a subpath (e.g., "/admin") and uses client-side
+    ** routing with deep links (e.g., "/admin/users/123"), relative asset paths
+    ** break because the browser resolves them relative to the current route, not
+    ** the SPA's base path.
     **
-    ** @param html The HTML content
-    ** @param basePath The SPA base path (e.g., "/admin")
-    ** @return The HTML with rewritten paths
+    ** Example:
+    **   - SPA hosted at: /admin
+    **   - User navigates to: /admin/users/123
+    **   - HTML contains: <script src="./assets/main.js">
+    **   - Browser incorrectly resolves to: /admin/users/assets/main.js ❌
+    **   - Should resolve to: /admin/assets/main.js ✅
+    **
+    ** THE SOLUTION:
+    ** The HTML5 <base> tag tells the browser the base URL for all relative URLs
+    ** in the document. By injecting <base href="/admin/"> into the <head>, all
+    ** relative URLs (href, src, fetch, import, etc.) automatically resolve
+    ** correctly regardless of the current route depth.
+    **
+    ** This approach is:
+    ** - Standards-compliant (HTML5)
+    ** - Framework-agnostic (works with any SPA build tool)
+    ** - Comprehensive (handles ALL relative URLs, not just href/src)
+    ** - Future-proof (works with new HTML features automatically)
+    **
+    ** EDGE CASES HANDLED:
+    ** - If <base> tag already exists, it's updated with the correct href
+    ** - If <head> tag has attributes, it's preserved
+    ** - Case-insensitive matching for existing <base> tags
+    **
+    ** NOTE: The <base> tag affects ALL relative URLs including hash links
+    ** (e.g., <a href="#section">). Most modern SPAs handle this correctly,
+    ** but older SPAs may need updates if they use hash-based navigation.
+    **
+    ** @param html The HTML content from the SPA's index.html file
+    ** @param basePath The SPA base path (e.g., "/admin", "/customer")
+    ** @return The HTML with <base> tag injected or updated
     *******************************************************************************/
-   private String rewriteIndexHtmlPaths(String html, String basePath)
+   String rewriteIndexHtmlPaths(String html, String basePath)
    {
-      html = html.replaceAll("href=\"\\./", "href=\"" + basePath + "/");
-      html = html.replaceAll("href='\\./", "href='" + basePath + "/");
-      html = html.replaceAll("src=\"\\./", "src=\"" + basePath + "/");
-      html = html.replaceAll("src='\\./", "src='" + basePath + "/");
-      LOG.debug("Rewrote HTML asset paths for deep linking support",
-         logPair("basePath", basePath),
-         logPair("htmlLength", html.length()));
+      String baseHref  = basePath.endsWith("/") ? basePath : basePath + "/";
+      String lowerHtml = html.toLowerCase();
+
+      if(!lowerHtml.contains("<base "))
+      {
+         //////////////////////////////////////////////////////
+         // No existing <base> tag - inject one after <head> //
+         //////////////////////////////////////////////////////
+         html = html.replaceFirst("(?i)(<head[^>]*>)", "$1\n  <base href=\"" + baseHref + "\">");
+         LOG.debug("Injected <base> tag for deep linking support",
+            logPair("basePath", basePath),
+            logPair("baseHref", baseHref));
+      }
+      else
+      {
+         ///////////////////////////////////////////////////////////
+         // Existing <base> tag found - update its href attribute //
+         ///////////////////////////////////////////////////////////
+         html = html.replaceAll("(?i)<base([^>]*)href\\s*=\\s*['\"]([^'\"]*)['\"]([^>]*)>",
+            "<base$1href=\"" + baseHref + "\"$3>");
+         LOG.debug("Updated existing <base> tag for deep linking support",
+            logPair("basePath", basePath),
+            logPair("baseHref", baseHref));
+      }
+
       return html;
    }
 
@@ -478,9 +530,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    {
       String lowerPath = path.toLowerCase();
 
-      ///////////////////////////////////////////////////////
-      // Common static asset file extensions             //
-      ///////////////////////////////////////////////////////
+      /////////////////////////////////////////
+      // Common static asset file extensions //
+      /////////////////////////////////////////
       String[] assetExtensions = {
          ".js", ".css", ".map",
          ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
@@ -497,9 +549,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          }
       }
 
-      ///////////////////////////////////////////////////////
-      // Common static asset path patterns               //
-      ///////////////////////////////////////////////////////
+      ///////////////////////////////////////
+      // Common static asset path patterns //
+      ///////////////////////////////////////
       return lowerPath.contains("/assets/")
          || lowerPath.contains("/static/")
          || lowerPath.contains("/dist/")
@@ -521,9 +573,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       {
          if(loadFromJar)
          {
-            ///////////////////////////////////
+            //////////////////////////////////
             // Load from classpath (in JAR) //
-            ///////////////////////////////////
+            //////////////////////////////////
             LOG.debug("Loading SPA index from classpath", logPair("spaIndexFile", spaIndexFile));
             return getClass().getClassLoader().getResourceAsStream(spaIndexFile);
          }
@@ -535,7 +587,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
             URL resource = getClass().getClassLoader().getResource(staticFilesPath);
             if(resource != null)
             {
-               // Extract just the filename from spaIndexFile
+               /////////////////////////////////////////////////
+               // Extract just the filename from spaIndexFile //
+               /////////////////////////////////////////////////
                String fileName = spaIndexFile;
                if(spaIndexFile.contains("/"))
                {
@@ -587,9 +641,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
       RouteAuthenticatorInterface authenticatorInstance = QCodeLoader.getAdHoc(RouteAuthenticatorInterface.class, authenticator);
 
-      ////////////////////////////////////////////////
+      //////////////////////////////////////////////
       // Set up QContext for authentication check //
-      ////////////////////////////////////////////////
+      //////////////////////////////////////////////
       QContext.init(qInstance, new QSystemUserSession());
 
       try

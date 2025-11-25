@@ -25,13 +25,16 @@ package com.kingsrook.qqq.middleware.javalin;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.logging.LogUtils;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -217,18 +220,18 @@ public class QApplicationJavalinServer
          try
          {
             Class<?> apiContainerClass = Class.forName("com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer");
-            Object   apiContainer      = apiContainerClass.getMethod("of", com.kingsrook.qqq.backend.core.model.metadata.QInstance.class).invoke(null, qInstance);
+            Object   apiContainer      = apiContainerClass.getMethod("of", QInstance.class).invoke(null, qInstance);
 
             if(apiContainer != null)
             {
                @SuppressWarnings("unchecked")
-               java.util.Map<String, ?> apis = (java.util.Map<String, ?>) apiContainerClass.getMethod("getApis").invoke(apiContainer);
+               Map<String, ?> apis = (Map<String, ?>) apiContainerClass.getMethod("getApis").invoke(apiContainer);
 
                if(apis != null && !apis.isEmpty())
                {
-                  Class<?>                            apiHandlerClass = Class.forName("com.kingsrook.qqq.api.javalin.QJavalinApiHandler");
-                  Object                              apiHandler      = apiHandlerClass.getConstructor(com.kingsrook.qqq.backend.core.model.metadata.QInstance.class).newInstance(qInstance);
-                  io.javalin.apibuilder.EndpointGroup routes          = (io.javalin.apibuilder.EndpointGroup) apiHandlerClass.getMethod("getRoutes").invoke(apiHandler);
+                  Class<?>       apiHandlerClass = Class.forName("com.kingsrook.qqq.api.javalin.QJavalinApiHandler");
+                  Object         apiHandler      = apiHandlerClass.getConstructor(QInstance.class).newInstance(qInstance);
+                  EndpointGroup  routes          = (EndpointGroup) apiHandlerClass.getMethod("getRoutes").invoke(apiHandler);
 
                   config.router.apiBuilder(routes);
                   LOG.info("Registered application API routes from ApiInstanceMetaDataContainer");
@@ -386,7 +389,7 @@ public class QApplicationJavalinServer
             // Add before handlers from metadata
             if(routeProviderMetaData.getBeforeHandlers() != null && !routeProviderMetaData.getBeforeHandlers().isEmpty())
             {
-               for(com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference handlerRef : routeProviderMetaData.getBeforeHandlers())
+               for(QCodeReference handlerRef : routeProviderMetaData.getBeforeHandlers())
                {
                   try
                   {
@@ -396,8 +399,8 @@ public class QApplicationJavalinServer
                   catch(Exception e)
                   {
                      LOG.error("Error loading before handler for route provider", e,
-                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
-                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("handler", handlerRef.toString()));
+                        LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
+                        LogUtils.logPair("handler", handlerRef.toString()));
                      throw new QException("Error loading before handler: " + e.getMessage(), e);
                   }
                }
@@ -406,7 +409,7 @@ public class QApplicationJavalinServer
             // Add after handlers from metadata
             if(routeProviderMetaData.getAfterHandlers() != null && !routeProviderMetaData.getAfterHandlers().isEmpty())
             {
-               for(com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference handlerRef : routeProviderMetaData.getAfterHandlers())
+               for(QCodeReference handlerRef : routeProviderMetaData.getAfterHandlers())
                {
                   try
                   {
@@ -416,8 +419,8 @@ public class QApplicationJavalinServer
                   catch(Exception e)
                   {
                      LOG.error("Error loading after handler for route provider", e,
-                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
-                        com.kingsrook.qqq.backend.core.logging.LogUtils.logPair("handler", handlerRef.toString()));
+                        LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
+                        LogUtils.logPair("handler", handlerRef.toString()));
                      throw new QException("Error loading after handler: " + e.getMessage(), e);
                   }
                }

@@ -64,8 +64,9 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
    private       String spaRootPath;
    private       String spaRootFile;
 
-   private QCodeReference routeAuthenticator;
-   private QInstance      qInstance;
+   private QCodeReference      routeAuthenticator;
+   private QInstance           qInstance;
+   private StaticAssetDetector staticAssetDetector;
 
 
 
@@ -77,6 +78,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
    {
       this.hostedPath = hostedPath;
       this.fileSystemPath = fileSystemPath;
+      this.staticAssetDetector = new StaticAssetDetector().withName("router:" + hostedPath);
 
       ///////////////////////////////////////////////////////////////////////////////////////////////////////
       // read the property to see if we should load static files from the jar file or from the file system //
@@ -338,75 +340,17 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
     ** Determines if a request path looks like a static asset based on file
     ** extension and common asset path patterns.
     **
+    ** Delegates to StaticAssetDetector utility for centralized logic.
+    **
     ** Returns true for common asset file extensions (.js, .css, images, fonts, etc.)
     ** and for paths that contain common asset directory names.
+    **
+    ** @param path The request path to check
+    ** @return true if the path appears to be a static asset
     ***************************************************************************/
    private boolean isStaticAssetRequest(String path)
    {
-      String lowerPath = path.toLowerCase();
-
-      ////////////////////////////////////////////////
-      // Check for common web asset file extensions //
-      ////////////////////////////////////////////////
-      String[] assetExtensions = {
-         //////////////////
-         // Code/Scripts //
-         //////////////////
-         ".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".sass", ".less", ".map",
-
-         ////////////
-         // Images //
-         ////////////
-         ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".bmp", ".tiff",
-
-         ///////////
-         // Fonts //
-         ///////////
-         ".woff", ".woff2", ".ttf", ".eot", ".otf",
-
-         ////////////////
-         // Data files //
-         ////////////////
-         ".json", ".xml", ".csv", ".txt",
-
-         ///////////
-         // Video //
-         ///////////
-         ".mp4", ".webm", ".ogg", ".avi", ".mov",
-
-         ///////////
-         // Audio //
-         ///////////
-         ".mp3", ".wav", ".ogg", ".m4a", ".flac"
-      };
-
-      for(String ext : assetExtensions)
-      {
-         if(lowerPath.endsWith(ext))
-         {
-            return true;
-         }
-      }
-
-      //////////////////////////////////////////
-      // Check for common asset path patterns //
-      //////////////////////////////////////////
-      if(lowerPath.contains("/assets/")
-         || lowerPath.contains("/static/")
-         || lowerPath.contains("/public/")
-         || lowerPath.contains("/dist/")
-         || lowerPath.contains("/build/")
-         || lowerPath.contains("/img/")
-         || lowerPath.contains("/images/")
-         || lowerPath.contains("/css/")
-         || lowerPath.contains("/js/")
-         || lowerPath.contains("/fonts/")
-         || lowerPath.contains("/media/"))
-      {
-         return true;
-      }
-
-      return false;
+      return staticAssetDetector.isStaticAsset(path);
    }
 
 

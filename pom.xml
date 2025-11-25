@@ -85,7 +85,7 @@
     <maven.compiler.showWarnings>true</maven.compiler.showWarnings>
     <coverage.haltOnFailure>true</coverage.haltOnFailure>
     <coverage.instructionCoveredRatioMinimum>0.70</coverage.instructionCoveredRatioMinimum>
-    <coverage.classCoveredRatioMinimum>0.70</coverage.classCoveredRatioMinimum>
+    <coverage.classCoveredRatioMinimum>0.90</coverage.classCoveredRatioMinimum>
     <plugin.shade.phase>none</plugin.shade.phase>
     <testOutputToFile>true</testOutputToFile>
   </properties>

@@ -80,14 +80,15 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    private final String spaPath;
    private final String staticFilesPath;
 
-   private String         spaIndexFile;
-   private QCodeReference authenticator;
-   private QInstance      qInstance;
-   private List<String>   excludedPaths     = new ArrayList<>();
-   private List<Handler>  beforeHandlers    = new ArrayList<>();
-   private List<Handler>  afterHandlers     = new ArrayList<>();
-   private boolean        loadFromJar       = false;
-   private boolean        enableDeepLinking = true;
+   private String                spaIndexFile;
+   private QCodeReference        authenticator;
+   private QInstance             qInstance;
+   private List<String>          excludedPaths     = new ArrayList<>();
+   private List<Handler>         beforeHandlers    = new ArrayList<>();
+   private List<Handler>         afterHandlers     = new ArrayList<>();
+   private boolean               loadFromJar       = false;
+   private boolean               enableDeepLinking = true;
+   private StaticAssetDetector   staticAssetDetector;
 
 
 
@@ -101,6 +102,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    {
       this.spaPath = normalizePath(spaPath);
       this.staticFilesPath = staticFilesPath;
+      this.staticAssetDetector = new StaticAssetDetector().withName("spa:" + spaPath);
 
       //////////////////////////////////////////////////////////////
       // Check system property for loading files from JAR vs file //
@@ -525,41 +527,15 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
    /*******************************************************************************
     ** Check if a path looks like a static asset (should 404 naturally)
+    **
+    ** Delegates to StaticAssetDetector utility for centralized logic.
+    **
+    ** @param path The request path to check
+    ** @return true if the path appears to be a static asset
     *******************************************************************************/
    private boolean isStaticAsset(String path)
    {
-      String lowerPath = path.toLowerCase();
-
-      /////////////////////////////////////////
-      // Common static asset file extensions //
-      /////////////////////////////////////////
-      String[] assetExtensions = {
-         ".js", ".css", ".map",
-         ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
-         ".woff", ".woff2", ".ttf", ".eot", ".otf",
-         ".json", ".xml", ".txt",
-         ".mp4", ".webm", ".mp3"
-      };
-
-      for(String ext : assetExtensions)
-      {
-         if(lowerPath.endsWith(ext))
-         {
-            return true;
-         }
-      }
-
-      ///////////////////////////////////////
-      // Common static asset path patterns //
-      ///////////////////////////////////////
-      return lowerPath.contains("/assets/")
-         || lowerPath.contains("/static/")
-         || lowerPath.contains("/dist/")
-         || lowerPath.contains("/js/")
-         || lowerPath.contains("/css/")
-         || lowerPath.contains("/fonts/")
-         || lowerPath.contains("/images/")
-         || lowerPath.contains("/img/");
+      return staticAssetDetector.isStaticAsset(path);
    }
 
 
@@ -756,6 +732,63 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    public IsolatedSpaRouteProvider withLoadFromJar(boolean loadFromJar)
    {
       this.loadFromJar = loadFromJar;
+      return this;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter: Add custom file extensions to detect as static assets
+    **
+    ** Use this when your SPA uses non-standard file extensions that should be
+    ** treated as static assets rather than client-side routes.
+    **
+    ** Example: .myext, .customdata
+    **
+    ** @param extensions Custom extensions to add (e.g., ".myext", ".custom")
+    ** @return this for method chaining
+    *******************************************************************************/
+   public IsolatedSpaRouteProvider withCustomAssetExtensions(String... extensions)
+   {
+      this.staticAssetDetector.withCustomExtensions(extensions);
+      return this;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter: Add custom path patterns to detect as static assets
+    **
+    ** Use this when your SPA uses non-standard directory structures for assets.
+    **
+    ** Example: /my-assets/, /resources/, /cdn/
+    **
+    ** @param patterns Path patterns to add (should contain "/" to avoid false positives)
+    ** @return this for method chaining
+    *******************************************************************************/
+   public IsolatedSpaRouteProvider withCustomAssetPathPatterns(String... patterns)
+   {
+      this.staticAssetDetector.withCustomPathPatterns(patterns);
+      return this;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter: Add custom detection logic for static assets
+    **
+    ** Use this for complex cases where file extensions and path patterns aren't
+    ** sufficient. The custom detector runs FIRST, before extension/path checks.
+    **
+    ** Example: Detect all paths starting with /cdn/ as assets
+    ** provider.withCustomAssetDetector(path -> path.startsWith("/cdn/"))
+    **
+    ** @param detector Predicate that returns true if path is a static asset
+    ** @return this for method chaining
+    *******************************************************************************/
+   public IsolatedSpaRouteProvider withCustomAssetDetector(java.util.function.Predicate<String> detector)
+   {
+      this.staticAssetDetector.withCustomDetector(detector);
       return this;
    }
 

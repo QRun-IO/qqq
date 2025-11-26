@@ -35,7 +35,17 @@ import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProvide
 
 
 /*******************************************************************************
+ ** Meta-data to define a Javalin route provider configuration.
  **
+ ** This class configures how routes are provided and served in the Javalin
+ ** middleware layer. It supports multiple types of route providers including:
+ ** - Process-based routes (executing QQQ processes via HTTP endpoints)
+ ** - Static file serving (hosting files from the file system or JAR)
+ ** - Single Page Application (SPA) hosting with deep linking support
+ ** - Isolated SPA hosting with separate route prefixes and static files
+ **
+ ** Route providers can be configured with authentication, context handlers,
+ ** and before/after handlers for request processing customization.
  *******************************************************************************/
 public class JavalinRouteProviderMetaData implements QMetaDataObject
 {
@@ -48,7 +58,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    private String processName;
 
-   // IsolatedSpaRouteProvider specific fields
+   //////////////////////////////////////////////
+   // IsolatedSpaRouteProvider specific fields //
+   /// ///////////////////////////////////////////
    private String       spaPath;
    private String       staticFilesPath;
    private String       spaIndexFile;
@@ -61,7 +73,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
    private QCodeReference routeAuthenticator;
    private QCodeReference contextHandler;
 
-   // IsolatedSpaRouteProvider handler support
+   //////////////////////////////////////////////
+   // IsolatedSpaRouteProvider handler support //
+   /// ///////////////////////////////////////////
    private List<QCodeReference> beforeHandlers;
    private List<QCodeReference> afterHandlers;
 
@@ -79,6 +93,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for hostedPath
+    ** @see #withHostedPath(String)
     *******************************************************************************/
    public String getHostedPath()
    {
@@ -89,6 +104,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for hostedPath
+    ** @see #withHostedPath(String)
     *******************************************************************************/
    public void setHostedPath(String hostedPath)
    {
@@ -99,6 +115,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for hostedPath
+    **
+    ** @param hostedPath The URL path where this route will be hosted
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withHostedPath(String hostedPath)
    {
@@ -110,6 +129,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for fileSystemPath
+    ** @see #withFileSystemPath(String)
     *******************************************************************************/
    public String getFileSystemPath()
    {
@@ -120,6 +140,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for fileSystemPath
+    ** @see #withFileSystemPath(String)
     *******************************************************************************/
    public void setFileSystemPath(String fileSystemPath)
    {
@@ -130,6 +151,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for fileSystemPath
+    **
+    ** @param fileSystemPath The file system path where static files are located
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withFileSystemPath(String fileSystemPath)
    {
@@ -141,6 +165,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for spaRootPath
+    ** @see #withSpaRootPath(String)
     *******************************************************************************/
    public String getSpaRootPath()
    {
@@ -151,6 +176,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for spaRootPath
+    ** @see #withSpaRootPath(String)
     *******************************************************************************/
    public void setSpaRootPath(String spaRootPath)
    {
@@ -161,6 +187,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for spaRootPath
+    **
+    ** @param spaRootPath The root path for the SPA
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withSpaRootPath(String spaRootPath)
    {
@@ -172,6 +201,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for spaRootFile
+    ** @see #withSpaRootFile(String)
     *******************************************************************************/
    public String getSpaRootFile()
    {
@@ -182,6 +212,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for spaRootFile
+    ** @see #withSpaRootFile(String)
     *******************************************************************************/
    public void setSpaRootFile(String spaRootFile)
    {
@@ -192,6 +223,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for spaRootFile
+    **
+    ** @param spaRootFile The root file for the SPA (typically index.html)
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withSpaRootFile(String spaRootFile)
    {
@@ -203,6 +237,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for processName
+    ** @see #withProcessName(String)
     *******************************************************************************/
    public String getProcessName()
    {
@@ -213,6 +248,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for processName
+    ** @see #withProcessName(String)
     *******************************************************************************/
    public void setProcessName(String processName)
    {
@@ -223,6 +259,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for processName
+    **
+    ** @param processName The name of the process to be executed by this route
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withProcessName(String processName)
    {
@@ -234,6 +273,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for methods
+    ** @see #withMethods(List)
     *******************************************************************************/
    public List<String> getMethods()
    {
@@ -244,6 +284,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for methods
+    ** @see #withMethods(List)
     *******************************************************************************/
    public void setMethods(List<String> methods)
    {
@@ -254,6 +295,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for methods
+    **
+    ** @param methods List of HTTP methods this route should handle (e.g., GET, POST)
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withMethods(List<String> methods)
    {
@@ -265,6 +309,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for routeAuthenticator
+    ** @see #withRouteAuthenticator(QCodeReference)
     *******************************************************************************/
    public QCodeReference getRouteAuthenticator()
    {
@@ -275,6 +320,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for routeAuthenticator
+    ** @see #withRouteAuthenticator(QCodeReference)
     *******************************************************************************/
    public void setRouteAuthenticator(QCodeReference routeAuthenticator)
    {
@@ -285,6 +331,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for routeAuthenticator
+    **
+    ** @param routeAuthenticator Code reference to the authenticator for this route
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withRouteAuthenticator(QCodeReference routeAuthenticator)
    {
@@ -296,6 +345,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for contextHandler
+    ** @see #withContextHandler(QCodeReference)
     *******************************************************************************/
    public QCodeReference getContextHandler()
    {
@@ -306,6 +356,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for contextHandler
+    ** @see #withContextHandler(QCodeReference)
     *******************************************************************************/
    public void setContextHandler(QCodeReference contextHandler)
    {
@@ -316,6 +367,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for contextHandler
+    **
+    ** @param contextHandler Code reference to the context handler for this route
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withContextHandler(QCodeReference contextHandler)
    {
@@ -327,6 +381,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for name
+    ** @see #withName(String)
     *******************************************************************************/
    public String getName()
    {
@@ -337,6 +392,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for name
+    ** @see #withName(String)
     *******************************************************************************/
    public void setName(String name)
    {
@@ -347,6 +403,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for name
+    **
+    ** @param name The unique name for this route provider
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withName(String name)
    {
@@ -358,6 +417,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for spaPath
+    ** @see #withSpaPath(String)
     *******************************************************************************/
    public String getSpaPath()
    {
@@ -368,6 +428,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for spaPath
+    ** @see #withSpaPath(String)
     *******************************************************************************/
    public void setSpaPath(String spaPath)
    {
@@ -378,6 +439,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for spaPath
+    **
+    ** @param spaPath The URL path where the SPA will be served
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withSpaPath(String spaPath)
    {
@@ -389,6 +453,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for staticFilesPath
+    ** @see #withStaticFilesPath(String)
     *******************************************************************************/
    public String getStaticFilesPath()
    {
@@ -399,6 +464,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for staticFilesPath
+    ** @see #withStaticFilesPath(String)
     *******************************************************************************/
    public void setStaticFilesPath(String staticFilesPath)
    {
@@ -409,6 +475,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for staticFilesPath
+    **
+    ** @param staticFilesPath The path where static files are located for the SPA
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withStaticFilesPath(String staticFilesPath)
    {
@@ -420,6 +489,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for spaIndexFile
+    ** @see #withSpaIndexFile(String)
     *******************************************************************************/
    public String getSpaIndexFile()
    {
@@ -430,6 +500,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for spaIndexFile
+    ** @see #withSpaIndexFile(String)
     *******************************************************************************/
    public void setSpaIndexFile(String spaIndexFile)
    {
@@ -440,6 +511,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for spaIndexFile
+    **
+    ** @param spaIndexFile The index file name for the SPA (e.g., index.html)
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withSpaIndexFile(String spaIndexFile)
    {
@@ -451,6 +525,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for excludedPaths
+    ** @see #withExcludedPaths(List)
     *******************************************************************************/
    public List<String> getExcludedPaths()
    {
@@ -461,6 +536,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for excludedPaths
+    ** @see #withExcludedPaths(List)
     *******************************************************************************/
    public void setExcludedPaths(List<String> excludedPaths)
    {
@@ -471,6 +547,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for excludedPaths
+    **
+    ** @param excludedPaths List of URL paths to exclude from SPA routing
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withExcludedPaths(List<String> excludedPaths)
    {
@@ -482,6 +561,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for enableDeepLinking
+    ** @see #withEnableDeepLinking(boolean)
     *******************************************************************************/
    public boolean getEnableDeepLinking()
    {
@@ -492,6 +572,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for enableDeepLinking
+    ** @see #withEnableDeepLinking(boolean)
     *******************************************************************************/
    public void setEnableDeepLinking(boolean enableDeepLinking)
    {
@@ -502,6 +583,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for enableDeepLinking
+    **
+    ** @param enableDeepLinking Whether to enable deep linking for the SPA (default true)
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withEnableDeepLinking(boolean enableDeepLinking)
    {
@@ -513,6 +597,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for loadFromJar
+    ** @see #withLoadFromJar(boolean)
     *******************************************************************************/
    public boolean getLoadFromJar()
    {
@@ -523,6 +608,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for loadFromJar
+    ** @see #withLoadFromJar(boolean)
     *******************************************************************************/
    public void setLoadFromJar(boolean loadFromJar)
    {
@@ -533,6 +619,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for loadFromJar
+    **
+    ** @param loadFromJar Whether to load SPA files from JAR resources (default false)
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withLoadFromJar(boolean loadFromJar)
    {
@@ -544,6 +633,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for beforeHandlers
+    ** @see #withBeforeHandlers(List)
     *******************************************************************************/
    public List<QCodeReference> getBeforeHandlers()
    {
@@ -554,6 +644,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for beforeHandlers
+    ** @see #withBeforeHandlers(List)
     *******************************************************************************/
    public void setBeforeHandlers(List<QCodeReference> beforeHandlers)
    {
@@ -564,6 +655,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for beforeHandlers
+    **
+    ** @param beforeHandlers List of code references to handlers executed before the route
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withBeforeHandlers(List<QCodeReference> beforeHandlers)
    {
@@ -575,6 +669,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Getter for afterHandlers
+    ** @see #withAfterHandlers(List)
     *******************************************************************************/
    public List<QCodeReference> getAfterHandlers()
    {
@@ -585,6 +680,7 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Setter for afterHandlers
+    ** @see #withAfterHandlers(List)
     *******************************************************************************/
    public void setAfterHandlers(List<QCodeReference> afterHandlers)
    {
@@ -595,6 +691,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
    /*******************************************************************************
     ** Fluent setter for afterHandlers
+    **
+    ** @param afterHandlers List of code references to handlers executed after the route
+    ** @return this
     *******************************************************************************/
    public JavalinRouteProviderMetaData withAfterHandlers(List<QCodeReference> afterHandlers)
    {
@@ -604,9 +703,19 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Validate this route provider configuration against the QInstance.
     **
-    ***************************************************************************/
+    ** Ensures that:
+    ** - Referenced process names exist in the QInstance
+    ** - Route authenticator code references are valid
+    ** - Context handler code references are valid
+    ** - Before and after handler code references are valid
+    ** - IsolatedSpaRouteProvider fields are properly configured when used
+    **
+    ** @param qInstance the QInstance to validate against
+    ** @param validator the validator to record validation errors
+    *******************************************************************************/
    public void validate(QInstance qInstance, QInstanceValidator validator)
    {
       String prefix = "In javalinRouteProvider '" + name + "', ";
@@ -625,7 +734,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
          validator.validateSimpleCodeReference(prefix + "contextHandler ", contextHandler, RouteProviderContextHandlerInterface.class);
       }
 
-      // Validate before handlers
+      //////////////////////////////
+      // Validate before handlers //
+      //////////////////////////////
       if(beforeHandlers != null)
       {
          for(int i = 0; i < beforeHandlers.size(); i++)
@@ -638,7 +749,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
          }
       }
 
-      // Validate after handlers
+      /////////////////////////////
+      // Validate after handlers //
+      /////////////////////////////
       if(afterHandlers != null)
       {
          for(int i = 0; i < afterHandlers.size(); i++)
@@ -651,7 +764,9 @@ public class JavalinRouteProviderMetaData implements QMetaDataObject
          }
       }
 
-      // Validate IsolatedSpaRouteProvider specific fields
+      ///////////////////////////////////////////////////////
+      // Validate IsolatedSpaRouteProvider specific fields //
+      ///////////////////////////////////////////////////////
       if(StringUtils.hasContent(spaPath) && StringUtils.hasContent(staticFilesPath))
       {
          validator.assertCondition(StringUtils.hasContent(spaIndexFile), prefix + "spaIndexFile is required when using IsolatedSpaRouteProvider");

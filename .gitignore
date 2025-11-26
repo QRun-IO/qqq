@@ -3,6 +3,7 @@ target/
 .env
 
 .idea
+.vscode
 
 #####################################
 ## Eclipse / NVIM Modules for Java ##

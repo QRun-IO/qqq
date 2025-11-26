@@ -39,13 +39,14 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
  *******************************************************************************/
 public class QAuthenticationMetaData implements TopLevelMetaDataInterface
 {
-   private String name;
+   private String              name;
    private QAuthenticationType type;
 
    @JsonFilter("secretsFilter")
    private Map<String, String> values;
 
    private QCodeReference customizer;
+
 
 
    /*******************************************************************************

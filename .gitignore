@@ -3,6 +3,15 @@ target/
 .env
 
 .idea
+.vscode
+
+#####################################
+## Eclipse / NVIM Modules for Java ##
+#####################################
+**/.settings/
+**/.classpath
+**/.factorypath
+**/.project
 
 #####################################
 ## Eclipse / NVIM Modules for Java ##

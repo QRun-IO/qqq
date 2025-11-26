@@ -23,7 +23,9 @@ package com.kingsrook.qqq.backend.core.actions;
 
 
 import java.io.Serializable;
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -32,12 +34,18 @@ import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthResolutionContext;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthenticationResolver;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.PrefixedDefaultThreadFactory;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -45,6 +53,8 @@ import com.kingsrook.qqq.backend.core.utils.PrefixedDefaultThreadFactory;
  *******************************************************************************/
 public class ActionHelper
 {
+   private static final QLogger LOG = QLogger.getLogger(ActionHelper.class);
+
    /////////////////////////////////////////////////////////////////////////////
    // we would probably use Executors.newCachedThreadPool() - but - it has no //
    // maxPoolSize...  we think some limit is good, so that at a large number  //
@@ -61,7 +71,20 @@ public class ActionHelper
 
 
    /*******************************************************************************
+    ** Validate the session using the appropriate authentication provider.
     **
+    ** <p>Resolves the authentication provider based on the session's context
+    ** (e.g., API name stored in session). If the session was created with a
+    ** scoped authentication provider (e.g., API-specific or route provider-specific),
+    ** it will be validated using that same provider. Otherwise, falls back to
+    ** instance default authentication.</p>
+    **
+    ** <p>This ensures that sessions created with fully anonymous authentication
+    ** (or any other scoped provider) are validated using the same provider,
+    ** maintaining proper server-side session management regardless of auth method.</p>
+    **
+    ** @param request The action input (may be null)
+    ** @throws QException If validation fails
     *******************************************************************************/
    public static void validateSession(AbstractActionInput request) throws QException
    {
@@ -78,12 +101,81 @@ public class ActionHelper
          throw (new QException("QSession was not set in QContext."));
       }
 
+      ///////////////////////////////////////////////////////////////////////////
+      // Resolve the authentication provider based on session context        //
+      // This ensures sessions are validated with the same provider that     //
+      // created them (e.g., scoped API auth vs instance default)             //
+      ///////////////////////////////////////////////////////////////////////////
+      QAuthenticationMetaData authMetaData = resolveAuthenticationForSession(qInstance, qSession);
+
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
-      QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
+      QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(authMetaData);
       if(!authenticationModule.isSessionValid(qInstance, qSession))
       {
          throw new QAuthenticationException("Invalid session in request");
       }
+   }
+
+
+   /*******************************************************************************
+    ** Resolve the authentication provider for the given session.
+    **
+    ** <p>Checks if the session has an API name stored. If so, resolves the
+    ** authentication provider using AuthenticationResolver. Otherwise, falls
+    ** back to instance default.</p>
+    **
+    ** @param qInstance The QInstance
+    ** @param qSession The QSession
+    ** @return The resolved authentication metadata (never null)
+    *******************************************************************************/
+   private static QAuthenticationMetaData resolveAuthenticationForSession(QInstance qInstance, QSession qSession)
+   {
+      ///////////////////////////////////////////////////////////////////////////
+      // Check if session has API name - if so, resolve scoped auth          //
+      ///////////////////////////////////////////////////////////////////////////
+      String apiName = qSession.getValue("apiName");
+      if(apiName != null && !apiName.isEmpty())
+      {
+         try
+         {
+            // Use reflection to get API metadata (avoiding module dependency)
+            QSupplementalInstanceMetaData apiContainer =
+               qInstance.getSupplementalMetaData("api");
+            if(apiContainer != null)
+            {
+               Method getApisMethod = apiContainer.getClass().getMethod("getApis");
+               Object apisMap = getApisMethod.invoke(apiContainer);
+               if(apisMap instanceof Map)
+               {
+                  Object apiMetaData = ((Map<?, ?>)apisMap).get(apiName);
+                  if(apiMetaData != null)
+                  {
+                     // Resolve authentication provider for this API
+                     AuthResolutionContext resolutionContext = new AuthResolutionContext()
+                        .withApiMetaData(apiMetaData)
+                        .withApiName(apiName);
+                     QAuthenticationMetaData resolvedAuth = AuthenticationResolver.resolve(qInstance, resolutionContext);
+                     LOG.trace("Resolved scoped authentication for session validation",
+                        logPair("apiName", apiName),
+                        logPair("authType", resolvedAuth.getType()));
+                     return resolvedAuth;
+                  }
+               }
+            }
+         }
+         catch(Exception e)
+         {
+            // If resolution fails, fall back to instance default
+            LOG.debug("Failed to resolve scoped authentication for session, falling back to instance default",
+               logPair("apiName", apiName),
+               e);
+         }
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Fall back to instance default authentication                         //
+      ///////////////////////////////////////////////////////////////////////////
+      return qInstance.getAuthentication();
    }
 
 

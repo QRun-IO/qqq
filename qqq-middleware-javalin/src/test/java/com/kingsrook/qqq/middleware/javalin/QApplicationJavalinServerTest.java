@@ -646,6 +646,222 @@ class QApplicationJavalinServerTest
 
 
 
+   /*******************************************************************************
+    ** Test getters and setters for basic configuration
+    *******************************************************************************/
+   @Test
+   void testGettersAndSetters() throws QException
+   {
+      AbstractQQQApplication app = getQqqApplication();
+      javalinServer = new QApplicationJavalinServer(app);
+
+      ////////////////////////////////
+      // Test port getter/setter    //
+      ////////////////////////////////
+      javalinServer.setPort(9000);
+      assertEquals(9000, javalinServer.getPort());
+
+      ////////////////////////////////
+      // Test fluent setter for port //
+      ////////////////////////////////
+      QApplicationJavalinServer returned = javalinServer.withPort(9001);
+      assertEquals(9001, javalinServer.getPort());
+      assertEquals(javalinServer, returned); // Verify fluent API returns this
+
+      //////////////////////////////////////////////////////////
+      // Test serveFrontendMaterialDashboard getter/setter    //
+      //////////////////////////////////////////////////////////
+      javalinServer.setServeFrontendMaterialDashboard(false);
+      assertEquals(false, javalinServer.getServeFrontendMaterialDashboard());
+
+      ////////////////////////////////////////////////////////////
+      // Test serveLegacyUnversionedMiddlewareAPI getter/setter //
+      ////////////////////////////////////////////////////////////
+      javalinServer.setServeLegacyUnversionedMiddlewareAPI(false);
+      assertEquals(false, javalinServer.getServeLegacyUnversionedMiddlewareAPI());
+
+      //////////////////////////////////////////////
+      // Test middlewareVersionList getter/setter //
+      //////////////////////////////////////////////
+      List<com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion> middlewareVersions = List.of(new MiddlewareVersionV1());
+      javalinServer.setMiddlewareVersionList(middlewareVersions);
+      assertEquals(middlewareVersions, javalinServer.getMiddlewareVersionList());
+
+      ///////////////////////////////////////////////////
+      // Test additionalRouteProviders getter/setter    //
+      ///////////////////////////////////////////////////
+      List<QJavalinRouteProviderInterface> routeProviders = new java.util.ArrayList<>();
+      javalinServer.setAdditionalRouteProviders(routeProviders);
+      assertEquals(routeProviders, javalinServer.getAdditionalRouteProviders());
+
+      ////////////////////////////////////////////////
+      // Test millisBetweenHotSwaps getter/setter    //
+      ////////////////////////////////////////////////
+      javalinServer.setMillisBetweenHotSwaps(5000);
+      assertEquals(5000, javalinServer.getMillisBetweenHotSwaps());
+
+      ////////////////////////////////////////////
+      // Test hotSwapCustomizer getter/setter    //
+      ////////////////////////////////////////////
+      java.util.function.Consumer<QInstance> customizer = (qi) ->
+      {
+      };
+      javalinServer.setHotSwapCustomizer(customizer);
+      assertEquals(customizer, javalinServer.getHotSwapCustomizer());
+
+      ///////////////////////////////////////////////////////
+      // Test javalinConfigurationCustomizer getter/setter //
+      ///////////////////////////////////////////////////////
+      java.util.function.Consumer<io.javalin.Javalin> javalinCustomizer = (j) ->
+      {
+      };
+      javalinServer.setJavalinConfigurationCustomizer(javalinCustomizer);
+      assertEquals(javalinCustomizer, javalinServer.getJavalinConfigurationCustomizer());
+
+      ///////////////////////////////////////////
+      // Test javalinMetaData getter/setter     //
+      ///////////////////////////////////////////
+      com.kingsrook.qqq.backend.javalin.QJavalinMetaData metaData = new com.kingsrook.qqq.backend.javalin.QJavalinMetaData();
+      javalinServer.setJavalinMetaData(metaData);
+      assertEquals(metaData, javalinServer.getJavalinMetaData());
+   }
+
+
+
+   /*******************************************************************************
+    ** Test all fluent setters work correctly and return this
+    *******************************************************************************/
+   @Test
+   void testFluentSetters() throws QException
+   {
+      AbstractQQQApplication app = getQqqApplication();
+      javalinServer = new QApplicationJavalinServer(app);
+
+      //////////////////////////////////////////////////////
+      // Chain multiple fluent setters and verify result //
+      //////////////////////////////////////////////////////
+      QApplicationJavalinServer result = javalinServer
+         .withPort(8080)
+         .withServeFrontendMaterialDashboard(false)
+         .withServeLegacyUnversionedMiddlewareAPI(false)
+         .withMillisBetweenHotSwaps(3000);
+
+      ////////////////////////////////////////////
+      // Verify all returned the same instance  //
+      ////////////////////////////////////////////
+      assertEquals(javalinServer, result);
+
+      //////////////////////////////
+      // Verify values were set    //
+      //////////////////////////////
+      assertEquals(8080, javalinServer.getPort());
+      assertEquals(false, javalinServer.getServeFrontendMaterialDashboard());
+      assertEquals(false, javalinServer.getServeLegacyUnversionedMiddlewareAPI());
+      assertEquals(3000, javalinServer.getMillisBetweenHotSwaps());
+   }
+
+
+
+   /*******************************************************************************
+    ** Test withIsolatedSpaRouteProvider fluent setters
+    *******************************************************************************/
+   @Test
+   void testWithIsolatedSpaRouteProvider() throws QException
+   {
+      AbstractQQQApplication app = getQqqApplication();
+      javalinServer = new QApplicationJavalinServer(app);
+
+      /////////////////////////////////////////////////////////////////
+      // Test simple withIsolatedSpaRouteProvider (2-arg version)     //
+      /////////////////////////////////////////////////////////////////
+      javalinServer.withIsolatedSpaRouteProvider("/app", "app-files/");
+      assertThat(javalinServer.getAdditionalRouteProviders()).hasSize(1);
+
+      /////////////////////////////////////////////////////////////////
+      // Test withIsolatedSpaRouteProvider with index file (3-arg)    //
+      /////////////////////////////////////////////////////////////////
+      javalinServer.withIsolatedSpaRouteProvider("/admin", "admin-files/", "admin-files/index.html");
+      assertThat(javalinServer.getAdditionalRouteProviders()).hasSize(2);
+   }
+
+
+
+   /*******************************************************************************
+    ** Test stop() when service is null
+    *******************************************************************************/
+   @Test
+   void testStopWhenServiceIsNull() throws QException
+   {
+      AbstractQQQApplication app = getQqqApplication();
+      javalinServer = new QApplicationJavalinServer(app);
+
+      ////////////////////////////////////////////////////////////
+      // stop() should not throw when service hasn't been started //
+      ////////////////////////////////////////////////////////////
+      javalinServer.stop();  // Should log and noop, not throw
+   }
+
+
+
+   /*******************************************************************************
+    ** Test hot swap customizer is called during hot swap
+    *******************************************************************************/
+   @Test
+   void testHotSwapCustomizerIsCalled() throws QException
+   {
+      System.setProperty("qqq.javalin.hotSwapInstance", "true");
+      final boolean[] customizerCalled = {false};
+
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withMiddlewareVersionList(List.of(new MiddlewareVersionV1()))
+         .withMillisBetweenHotSwaps(0)
+         .withServeFrontendMaterialDashboard(false)
+         .withHotSwapCustomizer(qInstance ->
+         {
+            customizerCalled[0] = true;
+         });
+
+      javalinServer.start();
+      System.clearProperty("qqq.javalin.hotSwapInstance");
+
+      HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + "/qqq/v1/metaData").asString();
+      assertEquals(200, response.getStatus());
+
+      /////////////////////////////////////////////////////////////
+      // Customizer should have been called during hot swap     //
+      /////////////////////////////////////////////////////////////
+      assertThat(customizerCalled[0]).isTrue();
+   }
+
+
+
+   /*******************************************************************************
+    ** Test javalin configuration customizer is called during start
+    *******************************************************************************/
+   @Test
+   void testJavalinConfigurationCustomizerIsCalled() throws QException
+   {
+      final boolean[] customizerCalled = {false};
+
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)
+         .withJavalinConfigurationCustomizer(javalin ->
+         {
+            customizerCalled[0] = true;
+         });
+
+      javalinServer.start();
+
+      /////////////////////////////////////////////////////////////
+      // Customizer should have been called during start        //
+      /////////////////////////////////////////////////////////////
+      assertThat(customizerCalled[0]).isTrue();
+   }
+
+
+
    /***************************************************************************
     **
     ***************************************************************************/

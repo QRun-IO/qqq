@@ -30,6 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
@@ -315,6 +317,263 @@ class SpaNotFoundHandlerRegistryTest
       assertTrue(callIsPathUnderPrefix("/Admin", "/Admin"));
       assertFalse(callIsPathUnderPrefix("/Admin", "/admin"));
       assertFalse(callIsPathUnderPrefix("/admin", "/Admin"));
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // normalizePath Tests                                                        //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private normalizePath method via reflection
+    *******************************************************************************/
+   private String callNormalizePath(SpaNotFoundHandlerRegistry registry, String path) throws Exception
+   {
+      Method method = SpaNotFoundHandlerRegistry.class.getDeclaredMethod("normalizePath", String.class);
+      method.setAccessible(true);
+      return (String) method.invoke(registry, path);
+   }
+
+
+   /*******************************************************************************
+    ** Test normalizePath with various inputs
+    *******************************************************************************/
+   @Test
+   void testNormalizePath() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      assertEquals("/", callNormalizePath(registry, null));
+      assertEquals("/", callNormalizePath(registry, ""));
+      assertEquals("/admin", callNormalizePath(registry, "admin"));
+      assertEquals("/admin", callNormalizePath(registry, "/admin"));
+      assertEquals("/admin", callNormalizePath(registry, "/admin/"));
+      assertEquals("/admin", callNormalizePath(registry, "admin/"));
+      assertEquals("/", callNormalizePath(registry, "/"));
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // handleNotFound and Handler Delegation Tests                               //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private handleNotFound method via reflection
+    *******************************************************************************/
+   private void callHandleNotFound(SpaNotFoundHandlerRegistry registry, io.javalin.http.Context ctx) throws Exception
+   {
+      Method method = SpaNotFoundHandlerRegistry.class.getDeclaredMethod("handleNotFound", io.javalin.http.Context.class);
+      method.setAccessible(true);
+      method.invoke(registry, ctx);
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound delegates to matching handler
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_DelegatesToMatchingHandler() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      boolean[] handlerCalled = {false};
+      registry.registerSpaHandler("/admin", ctx -> handlerCalled[0] = true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/users/123");
+
+      callHandleNotFound(registry, ctx);
+
+      assertTrue(handlerCalled[0], "Handler should have been called");
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound with no matching handler
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_NoMatchingHandler() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      boolean[] handlerCalled = {false};
+      registry.registerSpaHandler("/admin", ctx -> handlerCalled[0] = true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/customer/dashboard");
+
+      callHandleNotFound(registry, ctx);
+
+      assertFalse(handlerCalled[0], "Handler should NOT have been called for non-matching path");
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound with multiple handlers (priority)
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_LongestPrefixWins() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      boolean[] rootHandlerCalled = {false};
+      boolean[] adminHandlerCalled = {false};
+      boolean[] apiHandlerCalled = {false};
+
+      ///////////////////////////////////////////////////////////////////////
+      // Register handlers in random order - longest should match first    //
+      ///////////////////////////////////////////////////////////////////////
+      registry.registerSpaHandler("/", ctx -> rootHandlerCalled[0] = true);
+      registry.registerSpaHandler("/admin/api", ctx -> apiHandlerCalled[0] = true);
+      registry.registerSpaHandler("/admin", ctx -> adminHandlerCalled[0] = true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/api/users");
+
+      callHandleNotFound(registry, ctx);
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Most specific handler (/admin/api) should be called, not /admin or / //
+      ///////////////////////////////////////////////////////////////////////////
+      assertTrue(apiHandlerCalled[0], "Most specific handler should be called");
+      assertFalse(adminHandlerCalled[0], "Less specific handler should not be called");
+      assertFalse(rootHandlerCalled[0], "Root handler should not be called");
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound with root handler as fallback
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_RootHandlerAsFallback() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      boolean[] rootHandlerCalled = {false};
+      boolean[] adminHandlerCalled = {false};
+
+      registry.registerSpaHandler("/admin", ctx -> adminHandlerCalled[0] = true);
+      registry.registerSpaHandler("/", ctx -> rootHandlerCalled[0] = true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/customer/dashboard");
+
+      callHandleNotFound(registry, ctx);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Root handler should catch paths not handled by specific handlers  //
+      ///////////////////////////////////////////////////////////////////////
+      assertTrue(rootHandlerCalled[0], "Root handler should be called as fallback");
+      assertFalse(adminHandlerCalled[0], "Admin handler should not be called");
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound with exact path match
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_ExactPathMatch() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      boolean[] handlerCalled = {false};
+      registry.registerSpaHandler("/admin", ctx -> handlerCalled[0] = true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin");
+
+      callHandleNotFound(registry, ctx);
+
+      assertTrue(handlerCalled[0], "Handler should be called for exact path match");
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound doesn't match prefix collisions
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_NoPrefixCollision() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      boolean[] adminHandlerCalled = {false};
+      registry.registerSpaHandler("/admin", ctx -> adminHandlerCalled[0] = true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/administrator");
+
+      callHandleNotFound(registry, ctx);
+
+      assertFalse(adminHandlerCalled[0], "Handler should NOT be called for /administrator when registered for /admin");
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // pathMatches Tests                                                         //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private pathMatches method via reflection
+    *******************************************************************************/
+   private boolean callPathMatches(SpaNotFoundHandlerRegistry registry, String requestPath, String spaPath) throws Exception
+   {
+      Method method = SpaNotFoundHandlerRegistry.class.getDeclaredMethod("pathMatches", String.class, String.class);
+      method.setAccessible(true);
+      return (Boolean) method.invoke(registry, requestPath, spaPath);
+   }
+
+
+   /*******************************************************************************
+    ** Test pathMatches delegates to isPathUnderPrefix
+    *******************************************************************************/
+   @Test
+   void testPathMatches() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      assertTrue(callPathMatches(registry, "/admin/users", "/admin"));
+      assertTrue(callPathMatches(registry, "/admin", "/admin"));
+      assertFalse(callPathMatches(registry, "/administrator", "/admin"));
+      assertTrue(callPathMatches(registry, "/anything", "/"));
+   }
+
+
+   /*******************************************************************************
+    ** Test handler sorting by path length
+    *******************************************************************************/
+   @Test
+   void testHandlerSortingByPathLength() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+
+      ///////////////////////////////////////////////////////////
+      // Register in order: short, long, medium                //
+      // Should be sorted to: long, medium, short after insert //
+      ///////////////////////////////////////////////////////////
+      registry.registerSpaHandler("/a", ctx -> {});
+      registry.registerSpaHandler("/admin/api/v1", ctx -> {});
+      registry.registerSpaHandler("/admin", ctx -> {});
+
+      ///////////////////////////////////////////////////////////////////////
+      // Verify longest path is checked first by testing handler delegation //
+      ///////////////////////////////////////////////////////////////////////
+      boolean[] longHandlerCalled = {false};
+      boolean[] mediumHandlerCalled = {false};
+      boolean[] shortHandlerCalled = {false};
+
+      registry.clear();
+      registry.registerSpaHandler("/a", ctx -> shortHandlerCalled[0] = true);
+      registry.registerSpaHandler("/admin/api/v1", ctx -> longHandlerCalled[0] = true);
+      registry.registerSpaHandler("/admin", ctx -> mediumHandlerCalled[0] = true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/api/v1/users");
+
+      callHandleNotFound(registry, ctx);
+
+      assertTrue(longHandlerCalled[0]);
+      assertFalse(mediumHandlerCalled[0]);
+      assertFalse(shortHandlerCalled[0]);
    }
 
 }

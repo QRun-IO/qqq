@@ -37,7 +37,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
@@ -866,6 +873,394 @@ class IsolatedSpaRouteProviderTest
       assertTrue(callIsExcludedPath(provider, "/"));
       assertTrue(callIsExcludedPath(provider, "/users"));
       assertTrue(callIsExcludedPath(provider, "/anything"));
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // handleNotFound() Tests                                                     //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private handleNotFound method via reflection
+    *******************************************************************************/
+   private void callHandleNotFound(IsolatedSpaRouteProvider provider, io.javalin.http.Context ctx, boolean checkExclusions) throws Exception
+   {
+      Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("handleNotFound", io.javalin.http.Context.class, boolean.class);
+      method.setAccessible(true);
+      method.invoke(provider, ctx, checkExclusions);
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound - root SPA with excluded path (should skip)
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_RootSpaWithExcludedPath() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
+      provider.withExcludedPaths(List.of("/api", "/admin"));
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/api/users");
+
+      //////////////////////////////////////////////////////////////////////
+      // Should skip handling because /api is excluded                    //
+      // Method should return without setting status or content           //
+      //////////////////////////////////////////////////////////////////////
+      callHandleNotFound(provider, ctx, true);
+
+      verify(ctx, never()).html(anyString());
+      verify(ctx, never()).status(any());
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound - path-scoped SPA with request outside scope (should skip)
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_PathScopedOutsidePath() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/customer/dashboard");
+
+      //////////////////////////////////////////////////////////////////
+      // Should skip because request is not under /admin             //
+      //////////////////////////////////////////////////////////////////
+      callHandleNotFound(provider, ctx, false);
+
+      verify(ctx, never()).html(anyString());
+      verify(ctx, never()).status(any());
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound - static asset request (should skip)
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_StaticAssetRequest() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/assets/logo.png");
+
+      ///////////////////////////////////////////////////////////////////////
+      // Should skip because .png is a static asset - let it 404 naturally //
+      ///////////////////////////////////////////////////////////////////////
+      callHandleNotFound(provider, ctx, false);
+
+      verify(ctx, never()).html(anyString());
+      verify(ctx, never()).status(any());
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound - serve index.html for deep link (path-scoped SPA)
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_ServeIndexForDeepLink() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
+      provider.withLoadFromJar(true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/users/123");
+
+      //////////////////////////////////////////////////////////////
+      // Should serve index.html with paths rewritten for /admin //
+      //////////////////////////////////////////////////////////////
+      callHandleNotFound(provider, ctx, false);
+
+      verify(ctx).html(contains("<base href=\"/admin/\">"));
+      verify(ctx).status(io.javalin.http.HttpStatus.OK);
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound - serve index.html for root SPA deep link
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_ServeIndexForRootSpa() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
+      provider.withExcludedPaths(List.of("/api"));
+      provider.withLoadFromJar(true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/dashboard");
+
+      /////////////////////////////////////////////////////////////
+      // Should serve index.html (no path rewriting for root "/") //
+      /////////////////////////////////////////////////////////////
+      callHandleNotFound(provider, ctx, true);
+
+      verify(ctx).html(anyString());
+      verify(ctx).status(io.javalin.http.HttpStatus.OK);
+   }
+
+
+   /*******************************************************************************
+    ** Test handleNotFound - null index file (error case)
+    *******************************************************************************/
+   @Test
+   void testHandleNotFound_NullIndexFile() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("non-existent-file.html");
+      provider.withLoadFromJar(true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/users");
+
+      ///////////////////////////////////////////////////////////////////
+      // Should handle gracefully when index file cannot be loaded     //
+      ///////////////////////////////////////////////////////////////////
+      callHandleNotFound(provider, ctx, false);
+
+      ////////////////////////////////////////////////////////////////////
+      // Context methods should not be called if index file is not found //
+      ////////////////////////////////////////////////////////////////////
+      verify(ctx, never()).html(anyString());
+      verify(ctx, never()).status(any());
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // loadSpaIndexFile() Tests                                                   //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private loadSpaIndexFile method via reflection
+    *******************************************************************************/
+   private java.io.InputStream callLoadSpaIndexFile(IsolatedSpaRouteProvider provider) throws Exception
+   {
+      Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("loadSpaIndexFile");
+      method.setAccessible(true);
+      return (java.io.InputStream) method.invoke(provider);
+   }
+
+
+   /*******************************************************************************
+    ** Test loadSpaIndexFile - from JAR (classpath)
+    *******************************************************************************/
+   @Test
+   void testLoadSpaIndexFile_FromJar() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
+      provider.withLoadFromJar(true);
+
+      java.io.InputStream inputStream = callLoadSpaIndexFile(provider);
+
+      assertNotNull(inputStream, "Should load index file from classpath");
+      inputStream.close();
+   }
+
+
+   /*******************************************************************************
+    ** Test loadSpaIndexFile - from filesystem
+    *******************************************************************************/
+   @Test
+   void testLoadSpaIndexFile_FromFileSystem() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
+      provider.withLoadFromJar(false);
+
+      java.io.InputStream inputStream = callLoadSpaIndexFile(provider);
+
+      assertNotNull(inputStream, "Should load index file from filesystem");
+      inputStream.close();
+   }
+
+
+   /*******************************************************************************
+    ** Test loadSpaIndexFile - file not found from JAR
+    *******************************************************************************/
+   @Test
+   void testLoadSpaIndexFile_NotFoundJar() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("non-existent-file.html");
+      provider.withLoadFromJar(true);
+
+      java.io.InputStream inputStream = callLoadSpaIndexFile(provider);
+
+      assertEquals(null, inputStream, "Should return null when file not found in JAR");
+   }
+
+
+   /*******************************************************************************
+    ** Test loadSpaIndexFile - file not found from filesystem
+    *******************************************************************************/
+   @Test
+   void testLoadSpaIndexFile_NotFoundFileSystem() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/non-existent.html");
+      provider.withLoadFromJar(false);
+
+      java.io.InputStream inputStream = callLoadSpaIndexFile(provider);
+
+      assertEquals(null, inputStream, "Should return null when file not found in filesystem");
+   }
+
+
+   /*******************************************************************************
+    ** Test loadSpaIndexFile - with full path in filename (filesystem)
+    *******************************************************************************/
+   @Test
+   void testLoadSpaIndexFile_FullPathInFilename() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withSpaIndexFile("test-spa-admin/subdir/../index.html");
+      provider.withLoadFromJar(false);
+
+      java.io.InputStream inputStream = callLoadSpaIndexFile(provider);
+
+      assertNotNull(inputStream, "Should handle path navigation in filename");
+      inputStream.close();
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // authenticateRequest() Tests                                                //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Test authenticateRequest - no authenticator configured
+    *******************************************************************************/
+   @Test
+   void testAuthenticateRequest_NoAuthenticator() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.setQInstance(qInstance);
+      // No authenticator set
+
+      Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("authenticateRequest", io.javalin.http.Context.class);
+      method.setAccessible(true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/users");
+
+      ////////////////////////////////////////////////////////
+      // Should return early without error or status change //
+      ////////////////////////////////////////////////////////
+      method.invoke(provider, ctx);
+
+      verify(ctx, never()).status(anyInt());
+   }
+
+
+   /*******************************************************************************
+    ** Test authenticateRequest - null QInstance
+    *******************************************************************************/
+   @Test
+   void testAuthenticateRequest_NullQInstance() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withAuthenticator(new QCodeReference(String.class));
+      // QInstance is null
+
+      Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("authenticateRequest", io.javalin.http.Context.class);
+      method.setAccessible(true);
+
+      io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.path()).thenReturn("/admin/users");
+
+      ///////////////////////////////////////////////////
+      // Should set 500 status when QInstance is null //
+      ///////////////////////////////////////////////////
+      method.invoke(provider, ctx);
+
+      verify(ctx).status(500);
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // isStaticAsset() Tests                                                      //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Helper to invoke private isStaticAsset method via reflection
+    *******************************************************************************/
+   private boolean callIsStaticAsset(IsolatedSpaRouteProvider provider, String path) throws Exception
+   {
+      Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("isStaticAsset", String.class);
+      method.setAccessible(true);
+      return (Boolean) method.invoke(provider, path);
+   }
+
+
+   /*******************************************************************************
+    ** Test isStaticAsset
+    *******************************************************************************/
+   @Test
+   void testIsStaticAsset() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+
+      assertTrue(callIsStaticAsset(provider, "/admin/assets/logo.png"));
+      assertTrue(callIsStaticAsset(provider, "/admin/styles.css"));
+      assertTrue(callIsStaticAsset(provider, "/admin/app.js"));
+      assertFalse(callIsStaticAsset(provider, "/admin/users"));
+      assertFalse(callIsStaticAsset(provider, "/admin/dashboard"));
+   }
+
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // Custom Asset Detection Tests (Fluent Setters)                             //
+   ///////////////////////////////////////////////////////////////////////////////
+
+   /*******************************************************************************
+    ** Test withCustomAssetExtensions
+    *******************************************************************************/
+   @Test
+   void testWithCustomAssetExtensions() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withCustomAssetExtensions(".myext", ".custom");
+
+      assertTrue(callIsStaticAsset(provider, "/admin/file.myext"));
+      assertTrue(callIsStaticAsset(provider, "/admin/data.custom"));
+      assertFalse(callIsStaticAsset(provider, "/admin/users"));
+   }
+
+
+   /*******************************************************************************
+    ** Test withCustomAssetPathPatterns
+    *******************************************************************************/
+   @Test
+   void testWithCustomAssetPathPatterns() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withCustomAssetPathPatterns("/my-assets/", "/resources/");
+
+      assertTrue(callIsStaticAsset(provider, "/admin/my-assets/file.txt"));
+      assertTrue(callIsStaticAsset(provider, "/admin/resources/data.dat"));
+      assertFalse(callIsStaticAsset(provider, "/admin/users"));
+   }
+
+
+   /*******************************************************************************
+    ** Test withCustomAssetDetector
+    *******************************************************************************/
+   @Test
+   void testWithCustomAssetDetector() throws Exception
+   {
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
+      provider.withCustomAssetDetector(path -> path.contains("/cdn/"));
+
+      assertTrue(callIsStaticAsset(provider, "/admin/cdn/file.txt"));
+      assertTrue(callIsStaticAsset(provider, "/cdn/assets/logo.png"));
+      assertFalse(callIsStaticAsset(provider, "/admin/users"));
    }
 
 }

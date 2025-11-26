@@ -202,9 +202,9 @@ public class StaticAssetDetector
          }
       }
 
-      ///////////////////////////////
-      // Check file extension      //
-      ///////////////////////////////
+      //////////////////////////
+      // Check file extension //
+      //////////////////////////
       for(String ext : extensions)
       {
          if(normalizedPath.endsWith(ext))
@@ -215,9 +215,9 @@ public class StaticAssetDetector
          }
       }
 
-      ///////////////////////////////
-      // Check path patterns       //
-      ///////////////////////////////
+      /////////////////////////
+      // Check path patterns //
+      /////////////////////////
       for(String pattern : pathPatterns)
       {
          if(normalizedPath.contains(pattern))
@@ -228,9 +228,9 @@ public class StaticAssetDetector
          }
       }
 
-      //////////////////////////////
-      // Not a static asset       //
-      //////////////////////////////
+      ////////////////////////
+      // Not a static asset //
+      ////////////////////////
       LOG.trace("Path not identified as static asset", logPair("path", path));
       incrementCounter("not_asset");
       return false;
@@ -304,10 +304,10 @@ public class StaticAssetDetector
     *******************************************************************************/
    protected void incrementCounter(String counterName)
    {
-      ///////////////////////////////////////////////////////////////////////////////
-      // Override this method to integrate with your metrics system               //
-      // Example: metricsRegistry.counter("spa.asset.detection." + counterName)   //
-      ///////////////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////////////////////
+      // Override this method to integrate with your metrics system             //
+      // Example: metricsRegistry.counter("spa.asset.detection." + counterName) //
+      ////////////////////////////////////////////////////////////////////////////
    }
 
 
@@ -401,4 +401,3 @@ public class StaticAssetDetector
       return new ArrayList<>(pathPatterns);
    }
 }
-

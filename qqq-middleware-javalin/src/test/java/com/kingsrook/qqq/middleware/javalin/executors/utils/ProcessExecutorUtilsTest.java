@@ -21,24 +21,21 @@
 
 package com.kingsrook.qqq.middleware.javalin.executors.utils;
 
+
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
- ** Unit test for ProcessExecutorUtils
- *******************************************************************************/
+ * Unit test for ProcessExecutorUtils
+ */
 class ProcessExecutorUtilsTest
 {
 
@@ -51,24 +48,26 @@ class ProcessExecutorUtilsTest
    }
 
 
+
    /*******************************************************************************
     ** Test serializeRunProcessResultForCaller with successful output
     *******************************************************************************/
    @Test
    void testSerializeRunProcessResultForCaller_Success()
    {
-      ProcessInitOrStepOrStatusOutputInterface output = mock(ProcessInitOrStepOrStatusOutputInterface.class);
-      RunProcessOutput runProcessOutput = new RunProcessOutput();
+      ProcessInitOrStepOrStatusOutputInterface output           = mock(ProcessInitOrStepOrStatusOutputInterface.class);
+      RunProcessOutput                         runProcessOutput = new RunProcessOutput();
 
-      java.util.Map<String, java.io.Serializable> values = new HashMap<>();
+      Map<String, java.io.Serializable> values = new HashMap<>();
       values.put("result", "success");
       runProcessOutput.setValues(values);
 
       ProcessExecutorUtils.serializeRunProcessResultForCaller(output, "testProcess", runProcessOutput);
 
       verify(output).setType(ProcessInitOrStepOrStatusOutputInterface.Type.COMPLETE);
-      verify(output).setValues(java.util.Map.class.cast(values));
+      verify(output).setValues(Map.class.cast(values));
    }
+
 
 
    /*******************************************************************************
@@ -77,9 +76,9 @@ class ProcessExecutorUtilsTest
    @Test
    void testSerializeRunProcessResultForCaller_WithException()
    {
-      ProcessInitOrStepOrStatusOutputInterface output = mock(ProcessInitOrStepOrStatusOutputInterface.class);
-      RunProcessOutput runProcessOutput = new RunProcessOutput();
-      Exception exception = new RuntimeException("Test error");
+      ProcessInitOrStepOrStatusOutputInterface output           = mock(ProcessInitOrStepOrStatusOutputInterface.class);
+      RunProcessOutput                         runProcessOutput = new RunProcessOutput();
+      Exception                                exception        = new RuntimeException("Test error");
       runProcessOutput.setException(exception);
 
       ProcessExecutorUtils.serializeRunProcessResultForCaller(output, "testProcess", runProcessOutput);
@@ -89,15 +88,16 @@ class ProcessExecutorUtilsTest
    }
 
 
+
    /*******************************************************************************
     ** Test serializeRunProcessExceptionForCaller with user-facing exception
     *******************************************************************************/
    @Test
    void testSerializeRunProcessExceptionForCaller_UserFacingException()
    {
-      ProcessInitOrStepOrStatusOutputInterface output = mock(ProcessInitOrStepOrStatusOutputInterface.class);
-      QUserFacingException userException = new QUserFacingException("User-friendly error message");
-      Exception exception = new RuntimeException("Wrapped", userException);
+      ProcessInitOrStepOrStatusOutputInterface output        = mock(ProcessInitOrStepOrStatusOutputInterface.class);
+      QUserFacingException                     userException = new QUserFacingException("User-friendly error message");
+      Exception                                exception     = new RuntimeException("Wrapped", userException);
 
       ProcessExecutorUtils.serializeRunProcessExceptionForCaller(output, exception);
 
@@ -107,14 +107,15 @@ class ProcessExecutorUtilsTest
    }
 
 
+
    /*******************************************************************************
     ** Test serializeRunProcessExceptionForCaller with non-user-facing exception
     *******************************************************************************/
    @Test
    void testSerializeRunProcessExceptionForCaller_NonUserFacingException()
    {
-      ProcessInitOrStepOrStatusOutputInterface output = mock(ProcessInitOrStepOrStatusOutputInterface.class);
-      Exception exception = new RuntimeException("Technical error details");
+      ProcessInitOrStepOrStatusOutputInterface output    = mock(ProcessInitOrStepOrStatusOutputInterface.class);
+      Exception                                exception = new RuntimeException("Technical error details");
 
       ProcessExecutorUtils.serializeRunProcessExceptionForCaller(output, exception);
 
@@ -123,17 +124,18 @@ class ProcessExecutorUtilsTest
    }
 
 
+
    /*******************************************************************************
     ** Test serializeRunProcessResultForCaller with processMetaDataAdjustment
     *******************************************************************************/
    @Test
    void testSerializeRunProcessResultForCaller_WithProcessMetaDataAdjustment()
    {
-      ProcessInitOrStepOrStatusOutputInterface output = mock(ProcessInitOrStepOrStatusOutputInterface.class);
-      RunProcessOutput runProcessOutput = new RunProcessOutput();
+      ProcessInitOrStepOrStatusOutputInterface output           = mock(ProcessInitOrStepOrStatusOutputInterface.class);
+      RunProcessOutput                         runProcessOutput = new RunProcessOutput();
 
       // Create a ProcessMetaDataAdjustment - it's stored in ProcessState
-      com.kingsrook.qqq.backend.core.model.actions.processes.ProcessMetaDataAdjustment adjustment = 
+      com.kingsrook.qqq.backend.core.model.actions.processes.ProcessMetaDataAdjustment adjustment =
          new com.kingsrook.qqq.backend.core.model.actions.processes.ProcessMetaDataAdjustment();
       runProcessOutput.getProcessState().setProcessMetaDataAdjustment(adjustment);
 
@@ -144,14 +146,15 @@ class ProcessExecutorUtilsTest
    }
 
 
+
    /*******************************************************************************
     ** Test serializeRunProcessResultForCaller with next step
     *******************************************************************************/
    @Test
    void testSerializeRunProcessResultForCaller_WithNextStep()
    {
-      ProcessInitOrStepOrStatusOutputInterface output = mock(ProcessInitOrStepOrStatusOutputInterface.class);
-      RunProcessOutput runProcessOutput = new RunProcessOutput();
+      ProcessInitOrStepOrStatusOutputInterface output           = mock(ProcessInitOrStepOrStatusOutputInterface.class);
+      RunProcessOutput                         runProcessOutput = new RunProcessOutput();
       runProcessOutput.getProcessState().setNextStepName("nextStepName");
 
       ProcessExecutorUtils.serializeRunProcessResultForCaller(output, "testProcess", runProcessOutput);

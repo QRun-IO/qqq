@@ -112,12 +112,16 @@ public class SpaNotFoundHandlerRegistry
     *******************************************************************************/
    public synchronized void registerSpaHandler(String spaPath, Consumer<Context> handler)
    {
-      // Normalize path (ensure it starts with / and doesn't end with /)
+      /////////////////////////////////////////////////////////////////////
+      // Normalize path (ensure it starts with / and doesn't end with /) //
+      /////////////////////////////////////////////////////////////////////
       String normalizedPath = normalizePath(spaPath);
 
       handlers.add(new SpaNotFoundHandler(normalizedPath, handler));
 
-      // Sort by path length (longest first) so more specific paths match first
+      ////////////////////////////////////////////////////////////////////////////
+      // Sort by path length (longest first) so more specific paths match first //
+      ////////////////////////////////////////////////////////////////////////////
       handlers.sort(Comparator.comparingInt((SpaNotFoundHandler h) -> h.path.length()).reversed());
 
       LOG.info("Registered SPA 404 handler",
@@ -150,9 +154,9 @@ public class SpaNotFoundHandlerRegistry
       LOG.debug("Global 404 handler invoked", logPair("path", requestPath), logPair("registeredHandlers", handlers.size()));
 
       /////////////////////////////////////////////////////////////////////////
-      // Find the handler with the longest matching path prefix             //
+      // Find the handler with the longest matching path prefix              //
       // This ensures more specific paths (e.g., /admin/api) take precedence //
-      // over less specific ones (e.g., /admin or /)                        //
+      // over less specific ones (e.g., /admin or /)                         //
       /////////////////////////////////////////////////////////////////////////
       for(SpaNotFoundHandler handler : handlers)
       {
@@ -168,11 +172,10 @@ public class SpaNotFoundHandlerRegistry
          }
       }
 
-      ///////////////////////////////////////////////////////////////////////
-      // No handler matched - let it 404 naturally                        //
-      ///////////////////////////////////////////////////////////////////////
-      LOG.debug("No SPA handler matched path, letting 404",
-         logPair("path", requestPath), logPair("registeredHandlers", handlers.size()));
+      ///////////////////////////////////////////////
+      // No handler matched - let it 404 naturally //
+      ///////////////////////////////////////////////
+      LOG.debug("No SPA handler matched path, letting 404", logPair("path", requestPath), logPair("registeredHandlers", handlers.size()));
    }
 
 
@@ -204,19 +207,19 @@ public class SpaNotFoundHandlerRegistry
     *******************************************************************************/
    private boolean pathMatches(String requestPath, String spaPath)
    {
-      /////////////////////////////////////////////////////////
-      // Root path is special - it matches EVERYTHING       //
-      // This allows "/" SPA to be a catch-all fallback     //
-      /////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////
+      // Root path is special - it matches EVERYTHING   //
+      // This allows "/" SPA to be a catch-all fallback //
+      ////////////////////////////////////////////////////
       if("/".equals(spaPath))
       {
          return true;
       }
 
-      /////////////////////////////////////////////////////////
-      // For non-root SPAs, check if request is under SPA  //
-      // Uses boundary checking to prevent false matches    //
-      /////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////
+      // For non-root SPAs, check if request is under SPA //
+      // Uses boundary checking to prevent false matches  //
+      //////////////////////////////////////////////////////
       return isPathUnderPrefix(requestPath, spaPath);
    }
 
@@ -260,18 +263,18 @@ public class SpaNotFoundHandlerRegistry
     *******************************************************************************/
    private static boolean isPathUnderPrefix(String requestPath, String pathPrefix)
    {
-      ///////////////////////////////////////////////////
-      // Special case: root path matches everything   //
-      ///////////////////////////////////////////////////
+      ////////////////////////////////////////////////
+      // Special case: root path matches everything //
+      ////////////////////////////////////////////////
       if("/".equals(pathPrefix))
       {
          return true;
       }
 
-      ///////////////////////////////////////////////////
-      // Normalize request path: strip query params   //
-      // and hash fragments for comparison            //
-      ///////////////////////////////////////////////////
+      ////////////////////////////////////////////////
+      // Normalize request path: strip query params //
+      // and hash fragments for comparison          //
+      ////////////////////////////////////////////////
       String normalizedPath = requestPath;
       int queryIndex = normalizedPath.indexOf('?');
       if(queryIndex != -1)
@@ -284,18 +287,18 @@ public class SpaNotFoundHandlerRegistry
          normalizedPath = normalizedPath.substring(0, hashIndex);
       }
 
-      ////////////////////////////
-      // Exact match case       //
-      ////////////////////////////
+      //////////////////////
+      // Exact match case //
+      //////////////////////
       if(normalizedPath.equals(pathPrefix))
       {
          return true;
       }
 
-      /////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////
       // Sub-path match with boundary check                     //
       // Ensures "/administrator" doesn't match prefix "/admin" //
-      /////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////
       return normalizedPath.startsWith(pathPrefix + "/");
    }
 
@@ -311,13 +314,17 @@ public class SpaNotFoundHandlerRegistry
          return "/";
       }
 
-      // Ensure starts with /
+      ////////////////////////
+      // Ensure starts with //
+      ////////////////////////
       if(!path.startsWith("/"))
       {
          path = "/" + path;
       }
 
-      // Remove trailing / (except for root)
+      /////////////////////////////////////////
+      // Remove trailing / (except for root) //
+      /////////////////////////////////////////
       if(path.length() > 1 && path.endsWith("/"))
       {
          path = path.substring(0, path.length() - 1);

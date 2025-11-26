@@ -4,20 +4,22 @@ Kubernetes-compatible health check endpoints for QQQ applications.
 
 ## Features
 
-- `/health` endpoint for Kubernetes liveness and readiness probes
-- Built-in health indicators: Database, Memory, Disk Space
-- Extensible health indicator system
-- Thread-safe concurrent health checks
-- Configurable timeouts and thresholds
-- JSON response format
-- Auto-registration via metadata (no manual route provider setup)
+- `/health` endpoint for Kubernetes liveness/readiness probes
+- Built-in indicators: Database, Memory, Disk Space
+- Extensible health indicator interface
+- Thread-safe concurrent execution
+- Auto-registration via metadata (no manual setup required)
 
 ## Usage
 
-Health endpoints are configured purely through metadata. Create a `MetaDataProducer` that extends `HealthMetaDataProducer`:
+Extend `HealthMetaDataProducer` to configure health checks:
 
 ```java
-public class MyHealthMetaDataProducer extends HealthMetaDataProducer
+package com.myapp.metadata.autoload.health;
+
+import com.kingsrook.qqq.middleware.health.HealthMetaDataProducer;
+
+public class HealthMetaDataProducer extends com.kingsrook.qqq.middleware.health.HealthMetaDataProducer
 {
    @Override
    protected HealthCheckMetaData buildHealthCheckMetaData(QInstance qInstance)
@@ -29,7 +31,7 @@ public class MyHealthMetaDataProducer extends HealthMetaDataProducer
             new DatabaseHealthIndicator().withBackendName("rdbms"),
             new MemoryHealthIndicator().withThreshold(85),
             new DiskSpaceHealthIndicator()
-               .withPath("/")
+               .withPath("/var/myapp")
                .withMinimumFreeBytes(1_000_000_000L)
          ))
          .withTimeoutMs(5000);
@@ -37,20 +39,80 @@ public class MyHealthMetaDataProducer extends HealthMetaDataProducer
 }
 ```
 
-The health endpoint will be automatically registered when your application starts. No additional code is needed in `Server.java`.
+Place this class in your `metadata.autoload` package tree. The health endpoint registers automatically - no code needed in `Server.java`.
+
+## Response Format
+
+```json
+{
+  "status": "UP",
+  "timestamp": "2025-11-26T10:30:00Z",
+  "checks": {
+    "database": {
+      "status": "UP",
+      "durationMs": 45,
+      "details": {
+        "backendName": "rdbms",
+        "vendor": "postgresql"
+      }
+    },
+    "memory": {
+      "status": "UP",
+      "durationMs": 2,
+      "details": {
+        "usedPercent": "45.2",
+        "thresholdPercent": 85
+      }
+    }
+  }
+}
+```
+
+HTTP status: 200 (UP/DEGRADED), 503 (DOWN)
+
+## Built-in Indicators
+
+- `DatabaseHealthIndicator` - Check database connectivity with simple query
+- `MemoryHealthIndicator` - Check JVM heap usage percentage
+- `DiskSpaceHealthIndicator` - Check available disk space
+
+## Custom Indicators
+
+Implement `HealthIndicator` interface:
+
+```java
+public class CustomHealthIndicator implements HealthIndicator
+{
+   @Override
+   public String getName()
+   {
+      return "customCheck";
+   }
+
+   @Override
+   public HealthCheckResult check(QInstance qInstance) throws QException
+   {
+      // Your check logic here
+      return new HealthCheckResult()
+         .withStatus(HealthStatus.UP)
+         .withDurationMs(duration)
+         .withDetail("key", "value");
+   }
+}
+```
 
 ## Migration from Manual Registration
 
-If you're currently using manual route provider registration:
+Replace deprecated manual registration:
 
 ```java
 // OLD (deprecated):
 .withAdditionalRouteProvider(new JavalinHealthRouteProvider())
 ```
 
-Migrate to the metadata-driven approach by creating a `HealthMetaDataProducer` as shown above. The manual registration method is deprecated and will be removed in a future release.
+With metadata-driven approach shown in Usage section above.
 
 ## License
 
-AGPL 3.0 - See LICENSE file
+AGPL 3.0
 

@@ -716,11 +716,8 @@ public class QInstanceValidator
     *******************************************************************************/
    private void validateScopedAuthentication(QInstance qInstance)
    {
-      ///////////////////////////////////////////////////////////////////////////
-      // Access scoped providers via reflection to avoid module dependencies  //
-      ///////////////////////////////////////////////////////////////////////////
       Map<AuthScope, QAuthenticationMetaData> scopedProviders =
-         getScopedAuthenticationProviders(qInstance);
+         qInstance.getScopedAuthenticationProviders();
       if(scopedProviders == null || scopedProviders.isEmpty())
       {
          // No scoped providers - nothing to validate
@@ -758,37 +755,6 @@ public class QInstanceValidator
             validateRouteProviderScope(qInstance, routeScope);
          }
          // InstanceDefault scope doesn't need validation
-      }
-   }
-
-
-   /*******************************************************************************
-    ** Get scoped authentication providers via reflection.
-    **
-    ** @param qInstance The QInstance to get providers from
-    ** @return Map of scoped providers, or empty map if not accessible
-    *******************************************************************************/
-   @SuppressWarnings("unchecked")
-   private Map<AuthScope, QAuthenticationMetaData>
-      getScopedAuthenticationProviders(QInstance qInstance)
-   {
-      try
-      {
-         // Use reflection to get the scoped authentication providers registry
-         java.lang.reflect.Field field =
-            QInstance.class.getDeclaredField("scopedAuthenticationProviders");
-         field.setAccessible(true);
-         Object providers = field.get(qInstance);
-         if(providers == null)
-         {
-            return Collections.emptyMap();
-         }
-         return (Map<AuthScope, QAuthenticationMetaData>)providers;
-      }
-      catch(Exception e)
-      {
-         // Field might not exist or be accessible - return empty map
-         return Collections.emptyMap();
       }
    }
 

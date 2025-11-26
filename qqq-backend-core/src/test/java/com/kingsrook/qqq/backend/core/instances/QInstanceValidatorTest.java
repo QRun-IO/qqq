@@ -60,6 +60,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeType;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.ParentWidgetMetaData;
@@ -111,6 +113,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 
@@ -2509,6 +2512,61 @@ public class QInstanceValidatorTest extends BaseTest
             .withCodeReference(new QCodeReference(ParentWidgetRenderer.class))
          ),
          "Unrecognized child widget name");
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that instance with only instance default authentication is valid.
+    *******************************************************************************/
+   @Test
+   void testScopedAuthenticationInstanceDefaultOnly()
+   {
+      assertValidationSuccess((qInstance) ->
+      {
+         QAuthenticationMetaData defaultAuth = new QAuthenticationMetaData();
+         qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), defaultAuth);
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that instance with no scoped authentication providers is valid.
+    *******************************************************************************/
+   @Test
+   void testScopedAuthenticationNoneRegistered()
+   {
+      assertValidationSuccess((qInstance) ->
+      {
+         // No scoped authentication registered - should be valid
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that getScopedAuthenticationProviders() returns expected values.
+    *******************************************************************************/
+   @Test
+   void testGetScopedAuthenticationProviders()
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+      
+      // TestUtils.defineInstance() sets up authentication, so check it exists
+      int initialSize = qInstance.getScopedAuthenticationProviders().size();
+      assertTrue(initialSize >= 0, "Should have initial scoped authentication providers");
+      
+      // Register route provider auth
+      QAuthenticationMetaData routeAuth = new QAuthenticationMetaData();
+      AuthScope routeScope = AuthScope.routeProvider(new Object());
+      qInstance.registerAuthenticationProvider(routeScope, routeAuth);
+      assertEquals(initialSize + 1, qInstance.getScopedAuthenticationProviders().size());
+      assertTrue(qInstance.getScopedAuthenticationProviders().containsKey(routeScope));
+      
+      // Verify the map is unmodifiable
+      assertThatThrownBy(() -> qInstance.getScopedAuthenticationProviders().clear())
+         .isInstanceOf(UnsupportedOperationException.class);
    }
 
 

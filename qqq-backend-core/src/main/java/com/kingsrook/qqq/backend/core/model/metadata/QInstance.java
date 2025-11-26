@@ -1097,6 +1097,18 @@ public class QInstance
 
 
    /*******************************************************************************
+    ** Get all registered scoped authentication providers.
+    **
+    ** @return Unmodifiable map of all scoped authentication providers
+    *******************************************************************************/
+   public Map<AuthScope, QAuthenticationMetaData> getScopedAuthenticationProviders()
+   {
+      return Collections.unmodifiableMap(scopedAuthenticationProviders);
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for widgets
     **
     *******************************************************************************/

@@ -46,9 +46,22 @@ public class SimpleRouteAuthenticator implements RouteAuthenticatorInterface
    private static final QLogger LOG = QLogger.getLogger(SimpleRouteAuthenticator.class);
 
 
-   /***************************************************************************
+
+   /*******************************************************************************
+    ** Authenticate an HTTP request using QQQ's authentication system.
     **
-    ***************************************************************************/
+    ** Sets up the QQQ session from the request context. If authentication fails,
+    ** redirects unauthenticated requests to the login page provided by the
+    ** authentication module.
+    **
+    ** Special handling for OAuth callbacks: If the request contains 'code' and
+    ** 'state' query parameters (OAuth callback), redirects to the same URL with
+    ** those parameters removed to prevent them from appearing in the browser URL.
+    **
+    ** @param context the Javalin HTTP context
+    ** @return true if authenticated and should proceed; false if redirected
+    ** @throws QException if authentication processing fails
+    *******************************************************************************/
    public boolean authenticateRequest(Context context) throws QException
    {
       try
@@ -90,5 +103,4 @@ public class SimpleRouteAuthenticator implements RouteAuthenticatorInterface
          throw (new QException("Error authenticating request", e));
       }
    }
-
 }

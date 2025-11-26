@@ -73,10 +73,16 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
 
 
-   /***************************************************************************
-    ** for the common use-case, get a single formParam by name (vs the list that the
-    ** actual proper formal interface would give).
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Get a single form parameter value by name.
+    **
+    ** Convenience method for the common use-case of retrieving a single value
+    ** from form parameters, rather than dealing with the List of values that
+    ** the formal HTTP interface provides.
+    **
+    ** @param name the form parameter name
+    ** @return the first value for the parameter, or null if not present
+    *******************************************************************************/
    public String getFormParam(String name)
    {
       if(formParams != null)
@@ -93,10 +99,16 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
 
 
-   /***************************************************************************
-    ** for the common use-case, get a single queryParam by name (vs the list that the
-    ** actual proper formal interface would give).
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Get a single query parameter value by name.
+    **
+    ** Convenience method for the common use-case of retrieving a single value
+    ** from query parameters, rather than dealing with the List of values that
+    ** the formal HTTP interface provides.
+    **
+    ** @param name the query parameter name
+    ** @return the first value for the parameter, or null if not present
+    *******************************************************************************/
    public String getQueryParam(String name)
    {
       if(queryParams != null)
@@ -115,6 +127,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for path
+    ** @see #withPath(String)
     *******************************************************************************/
    public String getPath()
    {
@@ -125,6 +138,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for path
+    ** @see #withPath(String)
     *******************************************************************************/
    public void setPath(String path)
    {
@@ -135,6 +149,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for path
+    **
+    ** @param path the HTTP request path
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withPath(String path)
    {
@@ -146,6 +163,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for method
+    ** @see #withMethod(String)
     *******************************************************************************/
    public String getMethod()
    {
@@ -156,6 +174,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for method
+    ** @see #withMethod(String)
     *******************************************************************************/
    public void setMethod(String method)
    {
@@ -166,6 +185,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for method
+    **
+    ** @param method the HTTP method (GET, POST, etc.)
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withMethod(String method)
    {
@@ -177,6 +199,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for pathParams
+    ** @see #withPathParams(Map)
     *******************************************************************************/
    public Map<String, String> getPathParams()
    {
@@ -187,6 +210,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for pathParams
+    ** @see #withPathParams(Map)
     *******************************************************************************/
    public void setPathParams(Map<String, String> pathParams)
    {
@@ -197,6 +221,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for pathParams
+    **
+    ** @param pathParams map of path parameters extracted from the URL pattern
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withPathParams(Map<String, String> pathParams)
    {
@@ -208,6 +235,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for cookies
+    ** @see #withCookies(Map)
     *******************************************************************************/
    public Map<String, String> getCookies()
    {
@@ -218,6 +246,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for cookies
+    ** @see #withCookies(Map)
     *******************************************************************************/
    public void setCookies(Map<String, String> cookies)
    {
@@ -228,6 +257,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for cookies
+    **
+    ** @param cookies map of HTTP cookies from the request
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withCookies(Map<String, String> cookies)
    {
@@ -239,6 +271,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for statusCode
+    ** @see #withStatusCode(Integer)
     *******************************************************************************/
    public Integer getStatusCode()
    {
@@ -249,6 +282,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for statusCode
+    ** @see #withStatusCode(Integer)
     *******************************************************************************/
    public void setStatusCode(Integer statusCode)
    {
@@ -259,6 +293,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for statusCode
+    **
+    ** @param statusCode HTTP status code for the response (e.g., 200, 404, 500)
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withStatusCode(Integer statusCode)
    {
@@ -270,6 +307,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for responseHeaders
+    ** @see #withResponseHeaders(Map)
     *******************************************************************************/
    public Map<String, String> getResponseHeaders()
    {
@@ -280,6 +318,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for responseHeaders
+    ** @see #withResponseHeaders(Map)
     *******************************************************************************/
    public void setResponseHeaders(Map<String, String> responseHeaders)
    {
@@ -290,6 +329,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for responseHeaders
+    **
+    ** @param responseHeaders map of HTTP headers to include in the response
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withResponseHeaders(Map<String, String> responseHeaders)
    {
@@ -301,6 +343,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for responseString
+    ** @see #withResponseString(String)
     *******************************************************************************/
    public String getResponseString()
    {
@@ -311,6 +354,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for responseString
+    ** @see #withResponseString(String)
     *******************************************************************************/
    public void setResponseString(String responseString)
    {
@@ -321,6 +365,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for responseString
+    **
+    ** @param responseString string content to send in the HTTP response body
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withResponseString(String responseString)
    {
@@ -332,6 +379,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for responseBytes
+    ** @see #withResponseBytes(byte[])
     *******************************************************************************/
    public byte[] getResponseBytes()
    {
@@ -342,6 +390,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for responseBytes
+    ** @see #withResponseBytes(byte[])
     *******************************************************************************/
    public void setResponseBytes(byte[] responseBytes)
    {
@@ -352,6 +401,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for responseBytes
+    **
+    ** @param responseBytes binary content to send in the HTTP response body
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withResponseBytes(byte[] responseBytes)
    {
@@ -363,6 +415,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for redirectURL
+    ** @see #withRedirectURL(String)
     *******************************************************************************/
    public String getRedirectURL()
    {
@@ -373,6 +426,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for redirectURL
+    ** @see #withRedirectURL(String)
     *******************************************************************************/
    public void setRedirectURL(String redirectURL)
    {
@@ -383,6 +437,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for redirectURL
+    **
+    ** @param redirectURL URL to redirect the client to instead of sending a body
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withRedirectURL(String redirectURL)
    {
@@ -394,6 +451,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for queryParams
+    ** @see #withQueryParams(Map)
     *******************************************************************************/
    public Map<String, List<String>> getQueryParams()
    {
@@ -404,6 +462,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for queryParams
+    ** @see #withQueryParams(Map)
     *******************************************************************************/
    public void setQueryParams(Map<String, List<String>> queryParams)
    {
@@ -414,6 +473,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for queryParams
+    **
+    ** @param queryParams map of query parameters from the URL
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withQueryParams(Map<String, List<String>> queryParams)
    {
@@ -425,6 +487,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for formParams
+    ** @see #withFormParams(Map)
     *******************************************************************************/
    public Map<String, List<String>> getFormParams()
    {
@@ -435,6 +498,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for formParams
+    ** @see #withFormParams(Map)
     *******************************************************************************/
    public void setFormParams(Map<String, List<String>> formParams)
    {
@@ -445,6 +509,9 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for formParams
+    **
+    ** @param formParams map of form parameters from POST request body
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withFormParams(Map<String, List<String>> formParams)
    {
@@ -455,6 +522,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Getter for bodyString
+    ** @see #withBodyString(String)
     *******************************************************************************/
    public String getBodyString()
    {
@@ -465,6 +533,7 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Setter for bodyString
+    ** @see #withBodyString(String)
     *******************************************************************************/
    public void setBodyString(String bodyString)
    {
@@ -475,12 +544,13 @@ public class ProcessBasedRouterPayload extends QProcessPayload
 
    /*******************************************************************************
     ** Fluent setter for bodyString
+    **
+    ** @param bodyString raw request body content as a string
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouterPayload withBodyString(String bodyString)
    {
       this.bodyString = bodyString;
       return (this);
    }
-
-
 }

@@ -144,7 +144,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
 
       if(queryStat != null)
       {
-         queryStat.setRecordCount(insertInput.getRecords().size());
+         queryStat.setRecordCount(insertInput.getRecords() == null ? 0 : insertInput.getRecords().size());
          QueryStatManager.getInstance().add(queryStat);
       }
 

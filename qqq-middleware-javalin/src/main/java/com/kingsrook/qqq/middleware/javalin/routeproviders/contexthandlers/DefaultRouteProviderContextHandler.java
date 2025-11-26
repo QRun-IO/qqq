@@ -38,14 +38,37 @@ import io.javalin.http.HttpStatus;
 
 
 /*******************************************************************************
- ** default implementation of this interface.  reads the request body as a string
+ ** Default implementation of RouteProviderContextHandlerInterface.
+ **
+ ** Handles the bidirectional mapping between Javalin HTTP context and QQQ
+ ** process input/output for ProcessBasedRouter routes.
+ **
+ ** Request Handling:
+ ** - Extracts path, method, path params, query params, cookies, and headers
+ ** - Reads request body as string or form parameters
+ ** - Populates RunProcessInput with these values
+ **
+ ** Response Handling:
+ ** - Sets HTTP status code and response headers
+ ** - Handles redirects via redirectURL
+ ** - Sends response body as string, bytes, or stream (via StorageInput)
+ **
+ ** This implementation reads the entire request body as a string, which works
+ ** for most use cases but may not be suitable for large file uploads. For those
+ ** cases, extend this class and override handleRequestBody().
  *******************************************************************************/
 public class DefaultRouteProviderContextHandler implements RouteProviderContextHandlerInterface
 {
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Extract request data from Javalin context and populate process input.
     **
-    ***************************************************************************/
+    ** Populates the RunProcessInput with path, method, params, cookies, headers,
+    ** and body content that the process can access.
+    **
+    ** @param context the Javalin HTTP context
+    ** @param input the process input to populate
+    *******************************************************************************/
    @Override
    public void handleRequest(Context context, RunProcessInput input)
    {
@@ -61,9 +84,15 @@ public class DefaultRouteProviderContextHandler implements RouteProviderContextH
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Extract request body content and add to process input.
     **
-    ***************************************************************************/
+    ** Default implementation reads form parameters and body as a string.
+    ** Override this method for custom body handling (e.g., multipart file uploads).
+    **
+    ** @param context the Javalin HTTP context
+    ** @param input the process input to populate
+    *******************************************************************************/
    protected void handleRequestBody(Context context, RunProcessInput input)
    {
       input.addValue("formParams", new HashMap<>(context.formParamMap()));
@@ -72,9 +101,18 @@ public class DefaultRouteProviderContextHandler implements RouteProviderContextH
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Build HTTP response from process output.
     **
-    ***************************************************************************/
+    ** Handles status codes, redirects, headers, and response body from the
+    ** process output. Supports string responses, byte array responses, and
+    ** streaming responses via StorageInput.
+    **
+    ** @param context the Javalin HTTP context
+    ** @param runProcessOutput the process output containing response data
+    ** @return true if response was handled; false otherwise
+    ** @throws QException if response processing fails
+    *******************************************************************************/
    @Override
    public boolean handleResponse(Context context, RunProcessOutput runProcessOutput) throws QException
    {
@@ -107,9 +145,12 @@ public class DefaultRouteProviderContextHandler implements RouteProviderContextH
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Extract response headers from process output and set on HTTP response.
     **
-    ***************************************************************************/
+    ** @param context the Javalin HTTP context
+    ** @param runProcessOutput the process output containing response headers
+    *******************************************************************************/
    protected void handleResponseHeaders(Context context, RunProcessOutput runProcessOutput)
    {
       /////////////////
@@ -127,9 +168,18 @@ public class DefaultRouteProviderContextHandler implements RouteProviderContextH
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Extract response body from process output and write to HTTP response.
     **
-    ***************************************************************************/
+    ** Checks for responseString, responseBytes, or responseStorageInput in the
+    ** process output and sends the appropriate content type. Returns true if
+    ** a response body was found and sent.
+    **
+    ** @param context the Javalin HTTP context
+    ** @param runProcessOutput the process output containing response body
+    ** @return true if response body was sent; false if no body content found
+    ** @throws QException if response body processing fails
+    *******************************************************************************/
    protected boolean handleResponseBody(Context context, RunProcessOutput runProcessOutput) throws QException
    {
       String       responseString       = runProcessOutput.getValueString("responseString");
@@ -155,5 +205,4 @@ public class DefaultRouteProviderContextHandler implements RouteProviderContextH
       }
       return false;
    }
-
 }

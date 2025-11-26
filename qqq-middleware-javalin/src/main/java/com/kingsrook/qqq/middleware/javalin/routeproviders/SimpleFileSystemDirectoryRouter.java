@@ -50,8 +50,29 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** javalin route provider that hosts a path in the http server via a path on
- ** the file system
+ ** Route provider that serves static files and SPAs from the file system or JAR.
+ **
+ ** This is a simpler alternative to IsolatedSpaRouteProvider, suitable for cases
+ ** where you need basic file serving with optional SPA deep linking support but
+ ** don't need the advanced isolation and handler features.
+ **
+ ** Features:
+ ** - Serves static files from file system or JAR classpath
+ ** - Optional SPA deep linking (404 -> root file fallback)
+ ** - Authentication support via RouteAuthenticatorInterface
+ ** - Static asset detection to distinguish between missing assets and SPA routes
+ **
+ ** Usage Examples:
+ ** <pre>
+ ** // Serve static files from dist directory
+ ** new SimpleFileSystemDirectoryRouter("/app", "dist/")
+ **
+ ** // Serve SPA with deep linking
+ ** new SimpleFileSystemDirectoryRouter("/app", "dist/")
+ **    .withSpaRootPath("/app")
+ **    .withSpaRootFile("dist/index.html")
+ **    .withRouteAuthenticator(new QCodeReference(AppAuthenticator.class))
+ ** </pre>
  *******************************************************************************/
 public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInterface
 {
@@ -101,9 +122,12 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Constructor that builds router from meta-data configuration.
     **
-    ***************************************************************************/
+    ** @param routeProvider meta-data containing route configuration including
+    **                      hosted path, file system path, SPA settings, and authenticator
+    *******************************************************************************/
    public SimpleFileSystemDirectoryRouter(JavalinRouteProviderMetaData routeProvider)
    {
       this(routeProvider.getHostedPath(), routeProvider.getFileSystemPath());
@@ -114,9 +138,14 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Set the QInstance for this route provider.
     **
-    ***************************************************************************/
+    ** Called by the framework during initialization to provide access to the
+    ** QQQ instance configuration.
+    **
+    ** @param qInstance the QInstance containing meta-data and configuration
+    *******************************************************************************/
    @Override
    public void setQInstance(QInstance qInstance)
    {
@@ -125,9 +154,16 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Configure static file serving location and path.
     **
-    ***************************************************************************/
+    ** Sets up Javalin to serve files from either the classpath (JAR) or external
+    ** file system based on the loadStaticFilesFromJar flag. Validates that the
+    ** configured file system path exists.
+    **
+    ** @param staticFileConfig the Javalin static file configuration to populate
+    ** @throws RuntimeException if the file system path cannot be found
+    *******************************************************************************/
    private void handleJavalinStaticFileConfig(StaticFileConfig staticFileConfig)
    {
 
@@ -169,9 +205,16 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Before handler that runs prior to serving static files.
     **
-    ***************************************************************************/
+    ** Initializes QContext and performs authentication if a route authenticator
+    ** is configured. If authentication fails, tells Javalin to skip remaining
+    ** handlers (preventing file serving).
+    **
+    ** @param context the Javalin HTTP context
+    ** @throws QException if authentication processing fails
+    *******************************************************************************/
    private void before(Context context) throws QException
    {
       LOG.debug("In before handler for simpleFileSystemRouter", logPair("hostedPath", hostedPath));
@@ -199,9 +242,13 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** After handler that runs after serving static files.
     **
-    ***************************************************************************/
+    ** Cleans up the QContext that was initialized in the before handler.
+    **
+    ** @param context the Javalin HTTP context
+    *******************************************************************************/
    private void after(Context context)
    {
       LOG.debug("In after handler for simpleFileSystemRouter", logPair("hostedPath", hostedPath));
@@ -210,9 +257,14 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Configure Javalin to serve static files from the configured location.
     **
-    ***************************************************************************/
+    ** Registers the static file configuration with Javalin during initialization.
+    ** The actual configuration is handled by handleJavalinStaticFileConfig().
+    **
+    ** @param config the Javalin configuration object
+    *******************************************************************************/
    @Override
    public void acceptJavalinConfig(JavalinConfig config)
    {
@@ -248,11 +300,11 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
          {
             String requestPath = ctx.path();
 
-            /////////////////////////////////////////////////////////////////////////////////////
-            // Only handle 404s for paths under our SPA root                                  //
-            // Special case: if spaRootPath is "/", we need to be more careful to avoid       //
-            // catching API routes and other non-SPA paths                                    //
-            /////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////////////////////////////////////////////////////////////
+            // Only handle 404s for paths under our SPA root                            //
+            // Special case: if spaRootPath is "/", we need to be more careful to avoid //
+            // catching API routes and other non-SPA paths                              //
+            //////////////////////////////////////////////////////////////////////////////
             boolean isUnderSpaRoot = requestPath.startsWith(spaRootPath);
             
             // If SPA root is "/", check that it's not explicitly for other route types
@@ -278,11 +330,11 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
                return;
             }
 
-            /////////////////////////////////////////////////////////////////////////////
-            // Check if this looks like an API request (e.g., /qqq-api/...).          //
-            // If so, let the 404 stand (API routes should 404 if they don't exist).  //
-            // This prevents API 404s from being caught by the SPA fallback.          //
-            /////////////////////////////////////////////////////////////////////////////
+            ///////////////////////////////////////////////////////////////////////////
+            // Check if this looks like an API request (e.g., /qqq-api/...).         //
+            // If so, let the 404 stand (API routes should 404 if they don't exist). //
+            // This prevents API 404s from being caught by the SPA fallback.         //
+            ///////////////////////////////////////////////////////////////////////////
             if(isApiRequest(requestPath))
             {
                LOG.debug("404 for API path, letting 404 stand", logPair("path", requestPath));
@@ -320,9 +372,9 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
          });
       }
 
-      ////////////////////////////////////////////////////////////////////
-      // Set up authentication before/after handlers for all requests  //
-      ////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////
+      // Set up authentication before/after handlers for all requests //
+      //////////////////////////////////////////////////////////////////
       String javalinPath = hostedPath;
       if(!javalinPath.endsWith("/"))
       {
@@ -373,9 +425,9 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
    {
       String lowerPath = path.toLowerCase();
 
-      //////////////////////////////////////////////////////
-      // Check for common API path prefixes               //
-      //////////////////////////////////////////////////////
+      ////////////////////////////////////////
+      // Check for common API path prefixes //
+      ////////////////////////////////////////
       return lowerPath.startsWith("/qqq-api/")
          || lowerPath.startsWith("/api/")
          || lowerPath.equals("/metadata")
@@ -416,7 +468,9 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
             URL resource = getClass().getClassLoader().getResource(fileSystemPath);
             if(resource != null)
             {
-               // Extract just the filename from spaRootFile (remove directory prefix if present)
+               /////////////////////////////////////////////////////////////////////////////////////
+               // Extract just the filename from spaRootFile (remove directory prefix if present) //
+               /////////////////////////////////////////////////////////////////////////////////////
                String fileName = spaRootFile;
                if(spaRootFile.contains("/"))
                {
@@ -451,6 +505,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Getter for routeAuthenticator
+    ** @see #withRouteAuthenticator(QCodeReference)
     *******************************************************************************/
    public QCodeReference getRouteAuthenticator()
    {
@@ -461,6 +516,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Setter for routeAuthenticator
+    ** @see #withRouteAuthenticator(QCodeReference)
     *******************************************************************************/
    public void setRouteAuthenticator(QCodeReference routeAuthenticator)
    {
@@ -471,6 +527,9 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Fluent setter for routeAuthenticator
+    **
+    ** @param routeAuthenticator code reference to the route authenticator implementation
+    ** @return this
     *******************************************************************************/
    public SimpleFileSystemDirectoryRouter withRouteAuthenticator(QCodeReference routeAuthenticator)
    {
@@ -482,6 +541,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Getter for spaRootPath
+    ** @see #withSpaRootPath(String)
     *******************************************************************************/
    public String getSpaRootPath()
    {
@@ -492,6 +552,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Setter for spaRootPath
+    ** @see #withSpaRootPath(String)
     *******************************************************************************/
    public void setSpaRootPath(String spaRootPath)
    {
@@ -502,6 +563,9 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Fluent setter for spaRootPath
+    **
+    ** @param spaRootPath the URL path prefix for the SPA (e.g., "/app" or "/")
+    ** @return this
     *******************************************************************************/
    public SimpleFileSystemDirectoryRouter withSpaRootPath(String spaRootPath)
    {
@@ -513,6 +577,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Getter for spaRootFile
+    ** @see #withSpaRootFile(String)
     *******************************************************************************/
    public String getSpaRootFile()
    {
@@ -523,6 +588,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Setter for spaRootFile
+    ** @see #withSpaRootFile(String)
     *******************************************************************************/
    public void setSpaRootFile(String spaRootFile)
    {
@@ -533,11 +599,13 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
 
    /*******************************************************************************
     ** Fluent setter for spaRootFile
+    **
+    ** @param spaRootFile path to the SPA index file for deep linking (e.g., "dist/index.html")
+    ** @return this
     *******************************************************************************/
    public SimpleFileSystemDirectoryRouter withSpaRootFile(String spaRootFile)
    {
       this.spaRootFile = spaRootFile;
       return (this);
    }
-
 }

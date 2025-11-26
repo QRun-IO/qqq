@@ -27,17 +27,38 @@ import io.javalin.http.Context;
 
 
 /*******************************************************************************
- ** interface used by QJavalinRouteProviderInterface subclasses, to interact with
- ** QQQ Authentication modules, to provide authentication to custom javalin routes.
+ ** Interface for authenticating HTTP requests in Javalin route providers.
+ **
+ ** Implementations of this interface integrate with QQQ's authentication system
+ ** to secure custom Javalin routes. The interface is used by route providers
+ ** (ProcessBasedRouter, SimpleFileSystemDirectoryRouter, IsolatedSpaRouteProvider)
+ ** to verify that requests are properly authenticated before serving content or
+ ** executing processes.
+ **
+ ** Implementers should:
+ ** - Check authentication state via QQQ's session management
+ ** - Redirect to login pages for unauthenticated requests
+ ** - Return true to allow the request to proceed
+ ** - Return false if the request was redirected or should not proceed
+ **
+ ** @see SimpleRouteAuthenticator for a standard implementation
  *******************************************************************************/
 public interface RouteAuthenticatorInterface
 {
 
-   /***************************************************************************
-    ** where authentication for a route occurs, before the route is served.
+   /*******************************************************************************
+    ** Authenticate an HTTP request before the route is served.
     **
-    ** @return true if request is authenticated; else false
-    ***************************************************************************/
+    ** This method is called by route providers before serving content or executing
+    ** processes. Implementations should verify the request's authentication state
+    ** and handle unauthenticated requests appropriately (typically by redirecting
+    ** to a login page).
+    **
+    ** @param context the Javalin HTTP context containing request information
+    ** @return true if the request is authenticated and should proceed; false if
+    **         the request was redirected or should not be processed further
+    ** @throws QException if authentication processing fails
+    *******************************************************************************/
    boolean authenticateRequest(Context context) throws QException;
 
 }

@@ -30,14 +30,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 
 /*******************************************************************************
- ** Unit test for BassedAliveHealthIndicator
+ ** Unit test for BasicAliveHealthIndicator
  **
  *******************************************************************************/
 class BasicAliveHealthIndicatorTest
 {
 
    /*******************************************************************************
-    ** Test that database indicator returns DOWN when backend not found
+    ** Test that basic indicator returns UP along with runtime details
     *******************************************************************************/
    @Test
    void testCheck_basicAlive_returnsUp() throws Exception

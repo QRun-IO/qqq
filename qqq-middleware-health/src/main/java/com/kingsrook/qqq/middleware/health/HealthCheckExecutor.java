@@ -52,6 +52,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class HealthCheckExecutor
 {
+   public static final int DEFAULT_TIMEOUT_MS = 5000;
    private static final QLogger LOG = QLogger.getLogger(HealthCheckExecutor.class);
 
    private final QInstance           qInstance;
@@ -152,7 +153,7 @@ public class HealthCheckExecutor
       Integer timeoutMs = config.getTimeoutMs();
       if(timeoutMs == null)
       {
-         timeoutMs = 5000; // Default 5 second timeout
+         timeoutMs = DEFAULT_TIMEOUT_MS; // Default 5 second timeout
       }
 
       Callable<HealthCheckResult> task = () ->

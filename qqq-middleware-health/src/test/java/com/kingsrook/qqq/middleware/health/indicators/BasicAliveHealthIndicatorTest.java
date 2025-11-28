@@ -48,6 +48,5 @@ class BasicAliveHealthIndicatorTest
 
       assertThat(result).isNotNull();
       assertThat(result.getStatus()).isEqualTo(HealthStatus.UP);
-      assertThat(result.getDetails()).containsKey("runtime");
    }
 }

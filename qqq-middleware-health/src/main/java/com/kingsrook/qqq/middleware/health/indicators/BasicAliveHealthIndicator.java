@@ -22,8 +22,6 @@
 package com.kingsrook.qqq.middleware.health.indicators;
 
 
-import java.util.HashMap;
-import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.middleware.health.HealthIndicator;
@@ -69,16 +67,11 @@ public class BasicAliveHealthIndicator implements HealthIndicator
    {
       long startTime = System.currentTimeMillis();
 
-      Runtime runtime = Runtime.getRuntime();
-
-      Map<String, Object> details = new HashMap<>();
-      details.put("runtime", runtime);
-
       /////////////////////////////////////////
       // Determine status based on threshold //
       /////////////////////////////////////////
       HealthStatus status = HealthStatus.UP;
 
-      return new HealthCheckResult().withStatus(status).withDurationMs(System.currentTimeMillis() - startTime).withDetails(details);
+      return new HealthCheckResult().withStatus(status).withDurationMs(System.currentTimeMillis() - startTime);
    }
 }

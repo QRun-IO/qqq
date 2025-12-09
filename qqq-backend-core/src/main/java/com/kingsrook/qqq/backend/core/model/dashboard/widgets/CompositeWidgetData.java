@@ -71,6 +71,7 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
       // and qqq-android CompositeWidgetBlock.kt             //
       /////////////////////////////////////////////////////////
       FLEX_COLUMN,
+      FLEX_ROW,
       FLEX_ROW_WRAPPED,
       FLEX_ROW_SPACE_BETWEEN,
       FLEX_ROW_CENTER,

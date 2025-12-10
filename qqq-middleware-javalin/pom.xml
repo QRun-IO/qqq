@@ -63,6 +63,13 @@
          <version>${revision}</version>
          <scope>test</scope>
       </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-frontend-material-dashboard</artifactId>
+         <version>0.28.0-20251201.170136-2</version>
+         <scope>test</scope>
+         <optional>true</optional>
+      </dependency>
 
       <!-- 3rd party deps specifically for this module -->
       <dependency>
@@ -218,5 +225,12 @@
          </plugin>
       </plugins>
    </build>
+
+   <repositories>
+      <repository>
+         <id>sonatype-snapshots</id>
+         <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+      </repository>
+   </repositories>
 
 </project>

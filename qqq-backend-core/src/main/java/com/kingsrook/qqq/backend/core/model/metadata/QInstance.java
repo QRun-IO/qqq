@@ -1034,6 +1034,10 @@ public class QInstance
    public void addWidget(QWidgetMetaDataInterface widget)
    {
       String name = widget.getName();
+      if(!StringUtils.hasContent(name))
+      {
+         throw (new IllegalArgumentException("Attempted to add a widget without a name."));
+      }
       if(this.widgets.containsKey(name))
       {
          throw (new IllegalArgumentException("Attempted to add a second widget with name: " + name));

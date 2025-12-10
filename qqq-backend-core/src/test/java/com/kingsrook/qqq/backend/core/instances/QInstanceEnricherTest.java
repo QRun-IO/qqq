@@ -46,6 +46,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMeta
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSectionAlternativeType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
@@ -642,6 +643,28 @@ class QInstanceEnricherTest extends BaseTest
       QInstanceEnricher.discoverAndAddPluginsInPackage(getClass().getPackageName() + ".enrichment.testplugins");
       new QInstanceEnricher(qInstance).enrich();
       qInstance.getTables().values().forEach(table -> table.getFields().values().forEach(field -> assertThat(field.getLabel()).endsWith("Plugged")));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNestedAlternativeTableSections()
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+      QTableMetaData table = qInstance.getTable(TestUtils.TABLE_NAME_SHAPE);
+
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // set up a self-alternative section, which would stack-overflow in processing, unless we checked for it (which we do) //
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      QFieldSection section = new QFieldSection().withName("mySection");
+      section.withAlternative(QFieldSectionAlternativeType.RECORD_VIEW, section);
+      table.withSection(section);
+
+      new QInstanceEnricher(qInstance).enrich();
+      assertEquals("My Section", section.getLabel());
    }
 
 }

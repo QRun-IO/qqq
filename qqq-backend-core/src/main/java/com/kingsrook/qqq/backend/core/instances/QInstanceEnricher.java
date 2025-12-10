@@ -64,6 +64,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
@@ -138,6 +139,10 @@ public class QInstanceEnricher
 
    private static ListingHash<Class<?>, QInstanceEnricherPluginInterface<?>> enricherPlugins = new ListingHash<>();
 
+   /////////////////////////////////////////////////////////////////////////////////
+   // in case a section references itself as an alternative, avoid stack overflow //
+   /////////////////////////////////////////////////////////////////////////////////
+   private Set<QFieldSection> visitedSections = new HashSet<>();
 
 
    /*******************************************************************************
@@ -387,11 +392,30 @@ public class QInstanceEnricher
 
             enrichField(field);
          }
+      }
 
-         for(QSupplementalTableMetaData supplementalTableMetaData : CollectionUtils.nonNullMap(table.getSupplementalMetaData()).values())
+      if(table.getVirtualFields() != null)
+      {
+         for(Map.Entry<String, QVirtualFieldMetaData> entry : table.getVirtualFields().entrySet())
          {
-            supplementalTableMetaData.enrich(qInstance, table);
+            String         name  = entry.getKey();
+            QFieldMetaData field = entry.getValue();
+
+            ////////////////////////////////////////////////////////////////////////////
+            // in case the field wasn't given a name, use its key from the fields map //
+            ////////////////////////////////////////////////////////////////////////////
+            if(!StringUtils.hasContent(field.getName()))
+            {
+               field.setName(name);
+            }
+
+            enrichField(field);
          }
+      }
+
+      for(QSupplementalTableMetaData supplementalTableMetaData : CollectionUtils.nonNullMap(table.getSupplementalMetaData()).values())
+      {
+         supplementalTableMetaData.enrich(qInstance, table);
       }
 
       if(CollectionUtils.nullSafeIsEmpty(table.getSections()))
@@ -784,9 +808,21 @@ public class QInstanceEnricher
     *******************************************************************************/
    private void enrichFieldSection(QFieldSection section)
    {
+      if(visitedSections.contains(section))
+      {
+         return;
+      }
+
+      visitedSections.add(section);
+
       if(!StringUtils.hasContent(section.getLabel()))
       {
          section.setLabel(nameToLabel(section.getName()));
+      }
+
+      for(QFieldSection alternativeSection : CollectionUtils.nonNullMap(section.getAlternatives()).values())
+      {
+         enrichFieldSection(alternativeSection);
       }
    }
 

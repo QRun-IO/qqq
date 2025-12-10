@@ -27,8 +27,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
+import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.javalin.TestUtils;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.http.HttpStatus;
@@ -858,6 +867,159 @@ class QApplicationJavalinServerTest
       // Customizer should have been called during start        //
       /////////////////////////////////////////////////////////////
       assertThat(customizerCalled[0]).isTrue();
+   }
+
+
+
+   /*******************************************************************************
+    * Serve material-dashboard as an isolated SPA, at a non-root path.
+    *
+    * This shows the <base href> tag being inserted in the index.html file when
+    * it is necessary (e.g., for deep link requests).
+    *******************************************************************************/
+   @Test
+   void testBaseHrefForMaterialDashboardAsIsolatedSpaAtNonRootPath() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(createMinimalApplication());
+      javalinServer.setPort(PORT);
+      javalinServer.setServeFrontendMaterialDashboard(false);
+
+      javalinServer.withAdditionalRouteProvider(
+         new IsolatedSpaRouteProvider("/mdb", "material-dashboard")
+            .withSpaIndexFile("material-dashboard/index.html")
+            .withDeepLinking(true)
+            .withLoadFromJar(true));
+
+      javalinServer.start();
+
+      List<String> pathsThatShouldNotIncludeBase = List.of("/mdb", "/mdb/");
+      for(String requestPath : pathsThatShouldNotIncludeBase)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getBody()).doesNotContainIgnoringCase("""
+            <base""");
+      }
+
+      List<String> pathsThatShouldIncludeBase = List.of("/mdb/someApp", "/mdb/someApp/someTable");
+      for(String requestPath : pathsThatShouldIncludeBase)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getBody()).containsIgnoringCase("""
+            <base href="/mdb/\"""");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    * Serve material-dashboard as an isolated SPA, at the root path.
+    *
+    * This shows the <base href> tag being inserted in the index.html file when
+    * it is necessary (e.g., for deep link requests).
+    *
+    * BUT - that's broken in the initial commit here!
+    *******************************************************************************/
+   @Test
+   void testBaseHrefForMaterialDashboardAsIsolatedSpaAtRootPath() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(createMinimalApplication());
+      javalinServer.setPort(PORT);
+      javalinServer.setServeFrontendMaterialDashboard(false);
+
+      javalinServer.withAdditionalRouteProvider(
+         new IsolatedSpaRouteProvider("/", "material-dashboard")
+            .withSpaIndexFile("material-dashboard/index.html")
+            .withDeepLinking(true)
+            .withLoadFromJar(true));
+
+      javalinServer.start();
+
+      List<String> pathsThatShouldNotIncludeBase = List.of("/");
+      for(String requestPath : pathsThatShouldNotIncludeBase)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getBody()).doesNotContainIgnoringCase("""
+            <base""");
+      }
+
+      List<String> pathsThatShouldIncludeBase = List.of("/someApp", "/someApp/someTable");
+      for(String requestPath : pathsThatShouldIncludeBase)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getBody()).containsIgnoringCase("""
+            <base href="/\"""");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    * Serve material-dashboard as the built-in mechanism to do so from
+    * {@link QApplicationJavalinServer} - not as an isolated SPA.
+    *
+    * This shows the <base href> tag being inserted in the index.html file when
+    * it is necessary (e.g., for deep link requests).
+    *
+    * BUT - that's broken in the initial commit here!
+    *******************************************************************************/
+   @Test
+   void testBaseHrefForMaterialDashboardServedBuiltIn() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(createMinimalApplication());
+      javalinServer.setPort(PORT);
+      javalinServer.setServeFrontendMaterialDashboard(true);
+
+      javalinServer.start();
+
+      List<String> pathsThatShouldNotIncludeBase = List.of("/");
+      for(String requestPath : pathsThatShouldNotIncludeBase)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getBody()).doesNotContainIgnoringCase("""
+            <base""");
+      }
+
+      List<String> pathsThatShouldIncludeBase = List.of("/someApp", "/someApp/someTable");
+      for(String requestPath : pathsThatShouldIncludeBase)
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getBody()).containsIgnoringCase("""
+            <base href="/\"""");
+      }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static AbstractQQQApplication createMinimalApplication()
+   {
+      return new AbstractQQQApplication()
+      {
+         /***************************************************************************
+          *
+          ***************************************************************************/
+         @Override
+         public QInstance defineQInstance()
+         {
+            QInstance qInstance1 = new QInstance();
+            qInstance1.addBackend(new QBackendMetaData().withBackendType(MemoryBackendModule.class).withName("memory"));
+            qInstance1.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData().withName("anon").withType(QAuthenticationType.FULLY_ANONYMOUS));
+            qInstance1.addTable(new QTableMetaData()
+               .withName("table")
+               .withBackendName("memory")
+               .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+               .withPrimaryKeyField("id"));
+            return qInstance1;
+         }
+      };
    }
 
 

@@ -74,6 +74,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
@@ -739,12 +740,39 @@ public class QInstanceValidator
             //////////////////////////////////
             // validate fields in the table //
             //////////////////////////////////
+            Set<String> usedFieldNames = new HashSet<>();
             if(assertCondition(CollectionUtils.nullSafeHasContents(table.getFields()), "At least 1 field must be defined in table " + tableName + "."))
             {
                table.getFields().forEach((fieldName, field) ->
                {
+                  if(usedFieldNames.contains(fieldName))
+                  {
+                     errors.add("Duplicated field name [" + fieldName + "] in table " + tableName);
+                  }
+                  usedFieldNames.add(fieldName);
+
                   validateTableField(qInstance, tableName, fieldName, table, field);
                });
+            }
+
+            /////////////////////////////
+            // validate virtual fields //
+            /////////////////////////////
+            Set<String> usedVirtualFieldNames = new HashSet<>();
+            for(Map.Entry<String, QVirtualFieldMetaData> entry : CollectionUtils.nonNullMap(table.getVirtualFields()).entrySet())
+            {
+               String fieldName = entry.getKey();
+               if(usedFieldNames.contains(fieldName))
+               {
+                  errors.add("Virtual field [" + fieldName + "] collides with a non-virtual field of the same name, in table " + tableName);
+               }
+               if(usedVirtualFieldNames.contains(fieldName))
+               {
+                  errors.add("Duplicated virtual field name [" + fieldName + "] in table " + tableName);
+               }
+               usedVirtualFieldNames.add(fieldName);
+
+               validateTableField(qInstance, tableName, fieldName, table, entry.getValue());
             }
 
             //////////////////////////////////////////
@@ -758,7 +786,7 @@ public class QInstanceValidator
             {
                for(QFieldSection section : table.getSections())
                {
-                  validateTableSection(qInstance, table, section, fieldNamesInSections);
+                  validateTableSection(qInstance, table, section, fieldNamesInSections, false);
                   if(assertCondition(section.getTier() != null, "Table " + tableName + " " + section.getName() + " is missing its tier"))
                   {
                      if(section.getTier().equals(Tier.T1))
@@ -1622,7 +1650,7 @@ public class QInstanceValidator
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void validateTableSection(QInstance qInstance, QTableMetaData table, QFieldSection section, Set<String> fieldNamesInSections)
+   private void validateTableSection(QInstance qInstance, QTableMetaData table, QFieldSection section, Set<String> fieldNamesInSections, boolean isAlternativeSection)
    {
       assertCondition(StringUtils.hasContent(section.getName()), "Missing a name for field section in table " + table.getName() + ".");
       assertCondition(StringUtils.hasContent(section.getLabel()), "Missing a label for field section in table " + table.getLabel() + ".");
@@ -1660,17 +1688,63 @@ public class QInstanceValidator
                }
                else
                {
-                  assertCondition(table.getFields().containsKey(fieldName), sectionPrefix + "specifies fieldName " + fieldName + ", which is not a field on this table.");
+                  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+                  // for alternative sections, allow virtual fields.                                                     //
+                  // this is our first pass at rules for virtual fields... eventually they may be supported more broadly //
+                  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+                  boolean isField = table.getFields().containsKey(fieldName);
+                  boolean isVirtualField = CollectionUtils.nonNullMap(table.getVirtualFields()).containsKey(fieldName);
+                  if(isAlternativeSection)
+                  {
+                     assertCondition(isField || isVirtualField, sectionPrefix + "specifies fieldName " + fieldName + ", which is not a field (or virtual field) on this table.");
+                  }
+                  else
+                  {
+                     ////////////////////////////////////////////////////////////////////////////////
+                     // else, "main" sections, they only (at this time) support non-virtual fields //
+                     ////////////////////////////////////////////////////////////////////////////////
+                     if(!isField)
+                     {
+                        if(isVirtualField)
+                        {
+                           errors.add(sectionPrefix + "specifies fieldName " + fieldName + ", which is a virtual field, which is not allowed in a base section (only alternative sections)");
+                        }
+                        else
+                        {
+                           errors.add(sectionPrefix + "specifies fieldName " + fieldName + ", which is not a field on this table.");
+                        }
+                     }
+                  }
                }
 
-               assertCondition(!fieldNamesInSections.contains(fieldName), "Table " + table.getName() + " has field " + fieldName + " listed more than once in its field sections.");
-
-               fieldNamesInSections.add(fieldName);
+               if(!isAlternativeSection)
+               {
+                  //////////////////////////////////////////////////////////////////////////////////////////////////////////
+                  // don't consider field names in alternative sections as part of the set of field names in some-section //
+                  //////////////////////////////////////////////////////////////////////////////////////////////////////////
+                  assertCondition(!fieldNamesInSections.contains(fieldName), "Table " + table.getName() + " has field " + fieldName + " listed more than once in its field sections.");
+                  fieldNamesInSections.add(fieldName);
+               }
             }
          }
          else if(hasWidget)
          {
             assertCondition(qInstance.getWidget(section.getWidgetName()) != null, sectionPrefix + "specifies widget " + section.getWidgetName() + ", which is not a widget in this instance.");
+         }
+      }
+
+      if(isAlternativeSection)
+      {
+         assertCondition(CollectionUtils.nullSafeIsEmpty(section.getAlternatives()), sectionPrefix + "is an alternative section, which itself has alternative sections, which is not allowed");
+      }
+      else
+      {
+         ////////////////////////////////////////////////////////////////
+         // recursively process alternative sections for main sections //
+         ////////////////////////////////////////////////////////////////
+         for(QFieldSection alternativeSection : CollectionUtils.nonNullMap(section.getAlternatives()).values())
+         {
+            validateTableSection(qInstance, table, alternativeSection, fieldNamesInSections, true);
          }
       }
    }

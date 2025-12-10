@@ -68,6 +68,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.DateTimeDisplayValue
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
@@ -93,6 +94,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaD
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSectionAlternativeType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
@@ -2509,6 +2511,93 @@ public class QInstanceValidatorTest extends BaseTest
             .withCodeReference(new QCodeReference(ParentWidgetRenderer.class))
          ),
          "Unrecognized child widget name");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNestedAlternativeTableSections()
+   {
+      assertValidationFailureReasonsAllowingExtraReasons(qInstance ->
+      {
+         QTableMetaData table = qInstance.getTable(TestUtils.TABLE_NAME_SHAPE);
+
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // set up a self-alternative section, which would stack-overflow in processing, unless we checked for it (which we do) //
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         QFieldSection section = new QFieldSection().withName("mySection");
+         section.withAlternative(QFieldSectionAlternativeType.RECORD_VIEW, section);
+         table.withSection(section);
+      }, "is an alternative section, which itself has alternative sections, which is not allowed");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testVirtualFieldOnlyAllowedInAlternativeSections()
+   {
+      QTableMetaData baseTable = new QTableMetaData().withName("test")
+         .withBackendName(TestUtils.DEFAULT_BACKEND_NAME)
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER));
+
+      ////////////////////////////////////////////////////
+      // a virtual field name in a 'main' section fails //
+      ////////////////////////////////////////////////////
+      assertValidationFailureReasons((qInstance) -> qInstance.addTable(baseTable.clone()
+            .withSection(new QFieldSection("section1", "Section 1", new QIcon("person"), Tier.T1, List.of("id", "virtual")))
+            .withVirtualField(new QVirtualFieldMetaData("virtual", QFieldType.STRING))),
+         "specifies fieldName virtual, which is a virtual field, which is not allowed in a base section (only alternative sections)");
+
+      ///////////////////////////////////////////////////////////
+      // a virtual field name in an alternative section passes //
+      ///////////////////////////////////////////////////////////
+      assertValidationSuccess((qInstance) -> qInstance.addTable(baseTable.clone()
+         .withSection(new QFieldSection("section1", "Section 1", new QIcon("person"), Tier.T1, List.of("id"))
+            .withAlternative(QFieldSectionAlternativeType.RECORD_VIEW, s -> s.getFieldNames().add("virtual")))
+         .withVirtualField(new QVirtualFieldMetaData("virtual", QFieldType.STRING))));
+
+      //////////////////////////////////////////////
+      // an unrecognized virtual field name fails //
+      //////////////////////////////////////////////
+      assertValidationFailureReasons((qInstance) -> qInstance.addTable(baseTable.clone()
+            .withSection(new QFieldSection("section1", "Section 1", new QIcon("person"), Tier.T1, List.of("id"))
+               .withAlternative(QFieldSectionAlternativeType.RECORD_VIEW, s -> s.getFieldNames().add("no-such-virtual")))
+            .withVirtualField(new QVirtualFieldMetaData("virtual", QFieldType.STRING))),
+         "specifies fieldName no-such-virtual, which is not a field (or virtual field) on this table");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFieldNameUniqueness()
+   {
+      QTableMetaData baseTable = new QTableMetaData().withName("test")
+         .withBackendName(TestUtils.DEFAULT_BACKEND_NAME)
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER));
+
+      /////////////////////////////////////////////////////////////////////////
+      // a virtual field colliding with a non-virtual field of the same name //
+      /////////////////////////////////////////////////////////////////////////
+      assertValidationFailureReasons((qInstance) -> qInstance.addTable(baseTable.clone()
+            .withVirtualField(new QVirtualFieldMetaData("id", QFieldType.STRING))),
+         "Virtual field [id] collides with a non-virtual field of the same name, in table test");
+
+      /////////////////////////////////////////////////////////////////////////////////////////////////
+      // generally, since fields and virtual fields are in maps keyed by their names, and we do also //
+      // have checks that those keys are consistent with the names in the objects, we can't actually //
+      // put the same named field in either map both times, so, there's nothing else to check here.  //
+      /////////////////////////////////////////////////////////////////////////////////////////////////
    }
 
 

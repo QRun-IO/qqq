@@ -19,17 +19,26 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks;
+package com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.icon;
 
 
-import java.io.Serializable;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.AbstractBlockWidgetData;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.base.BaseSlots;
 
 
 /*******************************************************************************
- ** Marker interface for classes that define the values that can be returned for
- ** a particular widget-block type.
+ ** block to display an icon
  *******************************************************************************/
-public interface BlockValuesInterface extends Serializable
+public class IconBlockData extends AbstractBlockWidgetData<IconBlockData, IconValues, BaseSlots, IconStyles>
 {
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public String getBlockTypeName()
+   {
+      return "ICON";
+   }
 
 }

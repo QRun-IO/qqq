@@ -1,6 +1,6 @@
 /*
  * QQQ - Low-code Application Framework for Engineers.
- * Copyright (C) 2021-2024.  Kingsrook, LLC
+ * Copyright (C) 2021-2025.  Kingsrook, LLC
  * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
@@ -19,64 +19,56 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.kingsrook.qqq.backend.core.model.dashboard.widgets;
+package com.kingsrook.qqq.backend.core.model.metadata.fields;
 
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.AbstractBlockWidgetData;
-import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.base.BaseSlots;
-import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.base.BaseStyles;
-import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.base.BaseValues;
+import java.util.Set;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
 
 
 /*******************************************************************************
- ** Data used to render a Composite Widget - e.g., a collection of blocks
+ * Subclass of QFieldMetaData that is used for virtual fields - that is -
+ * fields which don't exist in the backend system, but may instead be the result
+ * of calculations or other non-stored data.
+ *
+ * <p>This type is expected to gain attributes in the future to enable more
+ * built-in functionality, but for now it's empty.</p>
  *******************************************************************************/
-public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidgetData, BaseValues, BaseSlots, BaseStyles>
+public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
 {
-   private List<AbstractBlockWidgetData<?, ?, ?, ?>> blocks = new ArrayList<>();
-
-   private ModalMode modalMode;
-
-
 
    /***************************************************************************
-    **
+    *
     ***************************************************************************/
-   public enum ModalMode
+   @Override
+   public QVirtualFieldMetaData clone()
    {
-      MODAL
+      return (QVirtualFieldMetaData) super.clone();
    }
 
 
 
-   private Layout                    layout;
-   private Map<String, Serializable> styleOverrides        = new HashMap<>();
-   private String                    overlayHtml;
-   private Map<String, Serializable> overlayStyleOverrides = new HashMap<>();
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public enum Layout
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   public QVirtualFieldMetaData()
    {
-      /////////////////////////////////////////////////////////
-      // note, these are used in QQQ FMD CompositeWidget.tsx //
-      // and qqq-android CompositeWidgetBlock.kt             //
-      /////////////////////////////////////////////////////////
-      FLEX_COLUMN,
-      FLEX_ROW,
-      FLEX_ROW_WRAPPED,
-      FLEX_ROW_SPACE_BETWEEN,
-      FLEX_ROW_CENTER,
-      TABLE_SUB_ROW_DETAILS,
-      BADGES_WRAPPER
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   public QVirtualFieldMetaData(String name, QFieldType type)
+   {
+      super(name, type);
    }
 
 
@@ -85,42 +77,9 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
     **
     *******************************************************************************/
    @Override
-   public String getBlockTypeName()
+   public QVirtualFieldMetaData withName(String name)
    {
-      return "COMPOSITE";
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for blocks
-    **
-    *******************************************************************************/
-   public List<AbstractBlockWidgetData<?, ?, ?, ?>> getBlocks()
-   {
-      return blocks;
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for blocks
-    **
-    *******************************************************************************/
-   public void setBlocks(List<AbstractBlockWidgetData<?, ?, ?, ?>> blocks)
-   {
-      this.blocks = blocks;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for blocks
-    **
-    *******************************************************************************/
-   public CompositeWidgetData withBlocks(List<AbstractBlockWidgetData<?, ?, ?, ?>> blocks)
-   {
-      this.blocks = blocks;
+      super.withName(name);
       return (this);
    }
 
@@ -129,9 +88,10 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
    /*******************************************************************************
     **
     *******************************************************************************/
-   public CompositeWidgetData withBlock(AbstractBlockWidgetData<?, ?, ?, ?> block)
+   @Override
+   public QVirtualFieldMetaData withType(QFieldType type)
    {
-      addBlock(block);
+      super.withType(type);
       return (this);
    }
 
@@ -140,43 +100,10 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
    /*******************************************************************************
     **
     *******************************************************************************/
-   public void addBlock(AbstractBlockWidgetData<?, ?, ?, ?> block)
+   @Override
+   public QVirtualFieldMetaData withLabel(String label)
    {
-      if(this.blocks == null)
-      {
-         this.blocks = new ArrayList<>();
-      }
-      this.blocks.add(block);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for styleOverrides
-    *******************************************************************************/
-   public Map<String, Serializable> getStyleOverrides()
-   {
-      return (this.styleOverrides);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for styleOverrides
-    *******************************************************************************/
-   public void setStyleOverrides(Map<String, Serializable> styleOverrides)
-   {
-      this.styleOverrides = styleOverrides;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for styleOverrides
-    *******************************************************************************/
-   public CompositeWidgetData withStyleOverrides(Map<String, Serializable> styleOverrides)
-   {
-      this.styleOverrides = styleOverrides;
+      super.withLabel(label);
       return (this);
    }
 
@@ -185,9 +112,10 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
    /*******************************************************************************
     **
     *******************************************************************************/
-   public CompositeWidgetData withStyleOverride(String key, Serializable value)
+   @Override
+   public QVirtualFieldMetaData withBackendName(String backendName)
    {
-      addStyleOverride(key, value);
+      super.withBackendName(backendName);
       return (this);
    }
 
@@ -196,105 +124,10 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
    /*******************************************************************************
     **
     *******************************************************************************/
-   public void addStyleOverride(String key, Serializable value)
+   @Override
+   public QVirtualFieldMetaData withPossibleValueSourceName(String possibleValueSourceName)
    {
-      if(this.styleOverrides == null)
-      {
-         this.styleOverrides = new HashMap<>();
-      }
-      this.styleOverrides.put(key, value);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for layout
-    *******************************************************************************/
-   public Layout getLayout()
-   {
-      return (this.layout);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for layout
-    *******************************************************************************/
-   public void setLayout(Layout layout)
-   {
-      this.layout = layout;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for layout
-    *******************************************************************************/
-   public CompositeWidgetData withLayout(Layout layout)
-   {
-      this.layout = layout;
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for overlayHtml
-    *******************************************************************************/
-   public String getOverlayHtml()
-   {
-      return (this.overlayHtml);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for overlayHtml
-    *******************************************************************************/
-   public void setOverlayHtml(String overlayHtml)
-   {
-      this.overlayHtml = overlayHtml;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for overlayHtml
-    *******************************************************************************/
-   public CompositeWidgetData withOverlayHtml(String overlayHtml)
-   {
-      this.overlayHtml = overlayHtml;
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for overlayStyleOverrides
-    *******************************************************************************/
-   public Map<String, Serializable> getOverlayStyleOverrides()
-   {
-      return (this.overlayStyleOverrides);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for overlayStyleOverrides
-    *******************************************************************************/
-   public void setOverlayStyleOverrides(Map<String, Serializable> overlayStyleOverrides)
-   {
-      this.overlayStyleOverrides = overlayStyleOverrides;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for overlayStyleOverrides
-    *******************************************************************************/
-   public CompositeWidgetData withOverlayStyleOverrides(Map<String, Serializable> overlayStyleOverrides)
-   {
-      this.overlayStyleOverrides = overlayStyleOverrides;
+      super.withPossibleValueSourceName(possibleValueSourceName);
       return (this);
    }
 
@@ -303,9 +136,10 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
    /*******************************************************************************
     **
     *******************************************************************************/
-   public CompositeWidgetData withOverlayStyleOverride(String key, Serializable value)
+   @Override
+   public QVirtualFieldMetaData withDefaultValue(Serializable defaultValue)
    {
-      addOverlayStyleOverride(key, value);
+      super.withDefaultValue(defaultValue);
       return (this);
    }
 
@@ -314,43 +148,226 @@ public class CompositeWidgetData extends AbstractBlockWidgetData<CompositeWidget
    /*******************************************************************************
     **
     *******************************************************************************/
-   public void addOverlayStyleOverride(String key, Serializable value)
+   @Override
+   public QVirtualFieldMetaData withIsRequired(boolean isRequired)
    {
-      if(this.overlayStyleOverrides == null)
-      {
-         this.overlayStyleOverrides = new HashMap<>();
-      }
-      this.overlayStyleOverrides.put(key, value);
+      super.withIsRequired(isRequired);
+      return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Getter for modalMode
+    **
     *******************************************************************************/
-   public ModalMode getModalMode()
+   @Override
+   public QVirtualFieldMetaData withIsEditable(boolean isEditable)
    {
-      return (this.modalMode);
+      super.withIsEditable(isEditable);
+      return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Setter for modalMode
+    **
     *******************************************************************************/
-   public void setModalMode(ModalMode modalMode)
+   @Override
+   public QVirtualFieldMetaData withDisplayFormat(String displayFormat)
    {
-      this.modalMode = modalMode;
+      super.withDisplayFormat(displayFormat);
+      return (this);
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for modalMode
+    **
     *******************************************************************************/
-   public CompositeWidgetData withModalMode(ModalMode modalMode)
+   @Override
+   public QVirtualFieldMetaData withFieldAdornments(List<FieldAdornment> adornments)
    {
-      this.modalMode = modalMode;
+      super.withFieldAdornments(adornments);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withFieldAdornment(FieldAdornment adornment)
+   {
+      super.withFieldAdornment(adornment);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withFieldAdornment(AdornmentType adornmentType)
+   {
+      super.withFieldAdornment(adornmentType);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withMaxLength(Integer maxLength)
+   {
+      super.withMaxLength(maxLength);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withBehaviors(Set<FieldBehavior<?>> behaviors)
+   {
+      super.withBehaviors(behaviors);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withBehavior(FieldBehavior<?> behavior)
+   {
+      super.withBehavior(behavior);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withFieldSecurityLock(FieldSecurityLock fieldSecurityLock)
+   {
+      super.withFieldSecurityLock(fieldSecurityLock);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withIsHeavy(boolean isHeavy)
+   {
+      super.withIsHeavy(isHeavy);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withPossibleValueSourceFilter(QQueryFilter possibleValueSourceFilter)
+   {
+      super.withPossibleValueSourceFilter(possibleValueSourceFilter);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withSupplementalMetaData(Map<String, QSupplementalFieldMetaData> supplementalMetaData)
+   {
+      super.withSupplementalMetaData(supplementalMetaData);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withSupplementalMetaData(QSupplementalFieldMetaData supplementalMetaData)
+   {
+      super.withSupplementalMetaData(supplementalMetaData);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withIsHidden(boolean isHidden)
+   {
+      super.withIsHidden(isHidden);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withHelpContents(List<QHelpContent> helpContents)
+   {
+      super.withHelpContents(helpContents);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withHelpContent(QHelpContent helpContent)
+   {
+      super.withHelpContent(helpContent);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withInlinePossibleValueSource(QPossibleValueSource inlinePossibleValueSource)
+   {
+      super.withInlinePossibleValueSource(inlinePossibleValueSource);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withGridColumns(Integer gridColumns)
+   {
+      super.withGridColumns(gridColumns);
       return (this);
    }
 

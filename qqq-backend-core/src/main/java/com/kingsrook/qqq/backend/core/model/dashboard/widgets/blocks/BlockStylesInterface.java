@@ -22,11 +22,14 @@
 package com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks;
 
 
+import java.io.Serializable;
+
+
 /*******************************************************************************
  ** Marker interface for classes that define the "styles" that can be customized
  ** within a particular widget-block type.
  *******************************************************************************/
-public interface BlockStylesInterface
+public interface BlockStylesInterface extends Serializable
 {
 
 }

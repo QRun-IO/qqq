@@ -1,6 +1,6 @@
 /*
  * QQQ - Low-code Application Framework for Engineers.
- * Copyright (C) 2021-2024.  Kingsrook, LLC
+ * Copyright (C) 2021-2025.  Kingsrook, LLC
  * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
@@ -19,17 +19,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks;
+package com.kingsrook.qqq.backend.core.model.metadata.tables;
 
 
-import java.io.Serializable;
-
-
-/*******************************************************************************
- ** Marker interface for classes that define the values that can be returned for
- ** a particular widget-block type.
- *******************************************************************************/
-public interface BlockValuesInterface extends Serializable
+/***************************************************************************
+ * Default implementation of {@link QFieldSectionAlternativeTypeInterface}.
+ *
+ * e.g., 2 expected screen types that use sections and may want alternative
+ * versions.
+ ***************************************************************************/
+public enum QFieldSectionAlternativeType implements QFieldSectionAlternativeTypeInterface
 {
-
+   RECORD_VIEW,
+   RECORD_EDIT
 }

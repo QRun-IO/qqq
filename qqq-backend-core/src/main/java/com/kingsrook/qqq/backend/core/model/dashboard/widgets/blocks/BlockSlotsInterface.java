@@ -22,11 +22,14 @@
 package com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks;
 
 
+import java.io.Serializable;
+
+
 /*******************************************************************************
  ** marker-interface for classes (enums, actually) used to define the "slots"
  ** within a widget-block that can have links or tooltips applied to them.
  *******************************************************************************/
-public interface BlockSlotsInterface
+public interface BlockSlotsInterface extends Serializable
 {
 
 }

@@ -22,11 +22,14 @@
 package com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks;
 
 
+import java.io.Serializable;
+
+
 /*******************************************************************************
  ** Marker interface for classes that define the values that can be returned for
  ** a particular widget-block type.
  *******************************************************************************/
-public interface BlockValuesInterface
+public interface BlockValuesInterface extends Serializable
 {
 
 }

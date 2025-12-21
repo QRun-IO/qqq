@@ -100,7 +100,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
     *******************************************************************************/
    public IsolatedSpaRouteProvider(String spaPath, String staticFilesPath)
    {
-      this.spaPath = normalizePath(spaPath);
+      this.spaPath = SpaPathUtils.normalizePath(spaPath);
       this.staticFilesPath = staticFilesPath;
       this.staticAssetDetector = new StaticAssetDetector().withName("spa:" + spaPath);
 
@@ -121,111 +121,11 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Check if a request path is under a given path prefix.
+    ** Set the QInstance (required by interface).
     **
-    ** This is the correct way to check path prefixes with boundary checking
-    ** to prevent false matches like "/administrator" matching "/admin".
+    ** The QInstance is needed for authentication when an authenticator is configured.
     **
-    ** Handles query parameters and hash fragments by stripping them before
-    ** comparison, so "/admin?tab=users" correctly matches prefix "/admin".
-    **
-    ** SPECIAL CASE - ROOT PATH:
-    ** The root path "/" matches everything when used as a prefix. This allows
-    ** root-level exclusions or catch-all behaviors.
-    **
-    ** RULES:
-    ** 1. Exact match: "/admin" matches "/admin"
-    ** 2. Sub-path: "/admin/users" matches prefix "/admin"
-    ** 3. Boundary check: "/administrator" does NOT match prefix "/admin"
-    ** 4. Query params ignored: "/admin?tab=users" matches prefix "/admin"
-    ** 5. Root matches all: anything matches prefix "/"
-    **
-    ** This method is used by both exclusion checking and path matching to ensure
-    ** consistent behavior across the codebase.
-    **
-    ** Examples:
-    **   isPathUnderPrefix("/admin", "/admin")              → TRUE (exact)
-    **   isPathUnderPrefix("/admin/users", "/admin")        → TRUE (sub-path)
-    **   isPathUnderPrefix("/admin?tab=users", "/admin")    → TRUE (query param ignored)
-    **   isPathUnderPrefix("/administrator", "/admin")      → FALSE (different path)
-    **   isPathUnderPrefix("/api-docs", "/api")             → FALSE (different path)
-    **   isPathUnderPrefix("/anything", "/")                → TRUE (root matches all)
-    **
-    ** @param requestPath The request path to check (may include query params/hash)
-    ** @param pathPrefix The path prefix to match against
-    ** @return true if requestPath is equal to or under pathPrefix
-    *******************************************************************************/
-   private static boolean isPathUnderPrefix(String requestPath, String pathPrefix)
-   {
-      ////////////////////////////////////////////////
-      // Special case: root path matches everything //
-      ////////////////////////////////////////////////
-      if("/".equals(pathPrefix))
-      {
-         return true;
-      }
-
-      ////////////////////////////////////////////////
-      // Normalize request path: strip query params //
-      // and hash fragments for comparison          //
-      ////////////////////////////////////////////////
-      String normalizedPath = requestPath;
-      int    queryIndex     = normalizedPath.indexOf('?');
-      if(queryIndex != -1)
-      {
-         normalizedPath = normalizedPath.substring(0, queryIndex);
-      }
-      int hashIndex = normalizedPath.indexOf('#');
-      if(hashIndex != -1)
-      {
-         normalizedPath = normalizedPath.substring(0, hashIndex);
-      }
-
-      //////////////////////
-      // Exact match case //
-      //////////////////////
-      if(normalizedPath.equals(pathPrefix))
-      {
-         return true;
-      }
-
-      ////////////////////////////////////////////////////////////
-      // Sub-path match with boundary check                     //
-      // Ensures "/administrator" doesn't match prefix "/admin" //
-      ////////////////////////////////////////////////////////////
-      return normalizedPath.startsWith(pathPrefix + "/");
-   }
-
-
-
-   /*******************************************************************************
-    ** Normalize path to ensure it starts with / and doesn't end with /
-    ** (except for root path which stays as "/")
-    *******************************************************************************/
-   private String normalizePath(String path)
-   {
-      if(path == null || path.isEmpty())
-      {
-         return "/";
-      }
-
-      if(!path.startsWith("/"))
-      {
-         path = "/" + path;
-      }
-
-      if(path.length() > 1 && path.endsWith("/"))
-      {
-         path = path.substring(0, path.length() - 1);
-      }
-
-      return path;
-   }
-
-
-
-   /*******************************************************************************
-    ** Set the QInstance (required by interface)
+    ** @param qInstance The QInstance containing metadata and configuration
     *******************************************************************************/
    @Override
    public void setQInstance(QInstance qInstance)
@@ -236,7 +136,11 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Configure static file serving during Javalin config phase
+    ** Configure static file serving during Javalin config phase.
+    **
+    ** Called by Javalin during server initialization to set up static file serving.
+    **
+    ** @param config The Javalin configuration to add static file settings to
     *******************************************************************************/
    @Override
    public void acceptJavalinConfig(JavalinConfig config)
@@ -247,7 +151,12 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Configure static files - called by Javalin during initialization
+    ** Configure static files - called by Javalin during initialization.
+    **
+    ** Sets up the static file configuration based on whether files are loaded
+    ** from JAR (classpath) or filesystem (for development).
+    **
+    ** @param staticFileConfig The Javalin static file configuration to populate
     *******************************************************************************/
    private void configureStaticFiles(StaticFileConfig staticFileConfig)
    {
@@ -293,7 +202,12 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Register path-scoped handlers after Javalin service is created
+    ** Register path-scoped handlers after Javalin service is created.
+    **
+    ** Called after Javalin is created to register before/after handlers and
+    ** the 404 handler for deep linking support.
+    **
+    ** @param service The Javalin service instance to register handlers with
     *******************************************************************************/
    @Override
    public void acceptJavalinService(Javalin service)
@@ -325,8 +239,12 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Register handlers for a path-scoped SPA (e.g., /admin, /customer)
-    ** Everything is automatically isolated within the path prefix
+    ** Register handlers for a path-scoped SPA (e.g., /admin, /customer).
+    **
+    ** Everything is automatically isolated within the path prefix. Registers
+    ** before/after handlers, authentication, and 404 handling for deep linking.
+    **
+    ** @param service The Javalin service to register handlers with
     *******************************************************************************/
    private void registerPathScopedHandlers(Javalin service)
    {
@@ -365,15 +283,19 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       /////////////////////////////////////////////////////////////////
       if(enableDeepLinking && StringUtils.hasContent(spaIndexFile))
       {
-         SpaNotFoundHandlerRegistry.getInstance().registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, false));
+         SpaNotFoundHandlerRegistry.getInstance().registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, true));
       }
    }
 
 
 
    /*******************************************************************************
-    ** Register handlers for root path SPA ("/")
-    ** More complex because we need to exclude other SPA paths
+    ** Register handlers for root path SPA ("/").
+    **
+    ** More complex than path-scoped SPAs because we need to exclude other SPA
+    ** paths. Before/after handlers are wrapped to check exclusions before executing.
+    **
+    ** @param service The Javalin service to register handlers with
     *******************************************************************************/
    private void registerRootSpaHandlers(Javalin service)
    {
@@ -457,8 +379,10 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
       ///////////////////////////////////////////////////////////
       // For path-scoped SPAs, only handle 404s under our path //
+      // Uses isPathUnderPrefix for proper boundary checking   //
+      // (prevents /admin from matching /administrator)        //
       ///////////////////////////////////////////////////////////
-      if(!checkExclusions && !"/".equals(spaPath) && !requestPath.startsWith(spaPath))
+      if(!checkExclusions && !"/".equals(spaPath) && !SpaPathUtils.isPathUnderPrefix(requestPath, spaPath))
       {
          LOG.debug("404 not under SPA path, not serving index",
             logPair("path", requestPath),
@@ -481,32 +405,42 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       //////////////////////////////////////////////////
       LOG.debug("Serving SPA index for deep link", logPair("path", requestPath), logPair("spaPath", spaPath));
 
-      try
+      try(InputStream indexStream = loadSpaIndexFile())
       {
-         InputStream indexStream = loadSpaIndexFile();
          if(indexStream != null)
          {
             String indexHtml = IOUtils.toString(indexStream, StandardCharsets.UTF_8);
 
-            //////////////////////////////////////////////////////////////////////
-            // Rewrite relative asset paths for SPAs at subpaths (deep linking) //
-            //////////////////////////////////////////////////////////////////////
-            if(!"/".equals(spaPath))
-            {
-               indexHtml = rewriteIndexHtmlPaths(indexHtml, spaPath);
-            }
+            ////////////////////////////////////////////////////////////////////
+            // Inject <base href> tag to fix relative URL resolution for SPAs //
+            // with deep linking. This ensures ./static/js/main.js resolves   //
+            // correctly regardless of the current route depth.               //
+            //                                                                //
+            // Example: User deep-links to /someApp/someTable                 //
+            // Without <base>: ./static/js/main.js -> /someApp/static/js/...  //
+            // With <base href="/">: ./static/js/main.js -> /static/js/...    //
+            ////////////////////////////////////////////////////////////////////
+            indexHtml = rewriteIndexHtmlPaths(indexHtml, spaPath);
 
             ctx.html(indexHtml);
             ctx.status(HttpStatus.OK);
          }
          else
          {
-            LOG.error("Could not load SPA index file", logPair("spaIndexFile", spaIndexFile));
+            /////////////////////////////////////////////////////////////////////////
+            // Index file not found - this is a server configuration error.        //
+            // Send 500 so it's clear something is wrong, not just a missing page. //
+            /////////////////////////////////////////////////////////////////////////
+            LOG.error("Could not load SPA index file", logPair("spaIndexFile", spaIndexFile), logPair("spaPath", spaPath));
+            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR);
+            ctx.result("SPA index file not found: " + spaIndexFile);
          }
       }
       catch(IOException e)
       {
          LOG.error("Error serving SPA index", e, logPair("spaIndexFile", spaIndexFile));
+         ctx.status(HttpStatus.INTERNAL_SERVER_ERROR);
+         ctx.result("Error loading SPA: " + e.getMessage());
       }
    }
 
@@ -607,7 +541,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    {
       for(String excludedPath : excludedPaths)
       {
-         if(isPathUnderPrefix(path, excludedPath))
+         if(SpaPathUtils.isPathUnderPrefix(path, excludedPath))
          {
             return true;
          }
@@ -633,7 +567,13 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Load the SPA index.html file
+    ** Load the SPA index.html file from classpath or filesystem.
+    **
+    ** Attempts to load the index file based on the loadFromJar setting:
+    ** - If loadFromJar=true: loads from classpath (for JAR deployment)
+    ** - If loadFromJar=false: loads from filesystem (for development)
+    **
+    ** @return InputStream for the index file, or null if not found
     *******************************************************************************/
    private InputStream loadSpaIndexFile()
    {
@@ -691,7 +631,14 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Authenticate request using configured authenticator
+    ** Authenticate request using configured authenticator.
+    **
+    ** Loads the authenticator implementation via QCodeLoader and invokes it
+    ** within a QContext. If authentication fails, the authenticator is responsible
+    ** for setting the appropriate response (e.g., 401, redirect).
+    **
+    ** @param ctx The Javalin request context to authenticate
+    ** @throws Exception if authentication check throws an exception
     *******************************************************************************/
    private void authenticateRequest(Context ctx) throws Exception
    {
@@ -736,7 +683,10 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Fluent setter: Set the SPA index file path
+    ** Fluent setter: Set the SPA index file path.
+    **
+    ** @param spaIndexFile The classpath path to the index.html file (e.g., "admin-spa/dist/index.html")
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withSpaIndexFile(String spaIndexFile)
    {
@@ -747,7 +697,10 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Fluent setter: Set the authenticator
+    ** Fluent setter: Set the authenticator.
+    **
+    ** @param authenticator QCodeReference to a RouteAuthenticatorInterface implementation
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withAuthenticator(QCodeReference authenticator)
    {
@@ -758,7 +711,13 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Fluent setter: Add paths to exclude (for root SPA only)
+    ** Fluent setter: Add paths to exclude (for root SPA only).
+    **
+    ** Excluded paths will not be handled by this SPA, allowing other route
+    ** providers to handle them (e.g., exclude "/api" from a root SPA).
+    **
+    ** @param paths List of paths to exclude (e.g., "/api", "/admin")
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withExcludedPaths(List<String> paths)
    {
@@ -766,7 +725,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       {
          for(String path : paths)
          {
-            this.excludedPaths.add(normalizePath(path));
+            this.excludedPaths.add(SpaPathUtils.normalizePath(path));
          }
       }
       return this;
@@ -775,18 +734,27 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Fluent setter: Add a single excluded path
+    ** Fluent setter: Add a single excluded path.
+    **
+    ** @param path The path to exclude (e.g., "/api")
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withExcludedPath(String path)
    {
-      this.excludedPaths.add(normalizePath(path));
+      this.excludedPaths.add(SpaPathUtils.normalizePath(path));
       return this;
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter: Add a custom before handler
+    ** Fluent setter: Add a custom before handler.
+    **
+    ** Before handlers run before request processing, useful for logging,
+    ** custom authentication, or request modification.
+    **
+    ** @param handler The Javalin Handler to run before request processing
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withBeforeHandler(Handler handler)
    {
@@ -797,7 +765,13 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Fluent setter: Add a custom after handler
+    ** Fluent setter: Add a custom after handler.
+    **
+    ** After handlers run after request processing, useful for logging,
+    ** response modification, or cleanup.
+    **
+    ** @param handler The Javalin Handler to run after request processing
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withAfterHandler(Handler handler)
    {
@@ -808,7 +782,13 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Fluent setter: Enable/disable deep linking (default: true)
+    ** Fluent setter: Enable/disable deep linking (default: true).
+    **
+    ** When enabled, 404 errors for non-static-asset paths under this SPA's path
+    ** will serve index.html, allowing client-side routing to handle the URL.
+    **
+    ** @param enable true to enable deep linking, false to disable
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withDeepLinking(boolean enable)
    {
@@ -819,7 +799,13 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Fluent setter: Set whether to load from JAR (overrides system property)
+    ** Fluent setter: Set whether to load from JAR (overrides system property).
+    **
+    ** When true, loads static files from classpath (for production JAR deployment).
+    ** When false, loads from filesystem (for development with hot reload).
+    **
+    ** @param loadFromJar true to load from classpath, false to load from filesystem
+    ** @return this provider instance for method chaining
     *******************************************************************************/
    public IsolatedSpaRouteProvider withLoadFromJar(boolean loadFromJar)
    {
@@ -887,7 +873,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Getter for spaPath
+    ** Getter for spaPath.
+    **
+    ** @return The path where this SPA is hosted (e.g., "/admin", "/")
     *******************************************************************************/
    public String getSpaPath()
    {
@@ -897,7 +885,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Getter for staticFilesPath
+    ** Getter for staticFilesPath.
+    **
+    ** @return The classpath or filesystem path to static files
     *******************************************************************************/
    public String getStaticFilesPath()
    {
@@ -907,7 +897,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Getter for spaIndexFile
+    ** Getter for spaIndexFile.
+    **
+    ** @return The path to the SPA's index.html file
     *******************************************************************************/
    public String getSpaIndexFile()
    {

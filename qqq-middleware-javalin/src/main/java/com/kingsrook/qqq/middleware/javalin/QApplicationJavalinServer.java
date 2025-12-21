@@ -120,15 +120,36 @@ public class QApplicationJavalinServer
          addRouteProvidersFromMetaData(javalinMetaData);
       }
 
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      // Use IsolatedSpaRouteProvider for Material Dashboard to get proper deep linking support.  //
+      // This ensures the <base href> tag is injected into index.html, fixing relative URL        //
+      // resolution for SPAs with "homepage": "." in package.json.                                //
+      //                                                                                          //
+      // Note: This must be added BEFORE Javalin.create() so that acceptJavalinConfig() is called //
+      // during the configuration phase, setting up static file serving with the correct paths.   //
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      if(serveFrontendMaterialDashboard)
+      {
+         if(getClass().getResource("/material-dashboard/index.html") == null)
+         {
+            LOG.warn("/material-dashboard/index.html resource was not found.  This might happen if you're using a local (e.g., within-IDE) snapshot version... Try updating pom.xml to reference a released version of qfmd?");
+         }
+
+         IsolatedSpaRouteProvider materialDashboardProvider = new IsolatedSpaRouteProvider(
+            frontendMaterialDashboardHostedPath,
+            "material-dashboard"  // classpath location (no leading slash for IsolatedSpaRouteProvider)
+         )
+            .withSpaIndexFile("material-dashboard/index.html")  // full classpath path required
+            .withDeepLinking(true)
+            .withLoadFromJar(true);
+
+         withAdditionalRouteProvider(materialDashboardProvider);
+      }
+
       service = Javalin.create(config ->
       {
          if(serveFrontendMaterialDashboard)
          {
-            if(getClass().getResource("/material-dashboard/index.html") == null)
-            {
-               LOG.warn("/material-dashboard/index.html resource was not found.  This might happen if you're using a local (e.g., within-IDE) snapshot version... Try updating pom.xml to reference a released version of qfmd?");
-            }
-
             ////////////////////////////////////////////////////////////////////////////////////////
             // If you have any assets to add to the web server (e.g., logos, icons) place them at //
             // src/main/resources/material-dashboard-overlay                                      //
@@ -144,20 +165,12 @@ public class QApplicationJavalinServer
                }
             }
 
-            ////////////////////////////////////////////////////////////////////////////////////
-            // tell javalin where to find material-dashboard static web assets                //
-            // in this case, this path is coming from the qqq-frontend-material-dashboard jar //
-            ////////////////////////////////////////////////////////////////////////////////////
-            config.staticFiles.add(staticFileConfig ->
-            {
-               staticFileConfig.hostedPath = frontendMaterialDashboardHostedPath;
-               staticFileConfig.directory = "/material-dashboard";
-            });
-
-            ////////////////////////////////////////////////////////////
-            // set the index page for the SPA from material dashboard //
-            ////////////////////////////////////////////////////////////
-            config.spaRoot.addFile(frontendMaterialDashboardHostedPath, "material-dashboard/index.html");
+            //////////////////////////////////////////////////////////////////////////////////////////
+            // Note: Static file serving and SPA deep linking for Material Dashboard is now handled //
+            // by IsolatedSpaRouteProvider (configured above) instead of config.staticFiles.add()   //
+            // and config.spaRoot.addFile(). This ensures proper <base href> tag injection for      //
+            // relative URL resolution when deep linking into the SPA.                              //
+            //////////////////////////////////////////////////////////////////////////////////////////
          }
 
          ///////////////////////////////////////////
@@ -362,7 +375,9 @@ public class QApplicationJavalinServer
       {
          if(StringUtils.hasContent(routeProviderMetaData.getSpaPath()) && StringUtils.hasContent(routeProviderMetaData.getStaticFilesPath()))
          {
-            // IsolatedSpaRouteProvider configuration
+            ////////////////////////////////////////////
+            // IsolatedSpaRouteProvider configuration //
+            ////////////////////////////////////////////
             IsolatedSpaRouteProvider spaProvider = new IsolatedSpaRouteProvider(
                routeProviderMetaData.getSpaPath(),
                routeProviderMetaData.getStaticFilesPath()
@@ -386,7 +401,9 @@ public class QApplicationJavalinServer
                spaProvider.withAuthenticator(routeProviderMetaData.getRouteAuthenticator());
             }
 
-            // Add before handlers from metadata
+            ///////////////////////////////////////
+            // Add before handlers from metadata //
+            ///////////////////////////////////////
             if(routeProviderMetaData.getBeforeHandlers() != null && !routeProviderMetaData.getBeforeHandlers().isEmpty())
             {
                for(QCodeReference handlerRef : routeProviderMetaData.getBeforeHandlers())
@@ -406,7 +423,9 @@ public class QApplicationJavalinServer
                }
             }
 
-            // Add after handlers from metadata
+            //////////////////////////////////////
+            // Add after handlers from metadata //
+            //////////////////////////////////////
             if(routeProviderMetaData.getAfterHandlers() != null && !routeProviderMetaData.getAfterHandlers().isEmpty())
             {
                for(QCodeReference handlerRef : routeProviderMetaData.getAfterHandlers())
@@ -738,7 +757,14 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    ** Fluent setter to add an IsolatedSpaRouteProvider
+    ** Fluent setter to add an IsolatedSpaRouteProvider.
+    **
+    ** Creates a basic SPA route provider for serving a single-page application
+    ** with deep linking support at the specified path.
+    **
+    ** @param spaPath The path where the SPA will be hosted (e.g., "/admin", "/")
+    ** @param staticFilesPath The classpath location of static files (e.g., "admin-spa/dist/")
+    ** @return this server instance for method chaining
     *******************************************************************************/
    public QApplicationJavalinServer withIsolatedSpaRouteProvider(String spaPath, String staticFilesPath)
    {
@@ -748,7 +774,15 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    ** Fluent setter to add an IsolatedSpaRouteProvider with full configuration
+    ** Fluent setter to add an IsolatedSpaRouteProvider with full configuration.
+    **
+    ** Creates an SPA route provider with an explicit index file path for serving
+    ** a single-page application with deep linking support.
+    **
+    ** @param spaPath The path where the SPA will be hosted (e.g., "/admin", "/")
+    ** @param staticFilesPath The classpath location of static files (e.g., "admin-spa/dist/")
+    ** @param spaIndexFile The classpath location of the index.html file (e.g., "admin-spa/dist/index.html")
+    ** @return this server instance for method chaining
     *******************************************************************************/
    public QApplicationJavalinServer withIsolatedSpaRouteProvider(String spaPath, String staticFilesPath, String spaIndexFile)
    {

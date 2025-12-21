@@ -51,7 +51,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class BaseTest
 {
-   protected PostgreSQLContainer<?> postgres;
+   protected PostgreSQLContainer postgres;
 
 
 
@@ -68,7 +68,7 @@ public class BaseTest
    @BeforeAll
    void baseBeforeAll()
    {
-      postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+      postgres = new PostgreSQLContainer("postgres:16-alpine")
          .withDatabaseName("qqq_test")
          .withUsername("test")
          .withPassword("test")

@@ -89,7 +89,7 @@ public class TestUtils
 
    public static final String SECURITY_KEY_STORE_ALL_ACCESS = "storeAllAccess";
 
-   private static PostgreSQLContainer<?> postgres;
+   private static PostgreSQLContainer postgres;
 
 
 
@@ -189,7 +189,7 @@ public class TestUtils
     ** 
     ** @param container the PostgreSQL test container
     *******************************************************************************/
-   public static void setPostgresContainer(PostgreSQLContainer<?> container)
+   public static void setPostgresContainer(PostgreSQLContainer container)
    {
       postgres = container;
    }

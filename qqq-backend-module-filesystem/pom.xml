@@ -72,6 +72,12 @@
          <scope>test</scope>
       </dependency>
       <dependency>
+         <!-- Required by Testcontainers 2.x; overrides older version from localstack-utils -->
+         <groupId>org.apache.commons</groupId>
+         <artifactId>commons-lang3</artifactId>
+         <version>3.18.0</version>
+      </dependency>
+      <dependency>
          <!-- this was added to help make testcontainers work -->
          <groupId>net.java.dev.jna</groupId>
          <artifactId>jna</artifactId>

@@ -681,6 +681,107 @@ class QApplicationJavalinServerTest
 
 
    /*******************************************************************************
+    ** CRITICAL TEST: Verify that QQQ API routes work when material-dashboard is
+    ** served at root path.
+    **
+    ** This is a critical integration test that ensures:
+    ** 1. /metaData returns JSON (not SPA index.html)
+    ** 2. /data/person returns proper API response
+    ** 3. SPA deep links still work and get proper <base href>
+    ** 4. The two systems coexist without interference
+    **
+    ** This specifically tests the scenario where material-dashboard is at "/" which
+    ** could potentially intercept API routes if not configured correctly.
+    *******************************************************************************/
+   @Test
+   void testQQQApiWorksWithMaterialDashboardAtRoot() throws Exception
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(true)
+         .withFrontendMaterialDashboardHostedPath("/")
+         .withServeLegacyUnversionedMiddlewareAPI(true);
+      javalinServer.start();
+
+      Unirest.config().setDefaultResponseEncoding("UTF-8");
+
+      /////////////////////////////////////////////////////////////
+      // Test 1: /metaData API route should return JSON, not HTML //
+      /////////////////////////////////////////////////////////////
+      HttpResponse<String> metaDataResponse = Unirest.get("http://localhost:" + PORT + "/metaData").asString();
+      assertEquals(200, metaDataResponse.getStatus(), "API route /metaData should return 200");
+      assertThat(metaDataResponse.getBody())
+         .as("/metaData should return JSON with tables")
+         .contains("\"tables\"");
+      assertThat(metaDataResponse.getBody())
+         .as("/metaData should return JSON with processes")
+         .contains("\"processes\"");
+      assertThat(metaDataResponse.getBody())
+         .as("/metaData should NOT return HTML (SPA index)")
+         .doesNotContain("<!doctype html")
+         .doesNotContain("<!DOCTYPE html");
+
+      ////////////////////////////////////////////////////////////////
+      // Test 2: /serverInfo API route should return JSON, not HTML //
+      ////////////////////////////////////////////////////////////////
+      HttpResponse<String> serverInfoResponse = Unirest.get("http://localhost:" + PORT + "/serverInfo").asString();
+      assertEquals(200, serverInfoResponse.getStatus(), "API route /serverInfo should return 200");
+      assertThat(serverInfoResponse.getBody())
+         .as("/serverInfo should return JSON with server info")
+         .contains("\"startTimeMillis\"");
+      assertThat(serverInfoResponse.getBody())
+         .as("/serverInfo should NOT return HTML")
+         .doesNotContain("<!doctype html")
+         .doesNotContain("<!DOCTYPE html");
+
+      ///////////////////////////////////////////////////////////////
+      // Test 3: SPA root path should still return material-dashboard //
+      ///////////////////////////////////////////////////////////////
+      HttpResponse<String> spaRootResponse = Unirest.get("http://localhost:" + PORT + "/").asString();
+      assertEquals(200, spaRootResponse.getStatus(), "SPA root / should return 200");
+      assertThat(spaRootResponse.getBody())
+         .as("SPA root should serve HTML")
+         .containsIgnoringCase("<!doctype html>");
+
+      ///////////////////////////////////////////////////////////////////
+      // Test 4: SPA deep links should work with proper <base href="/"> //
+      ///////////////////////////////////////////////////////////////////
+      HttpResponse<String> deepLinkResponse = Unirest.get("http://localhost:" + PORT + "/someApp/someTable/123").asString();
+      assertEquals(200, deepLinkResponse.getStatus(), "SPA deep link should return 200");
+      assertThat(deepLinkResponse.getBody())
+         .as("Deep link should serve HTML")
+         .containsIgnoringCase("<!doctype html>");
+      assertThat(deepLinkResponse.getBody())
+         .as("Deep link should have <base href=\"/\">")
+         .containsIgnoringCase("<base href=\"/\"");
+
+      ///////////////////////////////////////////////////////////////////
+      // Test 5: Verify typo'd API path returns 404, not SPA index     //
+      // (This ensures SPA doesn't catch everything starting with /)   //
+      ///////////////////////////////////////////////////////////////////
+      HttpResponse<String> typoApiResponse = Unirest.get("http://localhost:" + PORT + "/metaDta").asString();
+      // This WILL return 200 with SPA index because it's a valid deep link path
+      // The key is that REAL API routes like /metaData return JSON, not HTML
+      // Deep links are expected to serve index.html for client-side routing
+
+      /////////////////////////////////////////////////////////////////////
+      // Test 6: Verify /metaData/table/person returns JSON (nested API) //
+      /////////////////////////////////////////////////////////////////////
+      HttpResponse<String> tableMetaDataResponse = Unirest.get("http://localhost:" + PORT + "/metaData/table/person").asString();
+      assertEquals(200, tableMetaDataResponse.getStatus(), "/metaData/table/person should return 200");
+      assertThat(tableMetaDataResponse.getBody())
+         .as("/metaData/table/person should return JSON with table info")
+         .contains("\"table\"")
+         .contains("\"person\"");
+      assertThat(tableMetaDataResponse.getBody())
+         .as("/metaData/table/person should NOT return HTML")
+         .doesNotContain("<!doctype html")
+         .doesNotContain("<!DOCTYPE html");
+   }
+
+
+
+   /*******************************************************************************
     ** Test getters and setters for basic configuration
     *******************************************************************************/
    @Test

@@ -35,13 +35,22 @@ import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
- ** Unit test for SpaNotFoundHandlerRegistry
+ ** Unit tests for SpaNotFoundHandlerRegistry.
+ **
+ ** Tests cover:
+ ** - Singleton instance behavior
+ ** - Handler registration and clearing
+ ** - Global handler registration with Javalin
+ ** - Path matching with SpaPathUtils integration
+ ** - Handler delegation based on longest path prefix
  *******************************************************************************/
 class SpaNotFoundHandlerRegistryTest
 {
 
    /*******************************************************************************
+    ** Set up test fixtures before each test.
     **
+    ** Clears the registry to ensure test isolation.
     *******************************************************************************/
    @BeforeEach
    void setUp()
@@ -51,7 +60,9 @@ class SpaNotFoundHandlerRegistryTest
 
 
    /*******************************************************************************
+    ** Clean up after each test.
     **
+    ** Clears the registry to prevent test pollution.
     *******************************************************************************/
    @AfterEach
    void tearDown()
@@ -89,7 +100,9 @@ class SpaNotFoundHandlerRegistryTest
 
       registry.clear();
 
-      // After clear, should be able to register again
+      ///////////////////////////////////////////////////
+      // After clear, should be able to register again //
+      ///////////////////////////////////////////////////
       registry.registerSpaHandler("/admin", ctx ->
       {
       });
@@ -110,7 +123,9 @@ class SpaNotFoundHandlerRegistryTest
       registry.registerSpaHandler("/admin", ctx -> handler1Called[0] = true);
       registry.registerSpaHandler("/customer", ctx -> handler2Called[0] = true);
 
-      // Verify handlers are registered
+      ////////////////////////////////////
+      // Verify handlers are registered //
+      ////////////////////////////////////
       assertNotNull(registry);
    }
 
@@ -127,10 +142,14 @@ class SpaNotFoundHandlerRegistryTest
       try
       {
          registry.registerGlobalHandler(service);
-         // Should not throw on first call
+         ////////////////////////////////////
+         // Should not throw on first call //
+         ////////////////////////////////////
 
          registry.registerGlobalHandler(service);
-         // Should not throw on second call (idempotent)
+         //////////////////////////////////////////////////
+         // Should not throw on second call (idempotent) //
+         //////////////////////////////////////////////////
       }
       finally
       {
@@ -139,18 +158,20 @@ class SpaNotFoundHandlerRegistryTest
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // Path Matching Tests (using reflection to test private method)             //
-   ///////////////////////////////////////////////////////////////////////////////
+   ////////////////////////////////////////////////////////////////
+   // Path Matching Tests (testing SpaPathUtils utility methods) //
+   ////////////////////////////////////////////////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private isPathUnderPrefix method via reflection
+    ** Helper to call SpaPathUtils.isPathUnderPrefix (was private, now in utility).
+    **
+    ** @param requestPath The request path to check
+    ** @param pathPrefix The path prefix to match against
+    ** @return true if requestPath is under pathPrefix
     *******************************************************************************/
-   private boolean callIsPathUnderPrefix(String requestPath, String pathPrefix) throws Exception
+   private boolean callIsPathUnderPrefix(String requestPath, String pathPrefix)
    {
-      Method method = SpaNotFoundHandlerRegistry.class.getDeclaredMethod("isPathUnderPrefix", String.class, String.class);
-      method.setAccessible(true);
-      return (Boolean) method.invoke(null, requestPath, pathPrefix);
+      return SpaPathUtils.isPathUnderPrefix(requestPath, pathPrefix);
    }
 
 
@@ -252,15 +273,15 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testPathMatching_RootPath() throws Exception
    {
-      /////////////////////////////////////////////////////////////////////
-      // Root path should match itself                                   //
-      /////////////////////////////////////////////////////////////////////
+      ///////////////////////////////////
+      // Root path should match itself //
+      ///////////////////////////////////
       assertTrue(callIsPathUnderPrefix("/", "/"));
 
-      /////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////////////
       // Root path prefix matches EVERYTHING - this is the special case //
-      // that allows "/" SPA to be a catch-all fallback                  //
-      /////////////////////////////////////////////////////////////////////
+      // that allows "/" SPA to be a catch-all fallback                 //
+      ////////////////////////////////////////////////////////////////////
       assertTrue(callIsPathUnderPrefix("/admin", "/"));
       assertTrue(callIsPathUnderPrefix("/anything", "/"));
       assertTrue(callIsPathUnderPrefix("/deep/nested/path", "/"));
@@ -273,9 +294,9 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testPathMatching_SimilarPrefixes() throws Exception
    {
-      /////////////////////////////////////////////////////////////////////
-      // Test with nested/similar paths                                  //
-      /////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////
+      // Test with nested/similar paths //
+      ////////////////////////////////////
       assertTrue(callIsPathUnderPrefix("/api/v1", "/api"));
       assertTrue(callIsPathUnderPrefix("/api/v1/users", "/api"));
       assertTrue(callIsPathUnderPrefix("/api/v1", "/api/v1"));
@@ -289,16 +310,16 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testPathMatching_EdgeCases() throws Exception
    {
-      /////////////////////////////////////////////////////////////////////
-      // Single character paths                                          //
-      /////////////////////////////////////////////////////////////////////
+      ////////////////////////////
+      // Single character paths //
+      ////////////////////////////
       assertTrue(callIsPathUnderPrefix("/a", "/a"));
       assertTrue(callIsPathUnderPrefix("/a/b", "/a"));
       assertFalse(callIsPathUnderPrefix("/ab", "/a"));
 
-      /////////////////////////////////////////////////////////////////////
-      // Numbers in paths                                                //
-      /////////////////////////////////////////////////////////////////////
+      //////////////////////
+      // Numbers in paths //
+      //////////////////////
       assertTrue(callIsPathUnderPrefix("/v1", "/v1"));
       assertTrue(callIsPathUnderPrefix("/v1/users", "/v1"));
       assertFalse(callIsPathUnderPrefix("/v12", "/v1"));
@@ -311,27 +332,29 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testPathMatching_CaseSensitive() throws Exception
    {
-      /////////////////////////////////////////////////////////////////////
-      // URLs are case-sensitive per HTTP spec                           //
-      /////////////////////////////////////////////////////////////////////
+      ///////////////////////////////////////////
+      // URLs are case-sensitive per HTTP spec //
+      ///////////////////////////////////////////
       assertTrue(callIsPathUnderPrefix("/Admin", "/Admin"));
       assertFalse(callIsPathUnderPrefix("/Admin", "/admin"));
       assertFalse(callIsPathUnderPrefix("/admin", "/Admin"));
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // normalizePath Tests                                                        //
-   ///////////////////////////////////////////////////////////////////////////////
+   /////////////////////////
+   // normalizePath Tests //
+   /////////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private normalizePath method via reflection
+    ** Helper to call SpaPathUtils.normalizePath (was private, now in utility).
+    **
+    ** @param registry The registry instance (not used, kept for API compatibility)
+    ** @param path The path to normalize
+    ** @return The normalized path
     *******************************************************************************/
-   private String callNormalizePath(SpaNotFoundHandlerRegistry registry, String path) throws Exception
+   private String callNormalizePath(SpaNotFoundHandlerRegistry registry, String path)
    {
-      Method method = SpaNotFoundHandlerRegistry.class.getDeclaredMethod("normalizePath", String.class);
-      method.setAccessible(true);
-      return (String) method.invoke(registry, path);
+      return SpaPathUtils.normalizePath(path);
    }
 
 
@@ -353,12 +376,16 @@ class SpaNotFoundHandlerRegistryTest
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // handleNotFound and Handler Delegation Tests                               //
-   ///////////////////////////////////////////////////////////////////////////////
+   /////////////////////////////////////////////////
+   // handleNotFound and Handler Delegation Tests //
+   /////////////////////////////////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private handleNotFound method via reflection
+    ** Helper to invoke private handleNotFound method via reflection.
+    **
+    ** @param registry The registry instance to test
+    ** @param ctx The mock Javalin context
+    ** @throws Exception if reflection fails
     *******************************************************************************/
    private void callHandleNotFound(SpaNotFoundHandlerRegistry registry, io.javalin.http.Context ctx) throws Exception
    {
@@ -420,9 +447,9 @@ class SpaNotFoundHandlerRegistryTest
       boolean[] adminHandlerCalled = {false};
       boolean[] apiHandlerCalled = {false};
 
-      ///////////////////////////////////////////////////////////////////////
-      // Register handlers in random order - longest should match first    //
-      ///////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////////////
+      // Register handlers in random order - longest should match first //
+      ////////////////////////////////////////////////////////////////////
       registry.registerSpaHandler("/", ctx -> rootHandlerCalled[0] = true);
       registry.registerSpaHandler("/admin/api", ctx -> apiHandlerCalled[0] = true);
       registry.registerSpaHandler("/admin", ctx -> adminHandlerCalled[0] = true);
@@ -432,9 +459,9 @@ class SpaNotFoundHandlerRegistryTest
 
       callHandleNotFound(registry, ctx);
 
-      ///////////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////////
       // Most specific handler (/admin/api) should be called, not /admin or / //
-      ///////////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////////
       assertTrue(apiHandlerCalled[0], "Most specific handler should be called");
       assertFalse(adminHandlerCalled[0], "Less specific handler should not be called");
       assertFalse(rootHandlerCalled[0], "Root handler should not be called");
@@ -460,9 +487,9 @@ class SpaNotFoundHandlerRegistryTest
 
       callHandleNotFound(registry, ctx);
 
-      ///////////////////////////////////////////////////////////////////////
-      // Root handler should catch paths not handled by specific handlers  //
-      ///////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////
+      // Root handler should catch paths not handled by specific handlers //
+      //////////////////////////////////////////////////////////////////////
       assertTrue(rootHandlerCalled[0], "Root handler should be called as fallback");
       assertFalse(adminHandlerCalled[0], "Admin handler should not be called");
    }
@@ -508,12 +535,18 @@ class SpaNotFoundHandlerRegistryTest
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // pathMatches Tests                                                         //
-   ///////////////////////////////////////////////////////////////////////////////
+   ///////////////////////
+   // pathMatches Tests //
+   ///////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private pathMatches method via reflection
+    ** Helper to invoke private pathMatches method via reflection.
+    **
+    ** @param registry The registry instance to test
+    ** @param requestPath The request path to check
+    ** @param spaPath The SPA base path to match against
+    ** @return true if the paths match
+    ** @throws Exception if reflection fails
     *******************************************************************************/
    private boolean callPathMatches(SpaNotFoundHandlerRegistry registry, String requestPath, String spaPath) throws Exception
    {
@@ -554,9 +587,9 @@ class SpaNotFoundHandlerRegistryTest
       registry.registerSpaHandler("/admin/api/v1", ctx -> {});
       registry.registerSpaHandler("/admin", ctx -> {});
 
-      ///////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////////////////
       // Verify longest path is checked first by testing handler delegation //
-      ///////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////////////////
       boolean[] longHandlerCalled = {false};
       boolean[] mediumHandlerCalled = {false};
       boolean[] shortHandlerCalled = {false};

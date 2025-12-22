@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.javalin.TestUtils;
 import io.javalin.Javalin;
 import io.javalin.http.Handler;
+import io.javalin.http.HttpStatus;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +49,15 @@ import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
- ** Unit test for IsolatedSpaRouteProvider
+ ** Unit tests for IsolatedSpaRouteProvider.
+ **
+ ** Tests cover:
+ ** - Constructor and basic configuration
+ ** - Path matching and exclusion logic
+ ** - Deep linking and 404 handling
+ ** - Static asset detection
+ ** - Base href injection for relative URL resolution
+ ** - Authentication integration
  *******************************************************************************/
 class IsolatedSpaRouteProviderTest
 {
@@ -58,7 +67,9 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
+    ** Set up test fixtures before each test.
     **
+    ** @throws Exception if setup fails
     *******************************************************************************/
    @BeforeEach
    void setUp() throws Exception
@@ -72,7 +83,9 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
+    ** Clean up after each test.
     **
+    ** Clears the SpaNotFoundHandlerRegistry to prevent test pollution.
     *******************************************************************************/
    @AfterEach
    void tearDown()
@@ -696,12 +709,17 @@ class IsolatedSpaRouteProviderTest
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // Path Prefix Matching Tests                                                //
-   ///////////////////////////////////////////////////////////////////////////////
+   ////////////////////////////////
+   // Path Prefix Matching Tests //
+   ////////////////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private isExcludedPath method via reflection
+    ** Helper to invoke private isExcludedPath method via reflection.
+    **
+    ** @param provider The provider instance to test
+    ** @param path The path to check for exclusion
+    ** @return true if the path is excluded
+    ** @throws Exception if reflection fails
     *******************************************************************************/
    private boolean callIsExcludedPath(IsolatedSpaRouteProvider provider, String path) throws Exception
    {
@@ -751,9 +769,9 @@ class IsolatedSpaRouteProviderTest
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
       provider.withExcludedPaths(List.of("/admin", "/api"));
 
-      /////////////////////////////////////////////////////////////////////
-      // These should NOT be excluded - they're different paths          //
-      /////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////
+      // These should NOT be excluded - they're different paths //
+      ////////////////////////////////////////////////////////////
       assertFalse(callIsExcludedPath(provider, "/administrator"));
       assertFalse(callIsExcludedPath(provider, "/admin-panel"));
       assertFalse(callIsExcludedPath(provider, "/api-docs"));
@@ -829,8 +847,9 @@ class IsolatedSpaRouteProviderTest
    void testIsExcludedPath_EmptyList() throws Exception
    {
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
-      // No exclusions added
-
+      /////////////////////////
+      // No exclusions added //
+      /////////////////////////
       assertFalse(callIsExcludedPath(provider, "/admin"));
       assertFalse(callIsExcludedPath(provider, "/api"));
       assertFalse(callIsExcludedPath(provider, "/anything"));
@@ -867,21 +886,26 @@ class IsolatedSpaRouteProviderTest
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "admin-spa/");
       provider.withExcludedPath("/");
 
-      /////////////////////////////////////////////////////////////////////
-      // If "/" is excluded, everything should be excluded               //
-      /////////////////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////
+      // If "/" is excluded, everything should be excluded //
+      ///////////////////////////////////////////////////////
       assertTrue(callIsExcludedPath(provider, "/"));
       assertTrue(callIsExcludedPath(provider, "/users"));
       assertTrue(callIsExcludedPath(provider, "/anything"));
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // handleNotFound() Tests                                                     //
-   ///////////////////////////////////////////////////////////////////////////////
+   ////////////////////////////
+   // handleNotFound() Tests //
+   ////////////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private handleNotFound method via reflection
+    ** Helper to invoke private handleNotFound method via reflection.
+    **
+    ** @param provider The provider instance to test
+    ** @param ctx The mock Javalin context
+    ** @param checkExclusions Whether to check path exclusions
+    ** @throws Exception if reflection fails
     *******************************************************************************/
    private void callHandleNotFound(IsolatedSpaRouteProvider provider, io.javalin.http.Context ctx, boolean checkExclusions) throws Exception
    {
@@ -904,10 +928,10 @@ class IsolatedSpaRouteProviderTest
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
       when(ctx.path()).thenReturn("/api/users");
 
-      //////////////////////////////////////////////////////////////////////
-      // Should skip handling because /api is excluded                    //
-      // Method should return without setting status or content           //
-      //////////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////
+      // Should skip handling because /api is excluded          //
+      // Method should return without setting status or content //
+      ////////////////////////////////////////////////////////////
       callHandleNotFound(provider, ctx, true);
 
       verify(ctx, never()).html(anyString());
@@ -927,9 +951,9 @@ class IsolatedSpaRouteProviderTest
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
       when(ctx.path()).thenReturn("/customer/dashboard");
 
-      //////////////////////////////////////////////////////////////////
-      // Should skip because request is not under /admin             //
-      //////////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////
+      // Should skip because request is not under /admin //
+      /////////////////////////////////////////////////////
       callHandleNotFound(provider, ctx, false);
 
       verify(ctx, never()).html(anyString());
@@ -972,9 +996,9 @@ class IsolatedSpaRouteProviderTest
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
       when(ctx.path()).thenReturn("/admin/users/123");
 
-      //////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////
       // Should serve index.html with paths rewritten for /admin //
-      //////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////
       callHandleNotFound(provider, ctx, false);
 
       verify(ctx).html(contains("<base href=\"/admin/\">"));
@@ -996,9 +1020,9 @@ class IsolatedSpaRouteProviderTest
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
       when(ctx.path()).thenReturn("/dashboard");
 
-      /////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////
       // Should serve index.html (no path rewriting for root "/") //
-      /////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////
       callHandleNotFound(provider, ctx, true);
 
       verify(ctx).html(anyString());
@@ -1008,6 +1032,7 @@ class IsolatedSpaRouteProviderTest
 
    /*******************************************************************************
     ** Test handleNotFound - null index file (error case)
+    ** Should return 500 error when index file cannot be loaded
     *******************************************************************************/
    @Test
    void testHandleNotFound_NullIndexFile() throws Exception
@@ -1019,25 +1044,30 @@ class IsolatedSpaRouteProviderTest
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
       when(ctx.path()).thenReturn("/admin/users");
 
-      ///////////////////////////////////////////////////////////////////
-      // Should handle gracefully when index file cannot be loaded     //
-      ///////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////
+      // Should return 500 when index file cannot be loaded //
+      ////////////////////////////////////////////////////////
       callHandleNotFound(provider, ctx, false);
 
-      ////////////////////////////////////////////////////////////////////
-      // Context methods should not be called if index file is not found //
-      ////////////////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////////////////////
+      // Should return 500 with error message when index file is not found //
+      ///////////////////////////////////////////////////////////////////////
       verify(ctx, never()).html(anyString());
-      verify(ctx, never()).status(any());
+      verify(ctx).status(HttpStatus.INTERNAL_SERVER_ERROR);
+      verify(ctx).result(contains("non-existent-file.html"));
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // loadSpaIndexFile() Tests                                                   //
-   ///////////////////////////////////////////////////////////////////////////////
+   //////////////////////////////
+   // loadSpaIndexFile() Tests //
+   //////////////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private loadSpaIndexFile method via reflection
+    ** Helper to invoke private loadSpaIndexFile method via reflection.
+    **
+    ** @param provider The provider instance to test
+    ** @return InputStream for the index file, or null if not found
+    ** @throws Exception if reflection fails
     *******************************************************************************/
    private java.io.InputStream callLoadSpaIndexFile(IsolatedSpaRouteProvider provider) throws Exception
    {
@@ -1130,9 +1160,9 @@ class IsolatedSpaRouteProviderTest
    }
 
 
-   ///////////////////////////////////////////////////////////////////////////////
-   // authenticateRequest() Tests                                                //
-   ///////////////////////////////////////////////////////////////////////////////
+   /////////////////////////////////
+   // authenticateRequest() Tests //
+   /////////////////////////////////
 
    /*******************************************************************************
     ** Test authenticateRequest - no authenticator configured
@@ -1142,7 +1172,9 @@ class IsolatedSpaRouteProviderTest
    {
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
       provider.setQInstance(qInstance);
-      // No authenticator set
+      //////////////////////////
+      // No authenticator set //
+      //////////////////////////
 
       Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("authenticateRequest", io.javalin.http.Context.class);
       method.setAccessible(true);
@@ -1167,7 +1199,9 @@ class IsolatedSpaRouteProviderTest
    {
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
       provider.withAuthenticator(new QCodeReference(String.class));
-      // QInstance is null
+      ///////////////////////
+      // QInstance is null //
+      ///////////////////////
 
       Method method = IsolatedSpaRouteProvider.class.getDeclaredMethod("authenticateRequest", io.javalin.http.Context.class);
       method.setAccessible(true);
@@ -1175,9 +1209,9 @@ class IsolatedSpaRouteProviderTest
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
       when(ctx.path()).thenReturn("/admin/users");
 
-      ///////////////////////////////////////////////////
+      //////////////////////////////////////////////////
       // Should set 500 status when QInstance is null //
-      ///////////////////////////////////////////////////
+      //////////////////////////////////////////////////
       method.invoke(provider, ctx);
 
       verify(ctx).status(500);
@@ -1189,7 +1223,12 @@ class IsolatedSpaRouteProviderTest
    ///////////////////////////////////////////////////////////////////////////////
 
    /*******************************************************************************
-    ** Helper to invoke private isStaticAsset method via reflection
+    ** Helper to invoke private isStaticAsset method via reflection.
+    **
+    ** @param provider The provider instance to test
+    ** @param path The path to check for static asset patterns
+    ** @return true if the path matches static asset patterns
+    ** @throws Exception if reflection fails
     *******************************************************************************/
    private boolean callIsStaticAsset(IsolatedSpaRouteProvider provider, String path) throws Exception
    {

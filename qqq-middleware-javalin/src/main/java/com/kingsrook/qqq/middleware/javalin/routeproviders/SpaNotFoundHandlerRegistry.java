@@ -25,6 +25,7 @@ package com.kingsrook.qqq.middleware.javalin.routeproviders;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import io.javalin.Javalin;
@@ -65,8 +66,19 @@ public class SpaNotFoundHandlerRegistry
 
    private static final SpaNotFoundHandlerRegistry INSTANCE = new SpaNotFoundHandlerRegistry();
 
-   private final List<SpaNotFoundHandler> handlers = new ArrayList<>();
-   private       boolean                  globalHandlerRegistered;
+   ///////////////////////////////////////////////////////////////////////////
+   // CopyOnWriteArrayList provides thread-safe iteration in handleNotFound //
+   // without requiring synchronization on the read path.                   //
+   ///////////////////////////////////////////////////////////////////////////
+   private final List<SpaNotFoundHandler> handlers = new CopyOnWriteArrayList<>();
+
+   ///////////////////////////////////////////////////////////////////////////
+   // Track which Javalin instance has the global handler registered.       //
+   // Uses identity hash code to avoid holding a reference to the instance. //
+   // This allows re-registration when a new Javalin instance is created    //
+   // (common in tests where each test creates its own server).             //
+   ///////////////////////////////////////////////////////////////////////////
+   private int registeredJavalinInstanceId = 0;
 
 
 
@@ -80,7 +92,9 @@ public class SpaNotFoundHandlerRegistry
 
 
    /*******************************************************************************
-    ** Get the singleton instance
+    ** Get the singleton instance of the registry.
+    **
+    ** @return The singleton SpaNotFoundHandlerRegistry instance
     *******************************************************************************/
    public static SpaNotFoundHandlerRegistry getInstance()
    {
@@ -90,15 +104,23 @@ public class SpaNotFoundHandlerRegistry
 
 
    /*******************************************************************************
-    ** Register the global 404 handler with Javalin (call once per Javalin instance)
+    ** Register the global 404 handler with Javalin (call once per Javalin instance).
+    **
+    ** This method is idempotent per Javalin instance - calling it multiple times
+    ** with the same instance has no effect. However, if a NEW Javalin instance is
+    ** passed, the handler is registered with that instance. This is important for
+    ** test isolation where each test may create its own Javalin server.
+    **
+    ** @param service The Javalin instance to register the global 404 handler with
     *******************************************************************************/
    public synchronized void registerGlobalHandler(Javalin service)
    {
-      if(!globalHandlerRegistered)
+      int currentInstanceId = System.identityHashCode(service);
+      if(registeredJavalinInstanceId != currentInstanceId)
       {
          service.error(HttpStatus.NOT_FOUND, this::handleNotFound);
-         globalHandlerRegistered = true;
-         LOG.info("Registered global SPA 404 handler");
+         registeredJavalinInstanceId = currentInstanceId;
+         LOG.info("Registered global SPA 404 handler", logPair("javalinInstanceId", currentInstanceId));
       }
    }
 
@@ -115,7 +137,7 @@ public class SpaNotFoundHandlerRegistry
       /////////////////////////////////////////////////////////////////////
       // Normalize path (ensure it starts with / and doesn't end with /) //
       /////////////////////////////////////////////////////////////////////
-      String normalizedPath = normalizePath(spaPath);
+      String normalizedPath = SpaPathUtils.normalizePath(spaPath);
 
       handlers.add(new SpaNotFoundHandler(normalizedPath, handler));
 
@@ -134,18 +156,28 @@ public class SpaNotFoundHandlerRegistry
 
    /*******************************************************************************
     ** Clear all registered handlers (useful for testing)
+    **
+    ** This resets the registry to its initial state, allowing a new Javalin
+    ** instance to register handlers. Call this in test cleanup (@AfterEach)
+    ** to ensure test isolation.
     *******************************************************************************/
    public synchronized void clear()
    {
       handlers.clear();
-      globalHandlerRegistered = false;
+      registeredJavalinInstanceId = 0;
       LOG.info("Cleared all SPA 404 handlers");
    }
 
 
 
    /*******************************************************************************
-    ** Global 404 handler - delegates to the appropriate SPA provider
+    ** Global 404 handler - delegates to the appropriate SPA provider.
+    **
+    ** Iterates through registered handlers (sorted by path length, longest first)
+    ** to find the most specific matching SPA. When found, delegates to that SPA's
+    ** handler to decide whether to serve index.html or let it 404.
+    **
+    ** @param ctx The Javalin request context for the 404 error
     *******************************************************************************/
    private void handleNotFound(Context ctx)
    {
@@ -220,117 +252,7 @@ public class SpaNotFoundHandlerRegistry
       // For non-root SPAs, check if request is under SPA //
       // Uses boundary checking to prevent false matches  //
       //////////////////////////////////////////////////////
-      return isPathUnderPrefix(requestPath, spaPath);
-   }
-
-
-
-   /*******************************************************************************
-    ** Check if a request path is under a given path prefix.
-    **
-    ** This is the correct way to check path prefixes with boundary checking
-    ** to prevent false matches like "/administrator" matching "/admin".
-    **
-    ** Handles query parameters and hash fragments by stripping them before
-    ** comparison, so "/admin?tab=users" correctly matches prefix "/admin".
-    **
-    ** SPECIAL CASE - ROOT PATH:
-    ** The root path "/" matches everything when used as a prefix. This allows
-    ** root-level exclusions or catch-all behaviors.
-    **
-    ** RULES:
-    ** 1. Exact match: "/admin" matches "/admin"
-    ** 2. Sub-path: "/admin/users" matches prefix "/admin"
-    ** 3. Boundary check: "/administrator" does NOT match prefix "/admin"
-    ** 4. Query params ignored: "/admin?tab=users" matches prefix "/admin"
-    ** 5. Root matches all: anything matches prefix "/"
-    **
-    ** This method ensures consistent path matching behavior across the routing
-    ** system. Any code that needs to check "is path X under path Y" should use
-    ** this logic to avoid prefix collision bugs.
-    **
-    ** Examples:
-    **   isPathUnderPrefix("/admin", "/admin")              → TRUE (exact)
-    **   isPathUnderPrefix("/admin/users", "/admin")        → TRUE (sub-path)
-    **   isPathUnderPrefix("/admin?tab=users", "/admin")    → TRUE (query param ignored)
-    **   isPathUnderPrefix("/administrator", "/admin")      → FALSE (different path)
-    **   isPathUnderPrefix("/api-docs", "/api")             → FALSE (different path)
-    **   isPathUnderPrefix("/anything", "/")                → TRUE (root matches all)
-    **
-    ** @param requestPath The request path to check (may include query params/hash)
-    ** @param pathPrefix The path prefix to match against
-    ** @return true if requestPath is equal to or under pathPrefix
-    *******************************************************************************/
-   private static boolean isPathUnderPrefix(String requestPath, String pathPrefix)
-   {
-      ////////////////////////////////////////////////
-      // Special case: root path matches everything //
-      ////////////////////////////////////////////////
-      if("/".equals(pathPrefix))
-      {
-         return true;
-      }
-
-      ////////////////////////////////////////////////
-      // Normalize request path: strip query params //
-      // and hash fragments for comparison          //
-      ////////////////////////////////////////////////
-      String normalizedPath = requestPath;
-      int queryIndex = normalizedPath.indexOf('?');
-      if(queryIndex != -1)
-      {
-         normalizedPath = normalizedPath.substring(0, queryIndex);
-      }
-      int hashIndex = normalizedPath.indexOf('#');
-      if(hashIndex != -1)
-      {
-         normalizedPath = normalizedPath.substring(0, hashIndex);
-      }
-
-      //////////////////////
-      // Exact match case //
-      //////////////////////
-      if(normalizedPath.equals(pathPrefix))
-      {
-         return true;
-      }
-
-      ////////////////////////////////////////////////////////////
-      // Sub-path match with boundary check                     //
-      // Ensures "/administrator" doesn't match prefix "/admin" //
-      ////////////////////////////////////////////////////////////
-      return normalizedPath.startsWith(pathPrefix + "/");
-   }
-
-
-
-   /*******************************************************************************
-    ** Normalize a path (ensure it starts with / and doesn't end with /)
-    *******************************************************************************/
-   private String normalizePath(String path)
-   {
-      if(path == null || path.isEmpty())
-      {
-         return "/";
-      }
-
-      ////////////////////////
-      // Ensure starts with //
-      ////////////////////////
-      if(!path.startsWith("/"))
-      {
-         path = "/" + path;
-      }
-
-      /////////////////////////////////////////
-      // Remove trailing / (except for root) //
-      /////////////////////////////////////////
-      if(path.length() > 1 && path.endsWith("/"))
-      {
-         path = path.substring(0, path.length() - 1);
-      }
-
-      return path;
+      return SpaPathUtils.isPathUnderPrefix(requestPath, spaPath);
    }
 
 
@@ -346,7 +268,10 @@ public class SpaNotFoundHandlerRegistry
 
 
       /***************************************************************************
+       ** Constructor for SpaNotFoundHandler.
        **
+       ** @param path The base path for this SPA (e.g., "/admin", "/")
+       ** @param handleNotFound The handler function to invoke on 404
        ***************************************************************************/
       public SpaNotFoundHandler(String path, Consumer<Context> handleNotFound)
       {

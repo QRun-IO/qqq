@@ -57,7 +57,7 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
 import org.apache.commons.io.IOUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 
@@ -89,7 +89,7 @@ public class TestUtils
 
    public static final String SECURITY_KEY_STORE_ALL_ACCESS = "storeAllAccess";
 
-   private static PostgreSQLContainer<?> postgres;
+   private static PostgreSQLContainer postgres;
 
 
 
@@ -189,7 +189,7 @@ public class TestUtils
     ** 
     ** @param container the PostgreSQL test container
     *******************************************************************************/
-   public static void setPostgresContainer(PostgreSQLContainer<?> container)
+   public static void setPostgresContainer(PostgreSQLContainer container)
    {
       postgres = container;
    }

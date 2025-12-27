@@ -124,9 +124,15 @@
          <scope>test</scope>
       </dependency>
       <dependency>
+         <groupId>net.bytebuddy</groupId>
+         <artifactId>byte-buddy</artifactId>
+         <version>1.15.4</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
          <groupId>org.mockito</groupId>
          <artifactId>mockito-core</artifactId>
-         <version>5.1.1</version>
+         <version>5.14.2</version>
          <scope>test</scope>
       </dependency>
    </dependencies>

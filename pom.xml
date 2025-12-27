@@ -72,6 +72,7 @@
     <module>qqq-middleware-lambda</module>
     <module>qqq-middleware-slack</module>
     <module>qqq-middleware-api</module>
+    <module>qqq-middleware-health</module>
     <module>qqq-utility-lambdas</module>
   </modules>
 

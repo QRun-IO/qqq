@@ -28,6 +28,7 @@ import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
 import org.apache.logging.log4j.Level;
@@ -52,6 +53,7 @@ public class QJavalinMetaData implements QSupplementalInstanceMetaData
    private Level   queryWithoutLimitLogLevel = Level.INFO;
 
    private List<JavalinRouteProviderMetaData> routeProviders;
+   private List<QCodeReference>               additionalRouteProviderReferences;
 
 
 
@@ -327,6 +329,52 @@ public class QJavalinMetaData implements QSupplementalInstanceMetaData
          this.routeProviders = new ArrayList<>();
       }
       this.routeProviders.add(routeProvider);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for additionalRouteProviderReferences
+    *******************************************************************************/
+   public List<QCodeReference> getAdditionalRouteProviderReferences()
+   {
+      return (this.additionalRouteProviderReferences);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for additionalRouteProviderReferences
+    *******************************************************************************/
+   public void setAdditionalRouteProviderReferences(List<QCodeReference> additionalRouteProviderReferences)
+   {
+      this.additionalRouteProviderReferences = additionalRouteProviderReferences;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for additionalRouteProviderReferences
+    *******************************************************************************/
+   public QJavalinMetaData withAdditionalRouteProviderReferences(List<QCodeReference> additionalRouteProviderReferences)
+   {
+      this.additionalRouteProviderReferences = additionalRouteProviderReferences;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter to add a single additionalRouteProviderReference
+    *******************************************************************************/
+   public QJavalinMetaData withAdditionalRouteProviderReference(QCodeReference additionalRouteProviderReference)
+   {
+      if(this.additionalRouteProviderReferences == null)
+      {
+         this.additionalRouteProviderReferences = new ArrayList<>();
+      }
+      this.additionalRouteProviderReferences.add(additionalRouteProviderReference);
       return (this);
    }
 

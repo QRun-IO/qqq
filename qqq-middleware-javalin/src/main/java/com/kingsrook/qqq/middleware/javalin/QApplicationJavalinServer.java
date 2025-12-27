@@ -460,6 +460,29 @@ public class QApplicationJavalinServer
             throw (new QException("Error processing route provider - does not have sufficient fields set."));
          }
       }
+
+      //////////////////////////////////////////////////////////////////////////////////////
+      // Handle generic route provider references (e.g., health endpoints, custom APIs) //
+      //////////////////////////////////////////////////////////////////////////////////////
+      for(QCodeReference providerRef : CollectionUtils.nonNullList(qJavalinMetaData.getAdditionalRouteProviderReferences()))
+      {
+         try
+         {
+            QJavalinRouteProviderInterface provider = QCodeLoader.getAdHoc(
+               QJavalinRouteProviderInterface.class,
+               providerRef
+            );
+
+            LOG.info("Auto-registering route provider from metadata", LogUtils.logPair("provider", providerRef.getName()));
+
+            withAdditionalRouteProvider(provider);
+         }
+         catch(Exception e)
+         {
+            LOG.error("Error loading route provider", e, LogUtils.logPair("provider", providerRef.getName()));
+            throw new QException("Failed to load route provider: " + e.getMessage(), e);
+         }
+      }
    }
 
 
@@ -743,7 +766,31 @@ public class QApplicationJavalinServer
 
    /*******************************************************************************
     ** Fluent setter to add a single additionalRouteProvider
+    **
+    ** @deprecated As of QQQ 0.x, use metadata producers with
+    **             {@link QJavalinMetaData#withAdditionalRouteProviderReference(QCodeReference)}
+    **             to register route providers declaratively. This method remains
+    **             for backward compatibility but will be removed in a future release.
+    **
+    ** Migration example:
+    ** <pre>
+    ** // OLD (programmatic):
+    ** .withAdditionalRouteProvider(new JavalinHealthRouteProvider())
+    **
+    ** // NEW (metadata-driven):
+    ** // Create a MetaDataProducer that returns QJavalinMetaData:
+    ** public class HealthMetaDataProducer extends MetaDataProducer&lt;QJavalinMetaData&gt;
+    ** {
+    **    public QJavalinMetaData produce(QInstance qInstance) {
+    **       return QJavalinMetaData.ofOrWithNew(qInstance)
+    **          .withAdditionalRouteProviderReference(
+    **             new QCodeReference(JavalinHealthRouteProvider.class)
+    **          );
+    **    }
+    ** }
+    ** </pre>
     *******************************************************************************/
+   @Deprecated
    public QApplicationJavalinServer withAdditionalRouteProvider(QJavalinRouteProviderInterface additionalRouteProvider)
    {
       if(this.additionalRouteProviders == null)

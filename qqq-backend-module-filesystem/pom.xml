@@ -50,18 +50,18 @@
       <dependency>
          <groupId>com.amazonaws</groupId>
          <artifactId>aws-java-sdk-s3</artifactId>
-         <version>1.12.261</version>
+         <version>1.12.796</version>
       </dependency>
       <dependency>
          <groupId>org.apache.sshd</groupId>
          <artifactId>sshd-sftp</artifactId>
-         <version>2.14.0</version>
+         <version>2.16.0</version>
       </dependency>
 
       <dependency>
          <groupId>cloud.localstack</groupId>
          <artifactId>localstack-utils</artifactId>
-         <version>0.2.20</version>
+         <version>0.2.23</version>
          <scope>test</scope>
       </dependency>
 
@@ -75,13 +75,13 @@
          <!-- Required by Testcontainers 2.x; overrides older version from localstack-utils -->
          <groupId>org.apache.commons</groupId>
          <artifactId>commons-lang3</artifactId>
-         <version>3.18.0</version>
+         <version>3.20.0</version>
       </dependency>
       <dependency>
          <!-- this was added to help make testcontainers work -->
          <groupId>net.java.dev.jna</groupId>
          <artifactId>jna</artifactId>
-         <version>5.7.0</version>
+         <version>5.18.1</version>
          <scope>test</scope>
       </dependency>
 

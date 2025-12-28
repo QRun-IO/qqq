@@ -3,7 +3,7 @@
 Metadata-driven application framework for building business software in Java.
 
 **For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems
-**Latest Release:** v0.27.0 | **Development:** v0.35.0-SNAPSHOT
+**Latest Release:** v0.35.0 | **Development:** v0.36.0-SNAPSHOT
 
 ## Why This Exists
 
@@ -31,20 +31,20 @@ This isn't a no-code tool. You write Java when you need custom behavior. But the
 <dependency>
     <groupId>com.kingsrook.qqq</groupId>
     <artifactId>qqq-backend-core</artifactId>
-    <version>0.27.0</version>
+    <version>0.35.0</version>
 </dependency>
 
 <!-- Or use the development snapshot -->
 <dependency>
     <groupId>com.kingsrook.qqq</groupId>
     <artifactId>qqq-backend-core</artifactId>
-    <version>0.35.0-SNAPSHOT</version>
+    <version>0.36.0-SNAPSHOT</version>
 </dependency>
 
 <dependency>
     <groupId>com.kingsrook.qqq</groupId>
     <artifactId>qqq-backend-module-rdbms</artifactId>
-    <version>0.27.0</version> <!-- or 0.35.0-SNAPSHOT -->
+    <version>0.35.0</version> <!-- or 0.36.0-SNAPSHOT -->
 </dependency>
 ```
 

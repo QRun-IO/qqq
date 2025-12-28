@@ -3,7 +3,7 @@
 Metadata-driven application framework for building business software in Java.
 
 **For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems  
-**Status:** Stable (v0.27)
+**Status:** Stable (v0.34)
 
 ## Why This Exists
 
@@ -24,19 +24,19 @@ This isn't a no-code tool. You write Java when you need custom behavior. But the
 
 ## Quick Start
 
-**Prerequisites:** Java 17+, Maven 3.8+
+**Prerequisites:** Java 21+, Maven 3.8+
 
 ```xml
 <dependency>
     <groupId>com.kingsrook.qqq</groupId>
     <artifactId>qqq-backend-core</artifactId>
-    <version>0.27.0</version>
+    <version>0.34.0</version>
 </dependency>
 
 <dependency>
     <groupId>com.kingsrook.qqq</groupId>
     <artifactId>qqq-backend-module-rdbms</artifactId>
-    <version>0.27.0</version>
+    <version>0.34.0</version>
 </dependency>
 ```
 
@@ -93,7 +93,6 @@ See [qqq-frontend-material-dashboard](https://github.com/QRun-IO/qqq-frontend-ma
 **Breaking changes:** Major versions may break API; see release notes  
 
 **Roadmap:**
-- Java 21 migration
 - Improved widget system
 - Enhanced process tracing
 

@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailPartyRo
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.api.extension.ExtendWith;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -50,6 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 @ExtendWith(LocalstackDockerExtension.class)
 @LocalstackDockerProperties(useSingleDockerContainer = true, services = { ServiceName.SES }, portEdge = "2960", portElasticSearch = "2961", imageTag = "1.4")
+@DisabledIfEnvironmentVariable(named = "CIRCLECI", matches = "true")
 class SendSESActionTest extends BaseTest
 {
    public static final String TEST_TO_EMAIL_ADDRESS   = "tim-to@coldtrack.com";

@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.module.filesystem.BaseTest;
 import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3Utils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 
@@ -41,6 +42,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *******************************************************************************/
 @ExtendWith(LocalstackDockerExtension.class)
 @LocalstackDockerProperties(useSingleDockerContainer = true, services = { ServiceName.S3 }, portEdge = "2960", portElasticSearch = "2961", imageTag = "1.4")
+@DisabledIfEnvironmentVariable(named = "CIRCLECI", matches = "true")
 public class BaseS3Test extends BaseTest
 {
    public static final String BUCKET_NAME = "localstack-test-bucket";

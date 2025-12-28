@@ -86,6 +86,11 @@ public class MetaDataProducerHelper
       comparatorValuesByType.put(QAppMetaData.class, 23);
    }
 
+   ////////////////////////////////////////////////////////////////////////////////////////
+   // todo - maybe make this an attribute in the QInstance, or a thread-local - as being //
+   // static is an anti-pattern for us (which can lead to unintended behavior, e.g., if  //
+   // multiple threads are hot-swapping in parallel, etc.                                //
+   ////////////////////////////////////////////////////////////////////////////////////////
    private static MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer = null;
 
 

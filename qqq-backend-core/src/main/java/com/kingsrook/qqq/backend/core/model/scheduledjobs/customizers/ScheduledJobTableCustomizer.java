@@ -47,6 +47,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJob;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
+import com.kingsrook.qqq.backend.core.scheduler.CronDescriber;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -151,6 +152,8 @@ public class ScheduledJobTableCustomizer implements TableCustomizerInterface
                record.addError(new BadInputStatusMessage("Cron Expression [" + cronExpression + "] is not valid: " + e.getMessage()));
             }
 
+            CronDescriber.setDescriptionInRecord(record, "cronDescription", cronExpression);
+
             if(!StringUtils.hasContent(cronTimeZoneId))
             {
                record.addError(new BadInputStatusMessage("If a Cron Expression is given, then a Cron Time Zone is required."));
@@ -158,6 +161,7 @@ public class ScheduledJobTableCustomizer implements TableCustomizerInterface
          }
          else
          {
+            record.setValue("cronDescription", null);
             if(!StringUtils.hasContent(repeatSeconds))
             {
                record.addError(new BadInputStatusMessage("Either Cron Expression or Repeat Seconds must be given."));

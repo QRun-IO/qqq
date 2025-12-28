@@ -33,6 +33,19 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 public interface QInstanceValidatorPluginInterface<T>
 {
 
+   /***************************************************************************
+    * allow a plugin to be disabled at runtime.
+    *
+    * <p>Default implementation here in the interface is true.</p>
+    *
+    * @return true if enabled; false if not.
+    ***************************************************************************/
+   default boolean isEnabled()
+   {
+      return (true);
+   }
+
+
    /*******************************************************************************
     **
     *******************************************************************************/

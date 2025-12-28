@@ -62,6 +62,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.automation.QAutomationProviderMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -202,6 +203,7 @@ public class QInstanceValidator
          validateInstanceAttributes(qInstance);
          validateBackends(qInstance);
          validateAuthentication(qInstance);
+         validateScopedAuthentication(qInstance);
          validateAutomationProviders(qInstance);
          validateTables(qInstance, joinGraph);
          validateProcesses(qInstance);
@@ -349,8 +351,11 @@ public class QInstanceValidator
       for(QInstanceValidatorPluginInterface<?> plugin : CollectionUtils.nonNullList(validatorPlugins.get(c)))
       {
          @SuppressWarnings("unchecked")
-         QInstanceValidatorPluginInterface<T> processPlugin = (QInstanceValidatorPluginInterface<T>) plugin;
-         processPlugin.validate(t, qInstance, this);
+         QInstanceValidatorPluginInterface<T> castedPlugin = (QInstanceValidatorPluginInterface<T>) plugin;
+         if(castedPlugin.isEnabled())
+         {
+            castedPlugin.validate(t, qInstance, this);
+         }
       }
    }
 
@@ -693,6 +698,196 @@ public class QInstanceValidator
          authentication.validate(qInstance, this);
 
          runPlugins(QAuthenticationMetaData.class, authentication, qInstance);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate scoped authentication providers.
+    **
+    ** <p>Ensures:
+    ** <ul>
+    **   <li>If any scoped providers are registered, instance default must exist</li>
+    **   <li>API scopes reference valid ApiInstanceMetaData</li>
+    **   <li>Route provider scopes reference valid JavalinRouteProviderMetaData</li>
+    ** </ul>
+    ** </p>
+    *******************************************************************************/
+   private void validateScopedAuthentication(QInstance qInstance)
+   {
+      Map<AuthScope, QAuthenticationMetaData> scopedProviders =
+         qInstance.getScopedAuthenticationProviders();
+      if(scopedProviders == null || scopedProviders.isEmpty())
+      {
+         // No scoped providers - nothing to validate
+         return;
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Check that instance default exists if any scoped providers exist    //
+      ///////////////////////////////////////////////////////////////////////////
+      boolean hasInstanceDefault =
+         scopedProviders.containsKey(AuthScope.instanceDefault());
+      boolean hasScopedProviders =
+         scopedProviders.size() > (hasInstanceDefault ? 1 : 0);
+
+      if(hasScopedProviders && !hasInstanceDefault)
+      {
+         errors.add("Instance default authentication provider must be "
+            + "registered when scoped providers are used. Register using "
+            + "registerAuthenticationProvider(AuthScope.instanceDefault(), "
+            + "authMetaData) or setAuthentication(authMetaData).");
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Validate each scope references valid metadata                        //
+      ///////////////////////////////////////////////////////////////////////////
+      for(Map.Entry<AuthScope, QAuthenticationMetaData> entry : scopedProviders.entrySet())
+      {
+         AuthScope scope = entry.getKey();
+         if(scope instanceof AuthScope.Api apiScope)
+         {
+            validateApiScope(qInstance, apiScope);
+         }
+         else if(scope instanceof AuthScope.RouteProvider routeScope)
+         {
+            validateRouteProviderScope(qInstance, routeScope);
+         }
+         // InstanceDefault scope doesn't need validation
+      }
+   }
+
+
+   /*******************************************************************************
+    ** Validate that an API scope references a valid ApiInstanceMetaData.
+    **
+    ** @param qInstance The QInstance to validate against
+    ** @param apiScope The API scope to validate
+    *******************************************************************************/
+   private void validateApiScope(QInstance qInstance, AuthScope.Api apiScope)
+   {
+      Object apiMetaData = apiScope.getApiMetaData();
+      if(apiMetaData == null)
+      {
+         errors.add("AuthScope.Api has null apiMetaData");
+         return;
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Try to access API metadata container via reflection                  //
+      ///////////////////////////////////////////////////////////////////////////
+      try
+      {
+         QSupplementalInstanceMetaData apiContainer =
+            qInstance.getSupplementalMetaData("api");
+         if(apiContainer == null)
+         {
+            errors.add("AuthScope.Api references ApiInstanceMetaData but no "
+               + "API metadata container found in QInstance.");
+            return;
+         }
+
+         // Use reflection to get the apis map and check if this API exists
+         Method getApisMethod = apiContainer.getClass().getMethod("getApis");
+         Object apisMap = getApisMethod.invoke(apiContainer);
+         if(apisMap instanceof Map)
+         {
+            // Try to get the API name from the metadata object
+            Method getNameMethod = apiMetaData.getClass().getMethod("getName");
+            Object apiName = getNameMethod.invoke(apiMetaData);
+            if(apiName != null)
+            {
+               boolean exists =
+                  ((Map<?, ?>)apisMap).containsKey(apiName.toString());
+               if(!exists)
+               {
+                  errors.add("AuthScope.Api references ApiInstanceMetaData "
+                     + "with name '" + apiName
+                     + "' but no such API exists in "
+                     + "ApiInstanceMetaDataContainer.");
+               }
+            }
+         }
+      }
+      catch(Exception e)
+      {
+         // If we can't validate via reflection, log a warning but don't fail
+         LOG.warn("Could not validate API scope reference", e);
+      }
+   }
+
+
+   /*******************************************************************************
+    ** Validate that a route provider scope references a valid
+    ** JavalinRouteProviderMetaData.
+    **
+    ** @param qInstance The QInstance to validate against
+    ** @param routeScope The route provider scope to validate
+    *******************************************************************************/
+   private void validateRouteProviderScope(QInstance qInstance,
+      AuthScope.RouteProvider routeScope)
+   {
+      Object routeMetaData = routeScope.getRouteMetaData();
+      if(routeMetaData == null)
+      {
+         errors.add("AuthScope.RouteProvider has null routeMetaData");
+         return;
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Try to access Javalin metadata via reflection                        //
+      ///////////////////////////////////////////////////////////////////////////
+      try
+      {
+         QSupplementalInstanceMetaData javalinMetaData =
+            qInstance.getSupplementalMetaData("javalin");
+         if(javalinMetaData == null)
+         {
+            errors.add("AuthScope.RouteProvider references "
+               + "JavalinRouteProviderMetaData but no Javalin metadata found "
+               + "in QInstance");
+            return;
+         }
+
+         // Use reflection to get the routeProviders list and check if route exists
+         Method getRouteProvidersMethod =
+            javalinMetaData.getClass().getMethod("getRouteProviders");
+         Object routeProvidersList = getRouteProvidersMethod.invoke(javalinMetaData);
+         if(routeProvidersList instanceof List)
+         {
+            // Try to get the route provider name from the metadata object
+            Method getNameMethod = routeMetaData.getClass().getMethod("getName");
+            Object routeName = getNameMethod.invoke(routeMetaData);
+            if(routeName != null)
+            {
+               boolean exists = ((List<?>) routeProvidersList).stream()
+                  .anyMatch(rp ->
+                  {
+                     try
+                     {
+                        Object rpName = rp.getClass().getMethod("getName").invoke(rp);
+                        return routeName.equals(rpName);
+                     }
+                     catch(Exception e)
+                     {
+                        return false;
+                     }
+                  });
+               if(!exists)
+               {
+                  errors.add("AuthScope.RouteProvider references "
+                     + "JavalinRouteProviderMetaData with name '" + routeName
+                     + "' but no such route provider exists in "
+                     + "QJavalinMetaData");
+               }
+            }
+         }
+      }
+      catch(Exception e)
+      {
+         // If we can't validate via reflection, log a warning but don't fail
+         LOG.warn("Could not validate route provider scope reference", e);
       }
    }
 
@@ -1077,7 +1272,20 @@ public class QInstanceValidator
          "Inconsistent naming in table " + tableName + " for field " + fieldName + "/" + field.getName() + ".");
 
       String prefix = "Field " + fieldName + " in table " + tableName + " ";
+      validateField(qInstance, prefix, Optional.of(table), field);
+   }
+
+
+
+   /***************************************************************************
+    * run validation on a field - optionally within the context of a table.
+    ***************************************************************************/
+   public void validateField(QInstance qInstance, String prefix, Optional<QTableMetaData> table, QFieldMetaData field)
+   {
       validateFieldPossibleValueSourceAttributes(qInstance, field, prefix);
+
+      assertCondition(StringUtils.hasContent(field.getName()), prefix + "is missing a name");
+      assertCondition(field.getType() != null, prefix + "is missing a type");
 
       ///////////////////////////////////////////////////
       // validate things we know about field behaviors //
@@ -1091,19 +1299,28 @@ public class QInstanceValidator
       Set<Class<FieldBehavior<?>>> usedFieldBehaviorTypes = new HashSet<>();
       if(field.getBehaviors() != null)
       {
+         String prefixMinusTrailingSpace = prefix.replaceFirst(" *$", "");
+
          for(FieldBehavior<?> fieldBehavior : field.getBehaviors())
          {
             @SuppressWarnings("unchecked")
             Class<FieldBehavior<?>> behaviorClass = (Class<FieldBehavior<?>>) fieldBehavior.getClass();
 
-            List<String> behaviorErrors = fieldBehavior.validateBehaviorConfiguration(table, field);
-            if(behaviorErrors != null)
+            try
             {
-               String prefixMinusTrailingSpace = prefix.replaceFirst(" *$", "");
-               for(String behaviorError : behaviorErrors)
+               List<String> behaviorErrors = fieldBehavior.validateBehaviorConfiguration(table.orElse(null), field);
+               if(behaviorErrors != null)
                {
-                  errors.add(prefixMinusTrailingSpace + ": " + behaviorClass.getSimpleName() + ": " + behaviorError);
+                  for(String behaviorError : behaviorErrors)
+                  {
+                     errors.add(prefixMinusTrailingSpace + ": " + behaviorClass.getSimpleName() + ": " + behaviorError);
+                  }
                }
+            }
+            catch(Exception e)
+            {
+               LOG.warn(e);
+               errors.add(prefixMinusTrailingSpace + ": " + behaviorClass.getSimpleName() + ": error validating behavior: " + e.getMessage());
             }
 
             if(!fieldBehavior.allowMultipleBehaviorsOfThisType())
@@ -1159,7 +1376,11 @@ public class QInstanceValidator
                   String fileNameField = ValueUtils.getValueAsString(adornmentValues.get(AdornmentType.FileDownloadValues.FILE_NAME_FIELD));
                   if(StringUtils.hasContent(fileNameField)) // file name isn't required - but if given, must be a field on the table.
                   {
-                     assertNoException(() -> table.getField(fileNameField), adornmentPrefix + "specifies an unrecognized fileNameField [" + fileNameField + "]");
+                     if(assertCondition(table.isPresent(), adornmentPrefix + "with fileNameField cannot be used outside of the context of a table"))
+                     {
+                        //noinspection OptionalGetWithoutIsPresent - is checked in the assertCondition line
+                        assertNoException(() -> table.get().getField(fileNameField), adornmentPrefix + "specifies an unrecognized fileNameField [" + fileNameField + "]");
+                     }
                   }
 
                   if(adornmentValues.containsKey(AdornmentType.FileDownloadValues.FILE_NAME_FORMAT_FIELDS))
@@ -1170,13 +1391,25 @@ public class QInstanceValidator
                         List<String> formatFieldNames = (List<String>) adornmentValues.get(AdornmentType.FileDownloadValues.FILE_NAME_FORMAT_FIELDS);
                         for(String formatFieldName : CollectionUtils.nonNullList(formatFieldNames))
                         {
-                           assertNoException(() -> table.getField(formatFieldName), adornmentPrefix + "specifies an unrecognized field name in fileNameFormatFields [" + formatFieldName + "]");
+                           if(assertCondition(table.isPresent(), adornmentPrefix + "with formatFieldNames cannot be used outside of the context of a table"))
+                           {
+                              //noinspection OptionalGetWithoutIsPresent - is checked in the assertCondition line
+                              assertNoException(() -> table.get().getField(formatFieldName), adornmentPrefix + "specifies an unrecognized field name in fileNameFormatFields [" + formatFieldName + "]");
+                           }
                         }
                      }
                      catch(Exception e)
                      {
                         errors.add(adornmentPrefix + "fileNameFormatFields could not be accessed (is it a List<String>?)");
                      }
+                  }
+               }
+               case WIDGET ->
+               {
+                  String widgetName = ValueUtils.getValueAsString(adornmentValues.get(AdornmentType.WidgetValues.WIDGET_NAME));
+                  if(assertCondition(StringUtils.hasContent(widgetName), adornmentPrefix + "is missing a widget name, which is required."))
+                  {
+                     assertCondition(qInstance.getWidget(widgetName) != null, adornmentPrefix + "specifies an unrecognized widgetName [" + widgetName + "]");
                   }
                }
                default ->
@@ -2178,7 +2411,7 @@ public class QInstanceValidator
                   }
                }
 
-               if(widget.getValidatorPlugin() != null)
+               if(widget.getValidatorPlugin() != null && widget.getValidatorPlugin().isEnabled())
                {
                   widget.getValidatorPlugin().validate(widget, qInstance, this);
                }

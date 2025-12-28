@@ -72,6 +72,9 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthResolutionContext;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthenticationResolver;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
@@ -126,243 +129,11 @@ public class QJavalinApiHandler
 
 
    /*******************************************************************************
-    ** Define the routes
-    *******************************************************************************/
-   public EndpointGroup getRoutes()
-   {
-      return (() ->
-      {
-         ///////////////////////////////////////////////
-         // static endpoints to support rapidoc pages //
-         ///////////////////////////////////////////////
-         try
-         {
-            ApiBuilder.get("/api/docs/js/rapidoc.min.js", (context) -> QJavalinApiHandler.serveResource(context, "rapidoc/rapidoc-9.3.8.min.js", MapBuilder.of("Content-Type", ContentType.JAVASCRIPT)));
-            ApiBuilder.get("/api/docs/css/qqq-api-styles.css", (context) -> QJavalinApiHandler.serveResource(context, "rapidoc/rapidoc-overrides.css", MapBuilder.of("Content-Type", ContentType.CSS)));
-         }
-         catch(IllegalArgumentException iae)
-         {
-            //////////////////////////////////////////////////////////////
-            // assume a different module already registered these paths //
-            //////////////////////////////////////////////////////////////
-         }
-
-         ApiBuilder.get("/apis.json", QJavalinApiHandler::doGetApisJson);
-
-         // todo not this? ApiBuilder.get("/api/", QJavalinApiHandler::doListApis);
-
-         ApiInstanceMetaDataContainer apiInstanceMetaDataContainer = ApiInstanceMetaDataContainer.of(qInstance);
-         for(Map.Entry<String, ApiInstanceMetaData> entry : apiInstanceMetaDataContainer.getApis().entrySet())
-         {
-            ApiInstanceMetaData apiInstanceMetaData = entry.getValue();
-            String              rootPath            = apiInstanceMetaData.getPath();
-
-            ApiBuilder.before(rootPath + "*", QJavalinApiHandler::setupCORS);
-
-            //////////////////////////////////////////////
-            // default page is the current version spec //
-            //////////////////////////////////////////////
-            ApiBuilder.get(rootPath, context -> doSpecHtml(context, apiInstanceMetaData));
-            ApiBuilder.get(rootPath + "versions.json", context -> doVersions(context, apiInstanceMetaData));
-
-            ApiBuilder.path(rootPath + "{version}", () ->
-            {
-               ////////////////////////////////////////////
-               // default page for a version is its spec //
-               ////////////////////////////////////////////
-               ApiBuilder.get("/", context -> doSpecHtml(context, apiInstanceMetaData));
-
-               ///////////////////////////////////////////
-               // add known paths for specs & docs page //
-               ///////////////////////////////////////////
-               ApiBuilder.get("/openapi.yaml", context -> doSpecYaml(context, apiInstanceMetaData));
-               ApiBuilder.get("/openapi.json", context -> doSpecJson(context, apiInstanceMetaData));
-               ApiBuilder.get("/openapi.html", context -> doSpecHtml(context, apiInstanceMetaData));
-
-               ///////////////////
-               // add processes //
-               ///////////////////
-               for(QProcessMetaData process : qInstance.getProcesses().values())
-               {
-                  ApiProcessMetaDataContainer apiProcessMetaDataContainer = Objects.requireNonNullElse(ApiProcessMetaDataContainer.of(process), EMPTY_API_PROCESS_META_DATA_CONTAINER);
-                  ApiProcessMetaData          apiProcessMetaData          = apiProcessMetaDataContainer.getApis().get(apiInstanceMetaData.getName());
-
-                  if(apiProcessMetaData != null && !BooleanUtils.isTrue(apiProcessMetaData.getIsExcluded()))
-                  {
-                     String     path   = ApiProcessUtils.getProcessApiPath(qInstance, process, apiProcessMetaData, apiInstanceMetaData);
-                     HttpMethod method = apiProcessMetaData.getMethod();
-                     switch(method)
-                     {
-                        case GET -> ApiBuilder.get(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
-                        case POST -> ApiBuilder.post(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
-                        case PUT -> ApiBuilder.put(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
-                        case PATCH -> ApiBuilder.patch(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
-                        case DELETE -> ApiBuilder.delete(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
-                        default -> throw (new QRuntimeException("Unrecognized http method [" + method + "] for process [" + process.getName() + "]"));
-                     }
-
-                     make405sForOtherMethods(method, path);
-
-                     if(!ApiProcessMetaData.AsyncMode.NEVER.equals(apiProcessMetaData.getAsyncMode()))
-                     {
-                        ApiBuilder.get(path + "/status/{jobId}", context -> getProcessStatus(context, process, apiProcessMetaData, apiInstanceMetaData));
-                     }
-                  }
-               }
-
-               ///////////////////////////////////
-               // add wildcard paths for tables //
-               ///////////////////////////////////
-               ApiBuilder.path("/{tableName}", () ->
-               {
-                  ApiBuilder.get("/openapi.yaml", context -> doSpecYaml(context, apiInstanceMetaData));
-                  ApiBuilder.get("/openapi.json", context -> doSpecJson(context, apiInstanceMetaData));
-
-                  ApiBuilder.post("/", context -> doInsert(context, apiInstanceMetaData));
-
-                  ApiBuilder.get("/query", context -> doQuery(context, apiInstanceMetaData));
-                  // ApiBuilder.post("/query", context -> doQuery(context, apiInstanceMetaData));
-
-                  ApiBuilder.post("/bulk", context -> bulkInsert(context, apiInstanceMetaData));
-                  ApiBuilder.patch("/bulk", context -> bulkUpdate(context, apiInstanceMetaData));
-                  ApiBuilder.delete("/bulk", context -> bulkDelete(context, apiInstanceMetaData));
-
-                  //////////////////////////////////////////////////////////////////
-                  // remember to keep the wildcard paths after the specific paths //
-                  //////////////////////////////////////////////////////////////////
-                  ApiBuilder.get("/{primaryKey}", context -> doGet(context, apiInstanceMetaData));
-                  ApiBuilder.patch("/{primaryKey}", context -> doUpdate(context, apiInstanceMetaData));
-                  ApiBuilder.delete("/{primaryKey}", context -> doDelete(context, apiInstanceMetaData));
-               });
-            });
-
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // default all other requests under the root path (for the methods we support) to a standard 404 response //
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            ApiBuilder.get(rootPath + "*", QJavalinApiHandler::doPathNotFound);
-            ApiBuilder.delete(rootPath + "*", QJavalinApiHandler::doPathNotFound);
-            ApiBuilder.patch(rootPath + "*", QJavalinApiHandler::doPathNotFound);
-            ApiBuilder.post(rootPath + "*", QJavalinApiHandler::doPathNotFound);
-         }
-
-         ///////////////////////////////////////////////////////////////////////////////////
-         // if the main implementation class has a hot-swapper installed, use it here too //
-         ///////////////////////////////////////////////////////////////////////////////////
-         if(QJavalinImplementation.getQInstanceHotSwapSupplier() != null)
-         {
-            ApiBuilder.before((context) ->
-            {
-               QJavalinImplementation.hotSwapQInstance(context);
-               QJavalinApiHandler.qInstance = QJavalinImplementation.getQInstance();
-            });
-         }
-      });
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private void make405sForOtherMethods(HttpMethod allowedMethod, String path)
-   {
-      if(!allowedMethod.equals(HttpMethod.GET))
-      {
-         ApiBuilder.get(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
-      }
-
-      if(!allowedMethod.equals(HttpMethod.POST))
-      {
-         ApiBuilder.post(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
-      }
-
-      if(!allowedMethod.equals(HttpMethod.PUT))
-      {
-         ApiBuilder.put(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
-      }
-
-      if(!allowedMethod.equals(HttpMethod.PATCH))
-      {
-         ApiBuilder.patch(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
-      }
-
-      if(!allowedMethod.equals(HttpMethod.DELETE))
-      {
-         ApiBuilder.delete(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
-      }
-   }
-
-
-
-   /*******************************************************************************
     **
     *******************************************************************************/
    private static void return405(Context context, HttpMethod allowedMethod)
    {
       respondWithError(context, HttpStatus.Code.METHOD_NOT_ALLOWED, "This path only supports method: " + allowedMethod, newAPILog(context)); // 405
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private void runProcess(Context context, QProcessMetaData processMetaData, ApiProcessMetaData apiProcessMetaData, ApiInstanceMetaData apiInstanceMetaData)
-   {
-      String version = context.pathParam("version");
-      APILog apiLog  = newAPILog(context);
-
-      try
-      {
-         setupSession(context, null, version, apiInstanceMetaData);
-         QJavalinAccessLogger.logStart("apiRunProcess", logPair("process", processMetaData.getName()));
-
-         ////////////////////////////////////////////////////
-         // process inputs into map for api implementation //
-         ////////////////////////////////////////////////////
-         Map<String, String> parameters = new LinkedHashMap<>();
-         ApiProcessInput     input      = apiProcessMetaData.getInput();
-         if(input != null)
-         {
-            processProcessInputFieldsContainer(context, parameters, input.getPathParams(), Context::pathParam);
-            processProcessInputFieldsContainer(context, parameters, input.getQueryStringParams(), Context::queryParam);
-            processProcessInputFieldsContainer(context, parameters, input.getFormParams(), Context::formParam);
-
-            ApiProcessInputFieldsContainer objectBodyParams = input.getObjectBodyParams();
-            if(objectBodyParams != null)
-            {
-               JSONObject jsonObject = new JSONObject(context.body());
-               processProcessInputFieldsContainer(context, parameters, objectBodyParams, (ctx, name) -> jsonObject.optString(name, null));
-            }
-
-            if(input.getBodyField() != null)
-            {
-               parameters.put(input.getBodyField().getName(), context.body());
-            }
-         }
-
-         if(ApiProcessMetaData.AsyncMode.OPTIONAL.equals(apiProcessMetaData.getAsyncMode()))
-         {
-            parameters.put("async", context.queryParam("async"));
-         }
-
-         /////////////////////
-         // run the process //
-         /////////////////////
-         HttpApiResponse response = ApiImplementation.runProcess(apiInstanceMetaData, version, apiProcessMetaData.getApiProcessName(), parameters);
-
-         //////////////////
-         // log & return //
-         //////////////////
-         QJavalinAccessLogger.logEndSuccess();
-         context.status(response.getStatusCode().getCode());
-         handleProcessResponse(context, response, apiLog);
-      }
-      catch(Exception e)
-      {
-         QJavalinAccessLogger.logEndFail(e);
-         handleException(context, e, apiLog);
-      }
    }
 
 
@@ -419,38 +190,6 @@ public class QJavalinApiHandler
                storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
             }
          }
-      }
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private void getProcessStatus(Context context, QProcessMetaData processMetaData, ApiProcessMetaData apiProcessMetaData, ApiInstanceMetaData apiInstanceMetaData)
-   {
-      String version = context.pathParam("version");
-      APILog apiLog  = newAPILog(context);
-
-      try
-      {
-         setupSession(context, null, version, apiInstanceMetaData);
-         QJavalinAccessLogger.logStart("apiGetProcessStatus", logPair("process", processMetaData.getName()));
-
-         String          jobId    = context.pathParam("jobId");
-         HttpApiResponse response = ApiImplementation.getProcessStatus(apiInstanceMetaData, version, apiProcessMetaData.getApiProcessName(), jobId);
-
-         //////////////////
-         // log & return //
-         //////////////////
-         QJavalinAccessLogger.logEndSuccess();
-         context.status(response.getStatusCode().getCode());
-         handleProcessResponse(context, response, apiLog);
-      }
-      catch(Exception e)
-      {
-         QJavalinAccessLogger.logEndFail(e);
-         handleException(context, e, apiLog);
       }
    }
 
@@ -806,11 +545,44 @@ public class QJavalinApiHandler
 
 
    /*******************************************************************************
+    ** Setup session for API requests using scoped authentication resolution.
     **
+    ** <p>Resolves the appropriate authentication provider based on the API
+    ** metadata, then creates a session using that provider. Falls back to
+    ** instance default if no API-specific provider is registered.</p>
+    **
+    ** @param context The Javalin context
+    ** @param input The action input (may be null)
+    ** @param version The API version
+    ** @param apiInstanceMetaData The API instance metadata (may be null)
+    ** @throws QModuleDispatchException If module dispatch fails
+    ** @throws QAuthenticationException If authentication fails
     *******************************************************************************/
    public static void setupSession(Context context, AbstractActionInput input, String version, ApiInstanceMetaData apiInstanceMetaData) throws QModuleDispatchException, QAuthenticationException
    {
-      QSession session = QJavalinImplementation.setupSession(context, input);
+      ///////////////////////////////////////////////////////////////////////////
+      // Resolve the appropriate authentication provider for this API        //
+      ///////////////////////////////////////////////////////////////////////////
+      AuthResolutionContext resolutionContext = new AuthResolutionContext()
+         .withRequestPath(context.path())
+         .withApiMetaData(apiInstanceMetaData);
+
+      QAuthenticationMetaData authMetaData;
+      try
+      {
+         authMetaData = AuthenticationResolver.resolve(qInstance, resolutionContext);
+      }
+      catch(QException e)
+      {
+         // If resolver fails, fall back to instance default for backward compatibility
+         LOG.warn("Failed to resolve scoped authentication, falling back to instance default", e);
+         authMetaData = qInstance.getAuthentication();
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Setup session using the resolved authentication provider           //
+      ///////////////////////////////////////////////////////////////////////////
+      QSession session = QJavalinImplementation.setupSession(context, input, authMetaData);
       session.setValue("apiVersion", version);
       if(apiInstanceMetaData != null)
       {
@@ -1390,6 +1162,270 @@ public class QJavalinApiHandler
             apiLog.withStatusCode(statusCode.getCode()).withResponseBody(responseBody);
             storeApiLog(apiLog);
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Define the routes
+    *******************************************************************************/
+   public EndpointGroup getRoutes()
+   {
+      return (() ->
+      {
+         ///////////////////////////////////////////////
+         // static endpoints to support rapidoc pages //
+         ///////////////////////////////////////////////
+         try
+         {
+            ApiBuilder.get("/api/docs/js/rapidoc.min.js", (context) -> QJavalinApiHandler.serveResource(context, "rapidoc/rapidoc-9.3.8.min.js", MapBuilder.of("Content-Type", ContentType.JAVASCRIPT)));
+            ApiBuilder.get("/api/docs/css/qqq-api-styles.css", (context) -> QJavalinApiHandler.serveResource(context, "rapidoc/rapidoc-overrides.css", MapBuilder.of("Content-Type", ContentType.CSS)));
+         }
+         catch(IllegalArgumentException iae)
+         {
+            //////////////////////////////////////////////////////////////
+            // assume a different module already registered these paths //
+            //////////////////////////////////////////////////////////////
+         }
+
+         ApiBuilder.get("/apis.json", QJavalinApiHandler::doGetApisJson);
+
+         // todo not this? ApiBuilder.get("/api/", QJavalinApiHandler::doListApis);
+
+         ApiInstanceMetaDataContainer apiInstanceMetaDataContainer = ApiInstanceMetaDataContainer.of(qInstance);
+         for(Map.Entry<String, ApiInstanceMetaData> entry : apiInstanceMetaDataContainer.getApis().entrySet())
+         {
+            ApiInstanceMetaData apiInstanceMetaData = entry.getValue();
+            String              rootPath            = apiInstanceMetaData.getPath();
+
+            ApiBuilder.before(rootPath + "*", QJavalinApiHandler::setupCORS);
+
+            //////////////////////////////////////////////
+            // default page is the current version spec //
+            //////////////////////////////////////////////
+            ApiBuilder.get(rootPath, context -> doSpecHtml(context, apiInstanceMetaData));
+            ApiBuilder.get(rootPath + "versions.json", context -> doVersions(context, apiInstanceMetaData));
+
+            ApiBuilder.path(rootPath + "{version}", () ->
+            {
+               ////////////////////////////////////////////
+               // default page for a version is its spec //
+               ////////////////////////////////////////////
+               ApiBuilder.get("/", context -> doSpecHtml(context, apiInstanceMetaData));
+
+               ///////////////////////////////////////////
+               // add known paths for specs & docs page //
+               ///////////////////////////////////////////
+               ApiBuilder.get("/openapi.yaml", context -> doSpecYaml(context, apiInstanceMetaData));
+               ApiBuilder.get("/openapi.json", context -> doSpecJson(context, apiInstanceMetaData));
+               ApiBuilder.get("/openapi.html", context -> doSpecHtml(context, apiInstanceMetaData));
+
+               ///////////////////
+               // add processes //
+               ///////////////////
+               for(QProcessMetaData process : qInstance.getProcesses().values())
+               {
+                  ApiProcessMetaDataContainer apiProcessMetaDataContainer = Objects.requireNonNullElse(ApiProcessMetaDataContainer.of(process), EMPTY_API_PROCESS_META_DATA_CONTAINER);
+                  ApiProcessMetaData          apiProcessMetaData          = apiProcessMetaDataContainer.getApis().get(apiInstanceMetaData.getName());
+
+                  if(apiProcessMetaData != null && !BooleanUtils.isTrue(apiProcessMetaData.getIsExcluded()))
+                  {
+                     String     path   = ApiProcessUtils.getProcessApiPath(qInstance, process, apiProcessMetaData, apiInstanceMetaData);
+                     HttpMethod method = apiProcessMetaData.getMethod();
+                     switch(method)
+                     {
+                        case GET -> ApiBuilder.get(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
+                        case POST -> ApiBuilder.post(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
+                        case PUT -> ApiBuilder.put(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
+                        case PATCH -> ApiBuilder.patch(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
+                        case DELETE -> ApiBuilder.delete(path, context -> runProcess(context, process, apiProcessMetaData, apiInstanceMetaData));
+                        default -> throw (new QRuntimeException("Unrecognized http method [" + method + "] for process [" + process.getName() + "]"));
+                     }
+
+                     make405sForOtherMethods(method, path);
+
+                     if(!ApiProcessMetaData.AsyncMode.NEVER.equals(apiProcessMetaData.getAsyncMode()))
+                     {
+                        ApiBuilder.get(path + "/status/{jobId}", context -> getProcessStatus(context, process, apiProcessMetaData, apiInstanceMetaData));
+                     }
+                  }
+               }
+
+               ///////////////////////////////////
+               // add wildcard paths for tables //
+               ///////////////////////////////////
+               ApiBuilder.path("/{tableName}", () ->
+               {
+                  ApiBuilder.get("/openapi.yaml", context -> doSpecYaml(context, apiInstanceMetaData));
+                  ApiBuilder.get("/openapi.json", context -> doSpecJson(context, apiInstanceMetaData));
+
+                  ApiBuilder.post("/", context -> doInsert(context, apiInstanceMetaData));
+
+                  ApiBuilder.get("/query", context -> doQuery(context, apiInstanceMetaData));
+                  // ApiBuilder.post("/query", context -> doQuery(context, apiInstanceMetaData));
+
+                  ApiBuilder.post("/bulk", context -> bulkInsert(context, apiInstanceMetaData));
+                  ApiBuilder.patch("/bulk", context -> bulkUpdate(context, apiInstanceMetaData));
+                  ApiBuilder.delete("/bulk", context -> bulkDelete(context, apiInstanceMetaData));
+
+                  //////////////////////////////////////////////////////////////////
+                  // remember to keep the wildcard paths after the specific paths //
+                  //////////////////////////////////////////////////////////////////
+                  ApiBuilder.get("/{primaryKey}", context -> doGet(context, apiInstanceMetaData));
+                  ApiBuilder.patch("/{primaryKey}", context -> doUpdate(context, apiInstanceMetaData));
+                  ApiBuilder.delete("/{primaryKey}", context -> doDelete(context, apiInstanceMetaData));
+               });
+            });
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // default all other requests under the root path (for the methods we support) to a standard 404 response //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            ApiBuilder.get(rootPath + "*", QJavalinApiHandler::doPathNotFound);
+            ApiBuilder.delete(rootPath + "*", QJavalinApiHandler::doPathNotFound);
+            ApiBuilder.patch(rootPath + "*", QJavalinApiHandler::doPathNotFound);
+            ApiBuilder.post(rootPath + "*", QJavalinApiHandler::doPathNotFound);
+         }
+
+         ///////////////////////////////////////////////////////////////////////////////////
+         // if the main implementation class has a hot-swapper installed, use it here too //
+         ///////////////////////////////////////////////////////////////////////////////////
+         if(QJavalinImplementation.getQInstanceHotSwapSupplier() != null)
+         {
+            ApiBuilder.before((context) ->
+            {
+               QJavalinImplementation.hotSwapQInstance(context);
+               QJavalinApiHandler.qInstance = QJavalinImplementation.getQInstance();
+            });
+         }
+      });
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void make405sForOtherMethods(HttpMethod allowedMethod, String path)
+   {
+      if(!allowedMethod.equals(HttpMethod.GET))
+      {
+         ApiBuilder.get(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
+      }
+
+      if(!allowedMethod.equals(HttpMethod.POST))
+      {
+         ApiBuilder.post(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
+      }
+
+      if(!allowedMethod.equals(HttpMethod.PUT))
+      {
+         ApiBuilder.put(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
+      }
+
+      if(!allowedMethod.equals(HttpMethod.PATCH))
+      {
+         ApiBuilder.patch(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
+      }
+
+      if(!allowedMethod.equals(HttpMethod.DELETE))
+      {
+         ApiBuilder.delete(path, (Context c) -> QJavalinApiHandler.return405(c, allowedMethod));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void runProcess(Context context, QProcessMetaData processMetaData, ApiProcessMetaData apiProcessMetaData, ApiInstanceMetaData apiInstanceMetaData)
+   {
+      String version = context.pathParam("version");
+      APILog apiLog  = newAPILog(context);
+
+      try
+      {
+         setupSession(context, null, version, apiInstanceMetaData);
+         QJavalinAccessLogger.logStart("apiRunProcess", logPair("process", processMetaData.getName()));
+
+         ////////////////////////////////////////////////////
+         // process inputs into map for api implementation //
+         ////////////////////////////////////////////////////
+         Map<String, String> parameters = new LinkedHashMap<>();
+         ApiProcessInput     input      = apiProcessMetaData.getInput();
+         if(input != null)
+         {
+            processProcessInputFieldsContainer(context, parameters, input.getPathParams(), Context::pathParam);
+            processProcessInputFieldsContainer(context, parameters, input.getQueryStringParams(), Context::queryParam);
+            processProcessInputFieldsContainer(context, parameters, input.getFormParams(), Context::formParam);
+
+            ApiProcessInputFieldsContainer objectBodyParams = input.getObjectBodyParams();
+            if(objectBodyParams != null)
+            {
+               JSONObject jsonObject = new JSONObject(context.body());
+               processProcessInputFieldsContainer(context, parameters, objectBodyParams, (ctx, name) -> jsonObject.optString(name, null));
+            }
+
+            if(input.getBodyField() != null)
+            {
+               parameters.put(input.getBodyField().getName(), context.body());
+            }
+         }
+
+         if(ApiProcessMetaData.AsyncMode.OPTIONAL.equals(apiProcessMetaData.getAsyncMode()))
+         {
+            parameters.put("async", context.queryParam("async"));
+         }
+
+         /////////////////////
+         // run the process //
+         /////////////////////
+         HttpApiResponse response = ApiImplementation.runProcess(apiInstanceMetaData, version, apiProcessMetaData.getApiProcessName(), parameters);
+
+         //////////////////
+         // log & return //
+         //////////////////
+         QJavalinAccessLogger.logEndSuccess();
+         context.status(response.getStatusCode().getCode());
+         handleProcessResponse(context, response, apiLog);
+      }
+      catch(Exception e)
+      {
+         QJavalinAccessLogger.logEndFail(e);
+         handleException(context, e, apiLog);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void getProcessStatus(Context context, QProcessMetaData processMetaData, ApiProcessMetaData apiProcessMetaData, ApiInstanceMetaData apiInstanceMetaData)
+   {
+      String version = context.pathParam("version");
+      APILog apiLog  = newAPILog(context);
+
+      try
+      {
+         setupSession(context, null, version, apiInstanceMetaData);
+         QJavalinAccessLogger.logStart("apiGetProcessStatus", logPair("process", processMetaData.getName()));
+
+         String          jobId    = context.pathParam("jobId");
+         HttpApiResponse response = ApiImplementation.getProcessStatus(apiInstanceMetaData, version, apiProcessMetaData.getApiProcessName(), jobId);
+
+         //////////////////
+         // log & return //
+         //////////////////
+         QJavalinAccessLogger.logEndSuccess();
+         context.status(response.getStatusCode().getCode());
+         handleProcessResponse(context, response, apiLog);
+      }
+      catch(Exception e)
+      {
+         QJavalinAccessLogger.logEndFail(e);
+         handleException(context, e, apiLog);
       }
    }
 

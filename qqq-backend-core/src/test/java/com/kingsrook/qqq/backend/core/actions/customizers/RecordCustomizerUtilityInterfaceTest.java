@@ -22,12 +22,16 @@
 package com.kingsrook.qqq.backend.core.actions.customizers;
 
 
+import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 
 /*******************************************************************************
@@ -130,6 +134,43 @@ class RecordCustomizerUtilityInterfaceTest extends BaseTest implements RecordCus
          errorIfEditedValue(oldRecord, newRecord, "firstName", "changed firstName");
          assertEquals(0, newRecord.getErrors().size());
       }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testGetValueFromRecordElseFromOldRecord()
+   {
+      Optional<Map<Serializable, QRecord>> oldRecordMap = (new TableCustomizerInterface() {}).oldRecordListToMap("id", Optional.of(List.of(
+         new QRecord().withValue("id", 1).withValue("name", "A"),
+         new QRecord().withValue("id", 2).withValue("name", null),
+         new QRecord().withValue("id", 3)
+      )));
+
+      ////////////////////////////////////////////////////////////////////////
+      // cases where the value is in the input record, so no matter what id //
+      // is or isn't in oldRecordMap, always get value from input record    //
+      ////////////////////////////////////////////////////////////////////////
+      for(int i = 0; i < 4; i++)
+      {
+         assertEquals("B", RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord().withValue("name", "B"), i, oldRecordMap));
+         assertNull(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord().withValue("name", null), i, oldRecordMap));
+         assertNull(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord().withValue("name", null), i, Optional.empty()));
+      }
+
+      /////////////////////////////////////////////////////////////////////////
+      // cases where value isn't in the record, so it comes from old record, //
+      // or null value from old record, or null if not in old record, or     //
+      // null if old record not found, or null if old record map is empty    //
+      /////////////////////////////////////////////////////////////////////////
+      assertEquals("A", RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord(), 1, oldRecordMap));
+      assertNull(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord(), 2, oldRecordMap));
+      assertNull(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord(), 3, oldRecordMap));
+      assertNull(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord(), 4, oldRecordMap));
+      assertNull(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("name", new QRecord(), 4, Optional.empty()));
    }
 
 }

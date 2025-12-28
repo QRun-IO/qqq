@@ -512,7 +512,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
          """;
 
       HttpResponse<String> response = Unirest.get(BASE_URL + "/data/person?filter=" + URLEncoder.encode(filterJson, StandardCharsets.UTF_8)
-         + "&queryJoins=" + URLEncoder.encode(queryJoinsJson, StandardCharsets.UTF_8)).asString();
+                                                  + "&queryJoins=" + URLEncoder.encode(queryJoinsJson, StandardCharsets.UTF_8)).asString();
 
       assertEquals(200, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
@@ -1056,6 +1056,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
    }
 
 
+
    /*******************************************************************************
     **
     *******************************************************************************/
@@ -1085,6 +1086,42 @@ class QJavalinImplementationTest extends QJavalinTestBase
       assertEquals(WidgetType.CHART.getType(), jsonObject.getString("type"));
       assertNotNull(jsonObject.getString("title"));
       assertNotNull(jsonObject.getJSONObject("chartData"));
+   }
+
+
+
+   /*******************************************************************************
+    * verify that query string params form a GET are processed
+    *******************************************************************************/
+   @Test
+   void testWidgetQueryStringParam()
+   {
+      HttpResponse<String> response = Unirest.get(BASE_URL + "/widget/" + TestUtils.EchoWidgetRenderer.class.getSimpleName() + "?input=helloThere").asString();
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertNotNull(jsonObject);
+      assertEquals(WidgetType.HTML.getType(), jsonObject.getString("type"));
+      assertNotNull(jsonObject.getString("title"));
+      assertEquals("helloThere", jsonObject.getString("html"));
+   }
+
+
+
+   /*******************************************************************************
+    * verify the widget POST endpoint and that it accepts posted values (multipart form)
+    *******************************************************************************/
+   @Test
+   void testWidgetPost()
+   {
+      HttpResponse<String> response = Unirest.post(BASE_URL + "/widget/" + TestUtils.EchoWidgetRenderer.class.getSimpleName())
+         .field("input", "foobar")
+         .asString();
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertNotNull(jsonObject);
+      assertEquals(WidgetType.HTML.getType(), jsonObject.getString("type"));
+      assertNotNull(jsonObject.getString("title"));
+      assertEquals("foobar", jsonObject.getString("html"));
    }
 
 

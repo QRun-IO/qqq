@@ -88,7 +88,7 @@ public class ColumnStatsFullInstanceVerifier
          {
             LOG.info("Caught an exception verifying column stats", entry.getValue(), logPair("tableName", entry.getKey().getA()), logPair("fieldName", entry.getKey().getB()));
          }
-         throw (new QException("Column Status Verification failed with " + caughtExceptions.size() + " exception" + StringUtils.plural(caughtExceptions.size())));
+         throw (new QException("Column Stats Verification failed with " + caughtExceptions.size() + " exception" + StringUtils.plural(caughtExceptions.size())));
       }
    }
 

@@ -1,126 +1,123 @@
-# QQQ - Low-Code Application Framework for Engineers
+# qqq
 
-[![Build Status](https://circleci.com/gh/Kingsrook/qqq.svg?style=svg)](https://circleci.com/gh/Kingsrook/qqq)
-[![Maven Central](https://img.shields.io/maven-central/v/com.kingsrook.qqq/qqq-backend-core.svg)](https://central.sonatype.com/namespace/com.kingsrook.qqq)
-[![Java](https://img.shields.io/badge/java-17+-blue.svg)](https://adoptium.net/)
-[![License](https://img.shields.io/badge/license-AGPL%203.0-green.svg)](LICENSE.txt)
+Metadata-driven application framework for building business software in Java.
 
-**QQQ** is a powerful, open source, metadata-driven application framework designed specifically for engineers who want to build business applications quickly without starting from scratch.
+**For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems
+**Latest Release:** v0.27.0 | **Development:** v0.35.0-SNAPSHOT
 
-## 🚀 What Makes QQQ Different?
+## Why This Exists
 
-**QQQ gives you a complete foundation** - you define your data models, business logic, and UI through configuration and metadata, then QQQ handles the heavy lifting. No more boilerplate code, no more framework decisions, just rapid application development.
+Building business applications means writing the same patterns repeatedly: table views, forms, CRUD operations, user permissions, reports, scheduled jobs. Most frameworks make you implement these from scratch.
 
-## 🔓 Open Source & Full Control
+QQQ takes a different approach. You define your data model and business rules through metadata, and QQQ generates the working application - complete with API, dashboard, and backend logic.
 
-**QQQ is 100% open source** - you have complete ownership and control:
+This isn't a no-code tool. You write Java when you need custom behavior. But the boilerplate - the 80% that's the same across every app - is handled for you.
 
-- **💻 Your Code**: Full access to QQQ's source code
-- **🗄️ Your Data**: All data stays in your systems, never leaves your control
-- **🏗️ Your System**: Deploy anywhere - on-premises, cloud, or hybrid
-- **🔒 No Vendor Lock-in**: No SaaS subscriptions, no proprietary dependencies
-- **⚡ Full Customization**: Modify, extend, and adapt QQQ to your exact needs
-- **🌍 Community Driven**: Built by engineers, for engineers
+## Features
 
-**You own everything. You control everything. No surprises.**
+- **Metadata-driven tables** - Define entities once, get API + UI + validation
+- **Backend modules** - RDBMS, filesystem, MongoDB, S3 out of the box
+- **Business processes** - Multi-step workflows with state management
+- **React dashboard** - Material-UI admin interface, zero frontend code required
+- **Multiple interfaces** - REST API, CLI, Lambda handlers from same codebase
+- **Extensible** - Custom actions, widgets, and integrations when needed
 
-### ✨ Core Capabilities
+## Quick Start
 
-- **🔧 Data Management**: RDBMS, filesystem, MongoDB, SQLite support
-- **⚡ Business Logic**: Actions, processes, automation, scheduled jobs  
-- **🎨 User Interface**: React dashboard with Material-UI components
-- **🌐 API Layer**: REST endpoints, CLI tools, Lambda functions
-- **🔌 Extensibility**: Custom modules, widgets, and integrations
+**Prerequisites:** Java 21+, Maven 3.8+
 
-## 🏗️ Architecture
-
-QQQ uses a **metadata-driven architecture** where everything is defined through configuration rather than code:
-
-```mermaid
-graph LR
-    subgraph "Frontend"
-        A[React Dashboard<br/>Material-UI]
-    end
-    
-    subgraph "Middleware"
-        B[Javalin HTTP Server<br/>PicoCLI Commands<br/>Lambda Functions]
-    end
-    
-    subgraph "Backend"
-        C[Core Framework<br/>RDBMS Module<br/>Filesystem Module<br/>MongoDB Module]
-    end
-    
-    A <--> B
-    B <--> C
-```
-
-## 🚀 Quick Start
-
-### Prerequisites
-- **Java 17+** (required for QQQ features)
-- **Maven 3.8+** (for build system)
-
-### Build Locally
-```bash
-# Clone the repository
-git clone git@github.com:Kingsrook/qqq.git
-cd qqq
-
-# Build everything
-mvn clean install
-
-# Run with sample project
-mvn clean install -P withSample
-```
-
-### Use in Your Project
 ```xml
+<!-- Latest stable release -->
 <dependency>
     <groupId>com.kingsrook.qqq</groupId>
     <artifactId>qqq-backend-core</artifactId>
     <version>0.27.0</version>
 </dependency>
 
-<!-- Add backend modules as needed -->
+<!-- Or use the development snapshot -->
+<dependency>
+    <groupId>com.kingsrook.qqq</groupId>
+    <artifactId>qqq-backend-core</artifactId>
+    <version>0.35.0-SNAPSHOT</version>
+</dependency>
+
 <dependency>
     <groupId>com.kingsrook.qqq</groupId>
     <artifactId>qqq-backend-module-rdbms</artifactId>
-    <version>0.27.0</version>
+    <version>0.27.0</version> <!-- or 0.35.0-SNAPSHOT -->
 </dependency>
 ```
 
-## 📚 Documentation
+Define a table:
 
-**📖 [Complete Documentation Wiki](https://github.com/Kingsrook/qqq/wiki)** - Start here for comprehensive guides
+```java
+new QTableMetaData()
+    .withName("order")
+    .withBackendName("rdbms")
+    .withPrimaryKeyField("id")
+    .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+    .withField(new QFieldMetaData("customerId", QFieldType.INTEGER))
+    .withField(new QFieldMetaData("status", QFieldType.STRING))
+    .withField(new QFieldMetaData("total", QFieldType.DECIMAL));
+```
 
-- **[🏠 Home](https://github.com/Kingsrook/qqq/wiki/Home)** - Project overview and quick start
-- **[🏗️ Architecture](https://github.com/Kingsrook/qqq/wiki/High-Level-Architecture)** - System design and principles
-- **[🔧 Development](https://github.com/Kingsrook/qqq/wiki/Developer-Onboarding)** - Setup and contribution guide
-- **[📦 Modules](https://github.com/Kingsrook/qqq/wiki/Core-Modules)** - Available components and usage
-- **[🚀 Building](https://github.com/Kingsrook/qqq/wiki/Building-Locally)** - Local development workflow
+QQQ generates: REST endpoints, dashboard screens, query capabilities, and validation.
 
-## 🤝 Contributing
+## Usage
 
-QQQ is **open source** and welcomes contributions! 
+### Adding Backend Modules
 
-- **🐛 [Report Issues](https://github.com/Kingsrook/qqq/issues)** - Bug reports and feature requests
-- **📝 [Contribution Guide](https://github.com/Kingsrook/qqq/wiki/Contribution-Guidelines)** - How to contribute code and documentation
-- **🔍 [Code Standards](https://github.com/Kingsrook/qqq/wiki/Code-Review-Standards)** - QQQ's coding standards and review process
+```xml
+<!-- PostgreSQL, MySQL, etc -->
+<artifactId>qqq-backend-module-rdbms</artifactId>
 
-**First time contributing?** Start with our [Developer Onboarding Guide](https://github.com/Kingsrook/qqq/wiki/Developer-Onboarding) to get your environment set up.
+<!-- Local/S3 file storage -->
+<artifactId>qqq-backend-module-filesystem</artifactId>
 
-## 🏢 About Kingsrook
+<!-- MongoDB -->
+<artifactId>qqq-backend-module-mongodb</artifactId>
+```
 
-QQQ is built by **[Kingsrook](https://qrun.io)** - making engineers more productive through intelligent automation and developer tools.
+### Adding Middleware
 
-- **Website**: [https://qrun.io](https://qrun.io)
-- **Contact**: [contact@kingsrook.com](mailto:contact@kingsrook.com)
-- **GitHub**: [https://github.com/Kingsrook](https://github.com/Kingsrook)
+```xml
+<!-- HTTP server with REST API -->
+<artifactId>qqq-middleware-javalin</artifactId>
 
-## 📄 License
+<!-- CLI commands -->
+<artifactId>qqq-middleware-picocli</artifactId>
 
-This project is licensed under the **GNU Affero General Public License v3.0** - see the [LICENSE.txt](LICENSE.txt) file for details.
+<!-- AWS Lambda -->
+<artifactId>qqq-middleware-lambda</artifactId>
+```
 
----
+### Adding the Dashboard
 
-**Ready to build faster with full control?** [Get started with QQQ today!](https://github.com/Kingsrook/qqq/wiki/Developer-Onboarding)
+See [qqq-frontend-material-dashboard](https://github.com/QRun-IO/qqq-frontend-material-dashboard) for the React admin UI.
+
+## Project Status
+
+**Maturity:** Stable, used in production systems  
+**Breaking changes:** Major versions may break API; see release notes  
+
+**Roadmap:**
+- Improved widget system
+- Enhanced process tracing
+
+## Contributing
+
+```bash
+git clone git@github.com:QRun-IO/qqq.git
+cd qqq
+mvn clean install
+```
+
+See [Developer Onboarding](https://github.com/QRun-IO/qqq/wiki/Developer-Onboarding) and [Contribution Guidelines](https://github.com/QRun-IO/qqq/wiki/Contribution-Guidelines).
+
+## Documentation
+
+Full documentation: [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki)
+
+## License
+
+AGPL-3.0

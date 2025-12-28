@@ -185,7 +185,11 @@ public class DateTimeDisplayValueBehavior implements FieldDisplayBehavior<DateTi
    public List<String> validateBehaviorConfiguration(QTableMetaData tableMetaData, QFieldMetaData fieldMetaData)
    {
       List<String> errors      = new ArrayList<>();
-      String       errorSuffix = " field [" + fieldMetaData.getName() + "] in table [" + tableMetaData.getName() + "]";
+      String       errorSuffix = " field [" + fieldMetaData.getName() + "]";
+      if(tableMetaData != null)
+      {
+         errorSuffix += " in table [" + tableMetaData.getName() + "]";
+      }
 
       if(!QFieldType.DATE_TIME.equals(fieldMetaData.getType()))
       {
@@ -202,7 +206,7 @@ public class DateTimeDisplayValueBehavior implements FieldDisplayBehavior<DateTi
             errors.add("You may not specify both zoneIdFromFieldName and defaultZoneId in DateTimeDisplayValueBehavior on" + errorSuffix);
          }
 
-         if(!tableMetaData.getFields().containsKey(zoneIdFromFieldName))
+         if(tableMetaData == null || !tableMetaData.getFields().containsKey(zoneIdFromFieldName))
          {
             errors.add("Unrecognized field name [" + zoneIdFromFieldName + "] for [zoneIdFromFieldName] in DateTimeDisplayValueBehavior on" + errorSuffix);
          }

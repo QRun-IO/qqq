@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.api.middleware.specs.v1;
 
 
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
@@ -32,6 +33,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -414,6 +416,50 @@ class ApiAwareTableQuerySpecV1Test extends ApiAwareSpecTestBase
          .contentType(ContentType.APPLICATION_JSON.getMimeType())
          .asString();
       assertOrderCount.accept(response, 0); // todo - ideally 1, but memory backend joining...
+
+      ///////////////////////////////
+      // fetch exposed join fields //
+      ///////////////////////////////
+      List<QueryJoin> joins = List.of(
+         new QueryJoin(TestUtils.TABLE_NAME_LINE_ITEM).withSelect(true).withType(QueryJoin.Type.LEFT),
+         new QueryJoin(TestUtils.TABLE_NAME_ORDER_EXTRINSIC).withSelect(true).withType(QueryJoin.Type.LEFT));
+      response = Unirest.post(getBaseUrlAndPath(TestUtils.API_PATH, TestUtils.V2023_Q1) + "/table/order/query")
+         .body(JsonUtils.toJson(Map.of("joins", joins)))
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .asString();
+
+      ///////////////////////////////////////////////////////////////////////////////////////////////
+      // 1 order, but cross product gives us 3 results (for the 3 lines (and one order-extrinsic)) //
+      ///////////////////////////////////////////////////////////////////////////////////////////////
+      assertOrderCount.accept(response, 3);
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      JSONArray  records    = jsonObject.getJSONArray("records");
+
+      //////////////////////////////////////////////////////////////////////
+      // assert join values are set, and they have had customizer applied //
+      // (which up-shifts the extrinsic key)                              //
+      //////////////////////////////////////////////////////////////////////
+      assertThat(records).allMatch(r ->
+      {
+         String extrinsicKey = ((JSONObject) r).getJSONObject("values").getString(TestUtils.TABLE_NAME_ORDER_EXTRINSIC + ".key");
+         return (extrinsicKey.equals(extrinsicKey.toUpperCase()));
+      });
+
+      /////////////////////////////////////////////////////////////////////
+      // make sure this field added in the selected version is available //
+      /////////////////////////////////////////////////////////////////////
+      assertThat(records).allMatch(r -> ((JSONObject) r).getJSONObject("values").has(TestUtils.TABLE_NAME_LINE_ITEM + ".lineNumber"));
+
+      ////////////////////////////////////////////////////////////////
+      // assert that a field added in newer version isn't available //
+      ////////////////////////////////////////////////////////////////
+      response = Unirest.post(getBaseUrlAndPath(TestUtils.API_PATH, TestUtils.V2022_Q4) + "/table/order/query")
+         .body(JsonUtils.toJson(Map.of("joins", joins)))
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .asString();
+      jsonObject = JsonUtils.toJSONObject(response.getBody());
+      records = jsonObject.getJSONArray("records");
+      assertThat(records).allMatch(r -> !((JSONObject) r).getJSONObject("values").has(TestUtils.TABLE_NAME_LINE_ITEM + ".lineNumber"));
 
    }
 

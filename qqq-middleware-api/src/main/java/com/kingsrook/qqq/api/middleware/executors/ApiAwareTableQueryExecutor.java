@@ -29,6 +29,7 @@ import java.util.Objects;
 import com.kingsrook.qqq.api.actions.ApiImplementation;
 import com.kingsrook.qqq.api.actions.GetTableApiFieldsAction;
 import com.kingsrook.qqq.api.actions.QRecordApiAdapter;
+import com.kingsrook.qqq.api.actions.io.QRecordApiAdapterToApiInput;
 import com.kingsrook.qqq.api.model.actions.ApiFieldCustomValueMapper;
 import com.kingsrook.qqq.api.model.actions.GetTableApiFieldsInput;
 import com.kingsrook.qqq.api.model.metadata.ApiOperation;
@@ -123,7 +124,15 @@ public class ApiAwareTableQueryExecutor extends TableQueryExecutor implements Ap
       QueryAction queryAction = new QueryAction();
       QueryOutput queryOutput = queryAction.execute(queryInput);
 
-      List<QRecord> versionedRecords = QRecordApiAdapter.qRecordsToApiVersionedQRecordList(queryOutput.getRecords(), table.getName(), getApiName(), getApiVersion());
+      ////////////////////////////////////////////////////////////////////////////////////////////
+      // map from QRecords to this version of the api - with the flag to include exposed joins! //
+      ////////////////////////////////////////////////////////////////////////////////////////////
+      List<QRecord> versionedRecords = QRecordApiAdapter.qRecordsToApiVersionedQRecordList(new QRecordApiAdapterToApiInput()
+         .withInputRecords(queryOutput.getRecords())
+         .withTableName(table.getName())
+         .withApiName(apiName)
+         .withApiVersion(apiVersion)
+         .withIncludeExposedJoins(true));
 
       QValueFormatter.setDisplayValuesInRecordsIncludingPossibleValueTranslations(table, versionedRecords);
 

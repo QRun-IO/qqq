@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.api;
 
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.Month;
@@ -31,6 +32,7 @@ import java.util.function.Consumer;
 import com.kingsrook.qqq.api.actions.GetTableApiFieldsAction;
 import com.kingsrook.qqq.api.implementations.savedreports.RenderSavedReportProcessApiMetaDataEnricher;
 import com.kingsrook.qqq.api.model.APIVersion;
+import com.kingsrook.qqq.api.model.actions.ApiFieldCustomValueMapper;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
 import com.kingsrook.qqq.api.model.metadata.fields.ApiFieldMetaData;
@@ -79,6 +81,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendComponen
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.TablesPossibleValueSourceMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
@@ -96,6 +99,7 @@ import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwith
 import com.kingsrook.qqq.backend.core.processes.implementations.savedreports.RenderSavedReportMetaDataProducer;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
+import org.json.JSONObject;
 
 
 /*******************************************************************************
@@ -425,6 +429,8 @@ public class TestUtils
          .withPrimaryKeyField("id")
          .withAssociation(new Association().withName("orderLines").withAssociatedTableName(TABLE_NAME_LINE_ITEM).withJoinName("orderLineItem"))
          .withAssociation(new Association().withName("extrinsics").withAssociatedTableName(TABLE_NAME_ORDER_EXTRINSIC).withJoinName("orderOrderExtrinsic"))
+         .withExposedJoin(new ExposedJoin().withJoinTable(TABLE_NAME_LINE_ITEM).withJoinPath(List.of("orderLineItem")).withLabel("Line Items"))
+         .withExposedJoin(new ExposedJoin().withJoinTable(TABLE_NAME_ORDER_EXTRINSIC).withJoinPath(List.of("orderOrderExtrinsic")).withLabel("Order Extrinsics"))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
          .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withIsEditable(false))
          .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withIsEditable(false))
@@ -441,7 +447,7 @@ public class TestUtils
     *******************************************************************************/
    public static QTableMetaData defineTableLineItem()
    {
-      return new QTableMetaData()
+      QTableMetaData tableMetaData = new QTableMetaData()
          .withName(TABLE_NAME_LINE_ITEM)
          .withBackendName(MEMORY_BACKEND_NAME)
          .withSupplementalMetaData(new ApiTableMetaDataContainer().withApiTableMetaData(TestUtils.API_NAME, new ApiTableMetaData().withInitialVersion(V2022_Q4)))
@@ -454,6 +460,14 @@ public class TestUtils
          .withField(new QFieldMetaData("lineNumber", QFieldType.STRING))
          .withField(new QFieldMetaData("sku", QFieldType.STRING))
          .withField(new QFieldMetaData("quantity", QFieldType.INTEGER));
+
+      //////////////////////////////////////////////////////
+      // make line number field not in api until V2023_Q1 //
+      //////////////////////////////////////////////////////
+      tableMetaData.getField("lineNumber").withSupplementalMetaData(new ApiFieldMetaDataContainer()
+         .withApiFieldMetaData(TestUtils.API_NAME, new ApiFieldMetaData().withInitialVersion(V2023_Q1)));
+
+      return tableMetaData;
    }
 
 
@@ -483,7 +497,7 @@ public class TestUtils
     *******************************************************************************/
    public static QTableMetaData defineTableOrderExtrinsic()
    {
-      return new QTableMetaData()
+      QTableMetaData tableMetaData = new QTableMetaData()
          .withName(TABLE_NAME_ORDER_EXTRINSIC)
          .withBackendName(MEMORY_BACKEND_NAME)
          .withSupplementalMetaData(new ApiTableMetaDataContainer().withApiTableMetaData(TestUtils.API_NAME, new ApiTableMetaData().withInitialVersion(V2022_Q4)))
@@ -494,6 +508,14 @@ public class TestUtils
          .withField(new QFieldMetaData("orderId", QFieldType.INTEGER))
          .withField(new QFieldMetaData("key", QFieldType.STRING))
          .withField(new QFieldMetaData("value", QFieldType.STRING));
+
+      //////////////////////////////////////////////
+      // put a custom mapper here to upshift keys //
+      //////////////////////////////////////////////
+      tableMetaData.getField("key").withSupplementalMetaData(new ApiFieldMetaDataContainer()
+         .withApiFieldMetaData(TestUtils.API_NAME, new ApiFieldMetaData().withCustomValueMapper(new QCodeReference(ExtrinsicKeyUpshiftCustomValueMapper.class))));
+
+      return tableMetaData;
    }
 
 
@@ -632,7 +654,7 @@ public class TestUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static void insert1Order3Lines4LineExtrinsicsAnd1OrderExtrinsic() throws QException
+   public static Integer insert1Order3Lines4LineExtrinsicsAnd1OrderExtrinsic() throws QException
    {
       InsertInput insertInput = new InsertInput();
       insertInput.setTableName(TestUtils.TABLE_NAME_ORDER);
@@ -646,7 +668,8 @@ public class TestUtils
          .withAssociatedRecord("orderLines", new QRecord().withValue("lineNumber", 3).withValue("sku", "BASIC3").withValue("quantity", 42))
          .withAssociatedRecord("extrinsics", new QRecord().withValue("key", "shopifyOrderNo").withValue("value", "#1032"))
       ));
-      new InsertAction().execute(insertInput);
+      InsertOutput insertOutput = new InsertAction().execute(insertInput);
+      return (insertOutput.getRecords().get(0).getValueInteger("id"));
    }
 
 
@@ -832,4 +855,36 @@ public class TestUtils
       }
    }
 
+
+
+   /***************************************************************************
+    * Upshift values on their way out; do nothing on their way in.
+    ***************************************************************************/
+   public static class ExtrinsicKeyUpshiftCustomValueMapper extends ApiFieldCustomValueMapper
+   {
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public Serializable produceApiValue(QRecord record, String apiFieldName)
+      {
+         String value = record.getValueString(apiFieldName);
+         if(value != null)
+         {
+            value = value.toUpperCase();
+         }
+         return (value);
+      }
+
+
+
+      /***************************************************************************
+       * take value
+       ***************************************************************************/
+      @Override
+      public void consumeApiValue(QRecord record, Object value, JSONObject fullApiJsonObject, String apiFieldName)
+      {
+         record.setValue(apiFieldName, value);
+      }
+   }
 }

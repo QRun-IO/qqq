@@ -134,7 +134,7 @@ public class QueryAction
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       queryInput.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, queryInput.getFilter(), Collections.emptySet()));
 
-      QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, queryInput.getFilter());
+      QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, queryInput.getFilter(), QueryAction.class.getSimpleName());
 
       QBackendModuleDispatcher qBackendModuleDispatcher = new QBackendModuleDispatcher();
       QBackendModuleInterface  qModule                  = qBackendModuleDispatcher.getQBackendModule(backend);
@@ -143,7 +143,11 @@ public class QueryAction
       queryInterface.setQueryStat(queryStat);
       QueryOutput queryOutput = queryInterface.execute(queryInput);
 
-      QueryStatManager.getInstance().add(queryStat);
+      if(queryStat != null)
+      {
+         setRecordCountInQueryStat(queryInput, queryOutput, queryStat);
+         QueryStatManager.getInstance().add(queryStat);
+      }
 
       ////////////////////////////
       // handle cache use-cases //
@@ -164,6 +168,31 @@ public class QueryAction
       }
 
       return queryOutput;
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static void setRecordCountInQueryStat(QueryInput queryInput, QueryOutput queryOutput, QueryStat queryStat)
+   {
+      if(queryStat == null)
+      {
+         return;
+      }
+
+      int recordCount;
+      if(queryInput.getRecordPipe() != null)
+      {
+         recordCount = queryInput.getRecordPipe().getTotalRecordCount();
+      }
+      else
+      {
+         recordCount = queryOutput.getRecords() == null ? 0 : queryOutput.getRecords().size();
+      }
+
+      queryStat.setRecordCount(recordCount);
    }
 
 

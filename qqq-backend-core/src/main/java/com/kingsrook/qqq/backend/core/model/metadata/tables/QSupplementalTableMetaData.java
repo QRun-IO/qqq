@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.tables;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -39,6 +40,48 @@ public abstract class QSupplementalTableMetaData implements Cloneable
    private static final QLogger LOG = QLogger.getLogger(QSupplementalTableMetaData.class);
 
    private static Set<Class<?>> warnedAboutMissingFinishClones = new HashSet<>();
+
+
+
+   /***************************************************************************
+    * Return the supplemental table meta data object assigned to the input table
+    * under the given type.  If no object is assigned, returns null.
+    *
+    * @param table where to look for the supplemental table meta data
+    * @param type identifier for the supplemental meta data - as returned by getType
+    * @return QSupplementalTableMetaData subclass assigned to the table - may be null.
+    ***************************************************************************/
+   @SuppressWarnings("unchecked")
+   protected static <S extends QSupplementalTableMetaData> S of(QTableMetaData table, String type)
+   {
+      return ((S) table.getSupplementalMetaData(type));
+   }
+
+
+
+   /***************************************************************************
+    * Return the supplemental table meta data object assigned to the input table
+    * under the given type - but also - if no object is assigned, create a new
+    * one by running the input supplier, and then assign that one to the table
+    * (that's the "withNew" part of the method name
+    *
+    * @param table where to look for the supplemental table meta data
+    * @param type identifier for the supplemental meta data - as returned by getType
+    * @param supplier source of new objects if one isn't already on the table.
+    *                 typically a constructor for the QSupplementalTableMetaData subtype.
+    * @return QSupplementalTableMetaData subclass assigned to the table - shouldn't
+    * ever be null (though if the supplier returns null, then it could be).
+    ***************************************************************************/
+   protected static <S extends QSupplementalTableMetaData> S ofOrWithNew(QTableMetaData table, String type, Supplier<S> supplier)
+   {
+      S s = of(table, type);
+      if(s == null)
+      {
+         s = supplier.get();
+         table.withSupplementalMetaData(s);
+      }
+      return (s);
+   }
 
 
 
@@ -95,7 +138,7 @@ public abstract class QSupplementalTableMetaData implements Cloneable
 
    /***************************************************************************
     * adding cloneable to this type hierarchy - subclasses need to implement
-    * finishClone to copy ther specific state.
+    * finishClone to copy their specific state.
     ***************************************************************************/
    @Override
    public final QSupplementalTableMetaData clone()

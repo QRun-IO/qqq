@@ -88,19 +88,32 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 /*******************************************************************************
  ** Base class for all core actions in the RDBMS module.
+ **
+ ** Provides common functionality for query construction, SQL generation, result
+ ** set processing, and connection management across all RDBMS backend operations.
+ ** Handles database-agnostic SQL building with vendor-specific strategies,
+ ** security lock application, join processing, and filter criteria translation.
+ **
+ ** Key responsibilities:
+ ** - SQL clause generation (SELECT, FROM, WHERE, ORDER BY)
+ ** - PreparedStatement parameter management
+ ** - Join context resolution and FROM clause construction
+ ** - Security criteria integration via RecordSecurityLocks
+ ** - Result set field extraction with type conversion
+ ** - Database connection acquisition from ConnectionManager
+ ** - Query cancellation support for long-running operations
+ **
+ ** All concrete RDBMS action implementations (Query, Count, Insert, Update, Delete)
+ ** extend this class to leverage shared SQL building and data access patterns.
  *******************************************************************************/
 public abstract class AbstractRDBMSAction
 {
    private static final QLogger LOG = QLogger.getLogger(AbstractRDBMSAction.class);
-
-   protected QueryStat queryStat;
-
-   protected PreparedStatement statement;
-   protected boolean           isCancelled = false;
-
    private static Memoization<String, Boolean> doesSelectClauseRequireDistinctMemoization = new Memoization<String, Boolean>()
       .withTimeout(Duration.ofDays(365));
-
+   protected QueryStat queryStat;
+   protected PreparedStatement statement;
+   protected boolean           isCancelled = false;
    private RDBMSBackendMetaData         backendMetaData;
    private RDBMSActionStrategyInterface actionStrategy;
 
@@ -180,9 +193,59 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Make it easy (e.g., for tests) to turn on logging of SQL
+    *******************************************************************************/
+   public static void setLogSQL(boolean on, boolean doReformat, String loggerOrSystemOut)
+   {
+      setLogSQL(on);
+      setLogSQLOutput(loggerOrSystemOut);
+      setLogSQLReformat(doReformat);
+   }
+
+
+
+   /*******************************************************************************
+    ** Make it easy (e.g., for tests) to turn on logging of SQL
+    *******************************************************************************/
+   public static void setLogSQL(boolean on)
+   {
+      System.setProperty("qqq.rdbms.logSQL", String.valueOf(on));
+   }
+
+
+
+   /*******************************************************************************
+    ** Make it easy (e.g., for tests) to turn on logging of SQL
+    *******************************************************************************/
+   public static void setLogSQLOutput(String loggerOrSystemOut)
+   {
+      System.setProperty("qqq.rdbms.logSQL.output", loggerOrSystemOut);
+   }
+
+
+
+   /*******************************************************************************
+    ** Make it easy (e.g., for tests) to turn on poor-man's formatting of SQL
+    *******************************************************************************/
+   public static void setLogSQLReformat(boolean doReformat)
+   {
+      System.setProperty("qqq.rdbms.logSQL.reformat", String.valueOf(doReformat));
+   }
+
+
+
+   /*******************************************************************************
     ** Handle obvious problems with values - like empty string for integer should be null,
-    ** and type conversions that we can do "better" than jdbc...
+    ** and type conversions that we can do "better" than jdbc.
     **
+    ** Performs type coercion and normalization of values before they are set in
+    ** PreparedStatements. Converts empty strings to null for typed fields, and
+    ** uses ValueUtils for string-to-type conversions that are more forgiving than
+    ** JDBC's default behavior.
+    **
+    ** @param field the field metadata defining expected type
+    ** @param value the raw value to scrub/convert
+    ** @return the scrubbed value, properly typed or null
     *******************************************************************************/
    protected Serializable scrubValue(QFieldMetaData field, Serializable value)
    {
@@ -198,7 +261,15 @@ public abstract class AbstractRDBMSAction
       //////////////////////////////////////////////////////////////////////////////
       // value utils is good at making values from strings - jdbc, not as much... //
       //////////////////////////////////////////////////////////////////////////////
-      if(field.getType().equals(QFieldType.DATE) && value instanceof String)
+      if(field.getType().equals(QFieldType.INTEGER) && value instanceof String)
+      {
+         value = ValueUtils.getValueAsInteger(value);
+      }
+      else if(field.getType().equals(QFieldType.LONG) && value instanceof String)
+      {
+         value = ValueUtils.getValueAsLong(value);
+      }
+      else if(field.getType().equals(QFieldType.DATE) && value instanceof String)
       {
          value = ValueUtils.getValueAsLocalDate(value);
       }
@@ -223,6 +294,15 @@ public abstract class AbstractRDBMSAction
    /*******************************************************************************
     ** If the table has a field with the given name, then set the given value in the
     ** given record.
+    **
+    ** Safely attempts to set a field value, gracefully handling the case where the
+    ** field does not exist in the table metadata. Used when populating records from
+    ** result sets where columns may not map to all defined fields.
+    **
+    ** @param record the record to populate
+    ** @param table the table metadata to check for field existence
+    ** @param fieldName the name of the field to set
+    ** @param value the value to set in the field
     *******************************************************************************/
    protected void setValueIfTableHasField(QRecord record, QTableMetaData table, String fieldName, Serializable value)
    {
@@ -244,7 +324,19 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Build the FROM clause for a SQL query, including all JOIN clauses.
     **
+    ** Constructs the full FROM clause starting with the main table, then adds all
+    ** joins from the JoinsContext in proper order. Handles table aliasing, join
+    ** type specification (INNER, LEFT, etc.), and ON clause generation from join
+    ** metadata. Also integrates security criteria into join ON clauses where
+    ** applicable.
+    **
+    ** @param instance the QInstance containing table and join metadata
+    ** @param tableName the name of the main table
+    ** @param joinsContext context containing all joins to include in the query
+    ** @param params list to populate with parameter values from security criteria
+    ** @return the complete FROM clause including all joins
     *******************************************************************************/
    protected String makeFromClause(QInstance instance, String tableName, JoinsContext joinsContext, List<Serializable> params)
    {
@@ -316,9 +408,9 @@ public abstract class AbstractRDBMSAction
             }
 
             joinClauseList.add(escapeIdentifier(baseTableOrAlias)
-                               + "." + escapeIdentifier(getColumnName(leftTable.getField(joinOn.getLeftField())))
-                               + " = " + escapeIdentifier(joinTableOrAlias)
-                               + "." + escapeIdentifier(getColumnName((rightTable.getField(joinOn.getRightField())))));
+               + "." + escapeIdentifier(getColumnName(leftTable.getField(joinOn.getLeftField())))
+               + " = " + escapeIdentifier(joinTableOrAlias)
+               + "." + escapeIdentifier(getColumnName((rightTable.getField(joinOn.getRightField())))));
          }
 
          if(CollectionUtils.nullSafeHasContents(queryJoin.getSecurityCriteria()))
@@ -460,8 +552,19 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Convert a non-nested list of filter criteria into a SQL WHERE sub-clause.
     **
-    ** @return optional sql where sub-clause, as in "x AND y"
+    ** Iterates through criteria, converting each to SQL using the appropriate action
+    ** strategy. Handles field-to-field comparisons, expression evaluation, value
+    ** scrubbing/type conversion, and parameter list population. Joins all clauses
+    ** with the specified boolean operator (AND/OR).
+    **
+    ** @param joinsContext context for resolving field names to table aliases
+    ** @param criteria list of filter criteria to convert to SQL
+    ** @param booleanOperator operator (AND/OR) to join the criteria clauses
+    ** @param params list to populate with parameter values for PreparedStatement
+    ** @return optional SQL where sub-clause, as in "x AND y", or empty if no valid criteria
+    ** @throws IllegalArgumentException if criteria have incorrect number of values
     *******************************************************************************/
    private Optional<String> getSqlWhereStringAndPopulateParamsListFromNonNestedFilter(JoinsContext joinsContext, List<QFilterCriteria> criteria, QQueryFilter.BooleanOperator booleanOperator, List<Serializable> params) throws IllegalArgumentException
    {
@@ -575,7 +678,16 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Evaluate and normalize date/time parameter values for SQL queries.
     **
+    ** Converts various date/time representations (strings, LocalDate, Instant) into
+    ** proper types that JDBC can handle. Uses ValueUtils for flexible parsing of
+    ** string representations. Returns null-safe list of normalized values.
+    **
+    ** Note: Currently not fully implemented for relative date parsing (see inline TODOs).
+    **
+    ** @param values list of raw parameter values to normalize
+    ** @return list of normalized date/time values suitable for PreparedStatement
     *******************************************************************************/
    private List<Serializable> evaluateDateTimeParamValues(List<Serializable> values)
    {
@@ -604,10 +716,9 @@ public abstract class AbstractRDBMSAction
                {
                   LocalDate valueAsLocalDate = ValueUtils.getValueAsLocalDate(value);
                   rs.add(valueAsLocalDate);
-                  /*
-                  Optional<Instant> valueAsRelativeInstant = parseValueAsRelativeInstant(value);
-                  rs.add(valueAsRelativeInstant.orElseThrow());
-                  */
+                  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                  // Optional<Instant> valueAsRelativeInstant = parseValueAsRelativeInstant(value); rs.add(valueAsRelativeInstant.orElseThrow()); //
+                  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                }
                catch(Exception e2)
                {
@@ -622,7 +733,16 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Parse a value as a relative Instant (e.g., "now", "today", "+1d").
     **
+    ** Placeholder implementation for parsing relative date/time expressions.
+    ** Currently returns Instant.now() as a stub. Intended to support expressions
+    ** like "now-1d", "today+2h", etc. for dynamic query filters.
+    **
+    ** TODO: Implement full parser for relative date/time expressions.
+    **
+    ** @param value the value to parse as a relative Instant
+    ** @return Optional containing parsed Instant, or empty if value cannot be parsed
     *******************************************************************************/
    private Optional<Instant> parseValueAsRelativeInstant(Serializable value)
    {
@@ -632,24 +752,87 @@ public abstract class AbstractRDBMSAction
          return (Optional.empty());
       }
 
-      // todo - use parser!!
+      /////////////////////////
+      // todo - use parser!! //
+      /////////////////////////
       return Optional.of(Instant.now());
    }
 
 
 
    /*******************************************************************************
+    ** Escape an identifier (table name, column name) with the appropriate quote
+    ** character for the database vendor.
     **
+    ** Uses the action strategy's getIdentifierQuoteString() method to determine
+    ** the appropriate quote character. Falls back to backtick if strategy not available.
     *******************************************************************************/
    protected String escapeIdentifier(String id)
    {
-      return ("`" + id + "`");
+      String quoteString = "`"; // Default for MySQL/H2/SQLite
+
+      try
+      {
+         /////////////////////////////////////////////////////////////
+         // Primary: Try to get from action strategy if initialized //
+         /////////////////////////////////////////////////////////////
+         RDBMSActionStrategyInterface strategy = getActionStrategy();
+         if(strategy != null)
+         {
+            quoteString = strategy.getIdentifierQuoteString();
+         }
+         ////////////////////////////////////////////////////////////////////
+         // Fallback: If strategy is null, get it from backend in QContext //
+         ////////////////////////////////////////////////////////////////////
+         else if(QContext.getQInstance() != null && QContext.getQInstance().getBackends() != null)
+         {
+            for(QBackendMetaData backend : QContext.getQInstance().getBackends().values())
+            {
+               if(backend instanceof RDBMSBackendMetaData rdbmsBackend)
+               {
+                  RDBMSActionStrategyInterface backendStrategy = rdbmsBackend.getActionStrategy();
+                  if(backendStrategy != null)
+                  {
+                     quoteString = backendStrategy.getIdentifierQuoteString();
+                     break; // Use first RDBMS backend found
+                  }
+               }
+            }
+         }
+      }
+      catch(Exception e)
+      {
+         ///////////////////////////////
+         // Ignore - will use default //
+         ///////////////////////////////
+      }
+
+      ////////////////////////////////////////////////
+      // Return identifier with appropriate quoting //
+      ////////////////////////////////////////////////
+      if(quoteString == null || quoteString.isEmpty())
+      {
+         return id;
+      }
+      else
+      {
+         return quoteString + id + quoteString;
+      }
    }
 
 
 
    /*******************************************************************************
+    ** Extract a field value from a ResultSet using the action strategy.
     **
+    ** Delegates to the configured RDBMSActionStrategyInterface to handle vendor-
+    ** specific type mappings and conversions when reading values from result sets.
+    **
+    ** @param type the QQQ field type to extract
+    ** @param resultSet the JDBC ResultSet to read from
+    ** @param i the 1-based column index in the result set
+    ** @return the extracted value as a Serializable
+    ** @throws SQLException if the value cannot be read from the result set
     *******************************************************************************/
    protected Serializable getFieldValueFromResultSet(QFieldType type, ResultSet resultSet, int i) throws SQLException
    {
@@ -659,7 +842,16 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Extract a field value from a ResultSet using field metadata.
     **
+    ** Convenience method that extracts the type from field metadata and delegates
+    ** to the type-based extraction method.
+    **
+    ** @param qFieldMetaData the field metadata containing the type information
+    ** @param resultSet the JDBC ResultSet to read from
+    ** @param i the 1-based column index in the result set
+    ** @return the extracted value as a Serializable
+    ** @throws SQLException if the value cannot be read from the result set
     *******************************************************************************/
    protected Serializable getFieldValueFromResultSet(QFieldMetaData qFieldMetaData, ResultSet resultSet, int i) throws SQLException
    {
@@ -669,7 +861,17 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Build the ORDER BY clause for a SQL query.
     **
+    ** Constructs ORDER BY clause from a list of QFilterOrderBy specifications.
+    ** Handles regular field ordering, aggregate function ordering, and group-by
+    ** ordering. Resolves field names through the joins context to ensure proper
+    ** table aliasing. Applies ASC/DESC direction per each order-by specification.
+    **
+    ** @param table the main table metadata (used for aggregate field resolution)
+    ** @param orderBys list of order-by specifications to convert to SQL
+    ** @param joinsContext context for resolving field names to table aliases
+    ** @return comma-separated ORDER BY clause string
     *******************************************************************************/
    protected String makeOrderByClause(QTableMetaData table, List<QFilterOrderBy> orderBys, JoinsContext joinsContext)
    {
@@ -703,7 +905,15 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Build a single GROUP BY clause element with optional formatting.
     **
+    ** Constructs a GROUP BY clause for a single field, resolving the field name
+    ** through the joins context and applying any format string (e.g., for date
+    ** truncation functions like DATE_TRUNC).
+    **
+    ** @param groupBy the group-by specification containing field name and optional format
+    ** @param joinsContext context for resolving field names to table aliases
+    ** @return the GROUP BY clause element (e.g., "table.field" or "DATE(table.field)")
     *******************************************************************************/
    protected String getSingleGroupByClause(GroupBy groupBy, JoinsContext joinsContext)
    {
@@ -722,49 +932,17 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
-    ** Make it easy (e.g., for tests) to turn on logging of SQL
-    *******************************************************************************/
-   public static void setLogSQL(boolean on, boolean doReformat, String loggerOrSystemOut)
-   {
-      setLogSQL(on);
-      setLogSQLOutput(loggerOrSystemOut);
-      setLogSQLReformat(doReformat);
-   }
-
-
-
-   /*******************************************************************************
-    ** Make it easy (e.g., for tests) to turn on logging of SQL
-    *******************************************************************************/
-   public static void setLogSQL(boolean on)
-   {
-      System.setProperty("qqq.rdbms.logSQL", String.valueOf(on));
-   }
-
-
-
-   /*******************************************************************************
-    ** Make it easy (e.g., for tests) to turn on logging of SQL
-    *******************************************************************************/
-   public static void setLogSQLOutput(String loggerOrSystemOut)
-   {
-      System.setProperty("qqq.rdbms.logSQL.output", loggerOrSystemOut);
-   }
-
-
-
-   /*******************************************************************************
-    ** Make it easy (e.g., for tests) to turn on poor-man's formatting of SQL
-    *******************************************************************************/
-   public static void setLogSQLReformat(boolean doReformat)
-   {
-      System.setProperty("qqq.rdbms.logSQL.reformat", String.valueOf(doReformat));
-   }
-
-
-
-   /*******************************************************************************
+    ** Log SQL statements and parameters when debug logging is enabled.
     **
+    ** Conditionally logs SQL statements, parameter values, and execution timing
+    ** based on system properties (qqq.rdbms.logSQL, qqq.rdbms.logSQL.output,
+    ** qqq.rdbms.logSQL.reformat). Supports both logger-based output and System.out
+    ** for test scenarios. Applies basic formatting to improve SQL readability when
+    ** reformat flag is enabled.
+    **
+    ** @param sql the SQL statement to log
+    ** @param params list of parameter values (limited to first 100 for performance)
+    ** @param mark timestamp for calculating execution duration, or null if not tracking
     *******************************************************************************/
    protected void logSQL(CharSequence sql, List<?> params, Long mark)
    {
@@ -823,12 +1001,17 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
-    ** method that looks at security lock joins, and if a one-to-many is found where
-    ** the specified field name is on the 'right side' of the join, then a distinct
-    ** needs added to select clause.
+    ** Determine if a SELECT clause requires DISTINCT due to security lock joins.
     **
-    ** Memoized because it's a lot of gyrations, and it never ever changes for a
-    ** running server.
+    ** Analyzes the table's RecordSecurityLocks to detect one-to-many joins where
+    ** the base table is on the "left" side. Such joins can produce duplicate rows
+    ** that must be eliminated with SELECT DISTINCT. 
+    **
+    ** Memoized because the analysis is complex and the result never changes for a
+    ** given table during server runtime. Cache expires after 365 days.
+    **
+    ** @param table the table metadata to analyze for DISTINCT requirement
+    ** @return true if SELECT DISTINCT is required, false otherwise
     *******************************************************************************/
    protected boolean doesSelectClauseRequireDistinct(QTableMetaData table)
    {
@@ -847,7 +1030,16 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Recursively check if a multi-lock structure requires DISTINCT.
     **
+    ** Examines a MultiRecordSecurityLock and all its child locks, looking for
+    ** one-to-many or many-to-one joins where the query table is not the expected
+    ** side. Such configurations require DISTINCT to eliminate duplicate rows
+    ** caused by security join fan-out.
+    **
+    ** @param multiRecordSecurityLock the multi-lock structure to analyze
+    ** @param table the base table being queried
+    ** @return true if any lock in the structure requires DISTINCT
     *******************************************************************************/
    private boolean doesMultiLockRequireDistinct(MultiRecordSecurityLock multiRecordSecurityLock, QTableMetaData table)
    {
@@ -881,7 +1073,14 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Record SQL query text and join table names in the QueryStat for metrics.
     **
+    ** Updates the QueryStat (if present) with the generated SQL text and the set
+    ** of table names involved in joins. Used for query performance tracking,
+    ** logging, and analytics.
+    **
+    ** @param sql the generated SQL query text to record
+    ** @param joinsContext context containing join information, or null if no joins
     *******************************************************************************/
    protected void setSqlAndJoinsInQueryStat(CharSequence sql, JoinsContext joinsContext)
    {
@@ -889,7 +1088,7 @@ public abstract class AbstractRDBMSAction
       {
          queryStat.setQueryText(sql.toString());
 
-         if(CollectionUtils.nullSafeHasContents(joinsContext.getQueryJoins()))
+         if(joinsContext != null && CollectionUtils.nullSafeHasContents(joinsContext.getQueryJoins()))
          {
             Set<String> joinTableNames = new HashSet<>();
             for(QueryJoin queryJoin : joinsContext.getQueryJoins())
@@ -904,7 +1103,9 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
-    ** Getter for queryStat
+    ** Getter for queryStat.
+    **
+    ** @return the current QueryStat instance used for performance tracking
     *******************************************************************************/
    public QueryStat getQueryStat()
    {
@@ -914,7 +1115,9 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
-    ** Setter for queryStat
+    ** Setter for queryStat.
+    **
+    ** @param queryStat the QueryStat instance to use for performance tracking
     *******************************************************************************/
    public void setQueryStat(QueryStat queryStat)
    {
@@ -924,7 +1127,11 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Cancel an in-progress SQL query.
     **
+    ** Sets the cancellation flag and attempts to cancel the current PreparedStatement.
+    ** Used to support user-initiated query cancellation or timeout enforcement for
+    ** long-running operations. Gracefully handles cases where no statement is active.
     *******************************************************************************/
    protected void doCancelQuery()
    {
@@ -949,6 +1156,12 @@ public abstract class AbstractRDBMSAction
 
    /*******************************************************************************
     ** Either clone the input filter (so we can change it safely), or return a new blank filter.
+    **
+    ** Ensures immutability of input filters by creating a deep copy before applying
+    ** security criteria or other modifications. Returns new empty filter if input is null.
+    **
+    ** @param filter the filter to clone, or null
+    ** @return cloned filter if input was non-null, otherwise a new empty filter
     *******************************************************************************/
    protected QQueryFilter clonedOrNewFilter(QQueryFilter filter)
    {
@@ -965,8 +1178,12 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
-    ** Setter for backendMetaData
+    ** Setter for backendMetaData.
     **
+    ** Initializes the backend metadata and associated action strategy. The action
+    ** strategy provides database vendor-specific SQL generation and type handling.
+    **
+    ** @param backendMetaData the backend metadata (must be RDBMSBackendMetaData)
     *******************************************************************************/
    protected void setBackendMetaData(QBackendMetaData backendMetaData)
    {
@@ -976,9 +1193,14 @@ public abstract class AbstractRDBMSAction
 
 
 
-   /***************************************************************************
-    *
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Getter for the action strategy.
+    **
+    ** Returns the database vendor-specific strategy implementation used for SQL
+    ** generation, type conversions, and dialect-specific behavior.
+    **
+    ** @return the configured RDBMSActionStrategyInterface instance
+    *******************************************************************************/
    protected RDBMSActionStrategyInterface getActionStrategy()
    {
       return (this.actionStrategy);

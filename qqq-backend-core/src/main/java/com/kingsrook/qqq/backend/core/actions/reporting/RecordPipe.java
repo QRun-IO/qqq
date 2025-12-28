@@ -58,6 +58,8 @@ public class RecordPipe
    /////////////////////////////////////
    private List<QRecord> singleRecordListForPostRecordActions = new ArrayList<>();
 
+   private int totalRecordCount = 0;
+
 
 
    /*******************************************************************************
@@ -121,6 +123,7 @@ public class RecordPipe
       }
 
       doAddRecord(record);
+      totalRecordCount++;
    }
 
 
@@ -170,6 +173,7 @@ public class RecordPipe
       // make sure to go to the private version of doAddRecord - to avoid re-running the post-actions //
       //////////////////////////////////////////////////////////////////////////////////////////////////
       records.forEach(this::doAddRecord);
+      totalRecordCount += records.size();
    }
 
 
@@ -228,5 +232,16 @@ public class RecordPipe
    public int getCapacity()
    {
       return capacity;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for recordCount
+    **
+    *******************************************************************************/
+   public int getTotalRecordCount()
+   {
+      return totalRecordCount;
    }
 }

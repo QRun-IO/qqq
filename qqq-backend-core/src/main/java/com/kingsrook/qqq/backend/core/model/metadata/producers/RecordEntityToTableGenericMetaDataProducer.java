@@ -91,7 +91,7 @@ public class RecordEntityToTableGenericMetaDataProducer implements MetaDataProdu
       // now if there's a default customizer, call it too - for generic, common things //
       // you might want on all of your tables, or defaults if not set otherwise        //
       ///////////////////////////////////////////////////////////////////////////////////
-      if(defaultMetaDataCustomizer != null)
+      if(defaultMetaDataCustomizer != null && qTableMetaData != null)
       {
          qTableMetaData = defaultMetaDataCustomizer.customizeMetaData(qInstance, qTableMetaData);
       }
@@ -100,7 +100,7 @@ public class RecordEntityToTableGenericMetaDataProducer implements MetaDataProdu
       // use primary key as record label field, if it hasn't been set so far //
       // todo - does this belong in the enricher??                           //
       /////////////////////////////////////////////////////////////////////////
-      if(CollectionUtils.nullSafeIsEmpty(qTableMetaData.getRecordLabelFields()) && StringUtils.hasContent(qTableMetaData.getPrimaryKeyField()))
+      if(qTableMetaData != null && CollectionUtils.nullSafeIsEmpty(qTableMetaData.getRecordLabelFields()) && StringUtils.hasContent(qTableMetaData.getPrimaryKeyField()))
       {
          qTableMetaData.setRecordLabelFields(List.of(qTableMetaData.getPrimaryKeyField()));
       }

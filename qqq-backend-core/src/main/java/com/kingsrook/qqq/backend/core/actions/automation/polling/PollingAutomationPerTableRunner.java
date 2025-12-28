@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.adapters.QQueryFilterJsonAdapter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.LogPair;
@@ -72,7 +73,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.TriggerEv
 import com.kingsrook.qqq.backend.core.model.savedviews.SavedView;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
-import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import org.apache.commons.lang.NotImplementedException;
@@ -439,7 +439,7 @@ public class PollingAutomationPerTableRunner implements Runnable
                      SavedView  savedView   = new SavedView(getOutput.getRecord());
                      JSONObject viewJson    = new JSONObject(savedView.getViewJson());
                      JSONObject queryFilter = viewJson.getJSONObject("queryFilter");
-                     filter = JsonUtils.toObject(queryFilter.toString(), QQueryFilter.class);
+                     filter = new QQueryFilterJsonAdapter().jsonToQQueryFilter(queryFilter.toString());
                   }
                }
 

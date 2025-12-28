@@ -291,9 +291,9 @@ class MemoryBackendModuleTest extends BaseTest
       InsertInput insertInput = new InsertInput();
       insertInput.setTableName(table.getName());
       insertInput.setRecords(List.of(
-         new QRecord().withValue("id", 1).withValue("name", "Square").withValue("date", LocalDate.of(1980, Month.MAY, 31)),
-         new QRecord().withValue("id", 2).withValue("name", "Triangle").withValue("date", LocalDate.of(1999, Month.DECEMBER, 31)),
-         new QRecord().withValue("id", 3).withValue("name", "Circle").withValue("date", LocalDate.of(2022, Month.OCTOBER, 10))
+         new QRecord().withValue("id", 1).withValue("name", "Square").withValue("date", LocalDate.of(1980, Month.MAY, 31)).withValue("isPolygon", true),
+         new QRecord().withValue("id", 2).withValue("name", "Triangle").withValue("date", LocalDate.of(1999, Month.DECEMBER, 31)).withValue("isPolygon", true),
+         new QRecord().withValue("id", 3).withValue("name", "Circle").withValue("date", LocalDate.of(2022, Month.OCTOBER, 10)).withValue("isPolygon", false)
       ));
       new InsertAction().execute(insertInput);
 
@@ -355,6 +355,11 @@ class MemoryBackendModuleTest extends BaseTest
       assertEquals(1, queryShapes(qInstance, table, session, new QFilterCriteria("id", QCriteriaOperator.LESS_THAN_OR_EQUALS, List.of(1))).size());
       assertEquals(0, queryShapes(qInstance, table, session, new QFilterCriteria("id", QCriteriaOperator.LESS_THAN_OR_EQUALS, List.of(0))).size());
       assertEquals(1, queryShapes(qInstance, table, session, new QFilterCriteria("name", QCriteriaOperator.LESS_THAN_OR_EQUALS, List.of("Darin"))).size());
+
+      assertEquals(2, queryShapes(qInstance, table, session, new QFilterCriteria("isPolygon", QCriteriaOperator.EQUALS, true)).size());
+      assertEquals(1, queryShapes(qInstance, table, session, new QFilterCriteria("isPolygon", QCriteriaOperator.EQUALS, false)).size());
+      assertEquals(2, queryShapes(qInstance, table, session, new QFilterCriteria("isPolygon", QCriteriaOperator.EQUALS, "true")).size());
+      assertEquals(1, queryShapes(qInstance, table, session, new QFilterCriteria("isPolygon", QCriteriaOperator.EQUALS, "false")).size());
 
       assertThrows(QException.class, () -> queryShapes(qInstance, table, session, new QFilterCriteria("id", QCriteriaOperator.GREATER_THAN, List.of())));
       assertThrows(QException.class, () -> queryShapes(qInstance, table, session, new QFilterCriteria("id", QCriteriaOperator.GREATER_THAN_OR_EQUALS, List.of())));

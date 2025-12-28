@@ -241,7 +241,7 @@ public class TestUtils
          // similarly tests use apiName & apiVersion, but those fields aren't in the table because //
          // the api module isn't available, so, add them to make tests work.                       //
          ////////////////////////////////////////////////////////////////////////////////////////////
-         QTableMetaData table     = qInstance.getTable("scriptRevision");
+         QTableMetaData table = qInstance.getTable("scriptRevision");
          table.addField(new QFieldMetaData("content", QFieldType.STRING));
          table.addField(new QFieldMetaData("apiName", QFieldType.STRING));
          table.addField(new QFieldMetaData("apiVersion", QFieldType.STRING));
@@ -347,6 +347,10 @@ public class TestUtils
          .withType(WidgetType.HTML.getType())
          .withCodeReference(new QCodeReference(TimezoneWidgetRenderer.class)));
 
+      qInstance.addWidget(new QWidgetMetaData()
+         .withName(EchoWidgetRenderer.class.getSimpleName())
+         .withType(WidgetType.HTML.getType())
+         .withCodeReference(new QCodeReference(EchoWidgetRenderer.class)));
    }
 
 
@@ -845,6 +849,27 @@ public class TestUtils
 
 
    /***************************************************************************
+    * simple test widget, that echos back html (really just text) equal to the
+    * "input" param that it receives
+    ***************************************************************************/
+   public static class EchoWidgetRenderer extends AbstractWidgetRenderer
+   {
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public RenderWidgetOutput render(RenderWidgetInput input) throws QException
+      {
+         return (new RenderWidgetOutput(new RawHTML("title",
+            input.getQueryParams().get("input")
+         )));
+      }
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    public static class TimezoneWidgetRenderer extends AbstractWidgetRenderer
@@ -858,7 +883,7 @@ public class TestUtils
       {
          return (new RenderWidgetOutput(new RawHTML("title",
             QContext.getQSession().getValue(QSession.VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES)
-               + "|" + QContext.getQSession().getValue(QSession.VALUE_KEY_USER_TIMEZONE)
+            + "|" + QContext.getQSession().getValue(QSession.VALUE_KEY_USER_TIMEZONE)
          )));
       }
    }

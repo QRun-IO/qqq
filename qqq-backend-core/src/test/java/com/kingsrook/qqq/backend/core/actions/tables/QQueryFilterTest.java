@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.FilterVariableExpression;
+import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator.BETWEEN;
 import static com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator.EQUALS;
@@ -323,6 +324,137 @@ class QQueryFilterTest extends BaseTest
             .isInstanceOf(QUserFacingException.class)
             .hasMessageContaining("Missing value for criteria on field: id");
       }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testInterpretValueStringStyleCoalescingMultipleInputMaps() throws QException
+   {
+      int inputValue   = 47;
+      int processValue = 42;
+
+      Map<String, Serializable> inputValuesMap   = Map.of("clientId", inputValue);
+      Map<String, Serializable> processValuesMap = Map.of("clientId", processValue);
+
+      String inputThenProcess = "${input.clientId}??${processValues.clientId}";
+
+      {
+         /////////////////////////////////////////////
+         // value in both maps - uses the first one //
+         /////////////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, inputThenProcess));
+         filter.interpretValues(Map.of("input", inputValuesMap, "processValues", processValuesMap), FilterUseCase.DEFAULT);
+         assertEquals(inputValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         ////////////////////////////////////////////////////////////
+         // key in first map, but empty string - so use second one //
+         ////////////////////////////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, "${input.clientId}??${processValues.commonClientId}"));
+         filter.interpretValues(Map.of("input", Map.of("clientId", ""), "processValues", Map.of("commonClientId", processValue)), FilterUseCase.DEFAULT);
+         assertEquals(processValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         ////////////////////////////////////////////////////
+         // key in first map, but null - so use second one //
+         ////////////////////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, "${input.clientId}??${processValues.commonClientId}"));
+         filter.interpretValues(Map.of("input", MapBuilder.of("clientId", null), "processValues", Map.of("commonClientId", processValue)), FilterUseCase.DEFAULT);
+         assertEquals(processValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         //////////////////////////////////////////
+         // key not in first - so use second one //
+         //////////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, "${input.clientId}??${processValues.commonClientId}"));
+         filter.interpretValues(Map.of("input", Map.of("foo", "bar"), "processValues", Map.of("commonClientId", processValue)), FilterUseCase.DEFAULT);
+         assertEquals(processValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         ///////////////////////////////////////
+         // 2nd map not given - use first one //
+         ///////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, inputThenProcess));
+         filter.interpretValues(Map.of("input", inputValuesMap), FilterUseCase.DEFAULT);
+         assertEquals(inputValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         ////////////////////////////////////////
+         // 1st map not given - use second one //
+         ////////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, inputThenProcess));
+         filter.interpretValues(Map.of("processValues", processValuesMap), FilterUseCase.DEFAULT);
+         assertEquals(processValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         ////////////////////////////////////
+         // 1st map empty - use second one //
+         ////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, inputThenProcess));
+         filter.interpretValues(Map.of("input", Map.of(), "processValues", processValuesMap), FilterUseCase.DEFAULT);
+         assertEquals(processValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         ///////////////////////////////////
+         // 1st map null - use second one //
+         ///////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, inputThenProcess));
+         filter.interpretValues(MapBuilder.of("input", null, "processValues", processValuesMap), FilterUseCase.DEFAULT);
+         assertEquals(processValue, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         ////////////////////////////////////////////////////////////
+         // not found in either map - throw (for default use case) //
+         ////////////////////////////////////////////////////////////
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, inputThenProcess));
+         assertThatThrownBy(() -> filter.interpretValues(Map.of("input", Map.of()), FilterUseCase.DEFAULT))
+            .hasMessageContaining("Missing value for criteria on field: id");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testInterpretValueStringStyleCoalescingDotsInKey() throws QException
+   {
+      Map<String, Serializable> inputValues = new HashMap<>();
+
+      inputValues.put("subObject.clientId", 47);
+      {
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, "${input.clientId}??${input.subObject.clientId}"));
+         filter.interpretValues(inputValues);
+         assertEquals(47, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      inputValues.put("clientId", 42);
+      {
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, "${input.clientId}??${input.subObject.clientId}"));
+         filter.interpretValues(inputValues);
+         assertEquals(42, filter.getCriteria().get(0).getValues().get(0));
+      }
+
+      {
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", EQUALS, "${input.userId}??${input.subObject.userId}"));
+         assertThatThrownBy(() -> filter.interpretValues(inputValues))
+            .isInstanceOf(QUserFacingException.class)
+            .hasMessageContaining("Missing value for criteria on field: id");
+      }
+
    }
 
 

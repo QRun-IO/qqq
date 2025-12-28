@@ -127,6 +127,8 @@ public class GetAuditsForRecordProcess implements MetaDataProducerInterface<QPro
       QueryJoin auditDetailJoin = new QueryJoin(AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL).withSelect(true).withType(QueryJoin.Type.LEFT);
 
       ArrayList<QRecord> auditRecords = CollectionUtils.useOrWrap(new QueryAction().execute(new QueryInput(AuditsMetaDataProvider.TABLE_NAME_AUDIT)
+         .withShouldGenerateDisplayValues(true)
+         .withShouldTranslatePossibleValues(true)
          .withQueryJoin(auditDetailJoin)
          .withFilter(filter.withLimit(limit))).getRecords(), new TypeToken<>() {});
 

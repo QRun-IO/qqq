@@ -55,6 +55,9 @@ public class ScheduledReport extends QRecordEntity
    @QField(maxLength = 100, valueTooLongBehavior = ValueTooLongBehavior.ERROR, isRequired = true)
    private String cronExpression;
 
+   @QField(maxLength = 250, valueTooLongBehavior = ValueTooLongBehavior.TRUNCATE_ELLIPSIS, isEditable = false)
+   private String cronDescription;
+
    @QField(maxLength = 100, valueTooLongBehavior = ValueTooLongBehavior.ERROR, possibleValueSourceName = TimeZonePossibleValueSourceMetaDataProvider.NAME, isRequired = true)
    private String cronTimeZoneId;
 
@@ -474,5 +477,43 @@ public class ScheduledReport extends QRecordEntity
       this.userId = userId;
       return (this);
    }
+
+
+   /*******************************************************************************
+    * Getter for cronDescription
+    * @see #withCronDescription(String)
+    *******************************************************************************/
+   public String getCronDescription()
+   {
+      return (this.cronDescription);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for cronDescription
+    * @see #withCronDescription(String)
+    *******************************************************************************/
+   public void setCronDescription(String cronDescription)
+   {
+      this.cronDescription = cronDescription;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for cronDescription
+    *
+    * @param cronDescription
+    * TODO document this property
+    *
+    * @return this
+    *******************************************************************************/
+   public ScheduledReport withCronDescription(String cronDescription)
+   {
+      this.cronDescription = cronDescription;
+      return (this);
+   }
+
 
 }

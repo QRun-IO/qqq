@@ -29,15 +29,23 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.api.BaseTest;
 import com.kingsrook.qqq.api.TestUtils;
+import com.kingsrook.qqq.api.actions.io.QRecordApiAdapterToApiInput;
 import com.kingsrook.qqq.api.javalin.QBadRequestException;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -218,8 +226,8 @@ class QRecordApiAdapterTest extends BaseTest
          // create date is removed by personalizer - so message is special //
          ////////////////////////////////////////////////////////////////////
          assertThatThrownBy(() -> QRecordApiAdapter.apiJsonObjectToQRecord(new JSONObject("""
-         {"createDate": "2025-01-01T00:00:00Z"}
-         """), TestUtils.TABLE_NAME_PERSON, TestUtils.API_NAME, TestUtils.V2023_Q1, true, QInputSource.USER))
+            {"createDate": "2025-01-01T00:00:00Z"}
+            """), TestUtils.TABLE_NAME_PERSON, TestUtils.API_NAME, TestUtils.V2023_Q1, true, QInputSource.USER))
             .isInstanceOf(QBadRequestException.class)
             .hasMessageContaining("unrecognized field name: createDate")
             .hasMessageContaining("createDate is not allowed for the current user");
@@ -302,6 +310,92 @@ class QRecordApiAdapterTest extends BaseTest
       QRecordApiAdapter.setValueFromApiFieldInQRecord(apiObject, "shoeCount", TestUtils.API_NAME, apiFieldsMap, record, false);
       assertEquals("Tim", record.getValueString("firstName"));
       assertEquals(2, record.getValueInteger("noOfShoes"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testQRecordsToApiVersionedQRecordListIncludingExposedJoins() throws QException
+   {
+      Integer orderId = TestUtils.insert1Order3Lines4LineExtrinsicsAnd1OrderExtrinsic();
+
+      ////////////////////////////////////
+      // fetch order with lines w/o api //
+      ////////////////////////////////////
+      List<QRecord> orderRecordsWithLines = new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_ORDER)
+            .withQueryJoin(new QueryJoin(TestUtils.TABLE_NAME_LINE_ITEM).withSelect(true))
+            .withFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, orderId))))
+         .getRecords();
+
+      ////////////////////////
+      // map to api records //
+      ////////////////////////
+      QRecordApiAdapterToApiInput qRecordApiAdapterToApiInput = new QRecordApiAdapterToApiInput()
+         .withTableName(TestUtils.TABLE_NAME_ORDER)
+         .withApiName(TestUtils.API_NAME)
+         .withApiVersion(TestUtils.CURRENT_API_VERSION)
+         .withInputRecords(orderRecordsWithLines)
+         .withIncludeExposedJoins(true);
+      List<QRecord> apiVersionedRecordsWithLines = QRecordApiAdapter.qRecordsToApiVersionedQRecordList(qRecordApiAdapterToApiInput);
+
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // assert the line item fields came through, and there aren't any extrinsic fields (they weren't fetched //
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+      assertThat(apiVersionedRecordsWithLines)
+         .allMatch(r -> r.getValueInteger(TestUtils.TABLE_NAME_LINE_ITEM + ".orderId").equals(orderId))
+         .allMatch(r -> !r.getValues().containsKey(TestUtils.TABLE_NAME_ORDER_EXTRINSIC + ".orderId"));
+
+      /////////////////////////////////////////////
+      // re-do now with extrinsics but not lines //
+      /////////////////////////////////////////////
+      List<QRecord> orderRecordsWithExtrinsics = new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_ORDER)
+            .withQueryJoin(new QueryJoin(TestUtils.TABLE_NAME_ORDER_EXTRINSIC).withSelect(true))
+            .withFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, orderId))))
+         .getRecords();
+
+      qRecordApiAdapterToApiInput.setInputRecords(orderRecordsWithExtrinsics);
+      List<QRecord> apiVersionedRecordsWithExtrinsics = QRecordApiAdapter.qRecordsToApiVersionedQRecordList(qRecordApiAdapterToApiInput);
+
+      assertThat(apiVersionedRecordsWithExtrinsics)
+         .allMatch(r -> r.getValueInteger(TestUtils.TABLE_NAME_ORDER_EXTRINSIC + ".orderId").equals(orderId))
+         .allMatch(r -> !r.getValues().containsKey(TestUtils.TABLE_NAME_LINE_ITEM + ".orderId"));
+
+      ////////////////////////////////////////////////////////////////
+      // make sure the custom value mapper that upshfits values ran //
+      ////////////////////////////////////////////////////////////////
+      assertThat(apiVersionedRecordsWithExtrinsics)
+         .allMatch(r ->
+         {
+            String keyValue = r.getValueString(TestUtils.TABLE_NAME_ORDER_EXTRINSIC + ".key");
+            return (keyValue.toUpperCase().equals(keyValue));
+         });
+
+      //////////////////////////////////////////////////
+      // finally re-do with both extrinsics and lines //
+      //////////////////////////////////////////////////
+      List<QRecord> orderRecordsWithExtrinsicsAndLines = new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_ORDER)
+            .withQueryJoin(new QueryJoin(TestUtils.TABLE_NAME_LINE_ITEM).withSelect(true))
+            .withQueryJoin(new QueryJoin(TestUtils.TABLE_NAME_ORDER_EXTRINSIC).withSelect(true))
+            .withFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, orderId))))
+         .getRecords();
+
+      qRecordApiAdapterToApiInput.setInputRecords(orderRecordsWithExtrinsicsAndLines);
+      List<QRecord> apiVersionedRecordsWithExtrinsicsAndLines = QRecordApiAdapter.qRecordsToApiVersionedQRecordList(qRecordApiAdapterToApiInput);
+
+      assertThat(apiVersionedRecordsWithExtrinsicsAndLines)
+         .allMatch(r -> r.getValueInteger(TestUtils.TABLE_NAME_LINE_ITEM + ".orderId").equals(orderId))
+         .allMatch(r -> r.getValueInteger(TestUtils.TABLE_NAME_ORDER_EXTRINSIC + ".orderId").equals(orderId));
+
+      ////////////////////////////////////////////////////////////////////////////////////
+      // make sure these records have lineNumber field -                                //
+      // then run for an older version - which shouldn't have lineItem.lineNumber field //
+      ////////////////////////////////////////////////////////////////////////////////////
+      assertThat(apiVersionedRecordsWithExtrinsicsAndLines).allMatch(r -> r.getValue(TestUtils.TABLE_NAME_LINE_ITEM + ".lineNumber") != null);
+      List<QRecord> apiVersionedRecordsWithExtrinsicsAndLinesOlderVersion = QRecordApiAdapter.qRecordsToApiVersionedQRecordList(qRecordApiAdapterToApiInput.withApiVersion(TestUtils.V2022_Q4));
+      assertThat(apiVersionedRecordsWithExtrinsicsAndLinesOlderVersion).allMatch(r -> r.getValue(TestUtils.TABLE_NAME_LINE_ITEM + ".lineNumber") == null);
    }
 
 }

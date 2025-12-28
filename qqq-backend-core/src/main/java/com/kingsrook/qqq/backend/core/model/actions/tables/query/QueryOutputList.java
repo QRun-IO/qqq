@@ -151,4 +151,16 @@ class QueryOutputList implements QueryOutputStorageInterface
    {
       QueryOutputList.LOG_SIZE_ERROR_OVER = logSizeErrorOver;
    }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   public static void resetDefaultLogSizeOverValues()
+   {
+      QueryOutputList.LOG_SIZE_INFO_OVER = 50_000;
+      QueryOutputList.LOG_SIZE_WARN_OVER = 100_000;
+      QueryOutputList.LOG_SIZE_ERROR_OVER = 250_000;
+   }
 }

@@ -41,6 +41,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
@@ -109,6 +110,7 @@ import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
@@ -160,45 +162,26 @@ import static io.javalin.apibuilder.ApiBuilder.put;
  *******************************************************************************/
 public class QJavalinImplementation
 {
-   private static final QLogger LOG = QLogger.getLogger(QJavalinImplementation.class);
-
-   public static final int    SESSION_COOKIE_AGE       = 60 * 60 * 24;
-   public static final String SESSION_ID_COOKIE_NAME   = "sessionId";
-   public static final String SESSION_UUID_COOKIE_NAME = "sessionUUID";
-   public static final String API_KEY_NAME             = "apiKey";
-
-   static QInstance        qInstance;
-   static QJavalinMetaData javalinMetaData;
-
-   private static Supplier<QInstance> qInstanceHotSwapSupplier;
-   private static long                lastQInstanceHotSwapMillis;
-
-   private static      long MILLIS_BETWEEN_HOT_SWAPS = 2500;
-   public static final long SLOW_LOG_THRESHOLD_MS    = 1000;
-
-   private static final Integer DEFAULT_COUNT_TIMEOUT_SECONDS = 60;
-   private static final Integer DEFAULT_QUERY_TIMEOUT_SECONDS = 60;
-
-   private static int DEFAULT_PORT = 8001;
+   public static final  int                 SESSION_COOKIE_AGE            = 60 * 60 * 24;
+   public static final  String              SESSION_ID_COOKIE_NAME        = "sessionId";
+   public static final  String              SESSION_UUID_COOKIE_NAME      = "sessionUUID";
+   public static final  String              API_KEY_NAME                  = "apiKey";
+   public static final  long                SLOW_LOG_THRESHOLD_MS         = 1000;
+   private static final QLogger             LOG                           = QLogger.getLogger(QJavalinImplementation.class);
+   private static final Integer             DEFAULT_COUNT_TIMEOUT_SECONDS = 60;
+   private static final Integer             DEFAULT_QUERY_TIMEOUT_SECONDS = 60;
+   static               QInstance           qInstance;
+   static               QJavalinMetaData    javalinMetaData;
+   private static       Supplier<QInstance> qInstanceHotSwapSupplier;
+   private static       long                lastQInstanceHotSwapMillis;
+   private static       AtomicBoolean       insideHotSwap                 = new AtomicBoolean(false);
+   private static       long                MILLIS_BETWEEN_HOT_SWAPS      = 2500;
+   private static       int                 DEFAULT_PORT                  = 8001;
 
    private static Javalin             service;
    private static List<EndpointGroup> endpointGroups;
 
    private static long startTime = 0;
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public static void main(String[] args) throws QInstanceValidationException
-   {
-      QInstance qInstance = new QInstance();
-      // todo - parse args to look up metaData and prime instance
-      // qInstance.addBackend(QMetaDataProvider.getQBackend());
-
-      new QJavalinImplementation(qInstance).startJavalinServer(DEFAULT_PORT);
-   }
 
 
 
@@ -241,35 +224,13 @@ public class QJavalinImplementation
    /*******************************************************************************
     **
     *******************************************************************************/
-   public void startJavalinServer(int port)
+   public static void main(String[] args) throws QInstanceValidationException
    {
-      // todo port from arg
-      // todo base path from arg? - and then potentially multiple instances too (chosen based on the root path??)
+      QInstance qInstance = new QInstance();
+      // todo - parse args to look up metaData and prime instance
+      // qInstance.addBackend(QMetaDataProvider.getQBackend());
 
-      service = Javalin.create(config ->
-         {
-            config.router.apiBuilder(getRoutes());
-
-            for(EndpointGroup endpointGroup : CollectionUtils.nonNullList(endpointGroups))
-            {
-               config.router.apiBuilder(endpointGroup);
-            }
-         }
-      ).start(port);
-
-      service.before(QJavalinImplementation::hotSwapQInstance);
-      service.before((Context context) -> context.header("Content-Type", "application/json"));
-      service.after(QJavalinImplementation::clearQContext);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public Javalin getJavalinService()
-   {
-      return (service);
+      new QJavalinImplementation(qInstance).startJavalinServer(DEFAULT_PORT);
    }
 
 
@@ -296,6 +257,15 @@ public class QJavalinImplementation
          long now = System.currentTimeMillis();
          if(now - lastQInstanceHotSwapMillis < MILLIS_BETWEEN_HOT_SWAPS)
          {
+            return;
+         }
+
+         if(!insideHotSwap.compareAndSet(false, true))
+         {
+            ///////////////////////////////////////////////
+            // someone else is already running a hotswap //
+            ///////////////////////////////////////////////
+            LOG.debug("Caught attempted parallel hotswap - exiting this one.");
             return;
          }
 
@@ -333,17 +303,11 @@ public class QJavalinImplementation
          {
             LOG.error("Error hot-swapping QInstance", e);
          }
+         finally
+         {
+            insideHotSwap.set(false);
+         }
       }
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public void stopJavalinServer()
-   {
-      service.stop();
    }
 
 
@@ -354,89 +318,6 @@ public class QJavalinImplementation
    public static void setDefaultPort(int port)
    {
       QJavalinImplementation.DEFAULT_PORT = port;
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public EndpointGroup getRoutes()
-   {
-      return (() ->
-      {
-         post("/manageSession", QJavalinImplementation::manageSession);
-
-         /////////////////////
-         // metadata routes //
-         /////////////////////
-         path("/metaData", () ->
-         {
-            get("/", QJavalinImplementation::metaData);
-            path("/table/{table}", () ->
-            {
-               get("", QJavalinImplementation::tableMetaData);
-            });
-            path("/process/{processName}", () ->
-            {
-               get("", QJavalinImplementation::processMetaData);
-            });
-            get("/authentication", QJavalinImplementation::authenticationMetaData);
-         });
-
-         /////////////////////////
-         // table (data) routes //
-         /////////////////////////
-         path("/data/{table}", () ->
-         {
-            get("/", QJavalinImplementation::dataQuery);
-            post("/query", QJavalinImplementation::dataQuery);
-            post("/", QJavalinImplementation::dataInsert);
-            get("/count", QJavalinImplementation::dataCount);
-            post("/count", QJavalinImplementation::dataCount);
-            get("/variants", QJavalinImplementation::variants);
-            get("/export", QJavalinImplementation::dataExportWithoutFilename);
-            post("/export", QJavalinImplementation::dataExportWithoutFilename);
-            get("/export/{filename}", QJavalinImplementation::dataExportWithFilename);
-            post("/export/{filename}", QJavalinImplementation::dataExportWithFilename);
-            get("/possibleValues/{fieldName}", QJavalinImplementation::possibleValuesForTableField);
-            post("/possibleValues/{fieldName}", QJavalinImplementation::possibleValuesForTableField);
-
-            // todo - add put and/or patch at this level (without a primaryKey) to do a bulk update based on primaryKeys in the records.
-            path("/{primaryKey}", () ->
-            {
-               get("", QJavalinImplementation::dataGet);
-               patch("", QJavalinImplementation::dataUpdate);
-               put("", QJavalinImplementation::dataUpdate); // todo - want different semantics??
-               delete("", QJavalinImplementation::dataDelete);
-
-               get("/{fieldName}/{filename}", QJavalinImplementation::dataDownloadRecordField);
-               post("/{fieldName}/{filename}", QJavalinImplementation::dataDownloadRecordField);
-
-               QJavalinScriptsHandler.defineRecordRoutes();
-            });
-         });
-
-         get("/possibleValues/{possibleValueSourceName}", QJavalinImplementation::possibleValuesStandalone);
-         post("/possibleValues/{possibleValueSourceName}", QJavalinImplementation::possibleValuesStandalone);
-
-         get("/widget/{name}", QJavalinImplementation::widget); // todo - can we just do a slow log here?
-
-         get("/serverInfo", QJavalinImplementation::serverInfo);
-
-         ////////////////////
-         // process routes //
-         ////////////////////
-         path("", QJavalinProcessHandler.getRoutes());
-
-         // todo... ? ////////////////
-         // todo... ? // api routes //
-         // todo... ? ////////////////
-         // todo... ? if(qInstance.getApiMetaData() != null)
-         // todo... ? {
-         // todo... ?    path("", QJavalinApiHandler.getRoutes());
-         // todo... ? }
-      });
    }
 
 
@@ -531,8 +412,25 @@ public class QJavalinImplementation
     *******************************************************************************/
    public static QSession setupSession(Context context, AbstractActionInput input) throws QModuleDispatchException, QAuthenticationException
    {
+      return setupSession(context, input, qInstance.getAuthentication());
+   }
+
+
+
+   /*******************************************************************************
+    ** Setup session using the specified authentication metadata.
+    **
+    ** @param context The Javalin context
+    ** @param input The action input (may be null)
+    ** @param authMetaData The authentication metadata to use
+    ** @return The created session
+    ** @throws QModuleDispatchException If module dispatch fails
+    ** @throws QAuthenticationException If authentication fails
+    *******************************************************************************/
+   public static QSession setupSession(Context context, AbstractActionInput input, QAuthenticationMetaData authMetaData) throws QModuleDispatchException, QAuthenticationException
+   {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
-      QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
+      QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(authMetaData);
 
       try
       {
@@ -563,9 +461,11 @@ public class QJavalinImplementation
          else if(StringUtils.hasContent(sessionUuidCookieValue))
          {
             ///////////////////////////////////////////////////////////////////////////
-            // session UUID - known to be used by auth0 module (in aug. 2023 update) //
+            // session UUID - used by auth0 module and fully anonymous module       //
             ///////////////////////////////////////////////////////////////////////////
             authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
+            // Also pass as sessionUUID for fully anonymous module
+            authenticationContext.put("sessionUUID", sessionUuidCookieValue);
          }
          else if(apiKeyHeaderValue != null)
          {
@@ -1565,6 +1465,19 @@ public class QJavalinImplementation
             }
          }
 
+         ////////////////////////////
+         // process form/post body //
+         ////////////////////////////
+         for(Map.Entry<String, List<String>> formParam : context.formParamMap().entrySet())
+         {
+            String       fieldName = formParam.getKey();
+            List<String> values    = formParam.getValue();
+            if(CollectionUtils.nullSafeHasContents(values))
+            {
+               input.addQueryParam(fieldName, values.get(0));
+            }
+         }
+
          RenderWidgetOutput output = new RenderWidgetAction().execute(input);
          QJavalinAccessLogger.logEndSuccessIfSlow(SLOW_LOG_THRESHOLD_MS, logPair("widgetName", widgetName), logPair("inputParams", input.getQueryParams()));
          context.result(JsonUtils.toJson(output.getWidgetData()));
@@ -1995,16 +1908,6 @@ public class QJavalinImplementation
 
 
    /*******************************************************************************
-    ** Setter for qInstanceHotSwapSupplier
-    *******************************************************************************/
-   public static void setQInstanceHotSwapSupplier(Supplier<QInstance> qInstanceHotSwapSupplier)
-   {
-      QJavalinImplementation.qInstanceHotSwapSupplier = qInstanceHotSwapSupplier;
-   }
-
-
-
-   /*******************************************************************************
     ** Getter for javalinMetaData
     **
     *******************************************************************************/
@@ -2032,6 +1935,16 @@ public class QJavalinImplementation
    public static Supplier<QInstance> getQInstanceHotSwapSupplier()
    {
       return (QJavalinImplementation.qInstanceHotSwapSupplier);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for qInstanceHotSwapSupplier
+    *******************************************************************************/
+   public static void setQInstanceHotSwapSupplier(Supplier<QInstance> qInstanceHotSwapSupplier)
+   {
+      QJavalinImplementation.qInstanceHotSwapSupplier = qInstanceHotSwapSupplier;
    }
 
 
@@ -2082,6 +1995,128 @@ public class QJavalinImplementation
    public static long getStartTimeMillis()
    {
       return (startTime);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void startJavalinServer(int port)
+   {
+      // todo port from arg
+      // todo base path from arg? - and then potentially multiple instances too (chosen based on the root path??)
+
+      service = Javalin.create(config ->
+         {
+            config.router.apiBuilder(getRoutes());
+
+            for(EndpointGroup endpointGroup : CollectionUtils.nonNullList(endpointGroups))
+            {
+               config.router.apiBuilder(endpointGroup);
+            }
+         }
+      ).start(port);
+
+      service.before(QJavalinImplementation::hotSwapQInstance);
+      service.before((Context context) -> context.header("Content-Type", "application/json"));
+      service.after(QJavalinImplementation::clearQContext);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public Javalin getJavalinService()
+   {
+      return (service);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void stopJavalinServer()
+   {
+      service.stop();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public EndpointGroup getRoutes()
+   {
+      return (() ->
+      {
+         post("/manageSession", QJavalinImplementation::manageSession);
+
+         /////////////////////
+         // metadata routes //
+         /////////////////////
+         path("/metaData", () ->
+         {
+            get("/", QJavalinImplementation::metaData);
+            path("/table/{table}", () ->
+            {
+               get("", QJavalinImplementation::tableMetaData);
+            });
+            path("/process/{processName}", () ->
+            {
+               get("", QJavalinImplementation::processMetaData);
+            });
+            get("/authentication", QJavalinImplementation::authenticationMetaData);
+         });
+
+         /////////////////////////
+         // table (data) routes //
+         /////////////////////////
+         path("/data/{table}", () ->
+         {
+            get("/", QJavalinImplementation::dataQuery);
+            post("/query", QJavalinImplementation::dataQuery);
+            post("/", QJavalinImplementation::dataInsert);
+            get("/count", QJavalinImplementation::dataCount);
+            post("/count", QJavalinImplementation::dataCount);
+            get("/variants", QJavalinImplementation::variants);
+            get("/export", QJavalinImplementation::dataExportWithoutFilename);
+            post("/export", QJavalinImplementation::dataExportWithoutFilename);
+            get("/export/{filename}", QJavalinImplementation::dataExportWithFilename);
+            post("/export/{filename}", QJavalinImplementation::dataExportWithFilename);
+            get("/possibleValues/{fieldName}", QJavalinImplementation::possibleValuesForTableField);
+            post("/possibleValues/{fieldName}", QJavalinImplementation::possibleValuesForTableField);
+
+            // todo - add put and/or patch at this level (without a primaryKey) to do a bulk update based on primaryKeys in the records.
+            path("/{primaryKey}", () ->
+            {
+               get("", QJavalinImplementation::dataGet);
+               patch("", QJavalinImplementation::dataUpdate);
+               put("", QJavalinImplementation::dataUpdate); // todo - want different semantics??
+               delete("", QJavalinImplementation::dataDelete);
+
+               get("/{fieldName}/{filename}", QJavalinImplementation::dataDownloadRecordField);
+               post("/{fieldName}/{filename}", QJavalinImplementation::dataDownloadRecordField);
+
+               QJavalinScriptsHandler.defineRecordRoutes();
+            });
+         });
+
+         get("/possibleValues/{possibleValueSourceName}", QJavalinImplementation::possibleValuesStandalone);
+         post("/possibleValues/{possibleValueSourceName}", QJavalinImplementation::possibleValuesStandalone);
+
+         get("/widget/{name}", QJavalinImplementation::widget); // todo - can we just do a slow log here?
+         post("/widget/{name}", QJavalinImplementation::widget);
+
+         get("/serverInfo", QJavalinImplementation::serverInfo);
+
+         ////////////////////
+         // process routes //
+         ////////////////////
+         path("", QJavalinProcessHandler.getRoutes());
+      });
    }
 
 

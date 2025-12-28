@@ -234,9 +234,6 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
             }
             else
             {
-               ///////////////////////////////////////////////
-               // todo#authHeader - remove all this logging //
-               ///////////////////////////////////////////////
                String userName = qSession.getUser() != null ? qSession.getUser().getFullName() : null;
                if(userName != null && !userName.contains("System User"))
                {
@@ -304,6 +301,14 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
          // then call method to check more session validity //
          /////////////////////////////////////////////////////
          QSession qSession = buildAndValidateSession(qInstance, accessToken);
+
+         /////////////////////////////////////////////////////////////////////////////////////
+         // if we took in a session UUID, make sure that is the UUID on the session object. //
+         /////////////////////////////////////////////////////////////////////////////////////
+         if(CollectionUtils.containsKeyWithNonNullValue(context, SESSION_UUID_KEY))
+         {
+            qSession.setUuid(context.get(SESSION_UUID_KEY));
+         }
 
          //////////////////////////////////////////////////////////////
          // allow customizer to do custom things here, if so desired //

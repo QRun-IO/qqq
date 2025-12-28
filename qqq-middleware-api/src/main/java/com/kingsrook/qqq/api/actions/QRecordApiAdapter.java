@@ -29,9 +29,11 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import com.kingsrook.qqq.api.actions.output.ApiOutputMapWrapper;
-import com.kingsrook.qqq.api.actions.output.ApiOutputQRecordWrapper;
-import com.kingsrook.qqq.api.actions.output.ApiOutputRecordWrapperInterface;
+import java.util.function.Supplier;
+import com.kingsrook.qqq.api.actions.io.ApiOutputMapWrapper;
+import com.kingsrook.qqq.api.actions.io.ApiOutputQRecordWrapper;
+import com.kingsrook.qqq.api.actions.io.ApiOutputRecordWrapperInterface;
+import com.kingsrook.qqq.api.actions.io.QRecordApiAdapterToApiInput;
 import com.kingsrook.qqq.api.javalin.QBadRequestException;
 import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.APIVersionRange;
@@ -55,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
@@ -93,13 +96,14 @@ public class QRecordApiAdapter
    {
       Map<String, ApiFieldCustomValueMapper> fieldValueMappers = getFieldValueMappers(records, tableName, apiName, apiVersion);
 
-      ArrayList<Map<String, Serializable>> rs = new ArrayList<>();
-      for(QRecord record : records)
-      {
-         ApiOutputMapWrapper apiOutputMap = qRecordToApiMap(record, tableName, apiName, apiVersion, fieldValueMappers, new ApiOutputMapWrapper(new LinkedHashMap<>()));
-         rs.add(apiOutputMap == null ? null : apiOutputMap.getContents());
-      }
+      QRecordApiAdapterToApiInput input = new QRecordApiAdapterToApiInput()
+         .withInputRecords(records)
+         .withTableName(tableName)
+         .withApiName(apiName)
+         .withApiVersion(apiVersion);
 
+      ArrayList<Map<String, Serializable>> rs = new ArrayList<>();
+      qRecordsToApi(input, fieldValueMappers, () -> new ApiOutputMapWrapper(new LinkedHashMap<>()), rs);
       return (rs);
    }
 
@@ -112,22 +116,36 @@ public class QRecordApiAdapter
     *******************************************************************************/
    public static List<QRecord> qRecordsToApiVersionedQRecordList(List<QRecord> records, String tableName, String apiName, String apiVersion) throws QException
    {
-      Map<String, ApiFieldCustomValueMapper> fieldValueMappers = getFieldValueMappers(records, tableName, apiName, apiVersion);
+      return qRecordsToApiVersionedQRecordList(new QRecordApiAdapterToApiInput()
+         .withInputRecords(records)
+         .withTableName(tableName)
+         .withApiName(apiName)
+         .withApiVersion(apiVersion));
+   }
+
+
+
+   /*******************************************************************************
+    ** version of the qRecordToApiMap that returns QRecords, not maps.
+    ** useful for cases where we're staying inside QQQ, but working with an api-
+    ** versioned application.
+    *******************************************************************************/
+   public static List<QRecord> qRecordsToApiVersionedQRecordList(QRecordApiAdapterToApiInput input) throws QException
+   {
+      Map<String, ApiFieldCustomValueMapper> fieldValueMappers = getFieldValueMappers(input.getInputRecords(), input.getTableName(), input.getApiName(), input.getApiVersion());
 
       List<QRecord> rs = new ArrayList<>();
-      for(QRecord record : records)
-      {
-         ApiOutputQRecordWrapper apiOutputQRecord = qRecordToApiMap(record, tableName, apiName, apiVersion, fieldValueMappers, new ApiOutputQRecordWrapper(new QRecord().withTableName(tableName)));
-         rs.add(apiOutputQRecord.getContents());
-      }
-
+      qRecordsToApi(input, fieldValueMappers, () -> new ApiOutputQRecordWrapper(new QRecord().withTableName(input.getTableName())), rs);
       return (rs);
    }
 
 
 
    /***************************************************************************
-    **
+    * prepare a map of ApiFieldCustomValueMapper objects for a given
+    * table/apiName/version - which, if those custom value mappers implement the
+    * {@link ApiFieldCustomValueMapperBulkSupportInterface}, then the input
+    * records will get passed through there too.
     ***************************************************************************/
    private static Map<String, ApiFieldCustomValueMapper> getFieldValueMappers(List<QRecord> records, String tableName, String apiName, String apiVersion) throws QException
    {
@@ -160,82 +178,167 @@ public class QRecordApiAdapter
     ** private version of convert a QRecord to a map for the API (or, another
     ** QRecord - whatever object is in the `O output` param). Takes params to
     ** support working in bulk w/ customizers much better.
+    *
+    * @param input main input wrapper for the action
+    * @param fieldValueMappers map of field name to ApiFieldCustomValueMapper's
+    * which have had the bulk/pre method ran on them if applicable.
+    * @param outputCollectionElementSupplier supplier of objects that wrap those that
+    * go into the output list (so either wrappers of Maps or QRecords)
+    * @param outputList list that holds the output objects.
+    * @param <C> the type of objects that go into the outputList
+    * @param <O> the type of wrapper object that wraps the objects that go in the
+    * output list.  Provides a common interface for Map.put vs. QRecord.setValue, etc.
     *******************************************************************************/
-   private static <C, O extends ApiOutputRecordWrapperInterface<C, O>> O qRecordToApiMap(QRecord record, String tableName, String apiName, String apiVersion, Map<String, ApiFieldCustomValueMapper> fieldValueMappers, O output) throws QException
+   private static <C, O extends ApiOutputRecordWrapperInterface<C, O>> void qRecordsToApi(QRecordApiAdapterToApiInput input, Map<String, ApiFieldCustomValueMapper> fieldValueMappers, Supplier<O> outputCollectionElementSupplier, List<C> outputList) throws QException
    {
-      if(record == null)
-      {
-         return (null);
-      }
+      String apiVersion = input.getApiVersion();
+      String apiName    = input.getApiName();
+      String tableName  = input.getTableName();
 
       List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName));
-
-      /////////////////////////////////////////
-      // iterate over the table's api fields //
-      /////////////////////////////////////////
-      for(QFieldMetaData field : tableApiFields)
+      if(fieldValueMappers == null)
       {
-         ApiFieldMetaData apiFieldMetaData = ObjectUtils.tryAndRequireNonNullElse(() -> ApiFieldMetaDataContainer.of(field).getApiFieldMetaData(apiName), new ApiFieldMetaData());
-         String           apiFieldName     = ApiFieldMetaData.getEffectiveApiFieldName(apiName, field);
-
-         Serializable value;
-         if(StringUtils.hasContent(apiFieldMetaData.getReplacedByFieldName()))
-         {
-            value = record.getValue(apiFieldMetaData.getReplacedByFieldName());
-         }
-         else if(apiFieldMetaData.getCustomValueMapper() != null)
-         {
-            if(fieldValueMappers == null)
-            {
-               fieldValueMappers = new HashMap<>();
-            }
-
-            String customValueMapperName = apiFieldMetaData.getCustomValueMapper().getName();
-            if(!fieldValueMappers.containsKey(customValueMapperName))
-            {
-               fieldValueMappers.put(customValueMapperName, QCodeLoader.getAdHoc(ApiFieldCustomValueMapper.class, apiFieldMetaData.getCustomValueMapper()));
-            }
-
-            ApiFieldCustomValueMapper customValueMapper = fieldValueMappers.get(customValueMapperName);
-            value = customValueMapper.produceApiValue(record, apiFieldName);
-         }
-         else
-         {
-            value = record.getValue(field.getName());
-         }
-
-         if(field.getType().equals(QFieldType.BLOB) && value instanceof byte[] bytes)
-         {
-            value = Base64.getEncoder().encodeToString(bytes);
-         }
-
-         output.putValue(apiFieldName, value);
+         fieldValueMappers = new HashMap<>();
       }
 
-      //////////////////////////////////////////////////////////////////////////////////////////////////
-      // todo - should probably define in meta-data if an association is included in the api or not!! //
-      //  and what its name is too...                                                                 //
-      //////////////////////////////////////////////////////////////////////////////////////////////////
-      QTableMetaData table = QContext.getQInstance().getTable(tableName);
-      for(Association association : CollectionUtils.nonNullList(table.getAssociations()))
+      Map<String, List<QFieldMetaData>> exposedJoinApiFields = new HashMap<>();
+      if(input.getIncludeExposedJoins())
       {
-         if(isAssociationOmitted(apiName, apiVersion, table, association))
+         QTableMetaData table = QContext.getQInstance().getTable(tableName);
+         for(ExposedJoin exposedJoin : CollectionUtils.nonNullList(table.getExposedJoins()))
          {
+            String joinTableName = exposedJoin.getJoinTable();
+            exposedJoinApiFields.put(joinTableName, GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(joinTableName)));
+         }
+      }
+
+      for(QRecord inputRecord : input.getInputRecords())
+      {
+         if(inputRecord == null)
+         {
+            outputList.add(null);
             continue;
          }
 
-         ArrayList<O> associationList = new ArrayList<>();
+         O output = outputCollectionElementSupplier.get();
 
-         for(QRecord associatedRecord : CollectionUtils.nonNullList(CollectionUtils.nonNullMap(record.getAssociatedRecords()).get(association.getName())))
+         /////////////////////////////////////////
+         // iterate over the table's api fields //
+         /////////////////////////////////////////
+         for(QFieldMetaData field : tableApiFields)
          {
-            ApiOutputRecordWrapperInterface<C, O> apiOutputAssociation = output.newSibling(associatedRecord.getTableName());
-            associationList.add(qRecordToApiMap(associatedRecord, association.getAssociatedTableName(), apiName, apiVersion, fieldValueMappers, apiOutputAssociation.unwrap()));
+            processFieldIntoApiObject(fieldValueMappers, inputRecord, field, apiName, null, output);
          }
 
-         output.putAssociation(association.getName(), associationList);
+         ///////////////////////////////////////////
+         // process exposed joins if we have them //
+         ///////////////////////////////////////////
+         for(Map.Entry<String, List<QFieldMetaData>> entry : exposedJoinApiFields.entrySet())
+         {
+            String joinTableName = entry.getKey();
+            List<QFieldMetaData> joinFields = entry.getValue();
+
+            boolean recordHasAnyFieldsFromThisJoin = false;
+            for(String fieldName : inputRecord.getValues().keySet())
+            {
+               if(fieldName.startsWith(joinTableName + "."))
+               {
+                  recordHasAnyFieldsFromThisJoin = true;
+                  break;
+               }
+            }
+
+            if(recordHasAnyFieldsFromThisJoin)
+            {
+               for(QFieldMetaData joinField : joinFields)
+               {
+                  processFieldIntoApiObject(fieldValueMappers, inputRecord, joinField, apiName, joinTableName, output);
+               }
+            }
+         }
+
+         //////////////////////////////////////////////////////////////////////////////////////////////////
+         // todo - should probably define in meta-data if an association is included in the api or not!! //
+         //  and what its name is too...                                                                 //
+         //////////////////////////////////////////////////////////////////////////////////////////////////
+         QTableMetaData table = QContext.getQInstance().getTable(tableName);
+         for(Association association : CollectionUtils.nonNullList(table.getAssociations()))
+         {
+            if(isAssociationOmitted(apiName, apiVersion, table, association))
+            {
+               continue;
+            }
+
+            List<QRecord> associatedInputRecords = CollectionUtils.nonNullList(CollectionUtils.nonNullMap(inputRecord.getAssociatedRecords()).get(association.getName()));
+
+            QRecordApiAdapterToApiInput associationInput = new QRecordApiAdapterToApiInput()
+               .withInputRecords(associatedInputRecords)
+               .withTableName(association.getAssociatedTableName())
+               .withApiName(apiName)
+               .withApiVersion(apiVersion);
+
+            //////////////////////////////////////////////////////////////////////////////////////////
+            // note that we are missing out on the running of join-field custom field value mappers //
+            // through the ApiFieldCustomValueMapperBulkSupportInterface.prepareToProduceApiValues  //
+            // method, if they support it...                                                        //
+            //////////////////////////////////////////////////////////////////////////////////////////
+            List<C> associationOutputContentsList = new ArrayList<>();
+            qRecordsToApi(associationInput, fieldValueMappers, outputCollectionElementSupplier, associationOutputContentsList);
+            output.putAssociation(association.getName(), associationOutputContentsList);
+         }
+
+         outputList.add(output.getContents());
+      }
+   }
+
+
+
+   /***************************************************************************
+    * as part of qRecordsToApi, process a single field for a single record.
+    * @param fieldValueMappers any ApiFieldCustomValueMapper objects needed for
+    * @param inputRecord input record with values being put into an API object
+    * @param field the field being processed
+    * @param apiName name of the api this is for
+    * @param joinTableName if this field is from a join table, its name - else null.
+    * @param output the output object wrapper (map or other QRecord).
+    ***************************************************************************/
+   private static <C, O extends ApiOutputRecordWrapperInterface<C, O>> void processFieldIntoApiObject(Map<String, ApiFieldCustomValueMapper> fieldValueMappers, QRecord inputRecord, QFieldMetaData field, String apiName, String joinTableName, O output)
+   {
+      ApiFieldMetaData apiFieldMetaData = ObjectUtils.tryAndRequireNonNullElse(() -> ApiFieldMetaDataContainer.of(field).getApiFieldMetaData(apiName), new ApiFieldMetaData());
+      String           apiFieldName     = ApiFieldMetaData.getEffectiveApiFieldName(apiName, field);
+
+      /////////////////////////////////////////////////////////////////////////
+      // if there's a join table, then it's table.fieldName, else no prefix. //
+      /////////////////////////////////////////////////////////////////////////
+      String joinTableNamePrefix = joinTableName == null ? "" : joinTableName + ".";
+
+      Serializable value;
+      if(StringUtils.hasContent(apiFieldMetaData.getReplacedByFieldName()))
+      {
+         value = inputRecord.getValue(joinTableNamePrefix + apiFieldMetaData.getReplacedByFieldName());
+      }
+      else if(apiFieldMetaData.getCustomValueMapper() != null)
+      {
+         String customValueMapperName = apiFieldMetaData.getCustomValueMapper().getName();
+         if(!fieldValueMappers.containsKey(customValueMapperName))
+         {
+            fieldValueMappers.put(customValueMapperName, QCodeLoader.getAdHoc(ApiFieldCustomValueMapper.class, apiFieldMetaData.getCustomValueMapper()));
+         }
+
+         ApiFieldCustomValueMapper customValueMapper = fieldValueMappers.get(customValueMapperName);
+         value = customValueMapper.produceApiValue(inputRecord, joinTableNamePrefix + apiFieldName);
+      }
+      else
+      {
+         value = inputRecord.getValue(joinTableNamePrefix + field.getName());
       }
 
-      return (output);
+      if(field.getType().equals(QFieldType.BLOB) && value instanceof byte[] bytes)
+      {
+         value = Base64.getEncoder().encodeToString(bytes);
+      }
+
+      output.putValue(joinTableNamePrefix + apiFieldName, value);
    }
 
 

@@ -124,6 +124,7 @@ class GetAuditsForRecordProcessTest extends BaseTest
       List<QRecord> audits = (List<QRecord>) runProcessOutput.getValue("audits");
       assertEquals(4, audits.size());
       assertThat(audits).anyMatch(qRecord -> qRecord.getValue("auditDetail.message").equals("Detail 1"));
+      assertThat(audits).allMatch(qRecord -> qRecord.getDisplayValue("auditUserId").equals("John Doe"));
       assertThat(audits).noneMatch(qRecord -> qRecord.getValue("auditDetail.message").equals("Detail 5"));
       assertEquals(5, runProcessOutput.getValueInteger("distinctCount"));
 

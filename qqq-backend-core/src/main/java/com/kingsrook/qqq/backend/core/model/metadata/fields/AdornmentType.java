@@ -47,6 +47,7 @@ public enum AdornmentType
    FILE_DOWNLOAD,
    FILE_UPLOAD,
    TOOLTIP,
+   WIDGET,
    ERROR;
    //////////////////////////////////////////////////////////////////////////
    // keep these values in sync with AdornmentType.ts in qqq-frontend-core //
@@ -256,6 +257,16 @@ public enum AdornmentType
    {
       String STATIC_TEXT = "staticText";
       String TOOLTIP_DYNAMIC = "tooltipDynamic";
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public interface WidgetValues
+   {
+      String WIDGET_NAME = "widgetName";
    }
 
 }

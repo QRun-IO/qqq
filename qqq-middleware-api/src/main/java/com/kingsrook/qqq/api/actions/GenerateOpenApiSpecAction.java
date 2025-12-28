@@ -58,8 +58,12 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthResolutionContext;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthenticationResolver;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
@@ -93,11 +97,13 @@ import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Response;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.SecurityScheme;
+import com.kingsrook.qqq.openapi.model.SecuritySchemeType;
 import com.kingsrook.qqq.openapi.model.Tag;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
 import io.javalin.http.HttpStatus;
 import org.apache.commons.lang.BooleanUtils;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -105,13 +111,10 @@ import org.apache.commons.lang.BooleanUtils;
  *******************************************************************************/
 public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateOpenApiSpecInput, GenerateOpenApiSpecOutput>
 {
-   private static final QLogger LOG = QLogger.getLogger(GenerateOpenApiSpecAction.class);
-
-   public static final String GET_DESCRIPTION = """
+   public static final  String  GET_DESCRIPTION         = """
       Get one record from this table, by specifying its primary key as a path parameter.
       """;
-
-   public static final String QUERY_DESCRIPTION = """
+   public static final  String  QUERY_DESCRIPTION       = """
       Execute a query on this table, using query criteria as specified in query string parameters.
       
       * Pagination is managed via the `pageNo` & `pageSize` query string parameters.  pageNo starts at 1.  pageSize defaults to 50.
@@ -135,8 +138,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
         * Like: `myField=LIKE value` (using standard SQL % and _ wildcards)
         * Not Like: `myField=!LIKE value` (using standard SQL % and _ wildcards)
       """;
-
-   public static final String INSERT_DESCRIPTION = """
+   public static final  String  INSERT_DESCRIPTION      = """
       Insert one record into this table by supplying the values to be inserted in the request body.
       * The request body should not include a value for the table's primary key.  Rather, a value will be generated and returned in a successful response's body.
       * Any unrecognized field names in the body will cause a 400 error.
@@ -144,8 +146,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       
       Upon success, a status code of 201 (`Created`) is returned, and the generated value for the primary key will be returned in the response body object.
       """;
-
-   public static final String UPDATE_DESCRIPTION = """
+   public static final  String  UPDATE_DESCRIPTION      = """
       Update one record in this table, by specifying its primary key as a path parameter, and by supplying values to be updated in the request body.
       
       * Only the fields provided in the request body will be updated.
@@ -157,14 +158,12 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       
       Upon success, a status code of 204 (`No Content`) is returned, with no response body.
       """;
-
-   public static final String DELETE_DESCRIPTION = """
+   public static final  String  DELETE_DESCRIPTION      = """
       Delete one record from this table, by specifying its primary key as a path parameter.
       
       Upon success, a status code of 204 (`No Content`) is returned, with no response body.
       """;
-
-   public static final String BULK_INSERT_DESCRIPTION = """
+   public static final  String  BULK_INSERT_DESCRIPTION = """
       Insert one or more records into this table by supplying array of records with values to be inserted, in the request body.
       * The objects in the request body should not include a value for the table's primary key.  Rather, a value will be generated and returned in a successful response's body
       * Any unrecognized field names in the body will cause a 400 error.
@@ -174,8 +173,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       * The 1st record in the request will have its response in the 1st object in the response, and so-forth.
       * For sub-status codes of 201 (`Created`), and the generated value for the primary key will be returned in the response body object.
       """;
-
-   public static final String BULK_UPDATE_DESCRIPTION = """
+   public static final  String  BULK_UPDATE_DESCRIPTION = """
       Update one or more records in this table, by supplying an array of records, with primary keys and values to be updated, in the request body.
       * Only the fields provided in the request body will be updated.
       * To remove a value from a field, supply the key for the field, with a null value.
@@ -187,18 +185,446 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       * The 1st record in the request will have its response in the 1st object in the response, and so-forth.
       * Each input object's primary key will also be included in the corresponding response object.
       """;
-
-   public static final String BULK_DELETE_DESCRIPTION = """
+   public static final  String  BULK_DELETE_DESCRIPTION = """
       Delete one or more records from this table, by supplying an array of primary key values in the request body.
       
       An HTTP 207 (`Multi-Status`) code is generally returned, with an array of objects giving the individual sub-status codes for each record in the request body.
       * The 1st primary key in the request will have its response in the 1st object in the response, and so-forth.
       * Each input primary key will also be included in the corresponding response object.
       """;
-
-   private static final boolean LOG_OMITTED_TABLES = false;
+   private static final QLogger LOG                     = QLogger.getLogger(GenerateOpenApiSpecAction.class);
+   private static final boolean LOG_OMITTED_TABLES      = false;
 
    private Set<String> neededTableSchemas = new HashSet<>();
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static boolean doesProcessLabelNeedTheWordProcessAppended(String tag)
+   {
+      return !tag.matches("(?i).* process$");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static String getProcessSummary(ApiProcessMetaData apiProcessMetaData, QProcessMetaData processMetaData)
+   {
+      return ObjectUtils.requireConditionElse(apiProcessMetaData.getSummary(), StringUtils::hasContent, processMetaData.getLabel());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Map<String, Example> getComponentExamples()
+   {
+      Map<String, Example> rs = new LinkedHashMap<>();
+      rs.put("criteriaNotQueried", new ExampleWithListValue().withSummary("no query on this field").withValue(ListBuilder.of("")));
+
+      rs.put("criteriaNumberEquals", new ExampleWithListValue().withSummary("equal to 47").withValue(ListBuilder.of("47")));
+      rs.put("criteriaNumberNotEquals", new ExampleWithListValue().withSummary("not equal to 47").withValue(ListBuilder.of("!47")));
+      rs.put("criteriaNumberLessThan", new ExampleWithListValue().withSummary("less than 47").withValue(ListBuilder.of("<47")));
+      rs.put("criteriaNumberGreaterThan", new ExampleWithListValue().withSummary("greater than 47").withValue(ListBuilder.of(">47")));
+      rs.put("criteriaNumberLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to 47").withValue(ListBuilder.of("<=47")));
+      rs.put("criteriaNumberGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to 47").withValue(ListBuilder.of(">=47")));
+      rs.put("criteriaNumberEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
+      rs.put("criteriaNumberNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
+      rs.put("criteriaNumberBetween", new ExampleWithListValue().withSummary("between 42 and 47").withValue(ListBuilder.of("BETWEEN 42,47")));
+      rs.put("criteriaNumberNotBetween", new ExampleWithListValue().withSummary("not between 42 and 47").withValue(ListBuilder.of("!BETWEEN 42,47")));
+      rs.put("criteriaNumberIn", new ExampleWithListValue().withSummary("any of 1701, 74205, or 74656").withValue(ListBuilder.of("IN 1701,74205,74656")));
+      rs.put("criteriaNumberNotIn", new ExampleWithListValue().withSummary("not any of 1701, 74205, or 74656").withValue(ListBuilder.of("!IN 1701,74205,74656")));
+      rs.put("criteriaNumberMultiple", new ExampleWithListValue().withSummary("multiple criteria: between 42 and 47 and not equal to 45").withValue(ListBuilder.of("BETWEEN 42,47", "!45")));
+
+      rs.put("criteriaBooleanEquals", new ExampleWithListValue().withSummary("equal to true").withValue(ListBuilder.of("true")));
+      rs.put("criteriaBooleanNotEquals", new ExampleWithListValue().withSummary("not equal to true").withValue(ListBuilder.of("!true")));
+      rs.put("criteriaBooleanEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
+      rs.put("criteriaBooleanNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
+
+      String epoch = "2001-01-01T00:00:00Z";
+      String now   = Instant.parse(epoch).truncatedTo(ChronoUnit.SECONDS).toString();
+      String then  = Instant.parse(epoch).minus(90, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString();
+      String when  = Instant.parse(epoch).plus(90, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString();
+      rs.put("criteriaDateTimeEquals", new ExampleWithListValue().withSummary("equal to " + now).withValue(ListBuilder.of(now)));
+      rs.put("criteriaDateTimeNotEquals", new ExampleWithListValue().withSummary("not equal to " + now).withValue(ListBuilder.of("!" + now)));
+      rs.put("criteriaDateTimeLessThan", new ExampleWithListValue().withSummary("less than " + now).withValue(ListBuilder.of("<" + now)));
+      rs.put("criteriaDateTimeGreaterThan", new ExampleWithListValue().withSummary("greater than " + now).withValue(ListBuilder.of(">" + now)));
+      rs.put("criteriaDateTimeLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to " + now).withValue(ListBuilder.of("<=" + now)));
+      rs.put("criteriaDateTimeGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to " + now).withValue(ListBuilder.of(">=" + now)));
+      rs.put("criteriaDateTimeEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
+      rs.put("criteriaDateTimeNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
+      rs.put("criteriaDateTimeBetween", new ExampleWithListValue().withSummary("between " + then + " and " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + now)));
+      rs.put("criteriaDateTimeNotBetween", new ExampleWithListValue().withSummary("not between " + then + " and " + now).withValue(ListBuilder.of("!BETWEEN " + then + "," + now)));
+      rs.put("criteriaDateTimeIn", new ExampleWithListValue().withSummary("any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("IN " + then + "," + now + "," + when)));
+      rs.put("criteriaDateTimeNotIn", new ExampleWithListValue().withSummary("not any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("!IN " + then + "," + now + "," + when)));
+      rs.put("criteriaDateTimeMultiple", new ExampleWithListValue().withSummary("multiple criteria: between " + then + " and " + when + " and not equal to " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + when, "!" + now)));
+
+      epoch = "2001-01-01";
+      now = LocalDate.parse(epoch).toString();
+      then = LocalDate.parse(epoch).minus(90, ChronoUnit.DAYS).toString();
+      when = LocalDate.parse(epoch).plus(90, ChronoUnit.DAYS).toString();
+      rs.put("criteriaDateEquals", new ExampleWithListValue().withSummary("equal to " + now).withValue(ListBuilder.of(now)));
+      rs.put("criteriaDateNotEquals", new ExampleWithListValue().withSummary("not equal to " + now).withValue(ListBuilder.of("!" + now)));
+      rs.put("criteriaDateLessThan", new ExampleWithListValue().withSummary("less than " + now).withValue(ListBuilder.of("<" + now)));
+      rs.put("criteriaDateGreaterThan", new ExampleWithListValue().withSummary("greater than " + now).withValue(ListBuilder.of(">" + now)));
+      rs.put("criteriaDateLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to " + now).withValue(ListBuilder.of("<=" + now)));
+      rs.put("criteriaDateGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to " + now).withValue(ListBuilder.of(">=" + now)));
+      rs.put("criteriaDateEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
+      rs.put("criteriaDateNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
+      rs.put("criteriaDateBetween", new ExampleWithListValue().withSummary("between " + then + " and " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + now)));
+      rs.put("criteriaDateNotBetween", new ExampleWithListValue().withSummary("not between " + then + " and " + now).withValue(ListBuilder.of("!BETWEEN " + then + "," + now)));
+      rs.put("criteriaDateIn", new ExampleWithListValue().withSummary("any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("IN " + then + "," + now + "," + when)));
+      rs.put("criteriaDateNotIn", new ExampleWithListValue().withSummary("not any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("!IN " + then + "," + now + "," + when)));
+      rs.put("criteriaDateMultiple", new ExampleWithListValue().withSummary("multiple criteria: between " + then + " and " + when + " and not equal to " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + when, "!" + now)));
+
+      rs.put("criteriaStringEquals", new ExampleWithListValue().withSummary("equal to foo").withValue(ListBuilder.of("foo")));
+      rs.put("criteriaStringNotEquals", new ExampleWithListValue().withSummary("not equal to foo").withValue(ListBuilder.of("!foo")));
+      rs.put("criteriaStringLessThan", new ExampleWithListValue().withSummary("less than foo").withValue(ListBuilder.of("<foo")));
+      rs.put("criteriaStringGreaterThan", new ExampleWithListValue().withSummary("greater than foo").withValue(ListBuilder.of(">foo")));
+      rs.put("criteriaStringLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to foo").withValue(ListBuilder.of("<=foo")));
+      rs.put("criteriaStringGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to foo").withValue(ListBuilder.of(">=foo")));
+      rs.put("criteriaStringEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
+      rs.put("criteriaStringNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
+      rs.put("criteriaStringBetween", new ExampleWithListValue().withSummary("between bar and foo").withValue(ListBuilder.of("BETWEEN bar,foo")));
+      rs.put("criteriaStringNotBetween", new ExampleWithListValue().withSummary("not between bar and foo").withValue(ListBuilder.of("!BETWEEN bar,foo")));
+      rs.put("criteriaStringIn", new ExampleWithListValue().withSummary("any of foo, bar, or baz").withValue(ListBuilder.of("IN foo,bar,baz")));
+      rs.put("criteriaStringNotIn", new ExampleWithListValue().withSummary("not any of foo, bar, or baz").withValue(ListBuilder.of("!IN foo,bar,baz")));
+      rs.put("criteriaStringLike", new ExampleWithListValue().withSummary("starting with f").withValue(ListBuilder.of("LIKE f%")));
+      rs.put("criteriaStringNotLike", new ExampleWithListValue().withSummary("not starting with f").withValue(ListBuilder.of("!LIKE f%")));
+      rs.put("criteriaStringMultiple", new ExampleWithListValue().withSummary("multiple criteria: between bar and foo and not equal to baz").withValue(ListBuilder.of("BETWEEN bar,foo", "!baz")));
+
+      rs.put("criteriaBlobEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
+      rs.put("criteriaBlobNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
+
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Map<String, Example> getCriteriaExamples(Map<String, Example> componentExamples, QFieldMetaData tableApiField)
+   {
+      List<String> exampleRefs = new ArrayList<>();
+      exampleRefs.add("criteriaNotQueried");
+
+      if(tableApiField.getType().isStringLike())
+      {
+         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaString")).forEach(exampleRefs::add);
+      }
+      else if(tableApiField.getType().isNumeric())
+      {
+         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaNumber")).forEach(exampleRefs::add);
+      }
+      else if(tableApiField.getType().equals(QFieldType.DATE_TIME))
+      {
+         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaDateTime")).forEach(exampleRefs::add);
+      }
+      else if(tableApiField.getType().equals(QFieldType.DATE))
+      {
+         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaDate") && !s.startsWith("criteriaDateTime")).forEach(exampleRefs::add);
+      }
+      else if(tableApiField.getType().equals(QFieldType.BOOLEAN))
+      {
+         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaBoolean")).forEach(exampleRefs::add);
+      }
+      else if(tableApiField.getType().equals(QFieldType.BLOB))
+      {
+         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaBlob")).forEach(exampleRefs::add);
+      }
+
+      Map<String, Example> rs = new LinkedHashMap<>();
+
+      for(String exampleRef : exampleRefs)
+      {
+         rs.put(exampleRef, new Example().withRef("#components/examples/" + exampleRef));
+      }
+
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve scoped authentication provider and infer/validate security schemes.
+    **
+    ** <p>This method:
+    ** <ol>
+    **   <li>Resolves the scoped authentication provider for the API</li>
+    **   <li>If explicit security schemes are provided, validates they match the provider type</li>
+    **   <li>If no explicit schemes, infers appropriate schemes from the provider type</li>
+    ** </ol>
+    ** </p>
+    **
+    ** @param qInstance The QInstance
+    ** @param apiInstanceMetaData The API instance metadata
+    ** @param securitySchemes The security schemes map to populate/validate
+    *******************************************************************************/
+   private static void resolveAndValidateSecuritySchemes(QInstance qInstance, ApiInstanceMetaData apiInstanceMetaData, LinkedHashMap<String, SecurityScheme> securitySchemes)
+   {
+      ///////////////////////////////////////////////////////////////////////////
+      // Resolve the scoped authentication provider for this API            //
+      ///////////////////////////////////////////////////////////////////////////
+      QAuthenticationMetaData authMetaData = null;
+      try
+      {
+         AuthResolutionContext resolutionContext = new AuthResolutionContext()
+            .withApiMetaData(apiInstanceMetaData);
+         authMetaData = AuthenticationResolver.resolve(qInstance, resolutionContext);
+      }
+      catch(QException e)
+      {
+         // If resolver fails, fall back to instance default
+         LOG.trace("Could not resolve scoped auth provider, using instance default",
+            logPair("apiName", apiInstanceMetaData.getName()));
+         authMetaData = qInstance.getAuthentication();
+      }
+
+      if(authMetaData == null)
+      {
+         LOG.warn("No authentication provider found for API",
+            logPair("apiName", apiInstanceMetaData.getName()));
+         return;
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Get explicit security schemes from metadata                          //
+      ///////////////////////////////////////////////////////////////////////////
+      Map<String, SecurityScheme> explicitSchemes =
+         CollectionUtils.nonNullMap(apiInstanceMetaData.getSecuritySchemes());
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Infer expected security scheme type from auth provider               //
+      ///////////////////////////////////////////////////////////////////////////
+      SecuritySchemeType expectedType = inferSecuritySchemeType(authMetaData.getType());
+
+      ///////////////////////////////////////////////////////////////////////////
+      // If explicit schemes exist, validate they match provider type         //
+      ///////////////////////////////////////////////////////////////////////////
+      if(!explicitSchemes.isEmpty())
+      {
+         for(Map.Entry<String, SecurityScheme> entry : explicitSchemes.entrySet())
+         {
+            SecurityScheme scheme = entry.getValue();
+            if(scheme != null && scheme.getTypeEnum() != null)
+            {
+               SecuritySchemeType actualType = scheme.getTypeEnum();
+               if(expectedType != null && !actualType.equals(expectedType))
+               {
+                  LOG.warn("Security scheme type mismatch",
+                     logPair("apiName", apiInstanceMetaData.getName()),
+                     logPair("schemeName", entry.getKey()),
+                     logPair("expectedType", expectedType != null ? expectedType.getType() : "null"),
+                     logPair("actualType", actualType.getType()),
+                     logPair("authProviderType", authMetaData.getType() != null ? authMetaData.getType().getName() : "null"));
+               }
+            }
+         }
+         // Use explicit schemes as-is (even if mismatch - let user decide)
+         securitySchemes.putAll(explicitSchemes);
+      }
+      else
+      {
+         ///////////////////////////////////////////////////////////////////////////
+         // No explicit schemes - infer from provider type                       //
+         ///////////////////////////////////////////////////////////////////////////
+         if(expectedType != null)
+         {
+            SecurityScheme inferredScheme = createInferredSecurityScheme(expectedType, authMetaData);
+            if(inferredScheme != null)
+            {
+               String schemeName = getDefaultSchemeName(expectedType, authMetaData);
+               securitySchemes.put(schemeName, inferredScheme);
+               LOG.debug("Inferred security scheme from authentication provider",
+                  logPair("apiName", apiInstanceMetaData.getName()),
+                  logPair("schemeName", schemeName),
+                  logPair("schemeType", expectedType.getType()));
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Infer SecuritySchemeType from QAuthenticationType.
+    **
+    ** @param authType The authentication type
+    ** @return The corresponding security scheme type, or null if no mapping
+    *******************************************************************************/
+   private static SecuritySchemeType inferSecuritySchemeType(QAuthenticationType authType)
+   {
+      if(authType == null)
+      {
+         return null;
+      }
+
+      return switch(authType)
+      {
+         case OAUTH2, AUTH_0 -> SecuritySchemeType.OAUTH2;
+         case TABLE_BASED -> SecuritySchemeType.API_KEY; // Table-based auth typically uses API keys
+         case FULLY_ANONYMOUS, MOCK -> null; // No security scheme for anonymous/mock
+      };
+   }
+
+
+
+   /*******************************************************************************
+    ** Create an inferred security scheme based on the type and auth metadata.
+    **
+    ** @param schemeType The security scheme type
+    ** @param authMetaData The authentication metadata
+    ** @return A new SecurityScheme instance, or null if cannot be inferred
+    *******************************************************************************/
+   private static SecurityScheme createInferredSecurityScheme(SecuritySchemeType schemeType, QAuthenticationMetaData authMetaData)
+   {
+      SecurityScheme scheme = new SecurityScheme().withType(schemeType);
+
+      switch(schemeType)
+      {
+         case API_KEY ->
+         {
+            // Default API key configuration
+            scheme.withName("x-api-key").withIn("header");
+         }
+         case OAUTH2 ->
+         {
+            // OAuth2 scheme - basic configuration
+            // Note: Full OAuth2 flow configuration would require more details
+            // This is a minimal inferred scheme
+            scheme.withName("OAuth2");
+         }
+         case HTTP ->
+         {
+            // HTTP scheme (Basic/Bearer)
+            scheme.withScheme("bearer").withBearerFormat("JWT");
+         }
+         default ->
+         {
+            return null;
+         }
+      }
+
+      return scheme;
+   }
+
+
+
+   /*******************************************************************************
+    ** Get default scheme name based on type and auth metadata.
+    **
+    ** @param schemeType The security scheme type
+    ** @param authMetaData The authentication metadata
+    ** @return A default scheme name
+    *******************************************************************************/
+   private static String getDefaultSchemeName(SecuritySchemeType schemeType, QAuthenticationMetaData authMetaData)
+   {
+      return switch(schemeType)
+      {
+         case API_KEY -> "apiKey";
+         case OAUTH2 -> "OAuth2";
+         case HTTP -> "bearerAuth";
+      };
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static List<Map<String, List<String>>> getSecurity(ApiInstanceMetaData apiInstanceMetaData, String permissionName)
+   {
+      List<Map<String, List<String>>> rs = new ArrayList<>();
+      for(Map.Entry<String, SecurityScheme> entry : CollectionUtils.nonNullMap(apiInstanceMetaData.getSecuritySchemes()).entrySet())
+      {
+         rs.add(MapBuilder.of(entry.getKey(), List.of(permissionName)));
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static Type getFieldType(QFieldMetaData field)
+   {
+      return (getFieldType(field.getType()));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Type getFieldType(QFieldType type)
+   {
+      return switch(type)
+      {
+         case STRING, DATE, TIME, DATE_TIME, TEXT, HTML, PASSWORD, BLOB -> Type.STRING;
+         case INTEGER, LONG -> Type.INTEGER; // todo - we could give 'format' w/ int32 & int64 to further specify
+         case DECIMAL -> Type.NUMBER;
+         case BOOLEAN -> Type.BOOLEAN;
+      };
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Map<Integer, Response> buildStandardErrorResponses(ApiInstanceMetaData apiInstanceMetaData)
+   {
+      Map<Integer, Response> rs = MapBuilder.of(
+         HttpStatus.BAD_REQUEST.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.BAD_REQUEST.getCode()),
+         HttpStatus.UNAUTHORIZED.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.UNAUTHORIZED.getCode()),
+         HttpStatus.FORBIDDEN.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.FORBIDDEN.getCode()),
+         HttpStatus.INTERNAL_SERVER_ERROR.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.INTERNAL_SERVER_ERROR.getCode())
+      );
+
+      if(apiInstanceMetaData.getIncludeErrorTooManyRequests())
+      {
+         rs.put(HttpStatus.TOO_MANY_REQUESTS.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.TOO_MANY_REQUESTS.getCode()));
+      }
+
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Response buildStandardErrorResponse(String description)
+   {
+      return buildStandardErrorResponse(description, description);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Response buildStandardErrorResponse(String description, String example)
+   {
+      return new Response()
+         .withDescription(description)
+         .withContent(MapBuilder.of("application/json", new Content()
+            .withSchema(new Schema()
+               .withType(Type.OBJECT)
+               .withProperties(MapBuilder.of("error", new Schema()
+                  .withType(Type.STRING)
+                  .withExample(example)
+               ))
+            )
+         ));
+   }
 
 
 
@@ -264,7 +690,10 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          .withSecuritySchemes(securitySchemes)
          .withExamples(getComponentExamples()));
 
-      securitySchemes.putAll(CollectionUtils.nonNullMap(apiInstanceMetaData.getSecuritySchemes()));
+      ///////////////////////////////////////////////////////////////////////////
+      // Resolve scoped authentication provider and infer/validate schemes   //
+      ///////////////////////////////////////////////////////////////////////////
+      resolveAndValidateSecuritySchemes(qInstance, apiInstanceMetaData, securitySchemes);
 
       @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
       LinkedHashMap<String, String> scopes = new LinkedHashMap<>();
@@ -799,16 +1228,6 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static boolean doesProcessLabelNeedTheWordProcessAppended(String tag)
-   {
-      return !tag.matches("(?i).* process$");
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
    private void addProcessEndpoints(QInstance qInstance, ApiInstanceMetaData apiInstanceMetaData, String basePath, OpenAPI openAPI, String tag, ApiProcessMetaData apiProcessMetaData, QProcessMetaData processMetaData, APIVersion apiVersion)
    {
       String processApiPath = ApiProcessUtils.getProcessApiPath(qInstance, processMetaData, apiProcessMetaData, apiInstanceMetaData);
@@ -1042,16 +1461,6 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       };
 
       return (path);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static String getProcessSummary(ApiProcessMetaData apiProcessMetaData, QProcessMetaData processMetaData)
-   {
-      return ObjectUtils.requireConditionElse(apiProcessMetaData.getSummary(), StringUtils::hasContent, processMetaData.getLabel());
    }
 
 
@@ -1300,138 +1709,6 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static Map<String, Example> getComponentExamples()
-   {
-      Map<String, Example> rs = new LinkedHashMap<>();
-      rs.put("criteriaNotQueried", new ExampleWithListValue().withSummary("no query on this field").withValue(ListBuilder.of("")));
-
-      rs.put("criteriaNumberEquals", new ExampleWithListValue().withSummary("equal to 47").withValue(ListBuilder.of("47")));
-      rs.put("criteriaNumberNotEquals", new ExampleWithListValue().withSummary("not equal to 47").withValue(ListBuilder.of("!47")));
-      rs.put("criteriaNumberLessThan", new ExampleWithListValue().withSummary("less than 47").withValue(ListBuilder.of("<47")));
-      rs.put("criteriaNumberGreaterThan", new ExampleWithListValue().withSummary("greater than 47").withValue(ListBuilder.of(">47")));
-      rs.put("criteriaNumberLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to 47").withValue(ListBuilder.of("<=47")));
-      rs.put("criteriaNumberGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to 47").withValue(ListBuilder.of(">=47")));
-      rs.put("criteriaNumberEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
-      rs.put("criteriaNumberNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
-      rs.put("criteriaNumberBetween", new ExampleWithListValue().withSummary("between 42 and 47").withValue(ListBuilder.of("BETWEEN 42,47")));
-      rs.put("criteriaNumberNotBetween", new ExampleWithListValue().withSummary("not between 42 and 47").withValue(ListBuilder.of("!BETWEEN 42,47")));
-      rs.put("criteriaNumberIn", new ExampleWithListValue().withSummary("any of 1701, 74205, or 74656").withValue(ListBuilder.of("IN 1701,74205,74656")));
-      rs.put("criteriaNumberNotIn", new ExampleWithListValue().withSummary("not any of 1701, 74205, or 74656").withValue(ListBuilder.of("!IN 1701,74205,74656")));
-      rs.put("criteriaNumberMultiple", new ExampleWithListValue().withSummary("multiple criteria: between 42 and 47 and not equal to 45").withValue(ListBuilder.of("BETWEEN 42,47", "!45")));
-
-      rs.put("criteriaBooleanEquals", new ExampleWithListValue().withSummary("equal to true").withValue(ListBuilder.of("true")));
-      rs.put("criteriaBooleanNotEquals", new ExampleWithListValue().withSummary("not equal to true").withValue(ListBuilder.of("!true")));
-      rs.put("criteriaBooleanEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
-      rs.put("criteriaBooleanNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
-
-      String epoch = "2001-01-01T00:00:00Z";
-      String now   = Instant.parse(epoch).truncatedTo(ChronoUnit.SECONDS).toString();
-      String then  = Instant.parse(epoch).minus(90, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString();
-      String when  = Instant.parse(epoch).plus(90, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString();
-      rs.put("criteriaDateTimeEquals", new ExampleWithListValue().withSummary("equal to " + now).withValue(ListBuilder.of(now)));
-      rs.put("criteriaDateTimeNotEquals", new ExampleWithListValue().withSummary("not equal to " + now).withValue(ListBuilder.of("!" + now)));
-      rs.put("criteriaDateTimeLessThan", new ExampleWithListValue().withSummary("less than " + now).withValue(ListBuilder.of("<" + now)));
-      rs.put("criteriaDateTimeGreaterThan", new ExampleWithListValue().withSummary("greater than " + now).withValue(ListBuilder.of(">" + now)));
-      rs.put("criteriaDateTimeLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to " + now).withValue(ListBuilder.of("<=" + now)));
-      rs.put("criteriaDateTimeGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to " + now).withValue(ListBuilder.of(">=" + now)));
-      rs.put("criteriaDateTimeEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
-      rs.put("criteriaDateTimeNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
-      rs.put("criteriaDateTimeBetween", new ExampleWithListValue().withSummary("between " + then + " and " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + now)));
-      rs.put("criteriaDateTimeNotBetween", new ExampleWithListValue().withSummary("not between " + then + " and " + now).withValue(ListBuilder.of("!BETWEEN " + then + "," + now)));
-      rs.put("criteriaDateTimeIn", new ExampleWithListValue().withSummary("any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("IN " + then + "," + now + "," + when)));
-      rs.put("criteriaDateTimeNotIn", new ExampleWithListValue().withSummary("not any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("!IN " + then + "," + now + "," + when)));
-      rs.put("criteriaDateTimeMultiple", new ExampleWithListValue().withSummary("multiple criteria: between " + then + " and " + when + " and not equal to " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + when, "!" + now)));
-
-      epoch = "2001-01-01";
-      now = LocalDate.parse(epoch).toString();
-      then = LocalDate.parse(epoch).minus(90, ChronoUnit.DAYS).toString();
-      when = LocalDate.parse(epoch).plus(90, ChronoUnit.DAYS).toString();
-      rs.put("criteriaDateEquals", new ExampleWithListValue().withSummary("equal to " + now).withValue(ListBuilder.of(now)));
-      rs.put("criteriaDateNotEquals", new ExampleWithListValue().withSummary("not equal to " + now).withValue(ListBuilder.of("!" + now)));
-      rs.put("criteriaDateLessThan", new ExampleWithListValue().withSummary("less than " + now).withValue(ListBuilder.of("<" + now)));
-      rs.put("criteriaDateGreaterThan", new ExampleWithListValue().withSummary("greater than " + now).withValue(ListBuilder.of(">" + now)));
-      rs.put("criteriaDateLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to " + now).withValue(ListBuilder.of("<=" + now)));
-      rs.put("criteriaDateGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to " + now).withValue(ListBuilder.of(">=" + now)));
-      rs.put("criteriaDateEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
-      rs.put("criteriaDateNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
-      rs.put("criteriaDateBetween", new ExampleWithListValue().withSummary("between " + then + " and " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + now)));
-      rs.put("criteriaDateNotBetween", new ExampleWithListValue().withSummary("not between " + then + " and " + now).withValue(ListBuilder.of("!BETWEEN " + then + "," + now)));
-      rs.put("criteriaDateIn", new ExampleWithListValue().withSummary("any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("IN " + then + "," + now + "," + when)));
-      rs.put("criteriaDateNotIn", new ExampleWithListValue().withSummary("not any of " + then + ", " + now + ", or " + when).withValue(ListBuilder.of("!IN " + then + "," + now + "," + when)));
-      rs.put("criteriaDateMultiple", new ExampleWithListValue().withSummary("multiple criteria: between " + then + " and " + when + " and not equal to " + now).withValue(ListBuilder.of("BETWEEN " + then + "," + when, "!" + now)));
-
-      rs.put("criteriaStringEquals", new ExampleWithListValue().withSummary("equal to foo").withValue(ListBuilder.of("foo")));
-      rs.put("criteriaStringNotEquals", new ExampleWithListValue().withSummary("not equal to foo").withValue(ListBuilder.of("!foo")));
-      rs.put("criteriaStringLessThan", new ExampleWithListValue().withSummary("less than foo").withValue(ListBuilder.of("<foo")));
-      rs.put("criteriaStringGreaterThan", new ExampleWithListValue().withSummary("greater than foo").withValue(ListBuilder.of(">foo")));
-      rs.put("criteriaStringLessThanOrEquals", new ExampleWithListValue().withSummary("less than or equal to foo").withValue(ListBuilder.of("<=foo")));
-      rs.put("criteriaStringGreaterThanOrEquals", new ExampleWithListValue().withSummary("greater than or equal to foo").withValue(ListBuilder.of(">=foo")));
-      rs.put("criteriaStringEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
-      rs.put("criteriaStringNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
-      rs.put("criteriaStringBetween", new ExampleWithListValue().withSummary("between bar and foo").withValue(ListBuilder.of("BETWEEN bar,foo")));
-      rs.put("criteriaStringNotBetween", new ExampleWithListValue().withSummary("not between bar and foo").withValue(ListBuilder.of("!BETWEEN bar,foo")));
-      rs.put("criteriaStringIn", new ExampleWithListValue().withSummary("any of foo, bar, or baz").withValue(ListBuilder.of("IN foo,bar,baz")));
-      rs.put("criteriaStringNotIn", new ExampleWithListValue().withSummary("not any of foo, bar, or baz").withValue(ListBuilder.of("!IN foo,bar,baz")));
-      rs.put("criteriaStringLike", new ExampleWithListValue().withSummary("starting with f").withValue(ListBuilder.of("LIKE f%")));
-      rs.put("criteriaStringNotLike", new ExampleWithListValue().withSummary("not starting with f").withValue(ListBuilder.of("!LIKE f%")));
-      rs.put("criteriaStringMultiple", new ExampleWithListValue().withSummary("multiple criteria: between bar and foo and not equal to baz").withValue(ListBuilder.of("BETWEEN bar,foo", "!baz")));
-
-      rs.put("criteriaBlobEmpty", new ExampleWithListValue().withSummary("null value").withValue(ListBuilder.of("EMPTY")));
-      rs.put("criteriaBlobNotEmpty", new ExampleWithListValue().withSummary("non-null value").withValue(ListBuilder.of("!EMPTY")));
-
-      return (rs);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static Map<String, Example> getCriteriaExamples(Map<String, Example> componentExamples, QFieldMetaData tableApiField)
-   {
-      List<String> exampleRefs = new ArrayList<>();
-      exampleRefs.add("criteriaNotQueried");
-
-      if(tableApiField.getType().isStringLike())
-      {
-         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaString")).forEach(exampleRefs::add);
-      }
-      else if(tableApiField.getType().isNumeric())
-      {
-         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaNumber")).forEach(exampleRefs::add);
-      }
-      else if(tableApiField.getType().equals(QFieldType.DATE_TIME))
-      {
-         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaDateTime")).forEach(exampleRefs::add);
-      }
-      else if(tableApiField.getType().equals(QFieldType.DATE))
-      {
-         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaDate") && !s.startsWith("criteriaDateTime")).forEach(exampleRefs::add);
-      }
-      else if(tableApiField.getType().equals(QFieldType.BOOLEAN))
-      {
-         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaBoolean")).forEach(exampleRefs::add);
-      }
-      else if(tableApiField.getType().equals(QFieldType.BLOB))
-      {
-         componentExamples.keySet().stream().filter(s -> s.startsWith("criteriaBlob")).forEach(exampleRefs::add);
-      }
-
-      Map<String, Example> rs = new LinkedHashMap<>();
-
-      for(String exampleRef : exampleRefs)
-      {
-         rs.put(exampleRef, new Example().withRef("#components/examples/" + exampleRef));
-      }
-
-      return (rs);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
    private void addAssociations(String apiName, String version, QTableMetaData table, Schema tableSchema)
    {
       ApiTableMetaData thisApiTableMetaData = ObjectUtils.tryElse(() -> ApiTableMetaDataContainer.of(table).getApiTableMetaData(apiName), new ApiTableMetaData());
@@ -1537,21 +1814,6 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          }
       }
       return fieldSchema;
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static List<Map<String, List<String>>> getSecurity(ApiInstanceMetaData apiInstanceMetaData, String permissionName)
-   {
-      List<Map<String, List<String>>> rs = new ArrayList<>();
-      for(Map.Entry<String, SecurityScheme> entry : CollectionUtils.nonNullMap(apiInstanceMetaData.getSecuritySchemes()).entrySet())
-      {
-         rs.add(MapBuilder.of(entry.getKey(), List.of(permissionName)));
-      }
-      return (rs);
    }
 
 
@@ -1706,32 +1968,6 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static Type getFieldType(QFieldMetaData field)
-   {
-      return (getFieldType(field.getType()));
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static Type getFieldType(QFieldType type)
-   {
-      return switch(type)
-      {
-         case STRING, DATE, TIME, DATE_TIME, TEXT, HTML, PASSWORD, BLOB -> Type.STRING;
-         case INTEGER, LONG -> Type.INTEGER; // todo - we could give 'format' w/ int32 & int64 to further specify
-         case DECIMAL -> Type.NUMBER;
-         case BOOLEAN -> Type.BOOLEAN;
-      };
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
    private String getFieldFormat(QFieldMetaData field)
    {
       return (getFieldFormat(field.getType()));
@@ -1753,58 +1989,6 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          case BLOB -> "byte"; // base-64-encoded, per https://swagger.io/docs/specification/data-models/data-types/#file
          default -> null;
       };
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static Map<Integer, Response> buildStandardErrorResponses(ApiInstanceMetaData apiInstanceMetaData)
-   {
-      Map<Integer, Response> rs = MapBuilder.of(
-         HttpStatus.BAD_REQUEST.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.BAD_REQUEST.getCode()),
-         HttpStatus.UNAUTHORIZED.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.UNAUTHORIZED.getCode()),
-         HttpStatus.FORBIDDEN.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.FORBIDDEN.getCode()),
-         HttpStatus.INTERNAL_SERVER_ERROR.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.INTERNAL_SERVER_ERROR.getCode())
-      );
-
-      if(apiInstanceMetaData.getIncludeErrorTooManyRequests())
-      {
-         rs.put(HttpStatus.TOO_MANY_REQUESTS.getCode(), new Response().withRef("#/components/responses/error" + HttpStatus.TOO_MANY_REQUESTS.getCode()));
-      }
-
-      return (rs);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static Response buildStandardErrorResponse(String description)
-   {
-      return buildStandardErrorResponse(description, description);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static Response buildStandardErrorResponse(String description, String example)
-   {
-      return new Response()
-         .withDescription(description)
-         .withContent(MapBuilder.of("application/json", new Content()
-            .withSchema(new Schema()
-               .withType(Type.OBJECT)
-               .withProperties(MapBuilder.of("error", new Schema()
-                  .withType(Type.STRING)
-                  .withExample(example)
-               ))
-            )
-         ));
    }
 
 

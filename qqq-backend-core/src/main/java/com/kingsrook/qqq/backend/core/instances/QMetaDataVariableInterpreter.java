@@ -25,9 +25,12 @@ package com.kingsrook.qqq.backend.core.instances;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -178,38 +181,12 @@ public class QMetaDataVariableInterpreter
          return (null);
       }
 
-      //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // Support global coalescing with "??" (e.g., ${env.X}??${prop.X}??${input.X}), returning the first resolved //
-      // non-null value (and for Strings, the first non-empty that is not the same literal variable token).        //
-      //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // Support "null coalescing" with "??" (e.g., ${env.X}??${prop.X}??${input.X}), returning the first resolved //
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
       if(value.contains("??"))
       {
-         String[] split = value.split("\\?\\?");
-         for(String part : split)
-         {
-            Serializable result = interpretForObject(part, defaultIfLooksLikeVariableButNotFound);
-            if(result != null)
-            {
-               ////////////////////////////////////////////////////////////////////////////////////////////
-               // If result is a String, ensure it has content and is not the same literal we passed in. //
-               ////////////////////////////////////////////////////////////////////////////////////////////
-               if(result instanceof String s)
-               {
-                  if(StringUtils.hasContent(s) && !s.equals(part))
-                  {
-                     return (result);
-                  }
-               }
-               else
-               {
-                  return (result);
-               }
-            }
-         }
-         /////////////////////////////////////////////////////////
-         // if we make it here and haven't returned, return nul //
-         /////////////////////////////////////////////////////////
-         return (null);
+         return interpretForObjectNullCoalescingScenario(value, defaultIfLooksLikeVariableButNotFound);
       }
 
       String envPrefix = "${env.";
@@ -261,6 +238,64 @@ public class QMetaDataVariableInterpreter
       }
 
       return (value);
+   }
+
+
+
+   /***************************************************************************
+    * Support "null coalescing" with "??" (e.g., ${env.X}??${prop.X}??${input.X}),
+    * returning the first resolved non-null value (and for Strings, the first
+    * non-empty that is not the same literal variable token).
+    ***************************************************************************/
+   private Serializable interpretForObjectNullCoalescingScenario(String value, Serializable defaultIfLooksLikeVariableButNotFound)
+   {
+      String[]    split                    = value.split("\\?\\?");
+      boolean     anyPartLooksLikeVariable = false;
+      Set<String> allInputMaps             = new HashSet<>(Set.of("env", "prop"));
+      if(valueMaps != null)
+      {
+         allInputMaps.addAll(valueMaps.keySet());
+      }
+
+      for(String part : split)
+      {
+         Serializable result = interpretForObject(part, defaultIfLooksLikeVariableButNotFound);
+         if(!Objects.equals(result, defaultIfLooksLikeVariableButNotFound) && result != null)
+         {
+            ////////////////////////////////////////////////////////////////////////////////////////////
+            // If result is a String, ensure it has content and is not the same literal we passed in. //
+            ////////////////////////////////////////////////////////////////////////////////////////////
+            if(result instanceof String s)
+            {
+               if(StringUtils.hasContent(s) && !s.equals(part))
+               {
+                  return (result);
+               }
+            }
+            else
+            {
+               return (result);
+            }
+         }
+
+         if(!anyPartLooksLikeVariable)
+         {
+            for(String inputMapName : allInputMaps)
+            {
+               String prefix = "${" + inputMapName + ".";
+               if(part.startsWith(prefix) && part.endsWith("}"))
+               {
+                  anyPartLooksLikeVariable = true;
+                  break;
+               }
+            }
+         }
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // if we make it here and haven't returned, return either the defaultIfLooksLikeVariableButNotFound, or the input value. //
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      return (anyPartLooksLikeVariable ? defaultIfLooksLikeVariableButNotFound : value);
    }
 
 

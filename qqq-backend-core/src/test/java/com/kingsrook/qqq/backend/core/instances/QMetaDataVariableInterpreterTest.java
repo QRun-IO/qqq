@@ -22,10 +22,18 @@
 package com.kingsrook.qqq.backend.core.instances;
 
 
+import java.io.File;
+import java.io.IOException;
+import java.io.Serializable;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +45,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
- ** Unit test for QSecretReader
+ * Unit test for QMetaDataVariableInterpreterTest.
+ *
+ * Note that this class also gets some additional test coverage from
+ * QQueryFilterTest, who is a large user of this functionality.
  *******************************************************************************/
 class QMetaDataVariableInterpreterTest extends BaseTest
 {
@@ -121,13 +132,37 @@ class QMetaDataVariableInterpreterTest extends BaseTest
     **
     *******************************************************************************/
    @Test
-   void testDotEnvFile()
+   void testDotEnvFile() throws IOException
    {
-      QMetaDataVariableInterpreter secretReader = new QMetaDataVariableInterpreter();
-      String                       key          = "CUSTOM_PROPERTY";
-      String                       value        = "ABCD-9876";
-      assertNull(secretReader.interpret("${env.NOT-" + key + "}"));
-      assertEquals(value, secretReader.interpret("${env." + key + "}"));
+      boolean hadDotenvBefore = false;
+
+      Path dotEnv = Paths.get(".env");
+      Path dotEnvBak = Paths.get(".env.bak." + UUID.randomUUID());
+
+      try
+      {
+         if(Files.exists(dotEnv))
+         {
+            hadDotenvBefore = true;
+            Files.move(dotEnv, dotEnvBak);
+         }
+
+         FileUtils.writeStringToFile(dotEnv.toFile(), "CUSTOM_PROPERTY=ABCD-9876\n", "UTF-8");
+
+         QMetaDataVariableInterpreter secretReader = new QMetaDataVariableInterpreter();
+         String                       key          = "CUSTOM_PROPERTY";
+         String                       value        = "ABCD-9876";
+         assertNull(secretReader.interpret("${env.NOT-" + key + "}"));
+         assertEquals(value, secretReader.interpret("${env." + key + "}"));
+      }
+      finally
+      {
+         Files.deleteIfExists(dotEnv);
+         if(hadDotenvBefore)
+         {
+            Files.move(dotEnvBak, dotEnv);
+         }
+      }
    }
 
 
@@ -197,17 +232,16 @@ class QMetaDataVariableInterpreterTest extends BaseTest
       assertEquals("fu", variableInterpreter.interpretForObject("${others.foo}??${input.foo}"));
       assertEquals("fu", variableInterpreter.interpretForObject("${output.foo}??${others.foo}"));
       assertNull(variableInterpreter.interpretForObject("${input.bar}??${others.bar}"));
-      assertNull(variableInterpreter.interpretForObject("${output.bar}??${smothers.bar}"));
-      assertNull(variableInterpreter.interpretForObject("${output.bar}??${smothers.bar}"));
+      assertEquals("${output.bar}??${smothers.bar}", variableInterpreter.interpretForObject("${output.bar}??${smothers.bar}"));
    }
 
 
 
    /*******************************************************************************
-    ** Global coalescing: ${env.X}??${prop.x}??${input.x} (env wins)
+    ** Null coalescing: ${env.X}??${prop.x}??${input.x} (env wins)
     *******************************************************************************/
    @Test
-   void testGlobalCoalescing_envPropInput_envWins()
+   void testNullCoalescing_envPropInput_envWins()
    {
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       interpreter.setEnvironmentOverrides(Map.of("MY_VAR", "ENVV"));
@@ -222,10 +256,10 @@ class QMetaDataVariableInterpreterTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Global coalescing: ${env.X}??${prop.x}??${input.x} (prop wins when env missing)
+    ** Null coalescing: ${env.X}??${prop.x}??${input.x} (prop wins when env missing)
     *******************************************************************************/
    @Test
-   void testGlobalCoalescing_envPropInput_propWinsWhenEnvMissing()
+   void testNullCoalescing_envPropInput_propWinsWhenEnvMissing()
    {
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       // no env override for MY_OTHER
@@ -235,22 +269,31 @@ class QMetaDataVariableInterpreterTest extends BaseTest
       assertEquals("PROP_ONLY", interpreter.interpretForObject("${env.MY_OTHER}??${prop.my.other}??${input.myOther}"));
       assertEquals("INPUT_ONLY", interpreter.interpretForObject("${env.MY_OTHER}??${input.myOther}"));
       assertNull(interpreter.interpretForObject("${env.MY_OTHER}??${prop.NOT_SET}??${input.notSet}"));
+      assertEquals(InputNotFound.instance, interpreter.interpretForObject("${env.MY_OTHER}??${prop.NOT_SET}??${input.notSet}", InputNotFound.instance));
+      assertNull(interpreter.interpretForObject("${env.MY_OTHER}??${prop.NOT_SET}??${nonPut.notSet}"));
+
+      /////////////////////////////////////
+      // re-run some with null valueMaps //
+      /////////////////////////////////////
+      interpreter = new QMetaDataVariableInterpreter();
+      assertEquals(InputNotFound.instance, interpreter.interpretForObject("${env.MY_OTHER}??${prop.NOT_SET}??${input.notSet}", InputNotFound.instance));
+      assertNull(interpreter.interpretForObject("${env.MY_OTHER}??${prop.NOT_SET}??${nonPut.notSet}"));
    }
 
 
 
    /*******************************************************************************
-    ** Global coalescing respects "looks-like-variable" rule: unknown prefix returns literal, which is skipped
+    ** Null coalescing respects "looks-like-variable" rule: unknown prefix returns literal, which is skipped
     *******************************************************************************/
    @Test
-   void testGlobalCoalescing_skipsUnknownPrefixLiteral()
+   void testNullCoalescing_skipsUnknownPrefixLiteral()
    {
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       interpreter.addValueMap("others", Map.of("foo", "fu"));
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // ${output.foo} is not a known value map; interpretForObject returns the literal string "${output.foo}". //
-      // Global coalescer skips it (since it's exactly the same token), and falls back to the next resolvable.  //
+      // Null coalescer skips it (since it's exactly the same token), and falls back to the next resolvable.  //
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////
       assertEquals("fu", interpreter.interpretForObject("${output.foo}??${others.foo}"));
    }
@@ -258,10 +301,10 @@ class QMetaDataVariableInterpreterTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Global coalescing skips empty/blank strings and uses next value
+    ** Null coalescing skips empty/blank strings and uses next value
     *******************************************************************************/
    @Test
-   void testGlobalCoalescing_skipsEmptyAndBlankStrings()
+   void testNullCoalescing_skipsEmptyAndBlankStrings()
    {
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       interpreter.setEnvironmentOverrides(Map.of("EMPTY_ENV", ""));
@@ -277,10 +320,10 @@ class QMetaDataVariableInterpreterTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Global coalescing selects first non-null non-string value (e.g., BigDecimal)
+    ** Null coalescing selects first non-null non-string value (e.g., BigDecimal)
     *******************************************************************************/
    @Test
-   void testGlobalCoalescing_nonStringTypes()
+   void testNullCoalescing_nonStringTypes()
    {
       QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
       interpreter.addValueMap("input", Map.of("amount", new BigDecimal("3.50")));
@@ -289,6 +332,53 @@ class QMetaDataVariableInterpreterTest extends BaseTest
       // prop/env not set -> resolves to BigDecimal from value map //
       ///////////////////////////////////////////////////////////////
       assertEquals(new BigDecimal("3.50"), interpreter.interpretForObject("${prop.amount}??${env.AMOUNT}??${input.amount}"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testCoalescingWithDefaultIfNotFound()
+   {
+      QMetaDataVariableInterpreter interpreter = new QMetaDataVariableInterpreter();
+      interpreter.addValueMap("input", Map.of("bar", "yes"));
+
+      assertEquals("yes", interpreter.interpretForObject("${input.bar}??${input.foo}", InputNotFound.instance));
+      assertEquals("yes", interpreter.interpretForObject("${input.foo}??${input.bar}", InputNotFound.instance));
+      assertEquals(InputNotFound.instance, interpreter.interpretForObject("${input.foo}??${input.nonce}", InputNotFound.instance));
+
+      assertEquals("yes", interpreter.interpretForObject("${input.bar}??${input.foo}", "no"));
+      assertEquals("yes", interpreter.interpretForObject("${input.foo}??${input.bar}", "no"));
+      assertEquals("no", interpreter.interpretForObject("${input.foo}??${input.nonce}", "no"));
+
+      assertEquals("yes", interpreter.interpretForObject("${input.bar}??${input.foo}", null));
+      assertEquals("yes", interpreter.interpretForObject("${input.foo}??${input.bar}", null));
+      assertNull(interpreter.interpretForObject("${input.foo}??${input.nonce}", null));
+   }
+
+
+
+   /***************************************************************************
+    ** "Token" object to be used as the defaultIfLooksLikeVariableButNotFound
+    ** parameter to variableInterpreter.interpretForObject, so we can be
+    ** very clear that we got this default back (e.g., instead of a null,
+    ** which could maybe mean something else?)
+    ***************************************************************************/
+   private static final class InputNotFound implements Serializable
+   {
+      private static InputNotFound instance = new InputNotFound();
+
+
+
+      /*******************************************************************************
+       ** private singleton constructor
+       *******************************************************************************/
+      private InputNotFound()
+      {
+
+      }
    }
 
 

@@ -22,9 +22,7 @@
 package com.kingsrook.qqq.backend.core.actions.reporting;
 
 
-import java.util.List;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
 /*******************************************************************************
@@ -67,13 +65,24 @@ public class RecordPipeBufferedWrapper extends BufferedRecordPipe
 
 
    /*******************************************************************************
-    ** when it's time to actually add records into the pipe, actually add them
-    ** into the wrapped pipe!
+    ** when it's time to actually add records into the pipe (flushing from buffer int
+    * pipe), actually add them into the wrapped pipe!
     *******************************************************************************/
    @Override
-   public void addRecords(List<QRecord> records) throws QException
+   protected void flush() throws QException
    {
-      wrappedPipe.addRecords(records);
+      wrappedPipe.addRecords(buffer);
+      buffer.clear();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   public RecordPipe getWrappedPipe()
+   {
+      return wrappedPipe;
    }
 
 }

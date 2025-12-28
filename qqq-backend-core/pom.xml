@@ -43,7 +43,7 @@
          <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>bom</artifactId>
-            <version>2.40.13</version>
+            <version>2.40.16</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
@@ -64,7 +64,7 @@
       <dependency>
          <groupId>commons-validator</groupId>
          <artifactId>commons-validator</artifactId>
-         <version>1.9.0</version>
+         <version>1.10.1</version>
       </dependency>
       <dependency>
          <groupId>software.amazon.awssdk</groupId>
@@ -256,14 +256,14 @@
       <dependency>
          <groupId>com.sun.mail</groupId>
          <artifactId>jakarta.mail</artifactId>
-         <version>2.0.1</version>
+         <version>2.0.2</version>
       </dependency>
 
       <!-- angus-activation provides DataContentHandler implementations for jakarta.activation -->
       <dependency>
          <groupId>org.eclipse.angus</groupId>
          <artifactId>angus-activation</artifactId>
-         <version>2.0.2</version>
+         <version>2.0.3</version>
       </dependency>
 
       <!-- Common deps for all qqq modules -->
@@ -298,13 +298,13 @@
       <dependency>
          <groupId>net.bytebuddy</groupId>
          <artifactId>byte-buddy</artifactId>
-         <version>1.15.4</version>
+         <version>1.18.3</version>
          <scope>test</scope>
       </dependency>
       <dependency>
          <groupId>org.mockito</groupId>
          <artifactId>mockito-core</artifactId>
-         <version>5.14.2</version>
+         <version>5.21.0</version>
          <scope>test</scope>
       </dependency>
       <dependency>

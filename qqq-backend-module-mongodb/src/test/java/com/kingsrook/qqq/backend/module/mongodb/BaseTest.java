@@ -48,7 +48,7 @@ public class BaseTest
 
    private static GenericContainer<?> mongoDBContainer;
 
-   private static final String MONGO_IMAGE = "mongo:4.2.0-bionic";
+   private static final String MONGO_IMAGE = "mongo:6.0";
 
 
 

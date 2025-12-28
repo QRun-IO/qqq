@@ -4,9 +4,9 @@
 
 QQQ is a low-code application framework for engineers by Kingsrook, LLC. It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
 
-**Current Version:** 0.33.0-SNAPSHOT
+**Current Version:** 0.34.0-SNAPSHOT
 **License:** AGPL-3.0
-**Java Version:** 17+
+**Java Version:** 21 LTS
 
 ## Repository Structure
 
@@ -200,6 +200,17 @@ new IsolatedSpaRouteProvider()
 3. **Checkstyle:** Builds fail on style violations
 4. **Coverage:** Builds fail below thresholds (use `-Dcoverage.haltOnFailure=false` to override)
 5. **Import order:** Must be lexicographical (Checkstyle enforces)
+
+## Key Dependencies
+
+| Library | Version | Notes |
+|---------|---------|-------|
+| Log4j | 2.25.3 | Logging (security patched) |
+| Jackson | 2.20.1 | JSON serialization |
+| JaCoCo | 0.8.14 | Code coverage |
+| Testcontainers | 2.0.3 | Integration testing |
+| MongoDB Driver | 5.5.1 | Use mongo:6.0+ for tests |
+| AssertJ | 3.27.6 | Test assertions |
 
 ## Files Reference
 

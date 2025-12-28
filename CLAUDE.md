@@ -4,7 +4,7 @@
 
 QQQ is a low-code application framework for engineers by Kingsrook, LLC. It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
 
-**Current Version:** 0.34.0-SNAPSHOT
+**Current Version:** 0.35.0-SNAPSHOT
 **License:** AGPL-3.0
 **Java Version:** 21 LTS
 

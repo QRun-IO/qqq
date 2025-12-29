@@ -82,6 +82,11 @@ public class QThemeMetaData implements QSupplementalInstanceMetaData
    //////////////////////
    private String customCss;
 
+   //////////////////////
+   // Icon style       //
+   //////////////////////
+   private String iconStyle;
+
 
 
    /***************************************************************************
@@ -136,6 +141,11 @@ public class QThemeMetaData implements QSupplementalInstanceMetaData
       if(density != null && !density.equals("compact") && !density.equals("normal") && !density.equals("comfortable"))
       {
          LOG.warn("Invalid theme density value, should be 'compact', 'normal', or 'comfortable'", logPair("density", density));
+      }
+
+      if(iconStyle != null && !iconStyle.equals("filled") && !iconStyle.equals("outlined") && !iconStyle.equals("rounded") && !iconStyle.equals("sharp") && !iconStyle.equals("two-tone"))
+      {
+         LOG.warn("Invalid theme iconStyle value, should be 'filled', 'outlined', 'rounded', 'sharp', or 'two-tone'", logPair("iconStyle", iconStyle));
       }
    }
 
@@ -707,6 +717,37 @@ public class QThemeMetaData implements QSupplementalInstanceMetaData
    public QThemeMetaData withCustomCss(String customCss)
    {
       this.customCss = customCss;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for iconStyle
+    *******************************************************************************/
+   public String getIconStyle()
+   {
+      return (this.iconStyle);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for iconStyle
+    *******************************************************************************/
+   public void setIconStyle(String iconStyle)
+   {
+      this.iconStyle = iconStyle;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for iconStyle
+    *******************************************************************************/
+   public QThemeMetaData withIconStyle(String iconStyle)
+   {
+      this.iconStyle = iconStyle;
       return (this);
    }
 

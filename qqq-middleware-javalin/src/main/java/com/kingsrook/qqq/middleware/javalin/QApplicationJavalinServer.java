@@ -25,12 +25,16 @@ package com.kingsrook.qqq.middleware.javalin;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.logging.LogUtils;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -38,8 +42,11 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.backend.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.ProcessBasedRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.Javalin;
@@ -74,6 +81,7 @@ public class QApplicationJavalinServer
 
    private Integer                              port                                = 8000;
    private boolean                              serveFrontendMaterialDashboard      = true;
+   private String                               frontendMaterialDashboardHostedPath = "/";
    private boolean                              serveLegacyUnversionedMiddlewareAPI = true;
    private List<AbstractMiddlewareVersion>      middlewareVersionList               = List.of(new MiddlewareVersionV1());
    private List<QJavalinRouteProviderInterface> additionalRouteProviders            = null;
@@ -112,15 +120,36 @@ public class QApplicationJavalinServer
          addRouteProvidersFromMetaData(javalinMetaData);
       }
 
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      // Use IsolatedSpaRouteProvider for Material Dashboard to get proper deep linking support.  //
+      // This ensures the <base href> tag is injected into index.html, fixing relative URL        //
+      // resolution for SPAs with "homepage": "." in package.json.                                //
+      //                                                                                          //
+      // Note: This must be added BEFORE Javalin.create() so that acceptJavalinConfig() is called //
+      // during the configuration phase, setting up static file serving with the correct paths.   //
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      if(serveFrontendMaterialDashboard)
+      {
+         if(getClass().getResource("/material-dashboard/index.html") == null)
+         {
+            LOG.warn("/material-dashboard/index.html resource was not found.  This might happen if you're using a local (e.g., within-IDE) snapshot version... Try updating pom.xml to reference a released version of qfmd?");
+         }
+
+         IsolatedSpaRouteProvider materialDashboardProvider = new IsolatedSpaRouteProvider(
+            frontendMaterialDashboardHostedPath,
+            "material-dashboard"  // classpath location (no leading slash for IsolatedSpaRouteProvider)
+         )
+            .withSpaIndexFile("material-dashboard/index.html")  // full classpath path required
+            .withDeepLinking(true)
+            .withLoadFromJar(true);
+
+         withAdditionalRouteProvider(materialDashboardProvider);
+      }
+
       service = Javalin.create(config ->
       {
          if(serveFrontendMaterialDashboard)
          {
-            if(getClass().getResource("/material-dashboard/index.html") == null)
-            {
-               LOG.warn("/material-dashboard/index.html resource was not found.  This might happen if you're using a local (e.g., within-IDE) snapshot version... Try updating pom.xml to reference a released version of qfmd?");
-            }
-
             ////////////////////////////////////////////////////////////////////////////////////////
             // If you have any assets to add to the web server (e.g., logos, icons) place them at //
             // src/main/resources/material-dashboard-overlay                                      //
@@ -136,16 +165,12 @@ public class QApplicationJavalinServer
                }
             }
 
-            ////////////////////////////////////////////////////////////////////////////////////
-            // tell javalin where to find material-dashboard static web assets                //
-            // in this case, this path is coming from the qqq-frontend-material-dashboard jar //
-            ////////////////////////////////////////////////////////////////////////////////////
-            config.staticFiles.add("/material-dashboard");
-
-            ////////////////////////////////////////////////////////////
-            // set the index page for the SPA from material dashboard //
-            ////////////////////////////////////////////////////////////
-            config.spaRoot.addFile("/", "material-dashboard/index.html");
+            //////////////////////////////////////////////////////////////////////////////////////////
+            // Note: Static file serving and SPA deep linking for Material Dashboard is now handled //
+            // by IsolatedSpaRouteProvider (configured above) instead of config.staticFiles.add()   //
+            // and config.spaRoot.addFile(). This ensures proper <base href> tag injection for      //
+            // relative URL resolution when deep linking into the SPA.                              //
+            //////////////////////////////////////////////////////////////////////////////////////////
          }
 
          ///////////////////////////////////////////
@@ -178,6 +203,64 @@ public class QApplicationJavalinServer
                version.setQInstance(qInstance);
                config.router.apiBuilder(version.getJavalinEndpointGroup(qInstance));
             }
+         }
+
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         // application API routes (from ApiInstanceMetaData in the QInstance)                    //
+         //                                                                                       //
+         // WHY REFLECTION IS REQUIRED HERE:                                                      //
+         //                                                                                       //
+         // 1. CIRCULAR DEPENDENCY PREVENTION:                                                    //
+         // qqq-middleware-api depends on qqq-middleware-javalin (for Javalin types).             //
+         // If qqq-middleware-javalin also depended on qqq-middleware-api, Maven would fail       //
+         // to build due to circular dependency. Reflection breaks this cycle by allowing         //
+         // runtime discovery without compile-time dependency.                                    //
+         //                                                                                       //
+         // 2. OPTIONAL DEPENDENCY PATTERN:                                                       //
+         // The qqq-middleware-api module is OPTIONAL. Applications can choose to include it      //
+         // or not based on whether they need custom API functionality. Using direct imports      //
+         // would force ALL applications to include qqq-middleware-api even if they don't use it. //
+         //                                                                                       //
+         // By using reflection with Class.forName():                                             //
+         // - Applications WITHOUT the API module: Code gracefully skips (ClassNotFoundException) //
+         // - Applications WITH the API module: Code dynamically loads and registers APIs         //
+         // - No circular dependency between qqq-middleware-javalin ↔ qqq-middleware-api          //
+         // - Core middleware remains lightweight and modular                                     //
+         //                                                                                       //
+         // This is a classic "optional plugin" pattern commonly used in extensible frameworks    //
+         // (e.g., SLF4J, JDBC drivers, servlet containers).                                      //
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         try
+         {
+            Class<?> apiContainerClass = Class.forName("com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer");
+            Object   apiContainer      = apiContainerClass.getMethod("of", QInstance.class).invoke(null, qInstance);
+
+            if(apiContainer != null)
+            {
+               @SuppressWarnings("unchecked")
+               Map<String, ?> apis = (Map<String, ?>) apiContainerClass.getMethod("getApis").invoke(apiContainer);
+
+               if(apis != null && !apis.isEmpty())
+               {
+                  Class<?>       apiHandlerClass = Class.forName("com.kingsrook.qqq.api.javalin.QJavalinApiHandler");
+                  Object         apiHandler      = apiHandlerClass.getConstructor(QInstance.class).newInstance(qInstance);
+                  EndpointGroup  routes          = (EndpointGroup) apiHandlerClass.getMethod("getRoutes").invoke(apiHandler);
+
+                  config.router.apiBuilder(routes);
+                  LOG.info("Registered application API routes from ApiInstanceMetaDataContainer");
+               }
+            }
+         }
+         catch(ClassNotFoundException e)
+         {
+            ///////////////////////////////////////////////////////////////////////////////
+            // qqq-middleware-api module not on classpath - no application APIs to serve //
+            ///////////////////////////////////////////////////////////////////////////////
+            LOG.debug("qqq-middleware-api not available - skipping application API registration");
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error registering application API routes", e);
          }
 
          ////////////////////////////////////////////////////////////////////////////
@@ -244,7 +327,7 @@ public class QApplicationJavalinServer
          LOG.warn("JavalinMetaData is defined both in the QInstance and the QApplicationJavalinServer.  The one from the QInstance will be ignored - the one from the QJavalinApplicationServer will be used.");
          return (this.javalinMetaData);
       }
-      else if (this.javalinMetaData != null)
+      else if(this.javalinMetaData != null)
       {
          return (this.javalinMetaData);
       }
@@ -290,7 +373,81 @@ public class QApplicationJavalinServer
 
       for(JavalinRouteProviderMetaData routeProviderMetaData : CollectionUtils.nonNullList(qJavalinMetaData.getRouteProviders()))
       {
-         if(StringUtils.hasContent(routeProviderMetaData.getProcessName()) && StringUtils.hasContent(routeProviderMetaData.getHostedPath()))
+         if(StringUtils.hasContent(routeProviderMetaData.getSpaPath()) && StringUtils.hasContent(routeProviderMetaData.getStaticFilesPath()))
+         {
+            ////////////////////////////////////////////
+            // IsolatedSpaRouteProvider configuration //
+            ////////////////////////////////////////////
+            IsolatedSpaRouteProvider spaProvider = new IsolatedSpaRouteProvider(
+               routeProviderMetaData.getSpaPath(),
+               routeProviderMetaData.getStaticFilesPath()
+            );
+
+            if(StringUtils.hasContent(routeProviderMetaData.getSpaIndexFile()))
+            {
+               spaProvider.withSpaIndexFile(routeProviderMetaData.getSpaIndexFile());
+            }
+
+            if(routeProviderMetaData.getExcludedPaths() != null && !routeProviderMetaData.getExcludedPaths().isEmpty())
+            {
+               spaProvider.withExcludedPaths(routeProviderMetaData.getExcludedPaths());
+            }
+
+            spaProvider.withDeepLinking(routeProviderMetaData.getEnableDeepLinking());
+            spaProvider.withLoadFromJar(routeProviderMetaData.getLoadFromJar());
+
+            if(routeProviderMetaData.getRouteAuthenticator() != null)
+            {
+               spaProvider.withAuthenticator(routeProviderMetaData.getRouteAuthenticator());
+            }
+
+            ///////////////////////////////////////
+            // Add before handlers from metadata //
+            ///////////////////////////////////////
+            if(routeProviderMetaData.getBeforeHandlers() != null && !routeProviderMetaData.getBeforeHandlers().isEmpty())
+            {
+               for(QCodeReference handlerRef : routeProviderMetaData.getBeforeHandlers())
+               {
+                  try
+                  {
+                     RouteProviderBeforeHandlerInterface handler = QCodeLoader.getAdHoc(RouteProviderBeforeHandlerInterface.class, handlerRef);
+                     spaProvider.withBeforeHandler(handler);
+                  }
+                  catch(Exception e)
+                  {
+                     LOG.error("Error loading before handler for route provider", e,
+                        LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
+                        LogUtils.logPair("handler", handlerRef.toString()));
+                     throw new QException("Error loading before handler: " + e.getMessage(), e);
+                  }
+               }
+            }
+
+            //////////////////////////////////////
+            // Add after handlers from metadata //
+            //////////////////////////////////////
+            if(routeProviderMetaData.getAfterHandlers() != null && !routeProviderMetaData.getAfterHandlers().isEmpty())
+            {
+               for(QCodeReference handlerRef : routeProviderMetaData.getAfterHandlers())
+               {
+                  try
+                  {
+                     RouteProviderAfterHandlerInterface handler = QCodeLoader.getAdHoc(RouteProviderAfterHandlerInterface.class, handlerRef);
+                     spaProvider.withAfterHandler(handler);
+                  }
+                  catch(Exception e)
+                  {
+                     LOG.error("Error loading after handler for route provider", e,
+                        LogUtils.logPair("routeProvider", routeProviderMetaData.getName()),
+                        LogUtils.logPair("handler", handlerRef.toString()));
+                     throw new QException("Error loading after handler: " + e.getMessage(), e);
+                  }
+               }
+            }
+
+            withAdditionalRouteProvider(spaProvider);
+         }
+         else if(StringUtils.hasContent(routeProviderMetaData.getProcessName()) && StringUtils.hasContent(routeProviderMetaData.getHostedPath()))
          {
             withAdditionalRouteProvider(new ProcessBasedRouter(routeProviderMetaData));
          }
@@ -301,6 +458,29 @@ public class QApplicationJavalinServer
          else
          {
             throw (new QException("Error processing route provider - does not have sufficient fields set."));
+         }
+      }
+
+      //////////////////////////////////////////////////////////////////////////////////////
+      // Handle generic route provider references (e.g., health endpoints, custom APIs) //
+      //////////////////////////////////////////////////////////////////////////////////////
+      for(QCodeReference providerRef : CollectionUtils.nonNullList(qJavalinMetaData.getAdditionalRouteProviderReferences()))
+      {
+         try
+         {
+            QJavalinRouteProviderInterface provider = QCodeLoader.getAdHoc(
+               QJavalinRouteProviderInterface.class,
+               providerRef
+            );
+
+            LOG.info("Auto-registering route provider from metadata", LogUtils.logPair("provider", providerRef.getName()));
+
+            withAdditionalRouteProvider(provider);
+         }
+         catch(Exception e)
+         {
+            LOG.error("Error loading route provider", e, LogUtils.logPair("provider", providerRef.getName()));
+            throw new QException("Failed to load route provider: " + e.getMessage(), e);
          }
       }
    }
@@ -430,16 +610,6 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    **
-    *******************************************************************************/
-   public void setMillisBetweenHotSwaps(long millisBetweenHotSwaps)
-   {
-      this.millisBetweenHotSwaps = millisBetweenHotSwaps;
-   }
-
-
-
-   /*******************************************************************************
     ** Getter for serveFrontendMaterialDashboard
     *******************************************************************************/
    public boolean getServeFrontendMaterialDashboard()
@@ -465,6 +635,37 @@ public class QApplicationJavalinServer
    public QApplicationJavalinServer withServeFrontendMaterialDashboard(boolean serveFrontendMaterialDashboard)
    {
       this.serveFrontendMaterialDashboard = serveFrontendMaterialDashboard;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for frontendMaterialDashboardHostedPath
+    *******************************************************************************/
+   public String getFrontendMaterialDashboardHostedPath()
+   {
+      return (this.frontendMaterialDashboardHostedPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for frontendMaterialDashboardHostedPath
+    *******************************************************************************/
+   public void setFrontendMaterialDashboardHostedPath(String frontendMaterialDashboardHostedPath)
+   {
+      this.frontendMaterialDashboardHostedPath = frontendMaterialDashboardHostedPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for frontendMaterialDashboardHostedPath
+    *******************************************************************************/
+   public QApplicationJavalinServer withFrontendMaterialDashboardHostedPath(String frontendMaterialDashboardHostedPath)
+   {
+      this.frontendMaterialDashboardHostedPath = frontendMaterialDashboardHostedPath;
       return (this);
    }
 
@@ -565,7 +766,31 @@ public class QApplicationJavalinServer
 
    /*******************************************************************************
     ** Fluent setter to add a single additionalRouteProvider
+    **
+    ** @deprecated As of QQQ 0.x, use metadata producers with
+    **             {@link QJavalinMetaData#withAdditionalRouteProviderReference(QCodeReference)}
+    **             to register route providers declaratively. This method remains
+    **             for backward compatibility but will be removed in a future release.
+    **
+    ** Migration example:
+    ** <pre>
+    ** // OLD (programmatic):
+    ** .withAdditionalRouteProvider(new JavalinHealthRouteProvider())
+    **
+    ** // NEW (metadata-driven):
+    ** // Create a MetaDataProducer that returns QJavalinMetaData:
+    ** public class HealthMetaDataProducer extends MetaDataProducer&lt;QJavalinMetaData&gt;
+    ** {
+    **    public QJavalinMetaData produce(QInstance qInstance) {
+    **       return QJavalinMetaData.ofOrWithNew(qInstance)
+    **          .withAdditionalRouteProviderReference(
+    **             new QCodeReference(JavalinHealthRouteProvider.class)
+    **          );
+    **    }
+    ** }
+    ** </pre>
     *******************************************************************************/
+   @Deprecated
    public QApplicationJavalinServer withAdditionalRouteProvider(QJavalinRouteProviderInterface additionalRouteProvider)
    {
       if(this.additionalRouteProviders == null)
@@ -579,11 +804,57 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
+    ** Fluent setter to add an IsolatedSpaRouteProvider.
+    **
+    ** Creates a basic SPA route provider for serving a single-page application
+    ** with deep linking support at the specified path.
+    **
+    ** @param spaPath The path where the SPA will be hosted (e.g., "/admin", "/")
+    ** @param staticFilesPath The classpath location of static files (e.g., "admin-spa/dist/")
+    ** @return this server instance for method chaining
+    *******************************************************************************/
+   public QApplicationJavalinServer withIsolatedSpaRouteProvider(String spaPath, String staticFilesPath)
+   {
+      return withAdditionalRouteProvider(new IsolatedSpaRouteProvider(spaPath, staticFilesPath));
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter to add an IsolatedSpaRouteProvider with full configuration.
+    **
+    ** Creates an SPA route provider with an explicit index file path for serving
+    ** a single-page application with deep linking support.
+    **
+    ** @param spaPath The path where the SPA will be hosted (e.g., "/admin", "/")
+    ** @param staticFilesPath The classpath location of static files (e.g., "admin-spa/dist/")
+    ** @param spaIndexFile The classpath location of the index.html file (e.g., "admin-spa/dist/index.html")
+    ** @return this server instance for method chaining
+    *******************************************************************************/
+   public QApplicationJavalinServer withIsolatedSpaRouteProvider(String spaPath, String staticFilesPath, String spaIndexFile)
+   {
+      return withAdditionalRouteProvider(new IsolatedSpaRouteProvider(spaPath, staticFilesPath)
+         .withSpaIndexFile(spaIndexFile));
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for MILLIS_BETWEEN_HOT_SWAPS
     *******************************************************************************/
    public long getMillisBetweenHotSwaps()
    {
       return (millisBetweenHotSwaps);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void setMillisBetweenHotSwaps(long millisBetweenHotSwaps)
+   {
+      this.millisBetweenHotSwaps = millisBetweenHotSwaps;
    }
 
 

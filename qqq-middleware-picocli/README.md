@@ -1,22 +1,37 @@
-# qqq-middleware-picocli
+# QQQ Middleware - PicoCLI
 
-This is a qqq middleware module, providing [picocli](https://picocli.info) access to the qqq-backend.
+CLI middleware using [PicoCLI](https://picocli.info). Build command-line applications with QQQ.
+
+## Features
+
+- Command-line interface for QQQ operations
+- Table queries and data manipulation via CLI
+- Process execution from command line
+- Scripting and automation support
+
+## Usage
+
+```java
+QInstance instance = new QInstance();
+// ... configure instance ...
+
+QPicocliImplementation cli = new QPicocliImplementation(instance);
+cli.runCli(args);
+```
+
+## Commands
+
+```bash
+# Query a table
+myapp query users --filter "status=active"
+
+# Run a process
+myapp process run-report --input file.csv
+
+# Insert records
+myapp insert orders --data '{"customer_id": 123}'
+```
 
 ## License
-QQQ - Low-code Application Framework for Engineers. \
-Copyright (C) 2022.  Kingsrook, LLC \
-651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States \
-contact@kingsrook.com | https://github.com/Kingsrook/
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+GNU Affero General Public License v3.0

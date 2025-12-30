@@ -1,21 +1,35 @@
-# qqq-backend-module-rdbms
-This is a backend-module for the qqq framework - specifically, one that works with an RDBMS using direct JDBC.
+# QQQ Backend Module - RDBMS
+
+Backend module for relational databases via JDBC. Base module for database-specific implementations.
+
+## Features
+
+- JDBC database connectivity
+- Connection pooling (C3P0)
+- Transaction management
+- Query building and execution
+- Batch operations
+
+## Usage
+
+```java
+RDBMSBackendMetaData backend = new RDBMSBackendMetaData()
+   .withName("main-db")
+   .withJdbcUrl("jdbc:mysql://localhost:3306/myapp")
+   .withUsername("user")
+   .withPassword("password");
+
+QTableMetaData table = new QTableMetaData()
+   .withName("users")
+   .withBackendName("main-db")
+   .withPrimaryKeyField("id");
+```
+
+## Database-Specific Modules
+
+- `qqq-backend-module-postgres` - PostgreSQL
+- `qqq-backend-module-sqlite` - SQLite
 
 ## License
-QQQ - Low-code Application Framework for Engineers. \
-Copyright (C) 2022.  Kingsrook, LLC \
-651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States \
-contact@kingsrook.com | https://github.com/Kingsrook/
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+GNU Affero General Public License v3.0

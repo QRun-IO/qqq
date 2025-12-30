@@ -1,25 +1,33 @@
-# qqq-sample-project
-This repo serves as a sample or demo of how a client might deploy qqq.  
+# QQQ Sample Project
 
-It defines the meta-data for a sample project (e.g., mysql credentials and table(s)).
+Example QQQ application demonstrating framework usage.
 
-It has a Javalin (http) server, and a Pico-CLI - both very very thin, just basically loading up the pertinent qqq codes.
+## What's Included
+
+- Sample table definitions
+- Javalin HTTP server setup
+- PicoCLI command-line interface
+- Basic authentication example
+
+## Running
+
+```bash
+# Start HTTP server
+mvn exec:java -Dexec.mainClass="com.example.SampleServer"
+
+# Run CLI
+mvn exec:java -Dexec.mainClass="com.example.SampleCli" -Dexec.args="query users"
+```
+
+## Project Structure
+
+```
+src/main/java/
+├── SampleMetaDataProvider.java  # Table and backend definitions
+├── SampleServer.java            # Javalin server entry point
+└── SampleCli.java               # PicoCLI entry point
+```
 
 ## License
-QQQ - Low-code Application Framework for Engineers. \
-Copyright (C) 2022.  Kingsrook, LLC \
-651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States \
-contact@kingsrook.com | https://github.com/Kingsrook/
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+GNU Affero General Public License v3.0

@@ -140,7 +140,7 @@ public class QMiddlewareApiSpecHandler
     *******************************************************************************/
    private void serveResource(Context context, String resourcePath, Map<String, String> headers)
    {
-      InputStream resourceAsStream = QJavalinImplementation.class.getClassLoader().getResourceAsStream(resourcePath);
+      InputStream resourceAsStream = Thread.currentThread().getContextClassLoader().getResourceAsStream(resourcePath);
       for(Map.Entry<String, String> entry : CollectionUtils.nonNullMap(headers).entrySet())
       {
          context.header(entry.getKey(), entry.getValue());

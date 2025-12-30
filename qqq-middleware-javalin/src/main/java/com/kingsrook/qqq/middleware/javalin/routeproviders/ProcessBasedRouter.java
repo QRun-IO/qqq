@@ -47,7 +47,25 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
+ ** Route provider that executes QQQ processes in response to HTTP requests.
  **
+ ** This provider bridges Javalin HTTP routes to QQQ's process execution engine,
+ ** allowing processes to be exposed as REST endpoints. Request data (path params,
+ ** query params, body, headers) is passed into the process via ProcessBasedRouterPayload,
+ ** and process output is used to construct the HTTP response.
+ **
+ ** Supports:
+ ** - Multiple HTTP methods (GET, POST, PUT, DELETE, etc.)
+ ** - Custom authentication via RouteAuthenticatorInterface
+ ** - Custom request/response handling via RouteProviderContextHandlerInterface
+ ** - Path parameters, query parameters, form data, and request bodies
+ **
+ ** Usage Example:
+ ** <pre>
+ ** new ProcessBasedRouter("/api/orders/{orderId}", "processOrderRequest")
+ **    .withRouteAuthenticator(new QCodeReference(ApiAuthenticator.class))
+ **    .withMethods(List.of("GET", "POST"))
+ ** </pre>
  *******************************************************************************/
 public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 {
@@ -65,8 +83,10 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Constructor
+    ** Constructor for process-based route with default GET method.
     **
+    ** @param hostedPath the URL path where this route will be hosted
+    ** @param processName the name of the QQQ process to execute
     *******************************************************************************/
    public ProcessBasedRouter(String hostedPath, String processName)
    {
@@ -75,9 +95,11 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Constructor that builds router from meta-data configuration.
     **
-    ***************************************************************************/
+    ** @param routeProvider meta-data containing route configuration
+    *******************************************************************************/
    public ProcessBasedRouter(JavalinRouteProviderMetaData routeProvider)
    {
       this(routeProvider.getHostedPath(), routeProvider.getProcessName(), routeProvider.getMethods());
@@ -88,8 +110,11 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Constructor
+    ** Constructor for process-based route with specified HTTP methods.
     **
+    ** @param hostedPath the URL path where this route will be hosted (e.g., "/api/orders/{id}")
+    ** @param processName the name of the QQQ process to execute for this route
+    ** @param methods list of HTTP methods to support (GET, POST, PUT, DELETE, PATCH); defaults to GET if null
     *******************************************************************************/
    public ProcessBasedRouter(String hostedPath, String processName, List<String> methods)
    {
@@ -108,9 +133,14 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Set the QInstance for this route provider.
     **
-    ***************************************************************************/
+    ** Called by the framework during initialization to provide access to the
+    ** QQQ instance configuration.
+    **
+    ** @param qInstance the QInstance containing meta-data and configuration
+    *******************************************************************************/
    @Override
    public void setQInstance(QInstance qInstance)
    {
@@ -119,9 +149,15 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Get the Javalin endpoint group configuration for this route.
     **
-    ***************************************************************************/
+    ** Creates route registrations for all configured HTTP methods, mapping them
+    ** to the handleRequest method that executes the QQQ process.
+    **
+    ** @return EndpointGroup containing route registrations
+    ** @throws IllegalArgumentException if an unrecognized HTTP method is specified
+    *******************************************************************************/
    @Override
    public EndpointGroup getJavalinEndpointGroup()
    {
@@ -144,9 +180,18 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Handle an HTTP request by executing the configured QQQ process.
     **
-    ***************************************************************************/
+    ** This method:
+    ** 1. Initializes QContext with the QInstance
+    ** 2. Authenticates the request if an authenticator is configured
+    ** 3. Extracts request data via the context handler
+    ** 4. Executes the QQQ process with the request data
+    ** 5. Builds the HTTP response from the process output
+    **
+    ** @param context the Javalin HTTP context
+    *******************************************************************************/
    private void handleRequest(Context context)
    {
       RunProcessInput input = new RunProcessInput();
@@ -189,9 +234,11 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
          RouteProviderContextHandlerInterface contextHandler = createContextHandler();
          contextHandler.handleRequest(context, input);
 
-         // todo - make the inputStream available to the process to stream results?
-         //  maybe via the callback object??? input.setCallback(new QProcessCallback() {});
-         //  context.resultInputStream();
+         ////////////////////////////////////////////////////////////////////////////////////
+         // todo - make the inputStream available to the process to stream results?        //
+         // maybe via the callback object??? input.setCallback(new QProcessCallback() {}); //
+         // context.resultInputStream();                                                   //
+         ////////////////////////////////////////////////////////////////////////////////////
 
          /////////////////////
          // run the process //
@@ -221,9 +268,14 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
 
 
-   /***************************************************************************
+   /*******************************************************************************
+    ** Create or load the context handler for request/response processing.
     **
-    ***************************************************************************/
+    ** If a custom context handler is configured, loads it via QCodeLoader.
+    ** Otherwise, returns a new instance of the default context handler.
+    **
+    ** @return RouteProviderContextHandlerInterface implementation
+    *******************************************************************************/
    private RouteProviderContextHandlerInterface createContextHandler()
    {
       if(contextHandler != null)
@@ -240,6 +292,7 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
    /*******************************************************************************
     ** Getter for routeAuthenticator
+    ** @see #withRouteAuthenticator(QCodeReference)
     *******************************************************************************/
    public QCodeReference getRouteAuthenticator()
    {
@@ -250,6 +303,7 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
    /*******************************************************************************
     ** Setter for routeAuthenticator
+    ** @see #withRouteAuthenticator(QCodeReference)
     *******************************************************************************/
    public void setRouteAuthenticator(QCodeReference routeAuthenticator)
    {
@@ -260,6 +314,9 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
    /*******************************************************************************
     ** Fluent setter for routeAuthenticator
+    **
+    ** @param routeAuthenticator code reference to the route authenticator implementation
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouter withRouteAuthenticator(QCodeReference routeAuthenticator)
    {
@@ -268,8 +325,10 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
    }
 
 
+
    /*******************************************************************************
     ** Getter for contextHandler
+    ** @see #withContextHandler(QCodeReference)
     *******************************************************************************/
    public QCodeReference getContextHandler()
    {
@@ -280,6 +339,7 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
    /*******************************************************************************
     ** Setter for contextHandler
+    ** @see #withContextHandler(QCodeReference)
     *******************************************************************************/
    public void setContextHandler(QCodeReference contextHandler)
    {
@@ -290,12 +350,14 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
 
    /*******************************************************************************
     ** Fluent setter for contextHandler
+    **
+    ** @param contextHandler code reference to the context handler implementation
+    ** @return this
     *******************************************************************************/
    public ProcessBasedRouter withContextHandler(QCodeReference contextHandler)
    {
       this.contextHandler = contextHandler;
       return (this);
    }
-
 
 }

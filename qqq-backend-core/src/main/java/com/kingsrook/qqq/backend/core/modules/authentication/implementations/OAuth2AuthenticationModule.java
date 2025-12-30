@@ -173,6 +173,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             String   accessToken = getAccessTokenFromSessionUUID(uuid);
             QSession session     = createSessionFromToken(accessToken);
             session.setUuid(uuid);
+            //////////////////////////////////////////////////////////////////////////////
+            // Update idReference to match the UUID from the context so getIdReference() //
+            // returns the correct session identifier for cookie management               //
+            //////////////////////////////////////////////////////////////////////////////
+            session.setIdReference(uuid);
 
             //////////////////////////////////////////////////////////////////
             // todo - do we need to validate its age or ping the provider?? //
@@ -341,6 +346,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       // todo wip - this needs to be much better standardized w/ fe //
       ////////////////////////////////////////////////////////////
       session.withValueForFrontend("user", new HashMap<>(Map.of("name", name, "email", email)));
+
+      //////////////////////////////////////////////////////////////////////////////
+      // Set the session's idReference to its UUID so getIdReference() returns    //
+      // a non-null value for use in cookies and session management               //
+      //////////////////////////////////////////////////////////////////////////////
+      session.setIdReference(session.getUuid());
 
       return session;
    }

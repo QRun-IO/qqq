@@ -1142,4 +1142,77 @@ public class PostgreSQLQueryActionTest extends BaseTest
       assertEquals(1, record.getValues().size());
    }
 
+
+
+   /*******************************************************************************
+    ** Test that PostgreSQL properly handles type conversion for INTEGER and LONG
+    ** fields when query parameters come in as strings (e.g., from HTTP requests).
+    ** 
+    ** This is critical for PostgreSQL which is stricter than MySQL about type
+    ** matching and won't implicitly convert "1" (string) to 1 (integer).
+    *******************************************************************************/
+   @Test
+   void testIntegerAndLongTypeConversionFromStrings() throws QException
+   {
+      /////////////////////////////////////////////////////
+      // Test EQUALS with string value for INTEGER field //
+      /////////////////////////////////////////////////////
+      QueryInput queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter()
+         .withCriteria(new QFilterCriteria()
+            .withFieldName("id")
+            .withOperator(QCriteriaOperator.EQUALS)
+            .withValues(List.of("1")))  // String value for INTEGER field
+      );
+      QueryOutput queryOutput = new RDBMSQueryAction().execute(queryInput);
+      assertEquals(1, queryOutput.getRecords().size(), "Should find 1 row with id=1");
+      assertEquals(1, queryOutput.getRecords().get(0).getValueInteger("id"), "Should find expected id");
+
+      ////////////////////////////////////////////////
+      // Test IN with string values for LONG field //
+      ////////////////////////////////////////////////
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter()
+         .withCriteria(new QFilterCriteria()
+            .withFieldName("annualSalary")
+            .withOperator(QCriteriaOperator.IN)
+            .withValues(List.of("25000", "1000000")))  // String values for INTEGER field
+      );
+      queryOutput = new RDBMSQueryAction().execute(queryInput);
+      assertEquals(2, queryOutput.getRecords().size(), "Should find 2 rows");
+      assertTrue(queryOutput.getRecords().stream()
+         .allMatch(r -> r.getValueInteger("annualSalary").equals(25000) || r.getValueInteger("annualSalary").equals(1_000_000)),
+         "Should find expected salaries");
+
+      ////////////////////////////////////////////////////////
+      // Test GREATER_THAN with string value for LONG field //
+      ////////////////////////////////////////////////////////
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter()
+         .withCriteria(new QFilterCriteria()
+            .withFieldName("annualSalary")
+            .withOperator(QCriteriaOperator.GREATER_THAN)
+            .withValues(List.of("100000")))  // String value for INTEGER field
+      );
+      queryOutput = new RDBMSQueryAction().execute(queryInput);
+      assertEquals(1, queryOutput.getRecords().size(), "Should find 1 row with salary > 100000");
+      assertEquals(1_000_000, queryOutput.getRecords().get(0).getValueInteger("annualSalary"), "Should find expected salary");
+
+      ////////////////////////////////////////////////////////
+      // Test BETWEEN with string values for INTEGER field //
+      ////////////////////////////////////////////////////////
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter()
+         .withCriteria(new QFilterCriteria()
+            .withFieldName("id")
+            .withOperator(QCriteriaOperator.BETWEEN)
+            .withValues(List.of("2", "4")))  // String values for INTEGER field
+      );
+      queryOutput = new RDBMSQueryAction().execute(queryInput);
+      assertEquals(3, queryOutput.getRecords().size(), "Should find 3 rows with id between 2 and 4");
+      assertTrue(queryOutput.getRecords().stream()
+         .allMatch(r -> r.getValueInteger("id") >= 2 && r.getValueInteger("id") <= 4),
+         "Should find ids between 2 and 4");
+   }
+
 }

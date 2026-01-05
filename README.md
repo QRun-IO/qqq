@@ -1,5 +1,7 @@
 # qqq
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Metadata-driven application framework for building business software in Java.
 
 **For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems
@@ -120,4 +122,4 @@ Full documentation: [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki)
 
 ## License
 
-AGPL-3.0
+Apache-2.0 - See [LICENSE](LICENSE) for details.

@@ -33,6 +33,8 @@ import com.kingsrook.qqq.backend.core.actions.customizers.AbstractPreInsertCusto
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -43,6 +45,10 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.Status;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -54,6 +60,7 @@ import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.Bulk
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.model.BulkLoadProfile;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.model.BulkLoadProfileField;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -89,10 +96,13 @@ class BulkEditWithFileFullProcessTest extends BaseTest
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static String getPersonCsvRow1()
+   public static String getPersonCsvRow1(boolean includeId)
    {
-      return ("""
-         "1","2021-10-26 14:39:37","2021-10-26 14:39:37","Jehn","Doe","1980-01-01","john@doe.com","Missouri",24
+      String idPrefix = includeId ? """
+         "1",""" : "";
+
+      return (idPrefix + """
+         "2021-10-26 14:39:37","2021-10-26 14:39:37","Jehn","Doe","1980-01-01","john@doe.com","Missouri",24
          """);
    }
 
@@ -101,10 +111,13 @@ class BulkEditWithFileFullProcessTest extends BaseTest
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static String getPersonCsvRow2()
+   public static String getPersonCsvRow1ForUniqueKeyCase(boolean includeId)
    {
-      return ("""
-         "2","2021-10-26 14:39:37","2021-10-26 14:39:37","Jyne","Doe","1981-01-01","john@doe.com","Illinois",
+      String idPrefix = includeId ? """
+         "1",""" : "";
+
+      return (idPrefix + """
+         "2021-10-26 14:39:37","2021-10-26 14:39:37","John","Doe","1980-01-01","johnny@doe.com","Missouri",24
          """);
    }
 
@@ -113,10 +126,43 @@ class BulkEditWithFileFullProcessTest extends BaseTest
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static String getPersonCsvHeaderUsingLabels()
+   public static String getPersonCsvRow2(boolean includeId)
    {
-      return ("""
-         "Id","Create Date","Modify Date","First Name","Last Name","Birth Date","Email","Home State",noOfShoes
+      String idPrefix = includeId ? """
+         "2",""" : "";
+
+      return (idPrefix + """
+         "2021-10-26 14:39:37","2021-10-26 14:39:37","Jyne","Doe","1981-01-01","john@doe.com","Illinois",
+         """);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static String getPersonCsvRow2ForUniqueKeyCase(boolean includeId)
+   {
+      String idPrefix = includeId ? """
+         "2",""" : "";
+
+      return (idPrefix + """
+         "2021-10-26 14:39:37","2021-10-26 14:39:37","Jane","Doe","1981-01-01","janey@doe.com","Illinois",
+         """);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static String getPersonCsvHeaderUsingLabels(boolean includeId)
+   {
+      String idPrefix = includeId ? """
+         "Id",""" : "";
+
+      return (idPrefix + """
+         "Create Date","Modify Date","First Name","Last Name","Birth Date","Email","Home State",noOfShoes
          """);
    }
 
@@ -147,7 +193,7 @@ class BulkEditWithFileFullProcessTest extends BaseTest
       //////////////////////////
       // continue post-upload //
       //////////////////////////
-      runProcessOutput = continueProcessPostUpload(runProcessInput, processUUID, simulateFileUpload(2));
+      runProcessOutput = continueProcessPostUpload(runProcessInput, processUUID, simulateFileUpload(2, true));
       assertEquals(List.of("Id", "Create Date", "Modify Date", "First Name", "Last Name", "Birth Date", "Email", "Home State", "noOfShoes"), runProcessOutput.getValue("headerValues"));
       assertEquals(List.of("A", "B", "C", "D", "E", "F", "G", "H", "I"), runProcessOutput.getValue("headerLetters"));
 
@@ -225,6 +271,197 @@ class BulkEditWithFileFullProcessTest extends BaseTest
       assertEquals(24, records.get(0).getValueInteger("noOfShoes"));
       assertNull(records.get(1).getValue("noOfShoes"));
    }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   public void testUsingUniqueKey() throws Exception
+   {
+      /////////////////////////////////////////////
+      // use the bulk insert test to insert data //
+      /////////////////////////////////////////////
+      new BulkInsertFullProcessTest().test();
+      assertThat(TestUtils.queryTable(TestUtils.TABLE_NAME_PERSON_MEMORY)).isNotEmpty();
+
+      RunProcessOutput runProcessOutput = runProcessUsingUniqueKey(null);
+
+      /////////////////////////////////////
+      // verify the ids that were edited //
+      /////////////////////////////////////
+      ProcessSummaryLineInterface okLine = ProcessSummaryAssert.assertThat(runProcessOutput)
+         .hasLineWithStatus(Status.OK)
+         .getLine();
+      assertEquals(List.of(1, 2), ((ProcessSummaryLine) okLine).getPrimaryKeys());
+
+      ////////////////////////////////////
+      // query for the inserted records //
+      ////////////////////////////////////
+      List<QRecord> records = TestUtils.queryTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+
+      assertEquals("John", records.get(0).getValueString("firstName"));
+      assertEquals("Jane", records.get(1).getValueString("firstName"));
+
+      assertEquals(1, records.get(0).getValue("id"));
+      assertEquals(2, records.get(1).getValue("id"));
+
+      assertEquals("johnny@doe.com", records.get(0).getValueString("email"));
+      assertEquals("janey@doe.com", records.get(1).getValueString("email"));
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private RunProcessOutput runProcessUsingUniqueKey(Map<String, Serializable> processInputValues) throws Exception
+   {
+      /////////////////////////////////////////////////////////
+      // start the process - expect to go to the upload step //
+      /////////////////////////////////////////////////////////
+      RunProcessInput runProcessInput = new RunProcessInput();
+      runProcessInput.addValue("keyFields", "firstName|lastName");
+      runProcessInput.addValue("isBulkEdit", "true");
+
+      for(Map.Entry<String, Serializable> entry : CollectionUtils.nonNullMap(processInputValues).entrySet())
+      {
+         runProcessInput.addValue(entry.getKey(), entry.getValue());
+      }
+
+      RunProcessOutput runProcessOutput = startProcess(runProcessInput);
+      String           processUUID      = runProcessOutput.getProcessUUID();
+      assertThat(runProcessOutput.getProcessState().getNextStepName()).isPresent().get().isEqualTo("upload");
+
+      //////////////////////////
+      // continue post-upload //
+      //////////////////////////
+      runProcessOutput = continueProcessPostUpload(runProcessInput, processUUID, simulateFileUploadForUniqueKeyCase(2, false));
+      assertEquals(List.of("Create Date", "Modify Date", "First Name", "Last Name", "Birth Date", "Email", "Home State", "noOfShoes"), runProcessOutput.getValue("headerValues"));
+      assertEquals(List.of("A", "B", "C", "D", "E", "F", "G", "H"), runProcessOutput.getValue("headerLetters"));
+
+      //////////////////////////////////////////////////////
+      // assert about the suggested mapping that was done //
+      //////////////////////////////////////////////////////
+      Serializable bulkLoadProfileSerializable = runProcessOutput.getValue("bulkLoadProfile");
+      assertThat(bulkLoadProfileSerializable).isInstanceOf(BulkLoadProfile.class);
+      BulkLoadProfile bulkLoadProfile = (BulkLoadProfile) bulkLoadProfileSerializable;
+      assertThat(bulkLoadProfile.getFieldList()).hasSizeGreaterThan(4);
+      assertEquals("firstName", bulkLoadProfile.getFieldList().get(0).getFieldName());
+      assertEquals(2, bulkLoadProfile.getFieldList().get(0).getColumnIndex());
+      assertEquals("lastName", bulkLoadProfile.getFieldList().get(1).getFieldName());
+      assertEquals(3, bulkLoadProfile.getFieldList().get(1).getColumnIndex());
+      assertEquals("email", bulkLoadProfile.getFieldList().get(3).getFieldName());
+      assertEquals(5, bulkLoadProfile.getFieldList().get(3).getColumnIndex());
+
+      assertThat(runProcessOutput.getProcessState().getNextStepName()).isPresent().get().isEqualTo("fileMapping");
+
+      ////////////////////////////////
+      // continue post file-mapping //
+      ////////////////////////////////
+      runProcessOutput = continueProcessPostFileMapping(runProcessInput);
+      assertThat(runProcessOutput.getProcessState().getNextStepName()).isPresent().get().isEqualTo("review");
+
+      /////////////////////////////////
+      // continue post review screen //
+      /////////////////////////////////
+      runProcessOutput = continueProcessPostReviewScreen(runProcessInput);
+      assertThat(runProcessOutput.getRecords()).hasSize(2);
+      assertThat(runProcessOutput.getProcessState().getNextStepName()).isPresent().get().isEqualTo("result");
+      assertThat(runProcessOutput.getValues().get(StreamedETLWithFrontendProcess.FIELD_PROCESS_SUMMARY)).isNotNull().isInstanceOf(List.class);
+      assertThat(runProcessOutput.getException()).isEmpty();
+
+      ProcessSummaryAssert.assertThat(runProcessOutput)
+         .hasLineWithMessageContaining("Person Memory records were edited")
+         .hasStatus(Status.OK)
+         .hasCount(2);
+
+      return (runProcessOutput);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   public void testUniqueKeyDoesntLoadMillionsOfRecords() throws Exception
+   {
+      //////////////////////////////////////////////////////////////////
+      // insert lots of records that won't match, and a few that will //
+      //////////////////////////////////////////////////////////////////
+      List<QRecord> recordsToInsert = new ArrayList<>();
+      for(int i = 0; i < 100_000; i++)
+      {
+         recordsToInsert.add(new QRecord().withValue("firstName", "Homer" + i).withValue("lastName", "Doe"));
+      }
+      recordsToInsert.add(new QRecord().withValue("firstName", "John").withValue("lastName", "Doe"));
+      recordsToInsert.add(new QRecord().withValue("firstName", "Jane").withValue("lastName", "Doe"));
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(recordsToInsert));
+
+      RunProcessOutput runProcessOutput = runProcessUsingUniqueKey(null);
+
+      //////////////////////////////////////
+      // assert about the updated records //
+      //////////////////////////////////////
+      List<QRecord> records = QueryAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, new QQueryFilter(new QFilterCriteria("firstName", QCriteriaOperator.IN, "John", "Jane")).withOrderBy(new QFilterOrderBy("id")));
+
+      assertEquals("John", records.get(0).getValueString("firstName"));
+      assertEquals("Jane", records.get(1).getValueString("firstName"));
+
+      assertEquals("johnny@doe.com", records.get(0).getValueString("email"));
+      assertEquals("janey@doe.com", records.get(1).getValueString("email"));
+
+      /////////////////////////////////////////////////////////////////
+      // make sure we didn't select (way) too many potential records //
+      /////////////////////////////////////////////////////////////////
+      assertThat(runProcessOutput.getValueInteger("potentialRecordsLoaded")).isLessThanOrEqualTo(100);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   public void testHittingLoadPotentialRecordsByUniqueKeyRecordByRecord() throws Exception
+   {
+      /////////////////////////////////////////////
+      // use the bulk insert test to insert data //
+      /////////////////////////////////////////////
+      new BulkInsertFullProcessTest().test();
+      assertThat(TestUtils.queryTable(TestUtils.TABLE_NAME_PERSON_MEMORY)).isNotEmpty();
+
+      ////////////////////////////////////////////////////////////////////////////////////////////////
+      // run the process, with 2 values set that should force the method we're interested in to run //
+      ////////////////////////////////////////////////////////////////////////////////////////////////
+      RunProcessOutput runProcessOutput = runProcessUsingUniqueKey(Map.of("ByPerFieldInListsQueryFailed", true, "ByOrQueriesFailed", true));
+
+      /////////////////////////////////////
+      // verify the ids that were edited //
+      /////////////////////////////////////
+      ProcessSummaryLineInterface okLine = ProcessSummaryAssert.assertThat(runProcessOutput)
+         .hasLineWithStatus(Status.OK)
+         .getLine();
+      assertEquals(List.of(1, 2), ((ProcessSummaryLine) okLine).getPrimaryKeys());
+
+      ////////////////////////////////////
+      // query for the inserted records //
+      ////////////////////////////////////
+      List<QRecord> records = TestUtils.queryTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+
+      assertEquals("John", records.get(0).getValueString("firstName"));
+      assertEquals("Jane", records.get(1).getValueString("firstName"));
+
+      assertEquals(1, records.get(0).getValue("id"));
+      assertEquals(2, records.get(1).getValue("id"));
+
+      assertEquals("johnny@doe.com", records.get(0).getValueString("email"));
+      assertEquals("janey@doe.com", records.get(1).getValueString("email"));
+   }
+
+
 
 
 
@@ -313,7 +550,7 @@ class BulkEditWithFileFullProcessTest extends BaseTest
       RunProcessOutput runProcessOutput = startProcess(runProcessInput);
       String           processUUID      = runProcessOutput.getProcessUUID();
 
-      continueProcessPostUpload(runProcessInput, processUUID, simulateFileUpload(1));
+      continueProcessPostUpload(runProcessInput, processUUID, simulateFileUpload(1, true));
       continueProcessPostFileMapping(runProcessInput);
       continueProcessPostValueMapping(runProcessInput);
       runProcessOutput = continueProcessPostReviewScreen(runProcessInput);
@@ -385,17 +622,36 @@ class BulkEditWithFileFullProcessTest extends BaseTest
    /***************************************************************************
     **
     ***************************************************************************/
-   private static StorageInput simulateFileUpload(int noOfRows) throws Exception
+   private static StorageInput simulateFileUpload(int noOfRows, boolean includeId) throws Exception
    {
       String       storageReference = UUID.randomUUID() + ".csv";
       StorageInput storageInput     = new StorageInput(TestUtils.TABLE_NAME_MEMORY_STORAGE).withReference(storageReference);
       try(OutputStream outputStream = new StorageAction().createOutputStream(storageInput))
       {
-         outputStream.write((getPersonCsvHeaderUsingLabels() + getPersonCsvRow1() + (noOfRows == 2 ? getPersonCsvRow2() : "")).getBytes());
+         String fileContents = getPersonCsvHeaderUsingLabels(includeId) + getPersonCsvRow1(includeId) + (noOfRows == 2 ? getPersonCsvRow2(includeId) : "");
+         System.out.println(fileContents);
+         outputStream.write(fileContents.getBytes());
       }
       return storageInput;
    }
 
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private static StorageInput simulateFileUploadForUniqueKeyCase(int noOfRows, boolean includeId) throws Exception
+   {
+      String       storageReference = UUID.randomUUID() + ".csv";
+      StorageInput storageInput     = new StorageInput(TestUtils.TABLE_NAME_MEMORY_STORAGE).withReference(storageReference);
+      try(OutputStream outputStream = new StorageAction().createOutputStream(storageInput))
+      {
+         String fileContents = getPersonCsvHeaderUsingLabels(includeId) + getPersonCsvRow1ForUniqueKeyCase(includeId) + (noOfRows == 2 ? getPersonCsvRow2ForUniqueKeyCase(includeId) : "");
+         System.out.println(fileContents);
+         outputStream.write(fileContents.getBytes());
+      }
+      return storageInput;
+   }
 
 
    /***************************************************************************
@@ -407,7 +663,7 @@ class BulkEditWithFileFullProcessTest extends BaseTest
       StorageInput storageInput     = new StorageInput(TestUtils.TABLE_NAME_MEMORY_STORAGE).withReference(storageReference);
       try(OutputStream outputStream = new StorageAction().createOutputStream(storageInput))
       {
-         outputStream.write((getPersonCsvHeaderUsingLabels() + """
+         outputStream.write((getPersonCsvHeaderUsingLabels(true) + """
             "1","2021-10-26 14:39:37","2021-10-26 14:39:37","John","Doe","1980-01-01","john@doe.com","Missouri",42
             "2","2021-10-26 14:39:37","2021-10-26 14:39:37","Tornado warning","Doe","1980-01-01","john@doe.com","Missouri",42
             "3","2021-10-26 14:39:37","2021-10-26 14:39:37","Tornado warning","Doey","1980-01-01","john@doe.com","Missouri",42
@@ -428,7 +684,7 @@ class BulkEditWithFileFullProcessTest extends BaseTest
       StorageInput storageInput     = new StorageInput(TestUtils.TABLE_NAME_MEMORY_STORAGE).withReference(storageReference);
       try(OutputStream outputStream = new StorageAction().createOutputStream(storageInput))
       {
-         outputStream.write((getPersonCsvHeaderUsingLabels() + """
+         outputStream.write((getPersonCsvHeaderUsingLabels(true) + """
             "1","2021-10-26 14:39:37","2021-10-26 14:39:37","John","Doe","1980-01-01","john@doe.com","Missouri",42
             "2","2021-10-26 14:39:37","2021-10-26 14:39:37","not-pre-Error plane","Doe","1980-01-01","john@doe.com","Missouri",42
             "3","2021-10-26 14:39:37","2021-10-26 14:39:37","Error purifier","Doe","1980-01-01","john@doe.com","Missouri",42
@@ -458,6 +714,12 @@ class BulkEditWithFileFullProcessTest extends BaseTest
     ***************************************************************************/
    private static void addProfileToRunProcessInput(RunProcessInput input)
    {
+      if("firstName|lastName".equals(input.getValue("keyFields")))
+      {
+         addProfileForUniqueKeyCaseToRunProcessInput(input);
+         return;
+      }
+
       input.addValue("version", "v1");
       input.addValue("layout", "FLAT");
       input.addValue("isBulkEdit", "true");
@@ -470,6 +732,25 @@ class BulkEditWithFileFullProcessTest extends BaseTest
          new BulkLoadProfileField().withFieldName("email").withDefaultValue(defaultEmail),
          new BulkLoadProfileField().withFieldName("homeStateId").withColumnIndex(7).withDoValueMapping(true).withValueMappings(Map.of("Illinois", 1)),
          new BulkLoadProfileField().withFieldName("noOfShoes").withColumnIndex(8)
+      )));
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static void addProfileForUniqueKeyCaseToRunProcessInput(RunProcessInput input)
+   {
+      input.addValue("version", "v1");
+      input.addValue("layout", "FLAT");
+      input.addValue("isBulkEdit", "true");
+      input.addValue("keyFields", "firstName|lastName");
+      input.addValue("hasHeaderRow", "true");
+      input.addValue("fieldListJSON", JsonUtils.toJson(List.of(
+         new BulkLoadProfileField().withFieldName("firstName").withColumnIndex(2),
+         new BulkLoadProfileField().withFieldName("lastName").withColumnIndex(3),
+         new BulkLoadProfileField().withFieldName("email").withColumnIndex(5)
       )));
    }
 

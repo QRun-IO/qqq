@@ -240,22 +240,21 @@ public class BulkLoadValueMapper
 
       for(String value : values)
       {
+         valuesNotFound.add(value);
          Serializable valueInPvsIdType = value;
 
          try
          {
             valueInPvsIdType = ValueUtils.getValueAsFieldType(possibleValueSource.getIdType(), value);
+            valuesToValueInPvsIdTypeMap.put(value, valueInPvsIdType);
+            idList.add(valueInPvsIdType);
          }
          catch(Exception e)
          {
-            ////////////////////////////
-            // leave as original type //
-            ////////////////////////////
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // If the value can't be made into the id's type (probably not an integer), then don't try to look it up as an id. //
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          }
-
-         valuesToValueInPvsIdTypeMap.put(value, valueInPvsIdType);
-         idList.add(valueInPvsIdType);
-         valuesNotFound.add(value);
       }
 
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -263,19 +262,25 @@ public class BulkLoadValueMapper
       //  to apply possible-value filters.  difficult to pass values in, but needed...                                 //
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-      searchPossibleValueSourceInput.setIdList(idList);
-      searchPossibleValueSourceInput.setLimit(values.size());
-      LOG.debug("Searching possible value source by ids during bulk load mapping", logPair("pvsName", field.getPossibleValueSourceName()), logPair("noOfIds", idList.size()), logPair("firstId", () -> idList.get(0)));
-      SearchPossibleValueSourceOutput searchPossibleValueSourceOutput = idList.isEmpty() ? new SearchPossibleValueSourceOutput() : new SearchPossibleValueSourceAction().execute(searchPossibleValueSourceInput);
-
-      ////////////////////////////////////////////////////////////////////////////////////////////////////
-      // for each possible value found, store it as a hit, and remove it from the set of ones not-found //
-      ////////////////////////////////////////////////////////////////////////////////////////////////////
-      for(QPossibleValue<?> possibleValue : searchPossibleValueSourceOutput.getResults())
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // if there are any ids (e.g., that could be type-converted from the file's values to the PVS's id type), then search by id. //
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      if(!idList.isEmpty())
       {
-         String valueAsString = ValueUtils.getValueAsString(possibleValue.getId());
-         valuesFoundAsStrings.put(valueAsString, possibleValue);
-         valuesNotFound.remove(valueAsString);
+         searchPossibleValueSourceInput.setIdList(idList);
+         searchPossibleValueSourceInput.setLimit(values.size());
+         LOG.debug("Searching possible value source by ids during bulk load mapping", logPair("pvsName", field.getPossibleValueSourceName()), logPair("noOfIds", idList.size()), logPair("firstId", () -> idList.get(0)));
+         SearchPossibleValueSourceOutput searchPossibleValueSourceOutput = idList.isEmpty() ? new SearchPossibleValueSourceOutput() : new SearchPossibleValueSourceAction().execute(searchPossibleValueSourceInput);
+
+         ////////////////////////////////////////////////////////////////////////////////////////////////////
+         // for each possible value found, store it as a hit, and remove it from the set of ones not-found //
+         ////////////////////////////////////////////////////////////////////////////////////////////////////
+         for(QPossibleValue<?> possibleValue : searchPossibleValueSourceOutput.getResults())
+         {
+            String valueAsString = ValueUtils.getValueAsString(possibleValue.getId());
+            valuesFoundAsStrings.put(valueAsString, possibleValue);
+            valuesNotFound.remove(valueAsString);
+         }
       }
 
       ///////////////////////////////////////////////////////////////////////////
@@ -289,7 +294,7 @@ public class BulkLoadValueMapper
          searchPossibleValueSourceInput.setLimit(valuesNotFound.size() * 10); // todo - a little sus... leaves some room for dupes, which, can they happen?
 
          LOG.debug("Searching possible value source by labels during bulk load mapping", logPair("pvsName", field.getPossibleValueSourceName()), logPair("noOfLabels", valuesNotFound.size()), logPair("firstLabel", () -> valuesNotFound.iterator().next()));
-         searchPossibleValueSourceOutput = new SearchPossibleValueSourceAction().execute(searchPossibleValueSourceInput);
+         SearchPossibleValueSourceOutput searchPossibleValueSourceOutput = new SearchPossibleValueSourceAction().execute(searchPossibleValueSourceInput);
          for(QPossibleValue<?> possibleValue : searchPossibleValueSourceOutput.getResults())
          {
             // todo - deal with multiple values found - and maybe... if some end up not-found, but some dupes happened, should we try another search, in case we hit the limit?
@@ -312,6 +317,10 @@ public class BulkLoadValueMapper
             if(valuesFoundAsStrings.containsKey(pvsIdAsString))
             {
                record.setValue(field.getName(), valuesFoundAsStrings.get(pvsIdAsString).getId());
+            }
+            else if(valuesFoundAsStrings.containsKey(value))
+            {
+               record.setValue(field.getName(), valuesFoundAsStrings.get(value).getId());
             }
             else
             {

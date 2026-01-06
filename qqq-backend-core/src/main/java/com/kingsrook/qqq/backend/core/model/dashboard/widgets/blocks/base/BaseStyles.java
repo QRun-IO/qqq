@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.base;
 
 
+import java.io.Serializable;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.BlockStylesInterface;
 
 
@@ -39,7 +40,7 @@ public class BaseStyles implements BlockStylesInterface
    /***************************************************************************
     **
     ***************************************************************************/
-   public static class Directional<T>
+   public static class Directional<T extends Serializable> implements Serializable
    {
       private T top;
       private T bottom;
@@ -75,7 +76,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> of(T top, T right, T bottom, T left)
+      public static <T extends Serializable> Directional<T> of(T top, T right, T bottom, T left)
       {
          return (new Directional<>(top, right, bottom, left));
       }
@@ -86,7 +87,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> of(T value)
+      public static <T extends Serializable> Directional<T> of(T value)
       {
          return (new Directional<>(value, value, value, value));
       }
@@ -96,7 +97,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> ofTop(T top)
+      public static <T extends Serializable> Directional<T> ofTop(T top)
       {
          return (new Directional<>(top, null, null, null));
       }
@@ -106,7 +107,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> ofRight(T right)
+      public static <T extends Serializable> Directional<T> ofRight(T right)
       {
          return (new Directional<>(null, right, null, null));
       }
@@ -116,7 +117,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> ofBottom(T bottom)
+      public static <T extends Serializable> Directional<T> ofBottom(T bottom)
       {
          return (new Directional<>(null, null, bottom, null));
       }
@@ -126,7 +127,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> ofLeft(T left)
+      public static <T extends Serializable> Directional<T> ofLeft(T left)
       {
          return (new Directional<>(null, null, null, left));
       }
@@ -136,7 +137,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> ofX(T x)
+      public static <T extends Serializable> Directional<T> ofX(T x)
       {
          return (new Directional<>(null, x, null, x));
       }
@@ -146,7 +147,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> ofY(T y)
+      public static <T extends Serializable> Directional<T> ofY(T y)
       {
          return (new Directional<>(y, null, y, null));
       }
@@ -156,7 +157,7 @@ public class BaseStyles implements BlockStylesInterface
       /***************************************************************************
        **
        ***************************************************************************/
-      public static <T> Directional<T> ofXY(T x, T y)
+      public static <T extends Serializable> Directional<T> ofXY(T x, T y)
       {
          return (new Directional<>(y, x, y, x));
       }

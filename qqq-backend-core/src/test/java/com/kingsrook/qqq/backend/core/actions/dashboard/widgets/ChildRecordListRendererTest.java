@@ -328,6 +328,8 @@ class ChildRecordListRendererTest extends BaseTest
       //////////////////////////////////////////////////////
       assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
       assertThat(childRecordListData.getQueryOutput().getRecords()).allMatch(record -> record.getValue("lineNumber") != null);
+      assertTrue(childRecordListData.getChildFrontendTableMetaData().getFields().containsKey("lineNumber"));
+      assertTrue(childRecordListData.getChildTableMetaData().getFields().containsKey("lineNumber"));
 
       ////////////////////////////////////////////////////
       // now personalize the table to remove that field //
@@ -347,6 +349,8 @@ class ChildRecordListRendererTest extends BaseTest
 
       assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
       assertThat(childRecordListData.getQueryOutput().getRecords()).allMatch(record -> !record.getValues().containsKey("lineNumber"));
+      assertFalse(childRecordListData.getChildFrontendTableMetaData().getFields().containsKey("lineNumber"));
+      assertFalse(childRecordListData.getChildTableMetaData().getFields().containsKey("lineNumber"));
    }
 
 

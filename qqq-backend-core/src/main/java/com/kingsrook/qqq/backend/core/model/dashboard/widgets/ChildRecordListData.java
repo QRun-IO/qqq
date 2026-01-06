@@ -27,9 +27,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
+import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
@@ -76,18 +79,26 @@ public class ChildRecordListData extends QWidgetData
    /*******************************************************************************
     **
     *******************************************************************************/
-   public ChildRecordListData(String title, QueryOutput queryOutput, QTableMetaData childTableMetaData, String tablePath, String viewAllLink, Integer totalRows)
+   public ChildRecordListData(String title, QueryOutput queryOutput, QTableMetaData childTableMetaData, String tablePath, String viewAllLink, Integer totalRows) throws QException
    {
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // ensure that if a table personalizer is active, that it gets applied to the table meta-data for the child table here. //
+      //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      AbstractTableActionInput tableMetaDataInput = new TableMetaDataInput()
+         .withTableName(childTableMetaData.getName())
+         .withInputSource(QInputSource.USER);
+
+      QTableMetaData personalizedChildTableMetaData = TableMetaDataPersonalizerAction.execute(tableMetaDataInput);
+
       this.title = title;
       this.queryOutput = queryOutput;
-      this.childTableMetaData = childTableMetaData;
+      this.childTableMetaData = personalizedChildTableMetaData;
       this.tablePath = tablePath;
       this.viewAllLink = viewAllLink;
       this.totalRows = totalRows;
 
-      AbstractTableActionInput tableMetaDataInput    = new TableMetaDataInput().withTableName(childTableMetaData.getName());
-      QBackendMetaData         backendForTable       = QContext.getQInstance().getBackendForTable(childTableMetaData.getName());
-      QFrontendTableMetaData   frontendTableMetaData = new QFrontendTableMetaData(tableMetaDataInput, backendForTable, childTableMetaData, true, true);
+      QBackendMetaData       backendForTable       = QContext.getQInstance().getBackendForTable(childTableMetaData.getName());
+      QFrontendTableMetaData frontendTableMetaData = new QFrontendTableMetaData(tableMetaDataInput, backendForTable, personalizedChildTableMetaData, true, true);
       this.childFrontendTableMetaData = frontendTableMetaData;
    }
 

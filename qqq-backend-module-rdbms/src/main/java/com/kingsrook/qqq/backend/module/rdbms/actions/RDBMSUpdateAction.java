@@ -206,7 +206,7 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
       String tableName = escapeIdentifier(getTableName(table));
       return ("UPDATE " + tableName
          + " SET " + columns
-         + " WHERE " + getColumnName(table.getField(table.getPrimaryKeyField())) + " ");
+         + " WHERE " + escapeIdentifier(getColumnName(table.getField(table.getPrimaryKeyField()))) + " ");
    }
 
 

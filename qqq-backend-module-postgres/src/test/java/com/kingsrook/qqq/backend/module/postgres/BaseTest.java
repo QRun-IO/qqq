@@ -68,7 +68,7 @@ public class BaseTest
    @BeforeAll
    void baseBeforeAll()
    {
-      postgres = new PostgreSQLContainer("postgres:16-alpine")
+      postgres = new PostgreSQLContainer("postgres:17-alpine")
          .withDatabaseName("qqq_test")
          .withUsername("test")
          .withPassword("test")

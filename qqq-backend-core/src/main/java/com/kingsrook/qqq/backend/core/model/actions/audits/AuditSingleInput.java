@@ -43,11 +43,11 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
  *******************************************************************************/
 public class AuditSingleInput implements Serializable
 {
-   private String  auditTableName;
-   private String  auditUserName;
-   private Instant timestamp;
-   private String  message;
-   private Integer recordId;
+   private String       auditTableName;
+   private String       auditUserName;
+   private Instant      timestamp;
+   private String       message;
+   private Serializable recordId;
 
    private Map<String, Serializable> securityKeyValues;
 
@@ -72,7 +72,7 @@ public class AuditSingleInput implements Serializable
    public AuditSingleInput(QTableMetaData table, QRecord record, String auditMessage)
    {
       setAuditTableName(table.getName());
-      setRecordId(record.getValueInteger(table.getPrimaryKeyField()));
+      setRecordId(record.getValue(table.getPrimaryKeyField()));
       setSecurityKeyValues(AuditAction.getRecordSecurityKeyValues(table, record, Optional.empty()));
       setMessage(auditMessage);
    }
@@ -248,7 +248,7 @@ public class AuditSingleInput implements Serializable
    /*******************************************************************************
     ** Getter for recordId
     *******************************************************************************/
-   public Integer getRecordId()
+   public Serializable getRecordId()
    {
       return (this.recordId);
    }
@@ -258,7 +258,7 @@ public class AuditSingleInput implements Serializable
    /*******************************************************************************
     ** Setter for recordId
     *******************************************************************************/
-   public void setRecordId(Integer recordId)
+   public void setRecordId(Serializable recordId)
    {
       this.recordId = recordId;
    }
@@ -268,7 +268,7 @@ public class AuditSingleInput implements Serializable
    /*******************************************************************************
     ** Fluent setter for recordId
     *******************************************************************************/
-   public AuditSingleInput withRecordId(Integer recordId)
+   public AuditSingleInput withRecordId(Serializable recordId)
    {
       this.recordId = recordId;
       return (this);
@@ -277,17 +277,18 @@ public class AuditSingleInput implements Serializable
 
 
    /*******************************************************************************
-    **
+    ** Populate this input from a table and record, extracting the primary key
+    ** and security key values.
     *******************************************************************************/
    public AuditSingleInput forRecord(QTableMetaData table, QRecord record)
    {
-      setRecordId(record.getValueInteger(table.getPrimaryKeyField())); // todo support non-integer
+      setRecordId(record.getValue(table.getPrimaryKeyField()));
       setAuditTableName(table.getName());
 
       this.securityKeyValues = new HashMap<>();
       for(RecordSecurityLock recordSecurityLock : RecordSecurityLockFilters.filterForReadLocks(CollectionUtils.nonNullList(table.getRecordSecurityLocks())))
       {
-         this.securityKeyValues.put(recordSecurityLock.getFieldName(), record.getValueInteger(recordSecurityLock.getFieldName()));
+         this.securityKeyValues.put(recordSecurityLock.getFieldName(), record.getValue(recordSecurityLock.getFieldName()));
       }
 
       return (this);

@@ -51,6 +51,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -68,6 +69,23 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 /*******************************************************************************
  ** Audit for a standard DML (Data Manipulation Language) activity - e.g.,
  ** insert, edit, or delete.
+ **
+ ** This action creates audit records when tables with audit rules are modified.
+ ** It supports both RECORD-level auditing (simple log of changes) and FIELD-level
+ ** auditing (detailed tracking of individual field changes).
+ **
+ ** <h2>Primary Key Type Support</h2>
+ ** The audit system's support for different primary key types depends on how
+ ** the audit tables are configured via {@link AuditsMetaDataProvider}:
+ ** <ul>
+ **    <li><b>INTEGER recordId (default):</b> Only tables with INTEGER primary
+ **        keys can be audited. Tables with other PK types are silently skipped.</li>
+ **    <li><b>STRING recordId:</b> Tables with any primary key type can be audited.
+ **        Primary key values are converted to strings for storage.</li>
+ ** </ul>
+ **
+ ** @see AuditsMetaDataProvider#withRecordIdType(QFieldType)
+ ** @see AuditAction
  *******************************************************************************/
 public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAuditOutput>
 {
@@ -80,7 +98,17 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Execute the DML audit action for a table operation.
     **
+    ** This method creates audit records based on the configured audit level
+    ** (NONE, RECORD, or FIELD) and the type of DML operation being performed.
+    ** If FIELD-level auditing is enabled, individual field changes are tracked
+    ** with old and new values stored in audit detail records.
+    **
+    ** @param input the DML audit input containing the table operation details
+    **              and the records being modified
+    ** @return DMLAuditOutput (currently empty, reserved for future use)
+    ** @throws QException if there is an error during audit processing
     *******************************************************************************/
    @Override
    public DMLAuditOutput execute(DMLAuditInput input) throws QException
@@ -106,16 +134,33 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
             return (output);
          }
 
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////
-         // currently, the table's primary key must be integer... so, log (once) and return early if not that //
-         // (or, if no primary key!)                                                                          //
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////
-         QFieldMetaData field = table.getFields().get(table.getPrimaryKeyField());
-         if(field == null || !QFieldType.INTEGER.equals(field.getType()))
+         ///////////////////////////////////////////////////////////////////////////////////////
+         // check if the table's primary key type is compatible with the audit recordId type. //
+         // if audit.recordId is INTEGER, only INTEGER PKs are supported (backwards compat).  //
+         // if audit.recordId is STRING, any PK type can be audited (converted to string).    //
+         ///////////////////////////////////////////////////////////////////////////////////////
+         QFieldMetaData primaryKeyField = table.getFields().get(table.getPrimaryKeyField());
+         if(primaryKeyField == null)
          {
             if(!loggedUnauditableTableNames.contains(table.getName()))
             {
-               LOG.info("Cannot audit table without integer as its primary key", logPair("tableName", table.getName()));
+               LOG.info("Cannot audit table without a primary key field", logPair("tableName", table.getName()));
+               loggedUnauditableTableNames.add(table.getName());
+            }
+            return (output);
+         }
+
+         QFieldType auditRecordIdType = getAuditRecordIdFieldType();
+         if(QFieldType.INTEGER.equals(auditRecordIdType) && !QFieldType.INTEGER.equals(primaryKeyField.getType()))
+         {
+            /////////////////////////////////////////////////////////////////////////////////////
+            // audit table uses INTEGER recordId - only tables with INTEGER PKs can be audited //
+            /////////////////////////////////////////////////////////////////////////////////////
+            if(!loggedUnauditableTableNames.contains(table.getName()))
+            {
+               LOG.info("Cannot audit table with non-integer primary key when audit.recordId is INTEGER. "
+                  + "Configure AuditsMetaDataProvider.withRecordIdType(QFieldType.STRING) to audit tables with non-integer PKs.",
+                  logPair("tableName", table.getName()), logPair("pkType", primaryKeyField.getType()));
                loggedUnauditableTableNames.add(table.getName());
             }
             return (output);
@@ -133,7 +178,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             for(QRecord record : recordList)
             {
-               AuditAction.appendToInput(auditInput, table.getName(), record.getValueInteger(table.getPrimaryKeyField()), getRecordSecurityKeyValues(table, record, Optional.empty()), "Record was " + dmlType.pastTenseVerb + contextSuffix);
+               AuditAction.appendToInput(auditInput, table.getName(), record.getValue(table.getPrimaryKeyField()), getRecordSecurityKeyValues(table, record, Optional.empty()), "Record was " + dmlType.pastTenseVerb + contextSuffix);
             }
          }
          else if(auditLevel.equals(AuditLevel.FIELD))
@@ -152,8 +197,6 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
             List<String> sortedFieldNames = table.getFields().keySet().stream()
                .sorted(Comparator.comparing(fieldName -> Objects.requireNonNullElse(table.getFields().get(fieldName).getLabel(), fieldName)))
                .toList();
-
-            QFieldMetaData primaryKeyField = table.getField(table.getPrimaryKeyField());
 
             //////////////////////////////////////////////
             // build single audit input for each record //
@@ -176,7 +219,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
                }
                else
                {
-                  AuditAction.appendToInput(auditInput, table.getName(), record.getValueInteger(table.getPrimaryKeyField()), getRecordSecurityKeyValues(table, record, Optional.ofNullable(oldRecord)), "Record was " + dmlType.pastTenseVerb + contextSuffix, details);
+                  AuditAction.appendToInput(auditInput, table.getName(), record.getValue(table.getPrimaryKeyField()), getRecordSecurityKeyValues(table, record, Optional.ofNullable(oldRecord)), "Record was " + dmlType.pastTenseVerb + contextSuffix, details);
                }
             }
          }
@@ -197,7 +240,17 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Build a context suffix string to append to audit messages.
     **
+    ** This method collects contextual information from multiple sources to create
+    ** a descriptive suffix that helps identify when/where the audit occurred:
+    ** - Direct audit context from the DML input
+    ** - Session-level audit context
+    ** - Process name and label (if running within a process)
+    ** - API version and label (if the operation came via an API call)
+    **
+    ** @param input the DML audit input that may contain audit context
+    ** @return a suffix string to append to audit messages (may be empty)
     *******************************************************************************/
    static String getContentSuffix(DMLAuditInput input)
    {
@@ -268,7 +321,21 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Create an audit detail record for a single field if its value has changed.
     **
+    ** This method compares the old and new values for a field and, if different,
+    ** creates a detail record describing the change. It handles special cases:
+    ** - Skips createDate, modifyDate, and automationStatus fields
+    ** - Handles BLOB and masked fields without exposing actual values
+    ** - Uses formatted/display values when available (e.g., for possible values)
+    **
+    ** @param fieldName the name of the field to audit
+    ** @param table the table metadata containing field definitions
+    ** @param dmlType the type of DML operation (INSERT, UPDATE, DELETE, OTHER)
+    ** @param record the new record with current values
+    ** @param oldRecord the old record with previous values (null for inserts)
+    ** @return Optional containing an audit detail record if change detected,
+    **         empty Optional otherwise
     *******************************************************************************/
    static Optional<QRecord> makeAuditDetailRecordForField(String fieldName, QTableMetaData table, DMLType dmlType, QRecord record, QRecord oldRecord)
    {
@@ -369,7 +436,18 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Determine whether two field values are different for audit purposes.
     **
+    ** This method applies type-specific comparison logic to handle edge cases:
+    ** - Decimals: Uses compareTo() to ignore scale differences (10 vs 10.00)
+    ** - DateTimes: Truncates to seconds to avoid millisecond precision issues
+    ** - Strings: Treats null and empty string as equivalent
+    ** - Other types: Uses Objects.equals() for comparison
+    **
+    ** @param field the field metadata describing the value type
+    ** @param value the new value to compare
+    ** @param oldValue the old value to compare against
+    ** @return true if values are different for audit purposes, false otherwise
     *******************************************************************************/
    static boolean areValuesDifferentForAudit(QFieldMetaData field, Serializable value, Serializable oldValue)
    {
@@ -463,7 +541,19 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Format a field value for display in an audit detail record.
     **
+    ** This method converts raw field values to human-readable strings:
+    ** - DateTimes are formatted with timezone information
+    ** - Possible values use their display values (e.g., "Active" instead of 1)
+    ** - Other values use standard QValueFormatter display formatting
+    **
+    ** @param table the table metadata
+    ** @param record the record containing the value to format
+    ** @param fieldName the name of the field
+    ** @param field the field metadata
+    ** @param value the raw value to format
+    ** @return formatted string representation of the value, or null if value is null
     *******************************************************************************/
    private static String getFormattedValueForAuditDetail(QTableMetaData table, QRecord record, String fieldName, QFieldMetaData field, Serializable value)
    {
@@ -491,7 +581,16 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Prepare a formatted value for inclusion in an audit detail message.
     **
+    ** This method wraps values in quotes where appropriate:
+    ** - String values and possible value display values get quotes
+    ** - Null or "null" values are replaced with "--"
+    ** - Numeric values are left unquoted
+    **
+    ** @param field the field metadata
+    ** @param formattedValue the formatted value to prepare for the message
+    ** @return the value formatted for inclusion in the audit message
     *******************************************************************************/
    private static String formatFormattedValueForDetailMessage(QFieldMetaData field, String formattedValue)
    {
@@ -513,7 +612,14 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Build a map of old records keyed by their primary key values.
     **
+    ** This map is used during FIELD-level auditing to quickly look up the old
+    ** version of a record when comparing field values.
+    **
+    ** @param table the table metadata containing the primary key field definition
+    ** @param oldRecordList the list of old records to index
+    ** @return a map from primary key value to the corresponding old record
     *******************************************************************************/
    private Map<Serializable, QRecord> buildOldRecordMap(QTableMetaData table, List<QRecord> oldRecordList)
    {
@@ -528,7 +634,12 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
+    ** Determine the DML operation type from a table action input.
     **
+    ** Maps the input class type to the corresponding DML type for audit messages.
+    **
+    ** @param tableActionInput the input from a table action (insert/update/delete)
+    ** @return the corresponding DMLType enum value
     *******************************************************************************/
    private DMLType getDMLType(AbstractTableActionInput tableActionInput)
    {
@@ -553,7 +664,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
-    **
+    ** Get the audit level for the table being operated on.
     *******************************************************************************/
    public static AuditLevel getAuditLevel(AbstractTableActionInput tableActionInput)
    {
@@ -569,7 +680,27 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
    /*******************************************************************************
-    **
+    ** Get the field type configured for the audit table's recordId field.
+    ** Returns INTEGER by default if the audit table is not configured.
+    *******************************************************************************/
+   private static QFieldType getAuditRecordIdFieldType()
+   {
+      QTableMetaData auditTable = QContext.getQInstance().getTable("audit");
+      if(auditTable != null)
+      {
+         QFieldMetaData recordIdField = auditTable.getField("recordId");
+         if(recordIdField != null)
+         {
+            return (recordIdField.getType());
+         }
+      }
+      return (QFieldType.INTEGER);
+   }
+
+
+
+   /*******************************************************************************
+    ** Enumeration of DML operation types that can be audited.
     *******************************************************************************/
    enum DMLType
    {
@@ -584,7 +715,11 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
 
 
       /*******************************************************************************
+       ** Constructor for DMLType enum values.
        **
+       ** @param pastTenseVerb the past-tense verb to use in audit messages
+       **                      (e.g., "Inserted", "Edited", "Deleted")
+       ** @param supportsFields whether this DML type supports field-level auditing
        *******************************************************************************/
       DMLType(String pastTenseVerb, boolean supportsFields)
       {

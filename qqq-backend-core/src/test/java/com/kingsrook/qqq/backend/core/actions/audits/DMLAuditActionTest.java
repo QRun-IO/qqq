@@ -403,7 +403,8 @@ class DMLAuditActionTest extends BaseTest
 
 
    /*******************************************************************************
-    **
+    ** Test that tables without INTEGER primary keys are NOT audited when using
+    ** the default INTEGER recordId configuration (backwards compatibility).
     *******************************************************************************/
    @Test
    void testTableWithoutIntegerPrimaryKey() throws QException
@@ -443,6 +444,219 @@ class DMLAuditActionTest extends BaseTest
       //////////////////////////////////
       List<QRecord> auditList = TestUtils.queryTable("audit");
       assertTrue(auditList.isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that tables with STRING primary keys CAN be audited when using
+    ** the STRING recordId configuration.
+    *******************************************************************************/
+   @Test
+   void testStringRecordIdConfigurationWithStringPrimaryKey() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+
+      /////////////////////////////////////////////////////////////////////////
+      // configure audit tables with STRING recordId type instead of INTEGER //
+      /////////////////////////////////////////////////////////////////////////
+      new AuditsMetaDataProvider()
+         .withRecordIdType(QFieldType.STRING)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      ////////////////////////////////////////
+      // add a table with STRING primary key //
+      ////////////////////////////////////////
+      qInstance.addTable(
+         new QTableMetaData()
+            .withName("stringPkeyTable")
+            .withBackendName(TestUtils.MEMORY_BACKEND_NAME)
+            .withField(new QFieldMetaData("uuid", QFieldType.STRING))
+            .withField(new QFieldMetaData("name", QFieldType.STRING).withLabel("Name"))
+            .withPrimaryKeyField("uuid")
+            .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD)));
+
+      ////////////////////////////////////////
+      // execute an insert and verify audit //
+      ////////////////////////////////////////
+      String testUuid = "abc-123-def-456";
+      new DMLAuditAction().execute(new DMLAuditInput()
+         .withTableActionInput(new InsertInput("stringPkeyTable"))
+         .withRecordList(List.of(new QRecord()
+            .withValue("uuid", testUuid)
+            .withValue("name", "Test Record"))));
+
+      ////////////////////////////////////////////////
+      // verify an audit was created with STRING id //
+      ////////////////////////////////////////////////
+      List<QRecord> auditList = TestUtils.queryTable("audit");
+      assertEquals(1, auditList.size());
+      assertEquals("Record was Inserted", auditList.get(0).getValueString("message"));
+      assertEquals(testUuid, auditList.get(0).getValueString("recordId"));
+
+      /////////////////////////////////////
+      // verify audit details were saved //
+      /////////////////////////////////////
+      List<QRecord> auditDetailList = TestUtils.queryTable("auditDetail");
+      assertFalse(auditDetailList.isEmpty());
+      assertTrue(auditDetailList.stream().anyMatch(r -> "name".equals(r.getValueString("fieldName"))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that tables with INTEGER primary keys can STILL be audited when using
+    ** the STRING recordId configuration (integers are converted to strings).
+    *******************************************************************************/
+   @Test
+   void testStringRecordIdConfigurationWithIntegerPrimaryKey() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+
+      /////////////////////////////////////////////////////////////////////////
+      // configure audit tables with STRING recordId type instead of INTEGER //
+      /////////////////////////////////////////////////////////////////////////
+      new AuditsMetaDataProvider()
+         .withRecordIdType(QFieldType.STRING)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      ///////////////////////////////////////////////
+      // use the standard person table (INTEGER PK) //
+      ///////////////////////////////////////////////
+      qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .setAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD));
+
+      ////////////////////////////////////////
+      // execute an insert and verify audit //
+      ////////////////////////////////////////
+      Integer testId = 42;
+      new DMLAuditAction().execute(new DMLAuditInput()
+         .withTableActionInput(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY))
+         .withRecordList(List.of(new QRecord()
+            .withValue("id", testId)
+            .withValue("firstName", "John"))));
+
+      ////////////////////////////////////////////////////////
+      // verify an audit was created with ID stored as text //
+      ////////////////////////////////////////////////////////
+      List<QRecord> auditList = TestUtils.queryTable("audit");
+      assertEquals(1, auditList.size());
+      assertEquals("Record was Inserted", auditList.get(0).getValueString("message"));
+      assertEquals("42", auditList.get(0).getValueString("recordId"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that edits (updates) work correctly with STRING recordId configuration.
+    *******************************************************************************/
+   @Test
+   void testStringRecordIdConfigurationWithUpdate() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+
+      /////////////////////////////////////////////////////////////////////////
+      // configure audit tables with STRING recordId type instead of INTEGER //
+      /////////////////////////////////////////////////////////////////////////
+      new AuditsMetaDataProvider()
+         .withRecordIdType(QFieldType.STRING)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      ////////////////////////////////////////
+      // add a table with STRING primary key //
+      ////////////////////////////////////////
+      qInstance.addTable(
+         new QTableMetaData()
+            .withName("stringPkeyTable")
+            .withBackendName(TestUtils.MEMORY_BACKEND_NAME)
+            .withField(new QFieldMetaData("uuid", QFieldType.STRING))
+            .withField(new QFieldMetaData("name", QFieldType.STRING).withLabel("Name"))
+            .withField(new QFieldMetaData("status", QFieldType.STRING).withLabel("Status"))
+            .withPrimaryKeyField("uuid")
+            .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD)));
+
+      ////////////////////////////////////////
+      // execute an update and verify audit //
+      ////////////////////////////////////////
+      String testUuid = "uuid-for-update-test";
+      QRecord oldRecord = new QRecord()
+         .withValue("uuid", testUuid)
+         .withValue("name", "Original Name")
+         .withValue("status", "PENDING");
+      QRecord newRecord = new QRecord()
+         .withValue("uuid", testUuid)
+         .withValue("name", "Updated Name")
+         .withValue("status", "PENDING");
+
+      new DMLAuditAction().execute(new DMLAuditInput()
+         .withTableActionInput(new UpdateInput("stringPkeyTable"))
+         .withOldRecordList(List.of(oldRecord))
+         .withRecordList(List.of(newRecord)));
+
+      ///////////////////////////////////////////////////
+      // verify an audit was created for the edit      //
+      ///////////////////////////////////////////////////
+      List<QRecord> auditList = TestUtils.queryTable("audit");
+      assertEquals(1, auditList.size());
+      assertEquals("Record was Edited", auditList.get(0).getValueString("message"));
+      assertEquals(testUuid, auditList.get(0).getValueString("recordId"));
+
+      //////////////////////////////////////////////
+      // verify audit detail captured the change  //
+      //////////////////////////////////////////////
+      List<QRecord> auditDetailList = TestUtils.queryTable("auditDetail");
+      assertEquals(1, auditDetailList.size());
+      assertEquals("name", auditDetailList.get(0).getValueString("fieldName"));
+      assertEquals("Original Name", auditDetailList.get(0).getValueString("oldValue"));
+      assertEquals("Updated Name", auditDetailList.get(0).getValueString("newValue"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that deletes work correctly with STRING recordId configuration.
+    *******************************************************************************/
+   @Test
+   void testStringRecordIdConfigurationWithDelete() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+
+      /////////////////////////////////////////////////////////////////////////
+      // configure audit tables with STRING recordId type instead of INTEGER //
+      /////////////////////////////////////////////////////////////////////////
+      new AuditsMetaDataProvider()
+         .withRecordIdType(QFieldType.STRING)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      ////////////////////////////////////////
+      // add a table with STRING primary key //
+      ////////////////////////////////////////
+      qInstance.addTable(
+         new QTableMetaData()
+            .withName("stringPkeyTable")
+            .withBackendName(TestUtils.MEMORY_BACKEND_NAME)
+            .withField(new QFieldMetaData("uuid", QFieldType.STRING))
+            .withField(new QFieldMetaData("name", QFieldType.STRING).withLabel("Name"))
+            .withPrimaryKeyField("uuid")
+            .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.RECORD)));
+
+      ////////////////////////////////////////
+      // execute a delete and verify audit  //
+      ////////////////////////////////////////
+      String testUuid = "uuid-for-delete-test";
+      new DMLAuditAction().execute(new DMLAuditInput()
+         .withTableActionInput(new DeleteInput("stringPkeyTable"))
+         .withRecordList(List.of(new QRecord()
+            .withValue("uuid", testUuid)
+            .withValue("name", "Record To Delete"))));
+
+      ///////////////////////////////////////////////////
+      // verify an audit was created for the delete    //
+      ///////////////////////////////////////////////////
+      List<QRecord> auditList = TestUtils.queryTable("audit");
+      assertEquals(1, auditList.size());
+      assertEquals("Record was Deleted", auditList.get(0).getValueString("message"));
+      assertEquals(testUuid, auditList.get(0).getValueString("recordId"));
    }
 
 }

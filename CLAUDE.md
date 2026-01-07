@@ -4,8 +4,8 @@
 
 QQQ is a low-code application framework for engineers by Kingsrook, LLC. It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
 
-**Current Version:** 0.35.0-SNAPSHOT
-**License:** AGPL-3.0
+**Current Version:** 0.36.0-SNAPSHOT
+**License:** Apache-2.0
 **Java Version:** 21 LTS
 
 ## Repository Structure
@@ -218,3 +218,24 @@ new IsolatedSpaRouteProvider()
 - `CONTRIBUTING.md` - Contribution guidelines
 - `checkstyle/config.xml` - Checkstyle rules
 - `qqq-middleware-javalin/ISOLATED_SPA_ROUTE_PROVIDER.md` - SPA documentation
+- `docs/SESSION-STATE.md` - Current session state for continuity
+
+## Session Continuity
+
+To continue from a previous session, read `docs/SESSION-STATE.md` for:
+- Current branch and recent work
+- Open PRs and issues
+- Next steps and context
+
+## Recent Learnings
+
+### RDBMS Identifier Quoting
+- PostgreSQL lowercases unquoted identifiers (e.g., `mhOrderId` becomes `mhorderid`)
+- MySQL/H2/SQLite are case-insensitive by default
+- Always use `escapeIdentifier()` for column/table names in SQL generation
+- The `escapeIdentifier()` method uses dialect-specific quote characters (`"` for PostgreSQL, backtick for MySQL)
+
+### Audit System
+- `AuditsMetaDataProvider.withRecordIdType(QFieldType)` configures audit table PK type
+- Default is INTEGER (backwards compatible)
+- STRING mode allows auditing tables with UUID/string PKs

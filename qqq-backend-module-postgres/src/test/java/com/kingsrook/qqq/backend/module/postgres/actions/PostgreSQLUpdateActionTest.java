@@ -414,6 +414,37 @@ public class PostgreSQLUpdateActionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Test that UPDATE works with camelCase primary key columns (issue #327).
+    **
+    ** PostgreSQL lowercases unquoted identifiers, so camelCase column names
+    ** must be quoted in the WHERE clause to work correctly.
+    *******************************************************************************/
+   @Test
+   void testUpdateWithCamelCasePrimaryKey() throws Exception
+   {
+      UpdateInput updateInput = new UpdateInput();
+      updateInput.setTableName(TestUtils.TABLE_NAME_CAMEL_CASE_ID_TABLE);
+
+      QRecord record = new QRecord()
+         .withValue("testId", "uuid-1")
+         .withValue("name", "Updated Name");
+      updateInput.setRecords(List.of(record));
+
+      UpdateOutput updateResult = new UpdateAction().execute(updateInput);
+
+      assertEquals(1, updateResult.getRecords().size(), "Should return 1 row");
+      assertTrue(updateResult.getRecords().get(0).getErrors().isEmpty(), "Should have no errors");
+
+      runTestSql("SELECT * FROM camel_case_id_table WHERE \"testId\" = 'uuid-1'", (rs ->
+      {
+         assertTrue(rs.next(), "Should find the updated record");
+         assertEquals("Updated Name", rs.getString("name"));
+      }));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private String selectModifyDate(Integer id) throws Exception

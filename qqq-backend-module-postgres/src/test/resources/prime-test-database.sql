@@ -20,6 +20,7 @@
 --
 
 -- Drop all tables and sequences in correct order (reverse dependency)
+DROP TABLE IF EXISTS camel_case_id_table CASCADE;
 DROP SEQUENCE IF EXISTS line_item_extrinsic_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS order_line_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS order_id_seq CASCADE;
@@ -244,3 +245,13 @@ CREATE TABLE line_item_extrinsic
    value VARCHAR(80)
 );
 ALTER SEQUENCE line_item_extrinsic_id_seq RESTART WITH 1;
+
+-- Table with camelCase primary key to test identifier quoting (issue #327)
+CREATE TABLE camel_case_id_table
+(
+   "testId" VARCHAR(36) PRIMARY KEY,
+   name VARCHAR(80)
+);
+
+INSERT INTO camel_case_id_table ("testId", name) VALUES ('uuid-1', 'Test Record 1');
+INSERT INTO camel_case_id_table ("testId", name) VALUES ('uuid-2', 'Test Record 2');

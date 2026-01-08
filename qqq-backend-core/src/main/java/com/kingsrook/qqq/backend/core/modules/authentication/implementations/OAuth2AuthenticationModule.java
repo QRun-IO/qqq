@@ -37,6 +37,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
@@ -53,6 +54,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -94,6 +96,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
    private static final Memoization<String, OIDCProviderMetadata> oidcProviderMetadataMemoization = new Memoization<String, OIDCProviderMetadata>()
       .withMayStoreNullValues(false);
+
+   //////////////////////////////////////////////////////////////////////////////////
+   // do not use this var directly - rather - always call the getCustomizer method //
+   //////////////////////////////////////////////////////////////////////////////////
+   private QAuthenticationModuleCustomizerInterface _customizer                = null;
+   private boolean                                  customizerHasBeenRequested = false;
 
 
 
@@ -183,6 +191,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // todo - do we need to validate its age or ping the provider?? //
             //////////////////////////////////////////////////////////////////
 
+            //////////////////////////////////////////////////////////////
+            // allow customizer to do custom things here, if so desired //
+            //////////////////////////////////////////////////////////////
+            finalCustomizeSession(qInstance, session);
+
             return (session);
          }
          else
@@ -222,6 +235,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
          QSession session = createSessionFromToken(accessToken.getValue());
          insertUserSession(accessToken.getValue(), session);
+
+         //////////////////////////////////////////////////////////////
+         // allow customizer to do custom things here, if so desired //
+         //////////////////////////////////////////////////////////////
+         finalCustomizeSession(QContext.getQInstance(), session);
+
          return (session);
       }
       else
@@ -352,6 +371,14 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       // a non-null value for use in cookies and session management               //
       //////////////////////////////////////////////////////////////////////////////
       session.setIdReference(session.getUuid());
+
+      //////////////////////////////////////////////////////////////
+      // allow customizer to do custom things here, if so desired //
+      //////////////////////////////////////////////////////////////
+      if(getCustomizer() != null)
+      {
+         getCustomizer().customizeSession(QContext.getQInstance(), session, Map.of("jwtPayloadJsonObject", payload));
+      }
 
       return session;
    }
@@ -492,6 +519,53 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          OIDCProviderMetadata metadata = OIDCProviderMetadata.resolve(issuer);
          return (metadata);
       })).orElseThrow(() -> new GeneralException("Could not resolve OIDCProviderMetadata for " + oAuth2AuthenticationMetaData.getName()));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private QAuthenticationModuleCustomizerInterface getCustomizer()
+   {
+      try
+      {
+         if(!customizerHasBeenRequested)
+         {
+            customizerHasBeenRequested = true;
+
+            OAuth2AuthenticationMetaData oauth2MetaData = (OAuth2AuthenticationMetaData) QContext.getQInstance().getAuthentication();
+
+            if(oauth2MetaData.getCustomizer() != null)
+            {
+               _customizer = QCodeLoader.getAdHoc(QAuthenticationModuleCustomizerInterface.class, oauth2MetaData.getCustomizer());
+            }
+         }
+
+         return (_customizer);
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error getting customizer", e);
+         return (null);
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private void finalCustomizeSession(QInstance qInstance, QSession qSession)
+   {
+      if(getCustomizer() != null)
+      {
+         QContext.withTemporaryContext(QContext.capture(), () ->
+         {
+            QContext.setQSession(new QSystemUserSession());
+            getCustomizer().finalCustomizeSession(qInstance, qSession);
+         });
+      }
    }
 
 }

@@ -81,6 +81,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.commons.lang.BooleanUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -485,8 +486,8 @@ public class BulkInsertTransformStep extends AbstractTransformStep
             ///////////////////////////////////////////////////////////////////////////////////
             // add this process value, to signal that we shouldn't try this technique again. //
             ///////////////////////////////////////////////////////////////////////////////////
+            LOG.info("Caught a TryAnotherWayException after loadPotentialRecordsByUniqueKeyByPerFieldInLists - proceeding with loadPotentialRecordsByUniqueKeyByOrQueries", tawe, logPair("tableName", table.getName()), logPair("keyFields", keyFields));
             runBackendStepInput.addValue("ByPerFieldInListsQueryFailed", true);
-            LOG.info("Caught a TryAnotherWayException", tawe);
          }
       }
 
@@ -502,7 +503,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
          }
          catch(TryAnotherWayException tawe)
          {
-            LOG.info("Caught a TryAnotherWayException", tawe);
+            LOG.info("Caught a TryAnotherWayException after loadPotentialRecordsByUniqueKeyByOrQueries - proceeding with loadPotentialRecordsByUniqueKeyRecordByRecord", tawe, logPair("tableName", table.getName()), logPair("keyFields", keyFields));
             runBackendStepInput.addValue("ByOrQueriesFailed", true);
          }
       }
@@ -544,6 +545,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
    protected List<QRecord> loadPotentialRecordsByUniqueKeyByPerFieldInLists(List<QRecord> fileRecords, QTableMetaData table, List<String> keyFields) throws QException, TryAnotherWayException
    {
       List<QRecord>     potentialRecords = new ArrayList<>();
+      int               limit            = fileRecords.size() * getMaxPotentialRecordsByUniqueKeyLimitFactor();
       Set<Serializable> uniqueIds        = new HashSet<>();
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -554,7 +556,6 @@ public class BulkInsertTransformStep extends AbstractTransformStep
       {
          Set<Serializable> values = fileRecords.stream().map(record -> record.getValue(uniqueKeyPart)).collect(Collectors.toSet());
 
-         int limit = fileRecords.size() * getMaxPotentialRecordsByUniqueKeyLimitFactor();
          QueryInput queryInput = new QueryInput(table.getName())
             .withFilter(new QQueryFilter(new QFilterCriteria(uniqueKeyPart, QCriteriaOperator.IN, values))
                .withLimit(limit));
@@ -596,10 +597,10 @@ public class BulkInsertTransformStep extends AbstractTransformStep
    protected List<QRecord> loadPotentialRecordsByUniqueKeyByOrQueries(List<QRecord> fileRecords, QTableMetaData table, List<String> keyFields) throws QException, TryAnotherWayException
    {
       List<QRecord> potentialRecords = new ArrayList<>();
+      int           limit            = fileRecords.size() * getMaxPotentialRecordsByUniqueKeyLimitFactor();
 
       for(List<QRecord> page : CollectionUtils.getPages(fileRecords, getOrListQueryPageSize()))
       {
-         int          limit  = fileRecords.size() * getMaxPotentialRecordsByUniqueKeyLimitFactor();
          QQueryFilter filter = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR).withLimit(limit);
          for(QRecord record : page)
          {

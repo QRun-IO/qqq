@@ -41,6 +41,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
@@ -1084,24 +1085,40 @@ public class QueryManager
    {
       try
       {
-         /////////////////////////////////////////////////////////////////////////////////////////////
-         // this will be a zone-less date-time string, in the database server's configured timezone //
-         /////////////////////////////////////////////////////////////////////////////////////////////
          String string = resultSet.getString(column);
          if(resultSet.wasNull())
          {
             return (null);
          }
 
+         //////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // normalize the string to ISO-8601 format (replace space with 'T' if present, e.g., from some drivers) //
+         //////////////////////////////////////////////////////////////////////////////////////////////////////////
+         String normalized = string.replace(' ', 'T');
+
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // try to parse as OffsetDateTime first (handles timestamps with timezone offset like +00, +05:30, etc.) //
+         // this covers PostgreSQL TIMESTAMP WITH TIME ZONE which returns strings like "2026-01-08T20:35:45+00"   //
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+         try
+         {
+            OffsetDateTime offsetDateTime = OffsetDateTime.parse(normalized);
+            return offsetDateTime.toInstant();
+         }
+         catch(DateTimeParseException ignored)
+         {
+            ///////////////////////////////////////////////////////////////////////////////////////////////
+            // fall through - string doesn't have timezone offset, parse as LocalDateTime and assume UTC //
+            ///////////////////////////////////////////////////////////////////////////////////////////////
+         }
+
          //////////////////////////////////////////////////////////////////////////////////////////////
-         // make an Instant (which means UTC) from that zone-less date-time string.                  //
-         // if the database server was giving back non-utc times, we'd need a different ZoneId here? //
-         // e.g., as configured via ... a system property or database metadata setting               //
+         // parse as zone-less LocalDateTime and assume UTC                                          //
+         // if the database server was giving back non-utc times, we'd need a different ZoneId here  //
          //////////////////////////////////////////////////////////////////////////////////////////////
-         LocalDateTime localDateTime = LocalDateTime.parse(string.replace(' ', 'T'));
+         LocalDateTime localDateTime = LocalDateTime.parse(normalized);
          ZonedDateTime zonedDateTime = localDateTime.atZone(ZoneId.of("UTC"));
-         Instant       instant       = zonedDateTime.toInstant();
-         return (instant);
+         return zonedDateTime.toInstant();
       }
       catch(Exception e)
       {

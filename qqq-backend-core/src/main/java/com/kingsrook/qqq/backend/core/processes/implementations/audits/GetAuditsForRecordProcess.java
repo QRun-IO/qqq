@@ -85,7 +85,7 @@ public class GetAuditsForRecordProcess implements MetaDataProducerInterface<QPro
             .withCode(new QCodeReference(getClass()))
             .withInputData(new QFunctionInputMetaData()
                .withField(new QFieldMetaData("tableName", QFieldType.STRING).withIsRequired(true))
-               .withField(new QFieldMetaData("recordId", QFieldType.INTEGER).withIsRequired(true))
+               .withField(new QFieldMetaData("recordId", QFieldType.STRING).withIsRequired(true))
                .withField(new QFieldMetaData("isSortAscending", QFieldType.BOOLEAN).withDefaultValue("false"))
                .withField(new QFieldMetaData("limit", QFieldType.INTEGER).withDefaultValue("1000"))
                .withField(new QFieldMetaData("includeChildren", QFieldType.BOOLEAN).withDefaultValue("false"))
@@ -120,7 +120,7 @@ public class GetAuditsForRecordProcess implements MetaDataProducerInterface<QPro
 
       QQueryFilter filter = new QQueryFilter()
          .withCriteria(new QFilterCriteria(AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE + ".name", QCriteriaOperator.EQUALS, tableName))
-         .withCriteria(new QFilterCriteria("recordId", QCriteriaOperator.EQUALS, runBackendStepInput.getValueInteger("recordId")))
+         .withCriteria(new QFilterCriteria("recordId", QCriteriaOperator.EQUALS, runBackendStepInput.getValueString("recordId")))
          .withOrderBy(new QFilterOrderBy("timestamp", sortDirection))
          .withOrderBy(new QFilterOrderBy("id", sortDirection))
          .withOrderBy(new QFilterOrderBy("auditDetail.id", true));

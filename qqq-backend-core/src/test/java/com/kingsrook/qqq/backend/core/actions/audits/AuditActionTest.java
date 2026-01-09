@@ -444,6 +444,132 @@ class AuditActionTest extends BaseTest
 
 
 
+   /*******************************************************************************
+    ** Test that AuditAction.execute works with STRING recordId when audit tables
+    ** are configured with STRING recordId type.
+    *******************************************************************************/
+   @Test
+   void testStringRecordId() throws QException
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+
+      /////////////////////////////////////////////////////////////////////////
+      // configure audit tables with STRING recordId type instead of INTEGER //
+      /////////////////////////////////////////////////////////////////////////
+      new AuditsMetaDataProvider()
+         .withRecordIdType(QFieldType.STRING)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      String userName = "Jane Doe";
+      QContext.init(qInstance, new QSession().withUser(new QUser().withFullName(userName)));
+
+      ///////////////////////////////////
+      // execute audit with STRING id  //
+      ///////////////////////////////////
+      String recordId = "uuid-abc-123";
+      AuditAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, recordId, Map.of(), "Test Audit with String ID");
+
+      /////////////////////////////////////
+      // make sure things can be fetched //
+      /////////////////////////////////////
+      GeneralProcessUtils.getRecordByFieldOrElseThrow("auditTable", "name", TestUtils.TABLE_NAME_PERSON_MEMORY);
+      GeneralProcessUtils.getRecordByFieldOrElseThrow("auditUser", "name", userName);
+      QRecord auditRecord = GeneralProcessUtils.getRecordByFieldOrElseThrow("audit", "recordId", recordId);
+      assertEquals("Test Audit with String ID", auditRecord.getValueString("message"));
+      assertEquals(recordId, auditRecord.getValueString("recordId"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that AuditSingleInput constructor works with tables having STRING
+    ** primary keys when using Serializable recordId.
+    *******************************************************************************/
+   @Test
+   void testAuditSingleInputWithStringPrimaryKey() throws QException
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+
+      /////////////////////////////////////////////////////////////////////////
+      // configure audit tables with STRING recordId type instead of INTEGER //
+      /////////////////////////////////////////////////////////////////////////
+      new AuditsMetaDataProvider()
+         .withRecordIdType(QFieldType.STRING)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      //////////////////////////////////////////////
+      // add a table with STRING primary key      //
+      //////////////////////////////////////////////
+      QTableMetaData stringPkTable = new QTableMetaData()
+         .withName("stringPkTable")
+         .withBackendName(TestUtils.MEMORY_BACKEND_NAME)
+         .withField(new QFieldMetaData("uuid", QFieldType.STRING))
+         .withField(new QFieldMetaData("name", QFieldType.STRING))
+         .withPrimaryKeyField("uuid");
+      qInstance.addTable(stringPkTable);
+
+      QContext.init(qInstance, new QSession().withUser(new QUser().withFullName("Test User")));
+
+      //////////////////////////////////////////////////////////////////
+      // create AuditSingleInput using the constructor that takes a   //
+      // table and record - verify it extracts STRING pk correctly    //
+      //////////////////////////////////////////////////////////////////
+      String testUuid = "test-uuid-xyz-789";
+      QRecord record = new QRecord()
+         .withValue("uuid", testUuid)
+         .withValue("name", "Test Name");
+
+      AuditSingleInput auditSingleInput = new AuditSingleInput(stringPkTable, record, "Test message");
+
+      assertEquals(testUuid, auditSingleInput.getRecordId());
+      assertEquals("stringPkTable", auditSingleInput.getAuditTableName());
+      assertEquals("Test message", auditSingleInput.getMessage());
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that appendToInput works with STRING recordId values.
+    *******************************************************************************/
+   @Test
+   void testAppendToInputWithStringRecordId() throws QException
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+
+      /////////////////////////////////////////////////////////////////////////
+      // configure audit tables with STRING recordId type instead of INTEGER //
+      /////////////////////////////////////////////////////////////////////////
+      new AuditsMetaDataProvider()
+         .withRecordIdType(QFieldType.STRING)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      String userName = "Jane Doe";
+      QContext.init(qInstance, new QSession().withUser(new QUser().withFullName(userName)));
+
+      ///////////////////////////////////////////
+      // append to input with STRING recordIds //
+      ///////////////////////////////////////////
+      String     recordId1  = "string-id-001";
+      String     recordId2  = "string-id-002";
+      AuditInput auditInput = new AuditInput();
+      AuditAction.appendToInput(auditInput, TestUtils.TABLE_NAME_PERSON_MEMORY, recordId1, Map.of(), "First Audit");
+      AuditAction.appendToInput(auditInput, TestUtils.TABLE_NAME_PERSON_MEMORY, recordId2, Map.of(), "Second Audit");
+      new AuditAction().execute(auditInput);
+
+      /////////////////////////////////////
+      // make sure things can be fetched //
+      /////////////////////////////////////
+      QRecord auditRecord1 = GeneralProcessUtils.getRecordByFieldOrElseThrow("audit", "recordId", recordId1);
+      assertEquals("First Audit", auditRecord1.getValueString("message"));
+      assertEquals(recordId1, auditRecord1.getValueString("recordId"));
+
+      QRecord auditRecord2 = GeneralProcessUtils.getRecordByFieldOrElseThrow("audit", "recordId", recordId2);
+      assertEquals("Second Audit", auditRecord2.getValueString("message"));
+      assertEquals(recordId2, auditRecord2.getValueString("recordId"));
+   }
+
+
+
    /***************************************************************************
     *
     ***************************************************************************/

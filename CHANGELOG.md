@@ -7,15 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] - 2025-12-28
+
+### Changed
+
+#### Platform
+- **Java 21 LTS** - Migrated from Java 17 to Java 21 LTS
+
+#### Dependencies - Major Updates
+- **JUnit Jupiter** 5.8.1 → 6.0.1 (major version upgrade)
+- **Checkstyle** 10.16.0 → 12.2.0 (major version upgrade)
+- **Mockito** 5.14.2 → 5.21.0
+- **ByteBuddy** 1.15.4 → 1.18.3
+
+#### Dependencies - Build Plugins
+- maven-compiler-plugin 3.10.1 → 3.14.1
+- maven-surefire-plugin 3.5.3 → 3.5.4
+- maven-jar-plugin 3.4.2 → 3.5.0
+- central-publishing-maven-plugin 0.8.0 → 0.9.0
+
+#### Dependencies - Runtime
+- MongoDB Driver 5.5.1 → 5.6.2
+- SQLite JDBC 3.47.1.0 → 3.51.1.0
+- AWS SDK BOM 2.40.13 → 2.40.16
+- AWS Lambda Java Core 1.2.3 → 1.4.0
+- AWS Lambda Java Events 3.14.0 → 3.16.1
+- AWS Lambda Runtime Interface Client 2.6.0 → 2.8.7
+- Commons Validator 1.9.0 → 1.10.1
+- Jakarta Mail 2.0.1 → 2.0.2
+- Angus Activation 2.0.2 → 2.0.3
+- Nashorn Core 15.6 → 15.7
+- SLF4J API 2.0.16 → 2.0.17
+- Kotlin Stdlib 2.2.21 → 2.3.0
+
+#### Dependencies - Test
+- H2 Database 2.2.220 → 2.4.240
+- Unirest Java 3.13.12 → 3.14.5
+
 ### Added
 - Enhanced documentation wiki with comprehensive guides
 - Improved GitHub templates and contribution process
 - Better cross-references between documentation pages
-
-### Changed
-- Streamlined wiki content for better focus and clarity
-- Updated GitHub standard documents to align with wiki
-- Improved documentation organization and navigation
+- Health check middleware module (qqq-middleware-health)
 
 ## [0.27.0] - 2024-01-XX
 

@@ -43,7 +43,17 @@ import com.kingsrook.qqq.backend.core.processes.implementations.audits.GetAudits
 
 
 /*******************************************************************************
+ ** MetaData provider for the QQQ audit system tables.
  **
+ ** By default, the audit table's recordId field is INTEGER, which supports
+ ** auditing tables with integer primary keys. To audit tables with String or
+ ** UUID primary keys, configure the provider with a STRING recordId type:
+ **
+ ** <pre>
+ ** new AuditsMetaDataProvider()
+ **    .withRecordIdType(QFieldType.STRING)
+ **    .defineAll(qInstance, backendName, enricher);
+ ** </pre>
  *******************************************************************************/
 public class AuditsMetaDataProvider
 {
@@ -51,6 +61,8 @@ public class AuditsMetaDataProvider
    public static final String TABLE_NAME_AUDIT_USER   = "auditUser";
    public static final String TABLE_NAME_AUDIT        = "audit";
    public static final String TABLE_NAME_AUDIT_DETAIL = "auditDetail";
+
+   private QFieldType recordIdType = QFieldType.INTEGER;
 
 
 
@@ -230,7 +242,7 @@ public class AuditsMetaDataProvider
          .withField(new QFieldMetaData("id", QFieldType.LONG))
          .withField(new QFieldMetaData("auditTableId", QFieldType.INTEGER).withPossibleValueSourceName(TABLE_NAME_AUDIT_TABLE))
          .withField(new QFieldMetaData("auditUserId", QFieldType.INTEGER).withPossibleValueSourceName(TABLE_NAME_AUDIT_USER))
-         .withField(new QFieldMetaData("recordId", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("recordId", recordIdType))
          .withField(new QFieldMetaData("message", QFieldType.STRING).withMaxLength(250).withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS))
          .withField(new QFieldMetaData("timestamp", QFieldType.DATE_TIME))
          .withoutCapabilities(Capability.TABLE_INSERT, Capability.TABLE_UPDATE, Capability.TABLE_DELETE);
@@ -257,6 +269,37 @@ public class AuditsMetaDataProvider
          .withField(new QFieldMetaData("oldValue", QFieldType.STRING).withMaxLength(250).withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS))
          .withField(new QFieldMetaData("newValue", QFieldType.STRING).withMaxLength(250).withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS))
          .withoutCapabilities(Capability.TABLE_INSERT, Capability.TABLE_UPDATE, Capability.TABLE_DELETE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for recordIdType
+    *******************************************************************************/
+   public QFieldType getRecordIdType()
+   {
+      return (this.recordIdType);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordIdType
+    *******************************************************************************/
+   public void setRecordIdType(QFieldType recordIdType)
+   {
+      this.recordIdType = recordIdType;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordIdType
+    *******************************************************************************/
+   public AuditsMetaDataProvider withRecordIdType(QFieldType recordIdType)
+   {
+      this.recordIdType = recordIdType;
+      return (this);
    }
 
 }

@@ -36,7 +36,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInstance;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 
 /*******************************************************************************
@@ -51,7 +51,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class BaseTest
 {
-   protected PostgreSQLContainer<?> postgres;
+   protected PostgreSQLContainer postgres;
 
 
 
@@ -68,7 +68,7 @@ public class BaseTest
    @BeforeAll
    void baseBeforeAll()
    {
-      postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+      postgres = new PostgreSQLContainer("postgres:17-alpine")
          .withDatabaseName("qqq_test")
          .withUsername("test")
          .withPassword("test")

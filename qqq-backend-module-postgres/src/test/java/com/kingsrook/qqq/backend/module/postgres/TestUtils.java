@@ -57,7 +57,7 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
 import org.apache.commons.io.IOUtils;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 
@@ -86,10 +86,11 @@ public class TestUtils
    public static final String TABLE_NAME_LINE_ITEM_EXTRINSIC = "orderLineExtrinsic";
    public static final String TABLE_NAME_WAREHOUSE           = "warehouse";
    public static final String TABLE_NAME_WAREHOUSE_STORE_INT = "warehouseStoreInt";
+   public static final String TABLE_NAME_CAMEL_CASE_ID_TABLE = "camelCaseIdTable";
 
    public static final String SECURITY_KEY_STORE_ALL_ACCESS = "storeAllAccess";
 
-   private static PostgreSQLContainer<?> postgres;
+   private static PostgreSQLContainer postgres;
 
 
 
@@ -147,6 +148,7 @@ public class TestUtils
       qInstance.addTable(defineTablePersonalIdCard());
       qInstance.addJoin(defineJoinPersonAndPersonalIdCard());
       addOmsTablesAndJoins(qInstance);
+      qInstance.addTable(defineTableCamelCaseId());
       qInstance.setAuthentication(defineAuthentication());
       return (qInstance);
    }
@@ -189,7 +191,7 @@ public class TestUtils
     ** 
     ** @param container the PostgreSQL test container
     *******************************************************************************/
-   public static void setPostgresContainer(PostgreSQLContainer<?> container)
+   public static void setPostgresContainer(PostgreSQLContainer container)
    {
       postgres = container;
    }
@@ -258,6 +260,29 @@ public class TestUtils
          .withField(new QFieldMetaData("startTime", QFieldType.TIME).withBackendName("start_time"))
          .withBackendDetails(new PostgreSQLTableBackendDetails()
             .withTableName("person"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Defines a table with a camelCase primary key for testing identifier quoting.
+    **
+    ** This table tests that UPDATE operations properly quote camelCase column
+    ** names in WHERE clauses (issue #327).
+    **
+    ** @return the CamelCaseIdTable metadata
+    *******************************************************************************/
+   public static QTableMetaData defineTableCamelCaseId()
+   {
+      return new QTableMetaData()
+         .withName(TABLE_NAME_CAMEL_CASE_ID_TABLE)
+         .withLabel("Camel Case Id Table")
+         .withBackendName(DEFAULT_BACKEND_NAME)
+         .withPrimaryKeyField("testId")
+         .withField(new QFieldMetaData("testId", QFieldType.STRING).withBackendName("testId"))
+         .withField(new QFieldMetaData("name", QFieldType.STRING))
+         .withBackendDetails(new PostgreSQLTableBackendDetails()
+            .withTableName("camel_case_id_table"));
    }
 
 

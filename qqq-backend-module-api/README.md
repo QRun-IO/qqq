@@ -1,23 +1,28 @@
-# qqq-backend-module-api
-This is a backend-module for the qqq framework - specifically, one that
-works with an API (as in, a web service API, over http(s)).
+# QQQ Backend Module - API
+
+Backend module for consuming external web service APIs as QQQ data sources.
+
+## Features
+
+- HTTP/HTTPS API integration
+- REST endpoint mapping to QQQ tables
+- Authentication support (API keys, OAuth, etc.)
+- Request/response transformation
+
+## Usage
+
+```java
+APIBackendMetaData backend = new APIBackendMetaData()
+   .withName("external-api")
+   .withBaseUrl("https://api.example.com/v1");
+
+QTableMetaData table = new QTableMetaData()
+   .withName("customers")
+   .withBackendName("external-api")
+   .withBackendDetails(new APITableBackendDetails()
+      .withTablePath("/customers"));
+```
 
 ## License
-QQQ - Low-code Application Framework for Engineers. \
-Copyright (C) 2022.  Kingsrook, LLC \
-651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States \
-contact@kingsrook.com | https://github.com/Kingsrook/
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
+GNU Affero General Public License v3.0

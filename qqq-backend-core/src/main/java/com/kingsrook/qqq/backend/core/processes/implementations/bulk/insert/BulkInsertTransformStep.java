@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.AbstractPreInsertCustomizer.WhenToRun;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
@@ -43,6 +44,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLine;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -54,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperat
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -78,13 +81,17 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.commons.lang.BooleanUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Transform step for generic table bulk-insert ETL process
+ * Transform step for generic table bulk-insert AND bulk-edit-via-file ETL process.
+ *
  *******************************************************************************/
 public class BulkInsertTransformStep extends AbstractTransformStep
 {
+   private static final QLogger LOG = QLogger.getLogger(BulkInsertTransformStep.class);
+
    public ProcessSummaryLine okSummary = new ProcessSummaryLine(Status.OK);
 
    public ProcessSummaryWarningsAndErrorsRollup processSummaryWarningsAndErrorsRollup = ProcessSummaryWarningsAndErrorsRollup.build("inserted")
@@ -101,8 +108,6 @@ public class BulkInsertTransformStep extends AbstractTransformStep
    private Map<UniqueKey, Set<List<Serializable>>> keysInThisFile = new HashMap<>();
 
    private int rowsProcessed = 0;
-
-   private static final int EXAMPLE_ROW_LIMIT = 10;
 
 
 
@@ -218,6 +223,8 @@ public class BulkInsertTransformStep extends AbstractTransformStep
     *******************************************************************************/
    private void handleBulkEdit(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput, List<QRecord> records, QTableMetaData table) throws QException
    {
+      updateStatusCount(runBackendStepInput, "Updating", table);
+
       ///////////////////////////////////////////
       // get the key fields for this bulk edit //
       ///////////////////////////////////////////
@@ -258,25 +265,9 @@ public class BulkInsertTransformStep extends AbstractTransformStep
       }
       else
       {
-         Set<Serializable> uniqueIds        = new HashSet<>();
-         List<QRecord>     potentialRecords = new ArrayList<>();
-
-         ////////////////////////////////////////////////////////////////////////////////////////////////////
-         // if not using the primary key, then we will look up all records for each part of the unique key //
-         // and for each found, if all unique parts match we will add to our list of database records      //
-         ////////////////////////////////////////////////////////////////////////////////////////////////////
-         for(String uniqueKeyPart : keyFields)
-         {
-            List<Serializable> values = records.stream().map(record -> record.getValue(uniqueKeyPart)).toList();
-            for(QRecord databaseRecord : new QueryAction().execute(new QueryInput(table.getName()).withFilter(new QQueryFilter(new QFilterCriteria(uniqueKeyPart, QCriteriaOperator.IN, values)))).getRecords())
-            {
-               if(!uniqueIds.contains(databaseRecord.getValue(table.getPrimaryKeyField())))
-               {
-                  potentialRecords.add(databaseRecord);
-                  uniqueIds.add(databaseRecord.getValue(table.getPrimaryKeyField()));
-               }
-            }
-         }
+         List<QRecord> potentialRecords               = loadPotentialRecordsByUniqueKey(runBackendStepInput, records, table, keyFields);
+         Integer       previousPotentialRecordsLoaded = Objects.requireNonNullElse(runBackendStepOutput.getValueInteger("potentialRecordsLoaded"), 0);
+         runBackendStepOutput.addValue("potentialRecordsLoaded", previousPotentialRecordsLoaded + potentialRecords.size());
 
          ///////////////////////////////////////////////////////////////////////////////
          // now iterate over all of the potential records checking each unique fields //
@@ -441,6 +432,246 @@ public class BulkInsertTransformStep extends AbstractTransformStep
 
 
 
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private void updateStatusCount(RunBackendStepInput runBackendStepInput, String insertingOrUpdating, QTableMetaData table)
+   {
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // on the validate step, we haven't read the full file, so we don't know how many rows there are - thus        //
+      // record count is null, and the ValidateStep won't be setting status counters - so - do it here in that case. //
+      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      if(runBackendStepInput.getStepName().equals(StreamedETLWithFrontendProcess.STEP_NAME_VALIDATE))
+      {
+         runBackendStepInput.getAsyncJobCallback().updateStatus("Processing row " + "%,d".formatted(rowsProcessed + 1));
+      }
+      else if(runBackendStepInput.getStepName().equals(StreamedETLWithFrontendProcess.STEP_NAME_EXECUTE))
+      {
+         if(runBackendStepInput.getValue(StreamedETLWithFrontendProcess.FIELD_RECORD_COUNT) == null)
+         {
+            runBackendStepInput.getAsyncJobCallback().updateStatus(insertingOrUpdating + " " + table.getLabel() + " record " + "%,d".formatted(okSummary.getCount()));
+         }
+         else
+         {
+            runBackendStepInput.getAsyncJobCallback().updateStatus(insertingOrUpdating + " " + table.getLabel() + " records");
+         }
+      }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   protected List<QRecord> loadPotentialRecordsByUniqueKey(RunBackendStepInput runBackendStepInput, List<QRecord> fileRecords, QTableMetaData table, List<String> keyFields) throws QException
+   {
+      /////////////////////////////////////////////////////////////////////////
+      // try a few different ways to look up the records to edit by unique   //
+      // keys - trying to balance minimizing the number of queries with      //
+      // avoiding fetching way too many records, exhausting server resources //
+      /////////////////////////////////////////////////////////////////////////
+      if(!runBackendStepInput.getValuePrimitiveBoolean("ByPerFieldInListsQueryFailed"))
+      {
+         try
+         {
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            // first we try the original technique. but, for larger tables with fields that have lots of    //
+            // records that might match partial keys, this approach has been seen to load too many records. //
+            // so, we put a limit on the query, and if too many are found, we throw and switch to plan B.   //
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            return loadPotentialRecordsByUniqueKeyByPerFieldInLists(fileRecords, table, keyFields);
+         }
+         catch(TryAnotherWayException tawe)
+         {
+            ///////////////////////////////////////////////////////////////////////////////////
+            // add this process value, to signal that we shouldn't try this technique again. //
+            ///////////////////////////////////////////////////////////////////////////////////
+            LOG.info("Caught a TryAnotherWayException after loadPotentialRecordsByUniqueKeyByPerFieldInLists - proceeding with loadPotentialRecordsByUniqueKeyByOrQueries", tawe, logPair("tableName", table.getName()), logPair("keyFields", keyFields));
+            runBackendStepInput.addValue("ByPerFieldInListsQueryFailed", true);
+         }
+      }
+
+      if(!runBackendStepInput.getValuePrimitiveBoolean("ByOrQueriesFailed"))
+      {
+         try
+         {
+            ///////////////////////////////////////////////////////////////////
+            // the second technique hasn't been seen to load too many        //
+            // records, but does also use the limit technique, same as above //
+            ///////////////////////////////////////////////////////////////////
+            return loadPotentialRecordsByUniqueKeyByOrQueries(fileRecords, table, keyFields);
+         }
+         catch(TryAnotherWayException tawe)
+         {
+            LOG.info("Caught a TryAnotherWayException after loadPotentialRecordsByUniqueKeyByOrQueries - proceeding with loadPotentialRecordsByUniqueKeyRecordByRecord", tawe, logPair("tableName", table.getName()), logPair("keyFields", keyFields));
+            runBackendStepInput.addValue("ByOrQueriesFailed", true);
+         }
+      }
+
+      ///////////////////////////////////////////////////////////////////////
+      // as a last resort, query row-by-row.  hopefully we never hit here? //
+      ///////////////////////////////////////////////////////////////////////
+      return loadPotentialRecordsByUniqueKeyRecordByRecord(fileRecords, table, keyFields);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   protected static class TryAnotherWayException extends Exception
+   {
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      TryAnotherWayException(String message)
+      {
+         super(message);
+      }
+   }
+
+
+
+   /***************************************************************************
+    * The approach in this method is designed to minimize the number of queries
+    * needed to look up the records to update.  To do so, we will run one query
+    * per field in the unique key, selecting all rows with values IN the set of
+    * values in the file records, and adding all matching records to our list of
+    * potential-match records from the backend.
+    *
+    * This is known to potentially over-shoot, e.g., selecting more than we need.
+    * Thus the caller needs to check values in each record for true matches.
+    ***************************************************************************/
+   protected List<QRecord> loadPotentialRecordsByUniqueKeyByPerFieldInLists(List<QRecord> fileRecords, QTableMetaData table, List<String> keyFields) throws QException, TryAnotherWayException
+   {
+      List<QRecord>     potentialRecords = new ArrayList<>();
+      int               limit            = fileRecords.size() * getMaxPotentialRecordsByUniqueKeyLimitFactor();
+      Set<Serializable> uniqueIds        = new HashSet<>();
+
+      ////////////////////////////////////////////////////////////////////////////////////////////////////
+      // if not using the primary key, then we will look up all records for each part of the unique key //
+      // and for each found, if all unique parts match we will add to our list of database records      //
+      ////////////////////////////////////////////////////////////////////////////////////////////////////
+      for(String uniqueKeyPart : keyFields)
+      {
+         Set<Serializable> values = fileRecords.stream().map(record -> record.getValue(uniqueKeyPart)).collect(Collectors.toSet());
+
+         QueryInput queryInput = new QueryInput(table.getName())
+            .withFilter(new QQueryFilter(new QFilterCriteria(uniqueKeyPart, QCriteriaOperator.IN, values))
+               .withLimit(limit));
+
+         List<QRecord> selectedRecords = new QueryAction().execute(queryInput).getRecords();
+
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // if we've hit the limit on our query size - be defensive and assume this query might actually return //
+         // way too many records to keep in memory, and switch to the by-or-queries load technique              //
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////
+         if(selectedRecords.size() == limit)
+         {
+            throw (new TryAnotherWayException("Query on " + uniqueKeyPart + " returns more than " + limit + " records."));
+         }
+
+         for(QRecord databaseRecord : selectedRecords)
+         {
+            if(!uniqueIds.contains(databaseRecord.getValue(table.getPrimaryKeyField())))
+            {
+               potentialRecords.add(databaseRecord);
+               uniqueIds.add(databaseRecord.getValue(table.getPrimaryKeyField()));
+            }
+         }
+      }
+
+      return (potentialRecords);
+   }
+
+
+
+   /***************************************************************************
+    * This approach builds a big query, in the format:
+    * <pre>(c1=? AND c2=? ... cn=?) OR (c1=? AND c2=? ... cn=?) OR ... </pre>
+    * which, can be a bit of a challenge for the backend - so - we do that on
+    * pages of file records, rather than the full file, to try to strike a
+    * balance between minimizing number of queries, vs queries that can cause
+    * backend storage system issues.
+    ***************************************************************************/
+   protected List<QRecord> loadPotentialRecordsByUniqueKeyByOrQueries(List<QRecord> fileRecords, QTableMetaData table, List<String> keyFields) throws QException, TryAnotherWayException
+   {
+      List<QRecord> potentialRecords = new ArrayList<>();
+      int           limit            = fileRecords.size() * getMaxPotentialRecordsByUniqueKeyLimitFactor();
+
+      for(List<QRecord> page : CollectionUtils.getPages(fileRecords, getOrListQueryPageSize()))
+      {
+         QQueryFilter filter = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR).withLimit(limit);
+         for(QRecord record : page)
+         {
+            QQueryFilter subFilter = new QQueryFilter();
+            filter.addSubFilter(subFilter);
+            for(String fieldName : keyFields)
+            {
+               Serializable value = record.getValue(fieldName);
+               if(value == null)
+               {
+                  subFilter.addCriteria(new QFilterCriteria(fieldName, QCriteriaOperator.IS_BLANK));
+               }
+               else
+               {
+                  subFilter.addCriteria(new QFilterCriteria(fieldName, QCriteriaOperator.EQUALS, value));
+               }
+            }
+         }
+
+         QueryInput queryInput = new QueryInput();
+         queryInput.setTableName(table.getName());
+         queryInput.setFilter(filter);
+
+         QueryOutput queryOutput = new QueryAction().execute(queryInput);
+         if(queryOutput.getRecords().size() == limit)
+         {
+            throw (new TryAnotherWayException("Query for a page using OR queries returns more than " + limit + " records."));
+         }
+
+         potentialRecords.addAll(queryOutput.getRecords());
+      }
+
+      return (potentialRecords);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   protected List<QRecord> loadPotentialRecordsByUniqueKeyRecordByRecord(List<QRecord> fileRecords, QTableMetaData table, List<String> keyFields) throws QException
+   {
+      List<QRecord> potentialRecords = new ArrayList<>();
+
+      for(QRecord record : fileRecords)
+      {
+         QQueryFilter filter = new QQueryFilter().withLimit(2);
+         for(String fieldName : keyFields)
+         {
+            filter.addCriteria(new QFilterCriteria(fieldName, QCriteriaOperator.EQUALS, record.getValue(fieldName)));
+         }
+
+         QueryInput queryInput = new QueryInput();
+         queryInput.setTableName(table.getName());
+         queryInput.setFilter(filter);
+
+         QueryOutput queryOutput = new QueryAction().execute(queryInput);
+         for(QRecord outputRecord : queryOutput.getRecords())
+         {
+            potentialRecords.add(outputRecord);
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // todo - if we allowed mapping by non-unique keys, we'd need to handle having more than 1 match here. //
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////
+            break;
+         }
+      }
+      return (potentialRecords);
+   }
+
+
+
    /*******************************************************************************
     **
     *******************************************************************************/
@@ -493,25 +724,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
          ukErrorSummaries.computeIfAbsent(uniqueKey, x -> new ProcessSummaryLineWithUKSampleValues(Status.ERROR));
       }
 
-      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // on the validate step, we haven't read the full file, so we don't know how many rows there are - thus        //
-      // record count is null, and the ValidateStep won't be setting status counters - so - do it here in that case. //
-      /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      if(runBackendStepInput.getStepName().equals(StreamedETLWithFrontendProcess.STEP_NAME_VALIDATE))
-      {
-         runBackendStepInput.getAsyncJobCallback().updateStatus("Processing row " + "%,d".formatted(rowsProcessed + 1));
-      }
-      else if(runBackendStepInput.getStepName().equals(StreamedETLWithFrontendProcess.STEP_NAME_EXECUTE))
-      {
-         if(runBackendStepInput.getValue(StreamedETLWithFrontendProcess.FIELD_RECORD_COUNT) == null)
-         {
-            runBackendStepInput.getAsyncJobCallback().updateStatus("Inserting " + table.getLabel() + " record " + "%,d".formatted(okSummary.getCount()));
-         }
-         else
-         {
-            runBackendStepInput.getAsyncJobCallback().updateStatus("Inserting " + table.getLabel() + " records");
-         }
-      }
+      updateStatusCount(runBackendStepInput, "Inserting", table);
 
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // Note, we want to do our own UK checking here, even though InsertAction also tries to do it, because InsertAction //
@@ -619,7 +832,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
       String         message   = bulkLoadRollableValueError.getMessageToUseAsProcessSummaryRollupKey();
       List<RowValue> rowValues = errorToExampleRowValueMap.computeIfAbsent(message, k -> new ArrayList<>());
 
-      if(rowValues.size() < EXAMPLE_ROW_LIMIT)
+      if(rowValues.size() < getExampleRowLimit())
       {
          rowValues.add(new RowValue(bulkLoadRollableValueError, record));
       }
@@ -634,7 +847,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
    {
       List<String> rowNos = errorToExampleRowsMap.computeIfAbsent(message, k -> new ArrayList<>());
 
-      if(rowNos.size() < EXAMPLE_ROW_LIMIT)
+      if(rowNos.size() < getExampleRowLimit())
       {
          rowNos.add(BulkLoadRecordUtils.getRowNosString(record));
       }
@@ -857,6 +1070,44 @@ public class BulkInsertTransformStep extends AbstractTransformStep
       {
          return row + " [" + value + "]";
       }
+   }
+
+
+
+   /***************************************************************************
+    * method a subclass can override, to configure the max number of example-rows
+    * to include in error messages presented to users.
+    * Default value is 10.
+    ***************************************************************************/
+   protected int getExampleRowLimit()
+   {
+      return 10;
+   }
+
+
+
+   /***************************************************************************
+    * method a subclass can override, to configure the page-size used in the
+    * loadPotentialRecordsByUniqueKeyByOrQueries method - e.g., where a potentially
+    * big query of i n (AND AND) OR (AND AND) OR ... style is built.
+    * Default value is 50.
+    ***************************************************************************/
+   protected int getOrListQueryPageSize()
+   {
+      return 50;
+   }
+
+
+
+   /***************************************************************************
+    * method a subclass can override, to configure the multiplier for how many
+    * rows is considered too many to be fetched in methods used under
+    * loadPotentialRecordsByUniqueKeyByOrQueries.  the limit is the number of file
+    * records multiplied by this factor.   Default value is 5.
+    ***************************************************************************/
+   protected int getMaxPotentialRecordsByUniqueKeyLimitFactor()
+   {
+      return 5;
    }
 
 }

@@ -23,8 +23,11 @@ package com.kingsrook.qqq.backend.core.model.metadata.tables;
 
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpRole;
@@ -51,6 +54,8 @@ public class QFieldSection implements QMetaDataObject, Cloneable
    private Integer gridColumns;
 
    private List<QHelpContent> helpContents;
+
+   private Map<QFieldSectionAlternativeTypeInterface, QFieldSection> alternatives;
 
 
 
@@ -452,6 +457,16 @@ public class QFieldSection implements QMetaDataObject, Cloneable
          {
             clone.icon = icon.clone();
          }
+
+         if(alternatives != null)
+         {
+            clone.alternatives = new HashMap<>();
+            for(Map.Entry<QFieldSectionAlternativeTypeInterface, QFieldSection> entry : alternatives.entrySet())
+            {
+               clone.alternatives.put(entry.getKey(), entry.getValue().clone());
+            }
+         }
+
          return (clone);
       }
       catch(CloneNotSupportedException e)
@@ -459,4 +474,90 @@ public class QFieldSection implements QMetaDataObject, Cloneable
          throw new AssertionError();
       }
    }
+
+
+
+   /*******************************************************************************
+    * Getter for alternatives
+    * @see #withAlternatives(Map)
+    *******************************************************************************/
+   public Map<QFieldSectionAlternativeTypeInterface, QFieldSection> getAlternatives()
+   {
+      return (this.alternatives);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for alternatives
+    * @see #withAlternatives(Map)
+    *******************************************************************************/
+   public void setAlternatives(Map<QFieldSectionAlternativeTypeInterface, QFieldSection> alternatives)
+   {
+      this.alternatives = alternatives;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for alternatives
+    *
+    * @param alternatives
+    * Alternative versions of the section, to be used as needed by various frontends,
+    * based on the type (keys in the map).
+    * @return this
+    *******************************************************************************/
+   public QFieldSection withAlternatives(Map<QFieldSectionAlternativeTypeInterface, QFieldSection> alternatives)
+   {
+      this.alternatives = alternatives;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for adding a single alternative
+    *
+    * @param type the type of alternative being added
+    * @param alternative the section that should be used for the specified type
+    * @return this
+    *******************************************************************************/
+   public QFieldSection withAlternative(QFieldSectionAlternativeTypeInterface type, QFieldSection alternative)
+   {
+      if(this.alternatives == null)
+      {
+         this.alternatives = new HashMap<>();
+      }
+      this.alternatives.put(type, alternative);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for adding a single alternative - which is a clone of the base
+    * section, with customizations performed by a lambda.
+    *
+    * <p>e.g., to add (say) a virtual field, or otherwise change the field list, etc.
+    * So you don't have to fully re-create the section - you start with a clone.</p>
+    *
+    * @param type the type of alternative being added
+    * @param alternativeMaker lambada to modify a clone of this section.
+    * @return this
+    *******************************************************************************/
+   public QFieldSection withAlternative(QFieldSectionAlternativeTypeInterface type, Consumer<QFieldSection> alternativeMaker)
+   {
+      if(this.alternatives == null)
+      {
+         this.alternatives = new HashMap<>();
+      }
+
+      QFieldSection alternative = this.clone();
+      alternativeMaker.accept(alternative);
+
+      this.alternatives.put(type, alternative);
+      return (this);
+   }
+
+
 }

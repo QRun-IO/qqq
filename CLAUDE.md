@@ -4,7 +4,7 @@
 
 QQQ is a low-code application framework for engineers by QRun-IO, LLC (formerly Kingsrook). It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
 
-**Current Version:** 0.34.0-SNAPSHOT
+**Current Version:** 0.36.0-SNAPSHOT
 **License:** Apache-2.0
 **Java Version:** 17+
 
@@ -251,3 +251,27 @@ new IsolatedSpaRouteProvider()
 - This enables apps to set security keys that persist across requests
 - See issue #334 and PR #337 for details
 - Future: #336 proposes `QSessionStoreInterface` QBit for session persistence
+
+### Virtual Fields (PR #280)
+- `QVirtualFieldMetaData` - computed fields that don't exist in backend storage
+- Defined via `QTableMetaData.withVirtualField()` or `withVirtualFields()`
+- Appear in table views, record screens, and exports alongside real fields
+- Computation happens at render time, not storage time
+
+### Alternative Sections (PR #280)
+- `QFieldSection.withAlternative()` - context-specific field layouts
+- `QFieldSectionAlternativeType` enum for standard contexts (e.g., MOBILE)
+- Custom types via `QFieldSectionAlternativeTypeInterface`
+- Enables different layouts for desktop vs mobile, embedded widgets, etc.
+
+### Bulk Edit Query Optimization (PR #320)
+- Three-tier fallback prevents memory exhaustion on large datasets
+- Tier 1: IN lists for small batches
+- Tier 2: OR queries in pages for medium batches
+- Tier 3: Record-by-record for huge batches
+- `TryAnotherWayException` signals automatic fallback between tiers
+
+### PostgreSQL Fixes (PR #335)
+- `QueryManager.getInstant()` now handles TIMESTAMPTZ with timezone offsets
+- Tries `OffsetDateTime.parse()` first, falls back to `LocalDateTime` parsing
+- Identifier quoting fixed - column names properly escaped for case sensitivity

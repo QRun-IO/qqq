@@ -1,35 +1,39 @@
 # TODO
 
-## Active Work: Issue #334 - OAuth2 Session Security Keys
+## Recently Completed (2026-01-09)
 
-### Completed
-- [x] Add customizer fields to OAuth2AuthenticationModule
-- [x] Add `getCustomizer()` method with memoization
-- [x] Add `finalCustomizeSession()` helper method
-- [x] Modify `createSessionFromToken()` to call `customizeSession()`
-- [x] Add `finalCustomizeSession()` calls in `createSession()` flows
-- [x] Add unit tests for customizer support
-- [x] Add WireMock dependency for integration testing
-- [x] Add integration tests with mock OIDC server
-- [x] Create PR #337
+### PR Merge Task
+- [x] Create merge plan (`docs/PLAN-pr-merge-order.md`)
+- [x] Merge PR #321 - child-table personalization fix
+- [x] Merge PR #320 - bulk edit query optimization
+- [x] Merge PR #335 - PostgreSQL timestamp/identifier fixes
+- [x] Merge PR #337 - OAuth2 customizer support
+- [x] Merge PR #280 - virtual fields and alternative sections
+- [x] Post-merge validation (189 tests)
+- [x] Create Daily Build Log (Discussion #340)
+
+### Issue #334 - OAuth2 Session Security Keys
+- [x] Add customizer support to OAuth2AuthenticationModule
+- [x] Add unit tests and integration tests
+- [x] Create PR #337 (MERGED)
 - [x] Create GitHub issue #336 for Phase 2 QBit
-
-### Pending
-- [ ] PR #337 review and merge
-- [ ] (Future) Implement #336 QSessionStoreInterface QBit
 
 ---
 
-## Background: License Migration (Paused)
+## Pending Work
 
+### Future: Issue #336 - QSessionStoreInterface QBit
+- [ ] Design pluggable session store interface
+- [ ] Implement default in-memory store
+- [ ] Add Redis/database store options
+- [ ] Documentation
+
+### Background: License Migration (Paused)
 See `docs/PLAN-license-migration.md` for details.
 
-### Completed
 - [x] Push LICENSE, NOTICE, README to all 25 repos
-- [x] Delete old LICENSE.txt files from qqq and qqq-android
-- [x] Update `checkstyle/license.txt` with new simplified header
-
-### Pending
+- [x] Delete old LICENSE.txt files
+- [x] Update `checkstyle/license.txt` header
 - [ ] Update Java source file headers (~5,747 files)
 - [ ] Update pom.xml `<licenses>` sections (~20 files)
 - [ ] Update README.md AGPL references (~15 files)
@@ -40,18 +44,29 @@ See `docs/PLAN-license-migration.md` for details.
 
 ## Notes
 
-### OAuth2 Customizer Usage
+### New Features Available (v0.36.0-SNAPSHOT)
+
+**Virtual Fields:**
 ```java
-// In your customizer implementation
-public void customizeSession(QInstance qInstance, QSession qSession, Map<String, Object> context)
-{
-   JSONObject jwtPayload = (JSONObject) context.get("jwtPayloadJsonObject");
-   // Extract claims and set security keys
-   qSession.withSecurityKeyValue("myKey", jwtPayload.getString("customClaim"));
-}
+new QTableMetaData()
+   .withVirtualField(new QVirtualFieldMetaData("computed")
+      .withType(QFieldType.STRING));
 ```
 
-### Related Issues/PRs
-- Issue #334 - Session Security Keys not persisted (FIXED)
-- PR #337 - OAuth2 customizer support (OPEN)
-- Issue #336 - QSessionStoreInterface QBit (FUTURE)
+**Alternative Sections:**
+```java
+new QFieldSection()
+   .withAlternative(QFieldSectionAlternativeType.MOBILE,
+      new QFieldSection().withFields(List.of("name")));
+```
+
+**OAuth2 Customizer:**
+```java
+new OAuth2AuthenticationModule()
+   .withCustomizer(new QCodeReference(MyCustomizer.class));
+```
+
+### Related Links
+- [Discussion #340 - Daily Build Log](https://github.com/orgs/QRun-IO/discussions/340)
+- [Issue #336 - QSessionStoreInterface](https://github.com/Kingsrook/qqq/issues/336)
+- [PR #280](https://github.com/Kingsrook/qqq/pull/280), [#320](https://github.com/Kingsrook/qqq/pull/320), [#321](https://github.com/Kingsrook/qqq/pull/321), [#335](https://github.com/Kingsrook/qqq/pull/335), [#337](https://github.com/Kingsrook/qqq/pull/337)

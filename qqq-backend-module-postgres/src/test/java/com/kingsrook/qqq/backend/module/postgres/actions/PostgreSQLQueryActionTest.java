@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.module.postgres.actions;
 
 
 import java.io.Serializable;
+import java.sql.Connection;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -57,6 +58,8 @@ import com.kingsrook.qqq.backend.module.postgres.BaseTest;
 import com.kingsrook.qqq.backend.module.postgres.TestUtils;
 import com.kingsrook.qqq.backend.module.rdbms.actions.AbstractRDBMSAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSQueryAction;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -1213,6 +1216,74 @@ public class PostgreSQLQueryActionTest extends BaseTest
       assertTrue(queryOutput.getRecords().stream()
          .allMatch(r -> r.getValueInteger("id") >= 2 && r.getValueInteger("id") <= 4),
          "Should find ids between 2 and 4");
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that PostgreSQL TIMESTAMP WITH TIME ZONE (timestamptz) values are
+    ** parsed correctly by QueryManager.getInstant().
+    **
+    ** PostgreSQL returns timestamptz values with timezone offset suffix (e.g., +00)
+    ** which was previously causing DateTimeParseException in getInstant().
+    **
+    ** @see <a href="https://github.com/QRun-IO/qqq/issues/333">Issue #333</a>
+    *******************************************************************************/
+   @Test
+   void testTimestampWithTimezoneOffset() throws Exception
+   {
+      try(Connection connection = new ConnectionManager().getConnection(TestUtils.defineBackend()))
+      {
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         // create a test table with TIMESTAMPTZ - PostgreSQL's timestamp with timezone type      //
+         // this type returns values with timezone offset suffix like "2026-01-08T20:35:45.27+00" //
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         QueryManager.executeUpdate(connection, """
+            CREATE TABLE IF NOT EXISTS timestamptz_test
+            (
+               id SERIAL PRIMARY KEY,
+               event_time TIMESTAMPTZ NOT NULL
+            )
+            """);
+
+         try
+         {
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // insert timestamps with explicit timezone offsets to simulate real PostgreSQL behavior                     //
+            // PostgreSQL stores these in UTC internally but returns them with the server's timezone offset in the query //
+            ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            QueryManager.executeUpdate(connection, """
+               INSERT INTO timestamptz_test (event_time) VALUES
+               ('2026-01-08 20:35:45.270008+00'),
+               ('2026-06-15 14:30:00+05:30'),
+               ('2025-12-31 23:59:59.999-08')
+               """);
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            // query the timestamps using getInstant() - this should NOT throw DateTimeParseException now //
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            QueryManager.executeStatement(connection, "SELECT id, event_time FROM timestamptz_test ORDER BY id", rs ->
+            {
+               int count = 0;
+               while(rs.next())
+               {
+                  count++;
+                  Instant instant = QueryManager.getInstant(rs, 2);
+                  assertThat(instant).isNotNull();
+
+                  //////////////////////////////////////////////////
+                  // verify the instants are reasonable UTC times //
+                  //////////////////////////////////////////////////
+                  assertThat(instant.toString()).matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z");
+               }
+               assertThat(count).isEqualTo(3);
+            });
+         }
+         finally
+         {
+            QueryManager.executeUpdate(connection, "DROP TABLE IF EXISTS timestamptz_test");
+         }
+      }
    }
 
 }

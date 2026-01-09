@@ -2,11 +2,20 @@
 
 ## Project Overview
 
-QQQ is a low-code application framework for engineers by Kingsrook, LLC. It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
+QQQ is a low-code application framework for engineers by QRun-IO, LLC (formerly Kingsrook). It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
 
-**Current Version:** 0.36.0-SNAPSHOT
+**Current Version:** 0.34.0-SNAPSHOT
 **License:** Apache-2.0
-**Java Version:** 21 LTS
+**Java Version:** 17+
+
+## Session Continuity
+
+To continue from a previous session, say **"continue from last session"** and Claude will:
+1. Read `docs/SESSION.md` for current context
+2. Read `docs/TODO.md` for pending tasks
+3. Resume work from last checkpoint
+
+**Important:** Session state is kept in `./docs/` directory, NOT in `~/.claude/`.
 
 ## Repository Structure
 
@@ -218,14 +227,8 @@ new IsolatedSpaRouteProvider()
 - `CONTRIBUTING.md` - Contribution guidelines
 - `checkstyle/config.xml` - Checkstyle rules
 - `qqq-middleware-javalin/ISOLATED_SPA_ROUTE_PROVIDER.md` - SPA documentation
-- `docs/SESSION-STATE.md` - Current session state for continuity
-
-## Session Continuity
-
-To continue from a previous session, read `docs/SESSION-STATE.md` for:
-- Current branch and recent work
-- Open PRs and issues
-- Next steps and context
+- `docs/SESSION.md` - Current session state for continuity
+- `docs/TODO.md` - Active task tracking
 
 ## Recent Learnings
 
@@ -239,3 +242,12 @@ To continue from a previous session, read `docs/SESSION-STATE.md` for:
 - `AuditsMetaDataProvider.withRecordIdType(QFieldType)` configures audit table PK type
 - Default is INTEGER (backwards compatible)
 - STRING mode allows auditing tables with UUID/string PKs
+
+### OAuth2 Authentication Customizer Support
+- `OAuth2AuthenticationModule` now supports `QAuthenticationModuleCustomizerInterface`
+- Customizers are called on both initial login AND session resume
+- JWT payload is passed to `customizeSession()` via `context.get("jwtPayloadJsonObject")`
+- `finalCustomizeSession()` is called after session creation for final adjustments
+- This enables apps to set security keys that persist across requests
+- See issue #334 and PR #337 for details
+- Future: #336 proposes `QSessionStoreInterface` QBit for session persistence

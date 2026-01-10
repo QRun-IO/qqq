@@ -89,10 +89,14 @@
 
    function safeNavigate(url)
    {
-      // Security: Only allow relative URLs starting with /
-      if (url && url.startsWith('/'))
+      // Security: Only allow same-origin relative URLs
+      if (url && typeof url === 'string' && url.startsWith('/') && !url.startsWith('//'))
       {
-         document.location.href = url;
+         const fullUrl = new URL(url, window.location.origin);
+         if (fullUrl.origin === window.location.origin)
+         {
+            window.location.assign(fullUrl.pathname + fullUrl.search + fullUrl.hash);
+         }
       }
    }
 

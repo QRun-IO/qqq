@@ -437,9 +437,7 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
     *******************************************************************************/
    public static class PasswordHasher
    {
-      // Security: SHA256 is the current standard; SHA1 retained for legacy password validation
       private static final String PBKDF2_ALGORITHM_SHA256 = "PBKDF2WithHmacSHA256";
-      private static final String PBKDF2_ALGORITHM_SHA1   = "PBKDF2WithHmacSHA1";
       private static final String ALGORITHM_PREFIX_SHA256 = "sha256";
 
       private static final int SALT_BYTE_SIZE        = 32;
@@ -450,7 +448,7 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
 
       /*******************************************************************************
        ** Returns a salted, hashed version of a raw password.
-       ** Format: sha256:iterations:salt:hash (new) or iterations:salt:hash (legacy)
+       ** Format: sha256:iterations:salt:hash
        **
        *******************************************************************************/
       public static String createHashedPassword(String password) throws NoSuchAlgorithmException, InvalidKeySpecException
@@ -508,40 +506,23 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
 
       /*******************************************************************************
        ** Validates a password against a hash.
-       ** Supports both new format (sha256:iterations:salt:hash) and legacy (iterations:salt:hash)
+       ** Expected format: sha256:iterations:salt:hash
        **
        *******************************************************************************/
       private static boolean validatePassword(String password, String passwordHash) throws NoSuchAlgorithmException, InvalidKeySpecException
       {
-         String[] params    = passwordHash.split(":");
-         String   algorithm;
-         int      iterations;
-         byte[]   salt;
-         byte[]   hash;
+         String[] params = passwordHash.split(":");
 
-         ///////////////////////////////////////////////////////////////////////////
-         // Determine format: new format starts with algorithm prefix, legacy     //
-         // format starts with numeric iterations count                           //
-         ///////////////////////////////////////////////////////////////////////////
-         if(params[0].equals(ALGORITHM_PREFIX_SHA256))
+         if(!params[0].equals(ALGORITHM_PREFIX_SHA256))
          {
-            algorithm  = PBKDF2_ALGORITHM_SHA256;
-            iterations = Integer.parseInt(params[1]);
-            salt       = fromHex(params[2]);
-            hash       = fromHex(params[3]);
-         }
-         else
-         {
-            ///////////////////////////////////////////////////////////////////////
-            // Legacy format: iterations:salt:hash (uses SHA1 for compatibility) //
-            ///////////////////////////////////////////////////////////////////////
-            algorithm  = PBKDF2_ALGORITHM_SHA1;
-            iterations = Integer.parseInt(params[0]);
-            salt       = fromHex(params[1]);
-            hash       = fromHex(params[2]);
+            throw new IllegalArgumentException("Unsupported password hash format. Only SHA256 format (sha256:iterations:salt:hash) is supported. Legacy passwords must be reset.");
          }
 
-         byte[] testHash = computePbkdf2Hash(password.toCharArray(), salt, iterations, hash.length, algorithm);
+         int    iterations = Integer.parseInt(params[1]);
+         byte[] salt       = fromHex(params[2]);
+         byte[] hash       = fromHex(params[3]);
+
+         byte[] testHash = computePbkdf2Hash(password.toCharArray(), salt, iterations, hash.length, PBKDF2_ALGORITHM_SHA256);
          return slowEquals(hash, testHash);
       }
 

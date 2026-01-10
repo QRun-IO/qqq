@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **WireMock 3.13.2** - Upgraded from 3.13.0 to fix commons-fileupload vulnerability (HIGH)
 - **commons-lang 2.x removed** - Migrated to commons-lang3 3.20.0 (no fix available for 2.x MEDIUM CVE)
 - **iq80 snappy excluded** - Excluded vulnerable snappy from checkstyle plugin dependencies (MEDIUM)
+- **mysql-connector-j 8.4.0** - Migrated from deprecated mysql:mysql-connector-java 8.0.30 (HIGH)
+- **protobuf-java 3.25.5** - Override to fix DoS vulnerability (HIGH)
 
 ### Notes
-- commons-lang3 alert (3.18.0 fix) dismissed - already at 3.20.0
+- commons-lang3 alert dismissed - already at 3.20.0
+- commons-beanutils alerts dismissed - already at fix version 1.11.0
+- jetty-http alerts dismissed - requires Jetty 12.x (Javalin 7.x)
 
 ## [0.35.0] - 2025-12-28
 

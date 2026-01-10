@@ -437,15 +437,20 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
     *******************************************************************************/
    public static class PasswordHasher
    {
-      private static final String PBKDF2_ALGORITHM  = "PBKDF2WithHmacSHA1";
-      private static final int    SALT_BYTE_SIZE    = 32;
-      private static final int    HASH_BYTE_SIZE    = 32;
-      private static final int    PBKDF2_ITERATIONS = 1000;
+      // Security: SHA256 is the current standard; SHA1 retained for legacy password validation
+      private static final String PBKDF2_ALGORITHM_SHA256 = "PBKDF2WithHmacSHA256";
+      private static final String PBKDF2_ALGORITHM_SHA1   = "PBKDF2WithHmacSHA1";
+      private static final String ALGORITHM_PREFIX_SHA256 = "sha256";
+
+      private static final int SALT_BYTE_SIZE        = 32;
+      private static final int HASH_BYTE_SIZE        = 32;
+      private static final int PBKDF2_ITERATIONS     = 100000; // OWASP recommended minimum for SHA256
 
 
 
       /*******************************************************************************
        ** Returns a salted, hashed version of a raw password.
+       ** Format: sha256:iterations:salt:hash (new) or iterations:salt:hash (legacy)
        **
        *******************************************************************************/
       public static String createHashedPassword(String password) throws NoSuchAlgorithmException, InvalidKeySpecException
@@ -460,24 +465,24 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
          ///////////////////////
          // Hash the password //
          ///////////////////////
-         byte[] passwordHash = computePbkdf2Hash(password.toCharArray(), salt, PBKDF2_ITERATIONS, HASH_BYTE_SIZE);
+         byte[] passwordHash = computePbkdf2Hash(password.toCharArray(), salt, PBKDF2_ITERATIONS, HASH_BYTE_SIZE, PBKDF2_ALGORITHM_SHA256);
 
-         //////////////////////////////////////////////////////
-         // return string in the format iterations:salt:hash //
-         //////////////////////////////////////////////////////
-         return (PBKDF2_ITERATIONS + ":" + toHex(salt) + ":" + toHex(passwordHash));
+         //////////////////////////////////////////////////////////////
+         // return string in the format sha256:iterations:salt:hash  //
+         //////////////////////////////////////////////////////////////
+         return (ALGORITHM_PREFIX_SHA256 + ":" + PBKDF2_ITERATIONS + ":" + toHex(salt) + ":" + toHex(passwordHash));
       }
 
 
 
       /*******************************************************************************
-       ** Computes the PBKDF2 hash.
+       ** Computes the PBKDF2 hash using the specified algorithm.
        **
        *******************************************************************************/
-      private static byte[] computePbkdf2Hash(char[] password, byte[] salt, int iterations, int bytes) throws NoSuchAlgorithmException, InvalidKeySpecException
+      private static byte[] computePbkdf2Hash(char[] password, byte[] salt, int iterations, int bytes, String algorithm) throws NoSuchAlgorithmException, InvalidKeySpecException
       {
          PBEKeySpec       spec = new PBEKeySpec(password, salt, iterations, bytes * 8);
-         SecretKeyFactory skf  = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM);
+         SecretKeyFactory skf  = SecretKeyFactory.getInstance(algorithm);
 
          return skf.generateSecret(spec).getEncoded();
       }
@@ -503,16 +508,40 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
 
       /*******************************************************************************
        ** Validates a password against a hash.
+       ** Supports both new format (sha256:iterations:salt:hash) and legacy (iterations:salt:hash)
        **
        *******************************************************************************/
       private static boolean validatePassword(String password, String passwordHash) throws NoSuchAlgorithmException, InvalidKeySpecException
       {
-         String[] params     = passwordHash.split(":");
-         int      iterations = Integer.parseInt(params[0]);
-         byte[]   salt       = fromHex(params[1]);
-         byte[]   hash       = fromHex(params[2]);
+         String[] params    = passwordHash.split(":");
+         String   algorithm;
+         int      iterations;
+         byte[]   salt;
+         byte[]   hash;
 
-         byte[] testHash = computePbkdf2Hash(password.toCharArray(), salt, iterations, hash.length);
+         ///////////////////////////////////////////////////////////////////////////
+         // Determine format: new format starts with algorithm prefix, legacy     //
+         // format starts with numeric iterations count                           //
+         ///////////////////////////////////////////////////////////////////////////
+         if(params[0].equals(ALGORITHM_PREFIX_SHA256))
+         {
+            algorithm  = PBKDF2_ALGORITHM_SHA256;
+            iterations = Integer.parseInt(params[1]);
+            salt       = fromHex(params[2]);
+            hash       = fromHex(params[3]);
+         }
+         else
+         {
+            ///////////////////////////////////////////////////////////////////////
+            // Legacy format: iterations:salt:hash (uses SHA1 for compatibility) //
+            ///////////////////////////////////////////////////////////////////////
+            algorithm  = PBKDF2_ALGORITHM_SHA1;
+            iterations = Integer.parseInt(params[0]);
+            salt       = fromHex(params[1]);
+            hash       = fromHex(params[2]);
+         }
+
+         byte[] testHash = computePbkdf2Hash(password.toCharArray(), salt, iterations, hash.length, algorithm);
          return slowEquals(hash, testHash);
       }
 

@@ -87,14 +87,23 @@
       });
    });
 
+   function safeNavigate(url)
+   {
+      // Security: Only allow relative URLs starting with /
+      if (url && url.startsWith('/'))
+      {
+         document.location.href = url;
+      }
+   }
+
    function changeApi()
    {
-      document.location.href = document.getElementById("otherApisSelect").value;
+      safeNavigate(document.getElementById("otherApisSelect").value);
    }
 
    function changeVersion()
    {
-      document.location.href = document.getElementById("otherVersionsSelect").value;
+      safeNavigate(document.getElementById("otherVersionsSelect").value);
    }
 </script>
 </body>

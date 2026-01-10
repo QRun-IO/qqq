@@ -201,10 +201,17 @@
         <artifactId>protobuf-java</artifactId>
         <version>3.25.5</version>
       </dependency>
+      <!-- Security: Exclude vulnerable org.iq80.snappy from transitive dependencies -->
       <dependency>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-checkstyle-plugin</artifactId>
         <version>3.6.0</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.iq80.snappy</groupId>
+            <artifactId>snappy</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>org.apache.logging.log4j</groupId>

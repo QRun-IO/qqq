@@ -319,14 +319,15 @@ public class QSlackImplementation
       ///////////////
       // processes //
       ///////////////
-      StringBuilder processes       = new StringBuilder();
-      List<String>  processNameList = metaDataOutput.getProcesses().keySet().stream().sorted().toList();
+      final int     MAX_PROCESSES_TO_DISPLAY = 10;
+      StringBuilder processes                = new StringBuilder();
+      List<String>  processNameList          = metaDataOutput.getProcesses().keySet().stream().sorted().toList();
       for(int i = 0; i < processNameList.size(); i++)
       {
          processes.append(metaDataOutput.getProcesses().get(processNameList.get(i)).getLabel()).append(" [").append(processNameList.get(i)).append("]\n");
-         if(i == 9 && processNameList.size() > 10)
+         if(i == MAX_PROCESSES_TO_DISPLAY - 1 && processNameList.size() > MAX_PROCESSES_TO_DISPLAY)
          {
-            processes.append("... and ").append(processNameList.size() - 10).append(" more\n");
+            processes.append("... and ").append(processNameList.size() - MAX_PROCESSES_TO_DISPLAY).append(" more\n");
             break;
          }
       }

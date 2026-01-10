@@ -513,17 +513,52 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
       {
          String[] params = passwordHash.split(":");
 
-         if(!params[0].equals(ALGORITHM_PREFIX_SHA256))
+         // If the algorithm prefix is not the expected one, still perform a dummy
+         // constant-time validation to avoid timing differences that could aid
+         // enumeration of legacy or unsupported hashes.
+         if(params.length < 4 || !ALGORITHM_PREFIX_SHA256.equals(params[0]))
          {
-            throw new IllegalArgumentException("Unsupported password hash format. Only SHA256 format (sha256:iterations:salt:hash) is supported. Legacy passwords must be reset.");
+            return constantTimeFalse(password);
          }
 
-         int    iterations = Integer.parseInt(params[1]);
-         byte[] salt       = fromHex(params[2]);
-         byte[] hash       = fromHex(params[3]);
+         try
+         {
+            int    iterations = Integer.parseInt(params[1]);
+            byte[] salt       = fromHex(params[2]);
+            byte[] hash       = fromHex(params[3]);
 
-         byte[] testHash = computePbkdf2Hash(password.toCharArray(), salt, iterations, hash.length, PBKDF2_ALGORITHM_SHA256);
-         return slowEquals(hash, testHash);
+            byte[] testHash = computePbkdf2Hash(password.toCharArray(), salt, iterations, hash.length, PBKDF2_ALGORITHM_SHA256);
+            return slowEquals(hash, testHash);
+         }
+         catch(RuntimeException e)
+         {
+            // Any parsing or decoding error (e.g., NumberFormatException, IllegalArgumentException,
+            // ArrayIndexOutOfBoundsException) is treated as an invalid password, but we still
+            // execute a dummy constant-time validation to mitigate timing attacks.
+            return constantTimeFalse(password);
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Perform a dummy password validation in (approximately) constant time so that
+       ** callers cannot distinguish formatting or parsing errors from real failures
+       ** based on timing.
+       *******************************************************************************/
+      private static boolean constantTimeFalse(String password) throws NoSuchAlgorithmException, InvalidKeySpecException
+      {
+         // Fixed parameters for dummy computation; these values are not secret and
+         // must not be changed in a way that significantly alters runtime
+         // characteristics relative to the real validation.
+         final int    dummyIterations = 10000;
+         final byte[] dummySalt       = new byte[] { 0x00, 0x01, 0x02, 0x03 };
+         final byte[] dummyHash       = new byte[] { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11 };
+
+         byte[] dummyTestHash = computePbkdf2Hash(password.toCharArray(), dummySalt, dummyIterations, dummyHash.length, PBKDF2_ALGORITHM_SHA256);
+         // Always return false; slowEquals is used only to equalize timing.
+         slowEquals(dummyHash, dummyTestHash);
+         return false;
       }
 
 

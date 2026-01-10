@@ -172,7 +172,8 @@ public class SecretsManagerUtils
                }
                else
                {
-                  LOG.warn("SecretsManager secret at [" + secretId + "] was a JSON object, but it did not contain a key of [" + name + "] - so returning empty.");
+                  // Security: Don't log secretId as it reveals secret structure
+                  LOG.warn("SecretsManager secret was a JSON object, but it did not contain the expected key - returning empty.");
                   return (Optional.empty());
                }
             }

@@ -279,10 +279,15 @@ public class SecretsManagerUtils
 
 
 
-   /*******************************************************************************
-    ** Ideally meant for tests or one-offs to set up a variable interpreter with
-    ** an override ENV.
-    *******************************************************************************/
+   /**
+    * Sets the {@link QMetaDataVariableInterpreter} instance to be used by this utility.
+    * <p>
+    * This method is primarily intended for tests or one-off usage to configure
+    * a variable interpreter with an override environment.
+    *
+    * @param qMetaDataVariableInterpreter the interpreter instance to use; may be {@code null}
+    *                                     to reset to the default behavior.
+    */
    static void setQMetaDataVariableInterpreter(QMetaDataVariableInterpreter qMetaDataVariableInterpreter)
    {
       SecretsManagerUtils.qMetaDataVariableInterpreter = qMetaDataVariableInterpreter;

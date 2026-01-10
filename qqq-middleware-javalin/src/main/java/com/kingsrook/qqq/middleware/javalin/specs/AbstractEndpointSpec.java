@@ -54,7 +54,7 @@ import io.javalin.apibuilder.ApiBuilder;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import io.javalin.http.Handler;
-import org.apache.commons.lang.NotImplementedException;
+import org.apache.commons.lang3.NotImplementedException;
 import org.json.JSONObject;
 
 

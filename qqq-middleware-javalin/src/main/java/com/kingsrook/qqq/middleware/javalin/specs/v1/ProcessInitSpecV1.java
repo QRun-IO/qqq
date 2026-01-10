@@ -55,7 +55,7 @@ import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
-import org.apache.commons.lang.NotImplementedException;
+import org.apache.commons.lang3.NotImplementedException;
 
 
 /*******************************************************************************

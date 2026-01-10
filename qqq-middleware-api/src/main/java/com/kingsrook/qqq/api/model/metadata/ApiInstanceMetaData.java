@@ -39,7 +39,7 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.openapi.model.SecurityScheme;
 import com.kingsrook.qqq.openapi.model.Server;
-import org.apache.commons.lang.BooleanUtils;
+import org.apache.commons.lang3.BooleanUtils;
 
 
 /*******************************************************************************

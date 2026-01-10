@@ -79,6 +79,9 @@
   <properties>
     <revision>0.36.0-SNAPSHOT</revision>
 
+    <!-- Security: Override Jetty version to fix CVE-2025-XXXX (HTTP/2 vulnerability) -->
+    <jetty.version>11.0.26</jetty.version>
+
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.release>21</maven.compiler.release>
@@ -174,6 +177,24 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- Security: Override Jetty version transitively brought by Javalin -->
+      <dependency>
+        <groupId>org.eclipse.jetty</groupId>
+        <artifactId>jetty-bom</artifactId>
+        <version>${jetty.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.eclipse.jetty.http2</groupId>
+        <artifactId>http2-server</artifactId>
+        <version>${jetty.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.eclipse.jetty.http2</groupId>
+        <artifactId>http2-common</artifactId>
+        <version>${jetty.version}</version>
+      </dependency>
       <dependency>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-checkstyle-plugin</artifactId>
@@ -254,6 +275,18 @@
             <groupId>com.puppycrawl.tools</groupId>
             <artifactId>checkstyle</artifactId>
             <version>12.2.0</version>
+          </dependency>
+          <!-- Security: Exclude vulnerable org.iq80.snappy from transitive dependencies -->
+          <dependency>
+            <groupId>org.codehaus.plexus</groupId>
+            <artifactId>plexus-archiver</artifactId>
+            <version>4.9.2</version>
+            <exclusions>
+              <exclusion>
+                <groupId>org.iq80.snappy</groupId>
+                <artifactId>snappy</artifactId>
+              </exclusion>
+            </exclusions>
           </dependency>
         </dependencies>
         <executions>

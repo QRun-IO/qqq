@@ -72,7 +72,7 @@ import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.Cardinali
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.model.metadata.SFTPBackendVariantSetting;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.NotImplementedException;
+import org.apache.commons.lang3.NotImplementedException;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 

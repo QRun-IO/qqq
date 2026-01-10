@@ -95,7 +95,7 @@ import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.BooleanUtils;
+import org.apache.commons.lang3.BooleanUtils;
 import org.eclipse.jetty.http.HttpStatus;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;

@@ -41,7 +41,7 @@ import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwith
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ProcessSummaryProviderInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.general.ProcessSummaryWarningsAndErrorsRollup;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
-import org.apache.commons.lang.BooleanUtils;
+import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.processes.implementations.bulk.edit.BulkEditTransformStep.buildInfoSummaryLines;
 
 

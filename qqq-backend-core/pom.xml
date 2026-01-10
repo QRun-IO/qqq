@@ -54,11 +54,11 @@
       <!-- none, this is core.  -->
 
       <!-- 3rd party deps specifically for this module -->
-      <!-- Legacy commons-lang 2.x required for BooleanUtils and NotImplementedException -->
+      <!-- Security: Migrated from commons-lang 2.6 to commons-lang3 (no fix available for 2.x) -->
       <dependency>
-         <groupId>commons-lang</groupId>
-         <artifactId>commons-lang</artifactId>
-         <version>2.6</version>
+         <groupId>org.apache.commons</groupId>
+         <artifactId>commons-lang3</artifactId>
+         <version>3.20.0</version>
       </dependency>
       <!-- Required for ValidationUtils -->
       <dependency>
@@ -307,10 +307,11 @@
          <version>5.21.0</version>
          <scope>test</scope>
       </dependency>
+      <!-- Security: Updated to fix commons-fileupload vulnerability (CVE in 1.5) -->
       <dependency>
          <groupId>org.wiremock</groupId>
          <artifactId>wiremock</artifactId>
-         <version>3.13.0</version>
+         <version>3.13.2</version>
          <scope>test</scope>
       </dependency>
       <dependency>

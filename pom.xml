@@ -195,6 +195,12 @@
         <artifactId>http2-common</artifactId>
         <version>${jetty.version}</version>
       </dependency>
+      <!-- Security: Override protobuf-java to fix DoS vulnerability (transitive via mysql-connector-j) -->
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-java</artifactId>
+        <version>3.25.5</version>
+      </dependency>
       <dependency>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-checkstyle-plugin</artifactId>

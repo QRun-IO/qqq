@@ -89,14 +89,11 @@
 
    function safeNavigate(url)
    {
-      // Security: Only allow same-origin relative URLs
-      if (url && typeof url === 'string' && url.startsWith('/') && !url.startsWith('//'))
+      // Security: Only allow same-origin API paths (e.g., /api/v1/docs/)
+      // Pattern: must start with /api/ followed by safe path characters
+      if (url && typeof url === 'string' && /^\/api\/[a-zA-Z0-9\/_-]*\/?$/.test(url))
       {
-         const fullUrl = new URL(url, window.location.origin);
-         if (fullUrl.origin === window.location.origin)
-         {
-            window.location.assign(fullUrl.pathname + fullUrl.search + fullUrl.hash);
-         }
+         window.location.href = url;
       }
    }
 

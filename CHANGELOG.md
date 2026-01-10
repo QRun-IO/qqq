@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+- **TableBasedAuthenticationModule** - Removed SHA1 backward compatibility for password hashing. Only SHA256 format (`sha256:iterations:salt:hash`) is now supported. Users with legacy SHA1-hashed passwords must reset their passwords.
+
 ### Security
 - **Jetty 11.0.26** - Upgraded from 11.0.25 to fix HTTP/2 vulnerability (HIGH)
 - **WireMock 3.13.2** - Upgraded from 3.13.0 to fix commons-fileupload vulnerability (HIGH)
@@ -14,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **iq80 snappy excluded** - Excluded vulnerable snappy from checkstyle plugin dependencies (MEDIUM)
 - **mysql-connector-j 8.4.0** - Migrated from deprecated mysql:mysql-connector-java 8.0.30 (HIGH)
 - **protobuf-java 3.25.5** - Override to fix DoS vulnerability (HIGH)
+- **PasswordHasher SHA1 removed** - Eliminated weak cryptographic algorithm (CodeQL alert)
+- **RapiDoc XSS hardened** - Strengthened URL validation with origin checking
 
 ### Notes
 - commons-lang3 alert dismissed - already at 3.20.0

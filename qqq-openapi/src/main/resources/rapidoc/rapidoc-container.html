@@ -89,10 +89,11 @@
 
    function safeNavigate(url)
    {
-      // Security: Only allow relative URLs starting with /
-      if (url && url.startsWith('/'))
+      // Security: Only allow same-origin API paths (e.g., /api/v1/docs/)
+      // Pattern: must start with /api/ followed by safe path characters
+      if (url && typeof url === 'string' && /^\/api\/[a-zA-Z0-9\/_-]*\/?$/.test(url))
       {
-         document.location.href = url;
+         window.location.href = url;
       }
    }
 

@@ -94,7 +94,7 @@ public class QSlackImplementation
 {
    private static final QLogger LOG = QLogger.getLogger(QSlackImplementation.class);
 
-   static QInstance qInstance;
+   private final QInstance qInstance;
 
 
 
@@ -103,7 +103,7 @@ public class QSlackImplementation
     *******************************************************************************/
    public QSlackImplementation(QInstance qInstance) throws QInstanceValidationException
    {
-      QSlackImplementation.qInstance = qInstance;
+      this.qInstance = qInstance;
       new QInstanceValidator().validate(qInstance);
    }
 
@@ -116,7 +116,7 @@ public class QSlackImplementation
    {
       LOG.info("Loading qInstance from file (assuming json): " + qInstanceFilePath);
       String qInstanceJson = FileUtils.readFileToString(new File(qInstanceFilePath), StandardCharsets.UTF_8);
-      QSlackImplementation.qInstance = new QInstanceAdapter().jsonToQInstanceIncludingBackends(qInstanceJson);
+      this.qInstance = new QInstanceAdapter().jsonToQInstanceIncludingBackends(qInstanceJson);
    }
 
 

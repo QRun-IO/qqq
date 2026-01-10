@@ -445,18 +445,23 @@ public class QSlackImplementation
          response.put("blocks", blocksArray);
          context.result(response.toString());
 
-         //////////////////////////////////////////////////////////////
-         // you can get this instance via ctx.client() in a Bolt app //
-         //////////////////////////////////////////////////////////////
-         var client = Slack.getInstance().methods();
-         client.filesUpload(FilesUploadRequest.builder()
-            .token("xoxb-1413823704023-4637156460004-e6Vwq23PjTDw5D7OzOp2fIWi")
-            .channels(List.of("C04JNM6BTMY"))
-            .filetype(format)
-            .filename("test." + format)
-            .fileData(baos.toByteArray())
-            .build()
-         );
+         ///////////////////////////////////////////////////////////////////////////////////
+         // Upload file to Slack - token and channel should come from QInstance config //
+         ///////////////////////////////////////////////////////////////////////////////////
+         String slackToken   = System.getenv("SLACK_BOT_TOKEN");
+         String slackChannel = System.getenv("SLACK_CHANNEL_ID");
+         if(slackToken != null && slackChannel != null)
+         {
+            var client = Slack.getInstance().methods();
+            client.filesUpload(FilesUploadRequest.builder()
+               .token(slackToken)
+               .channels(List.of(slackChannel))
+               .filetype(format)
+               .filename("export." + format)
+               .fileData(baos.toByteArray())
+               .build()
+            );
+         }
       }
       catch(Exception e)
       {

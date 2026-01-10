@@ -173,7 +173,7 @@ public class SecretsManagerUtils
                else
                {
                   // Security: Don't log secretId as it reveals secret structure
-                  LOG.warn("SecretsManager secret was a JSON object, but it did not contain the expected key - returning empty.");
+                  LOG.warn("SecretsManager secret was a JSON object, but it did not contain the expected key [{}] - returning empty.", name);
                   return (Optional.empty());
                }
             }

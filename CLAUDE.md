@@ -4,7 +4,7 @@
 
 QQQ is a low-code application framework for engineers by QRun-IO, LLC (formerly Kingsrook). It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
 
-**Current Version:** 0.36.0-SNAPSHOT
+**Current Version:** 0.40.0-SNAPSHOT
 **License:** Apache-2.0
 **Java Version:** 17+
 
@@ -275,3 +275,19 @@ new IsolatedSpaRouteProvider()
 - `QueryManager.getInstant()` now handles TIMESTAMPTZ with timezone offsets
 - Tries `OffsetDateTime.parse()` first, falls back to `LocalDateTime` parsing
 - Identifier quoting fixed - column names properly escaped for case sensitivity
+
+### Pluggable Audit Handlers (PR #356)
+- Infrastructure for multiple audit handlers alongside default audit system
+- Supports WORM/HIPAA-compliant storage use cases
+- Two handler types:
+  - `DMLAuditHandlerInterface` - receives full old/new QRecords after DML
+  - `ProcessedAuditHandlerInterface` - receives AuditSingleInput after audit insert
+- Key classes:
+  - `QAuditHandlerMetaData` - handler registration metadata
+  - `AuditHandlerExecutor` - executes handlers (sync/async)
+  - `AuditHandlerType` enum: DML, PROCESSED
+  - `AuditHandlerFailurePolicy` enum: LOG_AND_CONTINUE, FAIL_OPERATION
+- Registration: `qInstance.addAuditHandler(new QAuditHandlerMetaData()...)`
+- Per-table filtering via `withTableNames(Set.of("table1", "table2"))`
+- Async handlers use `CapturedContext` for QContext propagation
+- See `docs/PLAN-pluggable-audit-handlers.md` for full design

@@ -1,72 +1,58 @@
 # TODO
 
-## Recently Completed (2026-01-09)
+## Active Work
 
-### PR Merge Task
-- [x] Create merge plan (`docs/PLAN-pr-merge-order.md`)
-- [x] Merge PR #321 - child-table personalization fix
-- [x] Merge PR #320 - bulk edit query optimization
-- [x] Merge PR #335 - PostgreSQL timestamp/identifier fixes
-- [x] Merge PR #337 - OAuth2 customizer support
-- [x] Merge PR #280 - virtual fields and alternative sections
-- [x] Post-merge validation (189 tests)
-- [x] Create Daily Build Log (Discussion #340)
+### Pluggable Audit Handlers (PR #356)
+- [x] Design pluggable audit handler system
+- [x] Create handler interfaces (DML + Processed)
+- [x] Create metadata and executor classes
+- [x] Modify QInstance, DMLAuditAction, AuditAction
+- [x] Add unit tests (7 tests)
+- [x] Add integration tests (6 tests)
+- [x] Rebase onto 0.40.0-SNAPSHOT
+- [x] Create PR #356
+- [ ] PR review and merge
 
-### Issue #334 - OAuth2 Session Security Keys
-- [x] Add customizer support to OAuth2AuthenticationModule
-- [x] Add unit tests and integration tests
-- [x] Create PR #337 (MERGED)
-- [x] Create GitHub issue #336 for Phase 2 QBit
+### Post-Merge: WORM QBit
+- [ ] Create `qbit-worm-audit` repository
+- [ ] Implement WormAuditQBitProducer
+- [ ] Implement WormDMLAuditHandler
+- [ ] Add WORM backend integration
+
+---
+
+## Recently Completed (2026-01-10)
+
+### Security Vulnerability Remediation
+- [x] PR #343 - Jetty, WireMock, commons-lang fixes (Merged)
+- [x] PR #344 - mysql-connector-j, protobuf-java fixes (Merged)
+
+### Version Transition
+- [x] Branch `release/0.36.0` created for RC
+- [x] `develop` bumped to 0.40.0-SNAPSHOT
 
 ---
 
 ## Pending Work
 
+### Remaining Security Alerts
+- [ ] guava upgrade (4 LOW) - future PR
+- [ ] jetty-http (5 MEDIUM) - deferred to Javalin 7.x
+
 ### Future: Issue #336 - QSessionStoreInterface QBit
 - [ ] Design pluggable session store interface
 - [ ] Implement default in-memory store
 - [ ] Add Redis/database store options
-- [ ] Documentation
 
 ### Background: License Migration (Paused)
-See `docs/PLAN-license-migration.md` for details.
-
-- [x] Push LICENSE, NOTICE, README to all 25 repos
-- [x] Delete old LICENSE.txt files
-- [x] Update `checkstyle/license.txt` header
-- [ ] Update Java source file headers (~5,747 files)
-- [ ] Update pom.xml `<licenses>` sections (~20 files)
-- [ ] Update README.md AGPL references (~15 files)
-- [ ] Update package.json license field (qqq-frontend-core)
-- [ ] Run checkstyle to verify headers
+- Transition from AGPL/Kingsrook to Apache 2.0/QRun-IO
+- See `docs/PLAN-license-migration.md` for details
 
 ---
 
-## Notes
+## Related Links
 
-### New Features Available (v0.36.0-SNAPSHOT)
-
-**Virtual Fields:**
-```java
-new QTableMetaData()
-   .withVirtualField(new QVirtualFieldMetaData("computed")
-      .withType(QFieldType.STRING));
-```
-
-**Alternative Sections:**
-```java
-new QFieldSection()
-   .withAlternative(QFieldSectionAlternativeType.MOBILE,
-      new QFieldSection().withFields(List.of("name")));
-```
-
-**OAuth2 Customizer:**
-```java
-new OAuth2AuthenticationModule()
-   .withCustomizer(new QCodeReference(MyCustomizer.class));
-```
-
-### Related Links
-- [Discussion #340 - Daily Build Log](https://github.com/orgs/QRun-IO/discussions/340)
-- [Issue #336 - QSessionStoreInterface](https://github.com/Kingsrook/qqq/issues/336)
-- [PR #280](https://github.com/Kingsrook/qqq/pull/280), [#320](https://github.com/Kingsrook/qqq/pull/320), [#321](https://github.com/Kingsrook/qqq/pull/321), [#335](https://github.com/Kingsrook/qqq/pull/335), [#337](https://github.com/Kingsrook/qqq/pull/337)
+- [PR #356 - Audit Handlers](https://github.com/QRun-IO/qqq/pull/356)
+- [PR #343](https://github.com/QRun-IO/qqq/pull/343)
+- [PR #344](https://github.com/QRun-IO/qqq/pull/344)
+- [Discussion #340 - 0.36.0 Summary](https://github.com/orgs/QRun-IO/discussions/340)

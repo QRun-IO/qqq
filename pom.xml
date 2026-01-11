@@ -77,7 +77,7 @@
   </modules>
 
   <properties>
-    <revision>0.36.0-SNAPSHOT</revision>
+    <revision>0.36.0-RC.1</revision>
 
     <!-- Security: Override Jetty version to fix CVE-2025-XXXX (HTTP/2 vulnerability) -->
     <jetty.version>11.0.26</jetty.version>

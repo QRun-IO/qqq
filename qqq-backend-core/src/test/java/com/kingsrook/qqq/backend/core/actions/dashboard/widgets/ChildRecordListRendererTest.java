@@ -33,8 +33,12 @@ import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidatorTest;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
@@ -402,6 +406,41 @@ class ChildRecordListRendererTest extends BaseTest
 
 
 
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testBaseFilterAndOrderBy() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+         .withLabel("Line Items")
+         .withBaseFilter(new QQueryFilter(new QFilterCriteria("lineNumber", QCriteriaOperator.NOT_EQUALS, 3)))
+         .withOrderBys(List.of(new QFilterOrderBy("lineNumber", false)))
+         .withOnlyIncludeFieldNames(List.of("sku", "quantity"))
+         .getWidgetMetaData();
+      qInstance.addWidget(widget);
+
+      //////////////////////////////////////////////////////////////////////////////////////////////////////
+      // insert a few more lines that'll match the order inserted by the insertOrdersAndRenderWidget call //
+      //////////////////////////////////////////////////////////////////////////////////////////////////////
+      TestUtils.insertRecords(qInstance.getTable(TestUtils.TABLE_NAME_LINE_ITEM), List.of(
+         new QRecord().withValue("orderId", 1).withValue("sku", "CDE").withValue("lineNumber", 3),
+         new QRecord().withValue("orderId", 1).withValue("sku", "DEF").withValue("lineNumber", 4)));
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, widget);
+
+      assertThat(childRecordListData.getChildTableMetaData()).hasFieldOrPropertyWithValue("name", TestUtils.TABLE_NAME_LINE_ITEM);
+      assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(3);
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(0).getValueInteger("lineNumber")).isEqualTo(4);
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(1).getValueInteger("lineNumber")).isEqualTo(2);
+      assertThat(childRecordListData.getQueryOutput().getRecords().get(2).getValueInteger("lineNumber")).isEqualTo(1);
+
+      assertEquals(List.of("sku", "quantity"), childRecordListData.getOnlyIncludeFieldNames());
+   }
+
+
+
    /***************************************************************************
     *
     ***************************************************************************/
@@ -437,6 +476,98 @@ class ChildRecordListRendererTest extends BaseTest
 
       ChildRecordListData childRecordListData = (ChildRecordListData) output.getWidgetData();
       return childRecordListData;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testValidation()
+   {
+      /////////////////////////////////
+      // failure for not a real join //
+      /////////////////////////////////
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(new QJoinMetaData().withName("notReal"))
+               .getWidgetMetaData()),
+         "Widget notReal: No join named notReal exists");
+
+      //////////////////////////////////////
+      // failure for bad association name //
+      //////////////////////////////////////
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+               .withManageAssociationName("noAssociation")
+               .getWidgetMetaData()),
+         "an association named [noAssociation] does not exist on table [order]");
+
+      /////////////////////////////
+      // failure for base filter //
+      /////////////////////////////
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+               .withBaseFilter(new QQueryFilter(new QFilterCriteria("noField", QCriteriaOperator.EQUALS, 1)))
+               .getWidgetMetaData()),
+         "Widget orderLineItem: baseFilter: Criteria fieldName noField is not a field in this table");
+
+      //////////////////////////////
+      // bad types in the configs //
+      //////////////////////////////
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+               .getWidgetMetaData()
+               .withDefaultValue(ChildRecordListRenderer.KEY_BASE_FILTER, "order = 1")),
+         "Widget orderLineItem: baseFilter is not an instance of QQueryFilter");
+
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+               .getWidgetMetaData()
+               .withDefaultValue(ChildRecordListRenderer.KEY_QUERY_JOINS, "order")),
+         "Widget orderLineItem: queryJoins is not an instance of List");
+
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+               .getWidgetMetaData()
+               .withDefaultValue(ChildRecordListRenderer.KEY_QUERY_JOINS, new ArrayList<>(List.of("order")))),
+         "Widget orderLineItem: queryJoins has an element which is not a QueryJoin");
+
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+               .getWidgetMetaData()
+               .withDefaultValue(ChildRecordListRenderer.KEY_ORDER_BY, "sku")),
+         "Widget orderLineItem: orderBy is not an instance of List");
+
+      QInstanceValidatorTest.assertValidationFailureReasons(qInstance ->
+            qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+               .getWidgetMetaData()
+               .withDefaultValue(ChildRecordListRenderer.KEY_ORDER_BY, new ArrayList<>(List.of("sku")))),
+         "Widget orderLineItem: orderBy has an element which is not a QFilterOrderBy");
+
+      //////////////////////
+      // successful cases //
+      //////////////////////
+      QInstanceValidatorTest.assertValidationSuccess(qInstance ->
+         qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+            .getWidgetMetaData()));
+
+      QInstanceValidatorTest.assertValidationSuccess(qInstance ->
+         qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+            .withManageAssociationName("orderLine")
+            .getWidgetMetaData()));
+
+      QInstanceValidatorTest.assertValidationSuccess(qInstance ->
+         qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+            .withBaseFilter(new QQueryFilter(new QFilterCriteria("quantity", QCriteriaOperator.EQUALS, 1)))
+            .getWidgetMetaData()));
+
+      QInstanceValidatorTest.assertValidationSuccess(qInstance ->
+         qInstance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("orderLineItem"))
+            .withQueryJoins(List.of(new QueryJoin("order")))
+            .withBaseFilter(new QQueryFilter(new QFilterCriteria("order.storeId", QCriteriaOperator.EQUALS, 1)))
+            .withOrderBys(List.of(new QFilterOrderBy("order.id"), new QFilterOrderBy("sku")))
+            .getWidgetMetaData()));
    }
 
 }

@@ -69,6 +69,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.ListBuilder;
@@ -78,11 +79,32 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Generic widget for display a list of child records.
+ ** Generic widget-renderer for display a list of child records.
+ *
+ * <p>Includes a Builder class ({@see ChildRecordListRenderer.Builder}) for configuring
+ * the meta-data corresponding to renderer.</p>
+ *
+ * <p>Several configurations can be controlled by setting values in the widgetMetaData's
+ * defaultValues map.  There are a series of public static final String keys for those
+ * slots in the map.  There are also corresponding fluent-setters for each of these
+ * options in the Builder class ({@see ChildRecordListRenderer.Builder}).</p>
  *******************************************************************************/
 public class ChildRecordListRenderer extends AbstractWidgetRenderer
 {
    private static final QLogger LOG = QLogger.getLogger(ChildRecordListRenderer.class);
+
+   public static final String KEY_JOIN_NAME                                               = "joinName";
+   public static final String KEY_MAX_ROWS                                                = "maxRows";
+   public static final String KEY_CAN_ADD_CHILD_RECORD                                    = "canAddChildRecord";
+   public static final String KEY_DISABLED_FIELDS_FOR_NEW_CHILD_RECORDS                   = "disabledFieldsForNewChildRecords";
+   public static final String KEY_DEFAULT_VALUES_FOR_NEW_CHILD_RECORDS_FROM_PARENT_FIELDS = "defaultValuesForNewChildRecordsFromParentFields";
+   public static final String KEY_MANAGE_ASSOCIATION_NAME                                 = "manageAssociationName";
+   public static final String KEY_OMIT_FIELD_NAMES                                        = "omitFieldNames";
+   public static final String KEY_ONLY_INCLUDE_FIELD_NAMES                                = "onlyIncludeFieldNames";
+   public static final String KEY_KEEP_JOIN_FIELD                                         = "keepJoinField";
+   public static final String KEY_QUERY_JOINS                                             = "queryJoins";
+   public static final String KEY_BASE_FILTER                                             = "baseFilter";
+   public static final String KEY_ORDER_BY                                                = "orderBy";
 
 
 
@@ -96,7 +118,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
          .withIsCard(true)
          .withCodeReference(new QCodeReference(ChildRecordListRenderer.class))
          .withType(WidgetType.CHILD_RECORD_LIST.getType())
-         .withDefaultValue("joinName", join.getName())
+         .withDefaultValue(KEY_JOIN_NAME, join.getName())
          .withValidatorPlugin(new ChildRecordListWidgetValidator())
       ));
    }
@@ -108,6 +130,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
     *******************************************************************************/
    public static class Builder extends AbstractWidgetMetaDataBuilder
    {
+
 
       /*******************************************************************************
        ** Constructor
@@ -144,11 +167,14 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
 
       /*******************************************************************************
        * set the max rows to be included in the widget.  Wise to always set this, to
-       * avoid unbounded query (todo - add a system or instance wide default)
+       * avoid unbounded query (todo - add a system or instance wide default?)
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_MAX_ROWS</p>
        *******************************************************************************/
       public Builder withMaxRows(Integer maxRows)
       {
-         widgetMetaData.withDefaultValue("maxRows", maxRows);
+         widgetMetaData.withDefaultValue(KEY_MAX_ROWS, maxRows);
          return (this);
       }
 
@@ -157,10 +183,13 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
       /*******************************************************************************
        * Tell the UI that it should show an add-new button, to create records in the
        * child table.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_CAN_ADD_CHILD_RECORD</p>
        *******************************************************************************/
       public Builder withCanAddChildRecord(boolean b)
       {
-         widgetMetaData.withDefaultValue("canAddChildRecord", b);
+         widgetMetaData.withDefaultValue(KEY_CAN_ADD_CHILD_RECORD, b);
          return (this);
       }
 
@@ -169,10 +198,39 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
       /*******************************************************************************
        * For the case where you canAddChildRecord is true, this field is a set of field
        * names in the child table that should be disabled in the add-child-record UI.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_DISABLED_FIELDS_FOR_NEW_CHILD_RECORDS</p>
        *******************************************************************************/
       public Builder withDisabledFieldsForNewChildRecords(Set<String> disabledFieldsForNewChildRecords)
       {
-         widgetMetaData.withDefaultValue("disabledFieldsForNewChildRecords", new HashSet<>(disabledFieldsForNewChildRecords));
+         widgetMetaData.withDefaultValue(KEY_DISABLED_FIELDS_FOR_NEW_CHILD_RECORDS, new HashSet<>(disabledFieldsForNewChildRecords));
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       * For the case where you canAddChildRecord is true, this field is a Map of
+       * field names from the parent table to field names in the parent table, that
+       * makes a default value for the child record come from the parent record.
+       * By default, the join field in the child will get set from the parent, but this
+       * map allows additional values to also come from the parent.
+       *
+       * <p>Useful for, e.g., a security field that should be the same in parent and
+       * child (e.g., <pre>Map.of("organizationId", "organizationId")</pre>) or maybe a
+       * secondary foreign key(?) like <pre>Map.of("warehouseId", "id")</pre> (to make
+       * the child's warehouseId equal the parent's id).</p>
+       *
+       * <p>Common to use along with withDisabledFieldsForNewChildRecords, if the
+       * fields with default values should be disabled (read-only) in the UI.</p>
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_DEFAULT_VALUES_FOR_NEW_CHILD_RECORDS_FROM_PARENT_FIELDS</p>
+       *******************************************************************************/
+      public Builder withDefaultValuesForNewChildRecordsFromParentFields(Map<String, String> defaultValuesForNewChildRecordsFromParentFields)
+      {
+         widgetMetaData.withDefaultValue(KEY_DEFAULT_VALUES_FOR_NEW_CHILD_RECORDS_FROM_PARENT_FIELDS, new HashMap<>(defaultValuesForNewChildRecordsFromParentFields));
          return (this);
       }
 
@@ -181,10 +239,13 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
       /*******************************************************************************
        * For a widget that is meant to manage a list of associated child records, e.g.,
        * on an insert/edit screen, that association name must be set in this property.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_MANAGE_ASSOCIATION_NAME</p>
        *******************************************************************************/
       public Builder withManageAssociationName(String manageAssociationName)
       {
-         widgetMetaData.withDefaultValue("manageAssociationName", manageAssociationName);
+         widgetMetaData.withDefaultValue(KEY_MANAGE_ASSOCIATION_NAME, manageAssociationName);
          return (this);
       }
 
@@ -194,11 +255,14 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
        * The default behavior is to show all fields in the table (and any included
        * exposed joins) on the frontend.  This option allows you to specify a subset
        * of fields to omit - to send ot the frontend for not displaying.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_OMIT_FIELD_NAMES</p>
        *******************************************************************************/
       public Builder withOmitFieldNames(List<String> omitFieldNames)
       {
          ArrayList<String> arrayList = CollectionUtils.useOrWrap(omitFieldNames, new TypeToken<>() {});
-         widgetMetaData.withDefaultValue("omitFieldNames", arrayList);
+         widgetMetaData.withDefaultValue(KEY_OMIT_FIELD_NAMES, arrayList);
          return (this);
       }
 
@@ -209,11 +273,14 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
        * exposed joins) on the frontend.  This option allows you to specify a subset
        * of field names, that get set in {@link ChildRecordListData#withOnlyIncludeFieldNames(List)},
        * which a frontend should respect to limit what's shown.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_ONLY_INCLUDE_FIELD_NAMES</p>
        *******************************************************************************/
       public Builder withOnlyIncludeFieldNames(List<String> onlyIncludeFieldNames)
       {
          ArrayList<String> arrayList = CollectionUtils.useOrWrap(onlyIncludeFieldNames, new TypeToken<>() {});
-         widgetMetaData.withDefaultValue("onlyIncludeFieldNames", arrayList);
+         widgetMetaData.withDefaultValue(KEY_ONLY_INCLUDE_FIELD_NAMES, arrayList);
          return (this);
       }
 
@@ -226,10 +293,13 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
        *
        * <p>You can set this property to true to reverse that course, and not put
        * the join field in the omit list, so it does display.</p>
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_KEEP_JOIN_FIELD</p>
        *******************************************************************************/
       public Builder withKeepJoinField(Boolean keepJoinField)
       {
-         widgetMetaData.withDefaultValue("keepJoinField", keepJoinField);
+         widgetMetaData.withDefaultValue(KEY_KEEP_JOIN_FIELD, keepJoinField);
          return (this);
       }
 
@@ -241,12 +311,47 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
        * cause an inner join to make records not be found maybe).  They'll need to
        * correspond to exposed joins on the table, for a frontend to display them.
        * Any joins listed in here will have their tables added to
-       * {@link ChildRecordListData#withIncludeExposedJoinTables(List)}
+       * {@link ChildRecordListData#withIncludeExposedJoinTables(List)}.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_QUERY_JOINS</p>
        *******************************************************************************/
       public Builder withQueryJoins(List<QueryJoin> queryJoins)
       {
          ArrayList<QueryJoin> queryJoinsArrayList = CollectionUtils.useOrWrap(queryJoins, new TypeToken<>() {});
-         widgetMetaData.withDefaultValue("queryJoins", queryJoinsArrayList);
+         widgetMetaData.withDefaultValue(KEY_QUERY_JOINS, queryJoinsArrayList);
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       * Set a "base filter" to be used by the query that selects the child records.
+       * This can be used to add, for example, additional criteria, such as filtering
+       * out records of a given status.  Or, for example, if the selection might otherwise
+       * include the record being viewed, to exclude it (using: NOT_EQUALS, "${input.id}")
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_BASE_FILTER</p>
+       *******************************************************************************/
+      public Builder withBaseFilter(QQueryFilter baseFilter)
+      {
+         widgetMetaData.withDefaultValue(KEY_BASE_FILTER, baseFilter);
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       * Set a list of OrderBys to be used for the query that selects the child records.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_ORDER_BY</p>
+       *******************************************************************************/
+      public Builder withOrderBys(List<QFilterOrderBy> orderBys)
+      {
+         ArrayList<QFilterOrderBy> orderBysArrayList = CollectionUtils.useOrWrap(orderBys, new TypeToken<>() {});
+         widgetMetaData.withDefaultValue(KEY_ORDER_BY, orderBysArrayList);
          return (this);
       }
 
@@ -263,14 +368,14 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
       try
       {
          String         widgetLabel = input.getQueryParams().get("widgetLabel");
-         String         joinName    = input.getQueryParams().get("joinName");
+         String joinName = input.getQueryParams().get(KEY_JOIN_NAME);
          QJoinMetaData  join        = QContext.getQInstance().getJoin(joinName);
          String         id          = input.getQueryParams().get("id");
          QTableMetaData leftTable   = QContext.getQInstance().getTable(join.getLeftTable());
          QTableMetaData rightTable  = QContext.getQInstance().getTable(join.getRightTable());
 
          Map<String, Serializable> widgetMetaDataDefaultValues = input.getWidgetMetaData().getDefaultValues();
-         List<String>              omitFieldNames              = (List<String>) widgetMetaDataDefaultValues.get("omitFieldNames");
+         List<String> omitFieldNames = (List<String>) widgetMetaDataDefaultValues.get(KEY_OMIT_FIELD_NAMES);
          if(omitFieldNames == null)
          {
             omitFieldNames = new ArrayList<>();
@@ -281,13 +386,13 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
          }
 
          Integer maxRows = null;
-         if(StringUtils.hasContent(input.getQueryParams().get("maxRows")))
+         if(StringUtils.hasContent(input.getQueryParams().get(KEY_MAX_ROWS)))
          {
-            maxRows = ValueUtils.getValueAsInteger(input.getQueryParams().get("maxRows"));
+            maxRows = ValueUtils.getValueAsInteger(input.getQueryParams().get(KEY_MAX_ROWS));
          }
-         else if(widgetMetaDataDefaultValues.containsKey("maxRows"))
+         else if(widgetMetaDataDefaultValues.containsKey(KEY_MAX_ROWS))
          {
-            maxRows = ValueUtils.getValueAsInteger(widgetMetaDataDefaultValues.get("maxRows"));
+            maxRows = ValueUtils.getValueAsInteger(widgetMetaDataDefaultValues.get(KEY_MAX_ROWS));
          }
 
          //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -316,23 +421,40 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
                throw (new QNotFoundException("Could not find " + (leftTable == null ? "" : leftTable.getLabel()) + " with primary key " + id));
             }
 
-            ////////////////////////////////////////////////////////////////////
-            // set up the query - for the table on the right side of the join //
-            ////////////////////////////////////////////////////////////////////
-            filter = new QQueryFilter();
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            // if widget default values specify a base filter - use clone of it - else start a new filter //
+            ////////////////////////////////////////////////////////////////////////////////////////////////
+            Serializable baseFilter = widgetMetaDataDefaultValues.get(KEY_BASE_FILTER);
+            if(baseFilter instanceof QQueryFilter baseQueryFilter)
+            {
+               filter = baseQueryFilter.clone();
+
+               ////////////////////////////////////////////////
+               // support, e.g., ${input.id} criteria values //
+               ////////////////////////////////////////////////
+               filter.interpretValues(new HashMap<>(input.getQueryParams()));
+            }
+            else
+            {
+               filter = new QQueryFilter();
+            }
+
+            //////////////////////////////////////////////////////////////
+            // add criteria for the table on the right side of the join //
+            //////////////////////////////////////////////////////////////
             for(JoinOn joinOn : join.getJoinOns())
             {
                String rightField = joinOn.getRightField();
                filter.addCriteria(new QFilterCriteria(rightField, QCriteriaOperator.EQUALS, ListBuilder.of(primaryRecord.getValue(joinOn.getLeftField()))));
 
-               Boolean keepJoinField = ValueUtils.getValueAsBoolean(widgetMetaDataDefaultValues.get("keepJoinField"));
+               Boolean keepJoinField = ValueUtils.getValueAsBoolean(widgetMetaDataDefaultValues.get(KEY_KEEP_JOIN_FIELD));
                if(!BooleanUtils.isTrue(keepJoinField))
                {
                   omitFieldNames.add(rightField);
                }
             }
 
-            Serializable orderBy = widgetMetaDataDefaultValues.get("orderBy");
+            Serializable orderBy = widgetMetaDataDefaultValues.get(KEY_ORDER_BY);
             if(orderBy instanceof List orderByList && !orderByList.isEmpty() && orderByList.get(0) instanceof QFilterOrderBy)
             {
                filter.setOrderBys(orderByList);
@@ -351,7 +473,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
             queryInput.setFilter(filter);
             queryInput.setInputSource(QInputSource.USER);
 
-            Serializable queryJoinsSerializable = widgetMetaDataDefaultValues.get("queryJoins");
+            Serializable queryJoinsSerializable = widgetMetaDataDefaultValues.get(KEY_QUERY_JOINS);
             if(queryJoinsSerializable instanceof List queryJoinsList)
             {
                queryInput.withQueryJoins(queryJoinsList);
@@ -363,7 +485,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
                }
             }
 
-            queryOutput = new QueryAction().execute(queryInput);
+            queryOutput = executeQuery(queryInput);
 
             QValueFormatter.setBlobValuesToDownloadUrls(rightTable, queryOutput.getRecords());
 
@@ -398,7 +520,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
          // case would we want to allow adding children even if the child table wasn't directly available?   //
          // PermissionsHelper.hasTablePermission(input, rightTable.getName(), TablePermissionSubType.INSERT) //
          //////////////////////////////////////////////////////////////////////////////////////////////////////
-         if(BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(input.getQueryParams().get("canAddChildRecord"))))
+         if(BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(input.getQueryParams().get(KEY_CAN_ADD_CHILD_RECORD))))
          {
             widgetData.setCanAddChildRecord(true);
 
@@ -416,10 +538,10 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
 
             widgetData.setDefaultValuesForNewChildRecords(defaultValuesForNewChildRecords);
 
-            if(widgetMetaDataDefaultValues.containsKey("disabledFieldsForNewChildRecords"))
+            if(widgetMetaDataDefaultValues.containsKey(KEY_DISABLED_FIELDS_FOR_NEW_CHILD_RECORDS))
             {
                @SuppressWarnings("unchecked")
-               Set<String> disabledFieldsForNewChildRecords = (Set<String>) widgetMetaDataDefaultValues.get("disabledFieldsForNewChildRecords");
+               Set<String> disabledFieldsForNewChildRecords = (Set<String>) widgetMetaDataDefaultValues.get(KEY_DISABLED_FIELDS_FOR_NEW_CHILD_RECORDS);
                widgetData.setDisabledFieldsForNewChildRecords(disabledFieldsForNewChildRecords);
             }
             else
@@ -439,10 +561,10 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
                }
             }
 
-            if(widgetMetaDataDefaultValues.containsKey("defaultValuesForNewChildRecordsFromParentFields"))
+            if(widgetMetaDataDefaultValues.containsKey(KEY_DEFAULT_VALUES_FOR_NEW_CHILD_RECORDS_FROM_PARENT_FIELDS))
             {
                @SuppressWarnings("unchecked")
-               Map<String, String> defaultValuesForNewChildRecordsFromParentFields = (Map<String, String>) widgetMetaDataDefaultValues.get("defaultValuesForNewChildRecordsFromParentFields");
+               Map<String, String> defaultValuesForNewChildRecordsFromParentFields = (Map<String, String>) widgetMetaDataDefaultValues.get(KEY_DEFAULT_VALUES_FOR_NEW_CHILD_RECORDS_FROM_PARENT_FIELDS);
                widgetData.setDefaultValuesForNewChildRecordsFromParentFields(defaultValuesForNewChildRecordsFromParentFields);
             }
          }
@@ -451,7 +573,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
          widgetData.setAllowRecordDelete(BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(input.getQueryParams().get("allowRecordDelete"))));
          widgetData.setIncludeExposedJoinTables(includeExposedJoinTables);
 
-         List<String> onlyIncludeFieldNames = (List<String>) widgetMetaDataDefaultValues.get("onlyIncludeFieldNames");
+         List<String> onlyIncludeFieldNames = (List<String>) widgetMetaDataDefaultValues.get(KEY_ONLY_INCLUDE_FIELD_NAMES);
          if(onlyIncludeFieldNames != null)
          {
             widgetData.setOnlyIncludeFieldNames(onlyIncludeFieldNames);
@@ -464,6 +586,20 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
          LOG.warn("Error rendering child record list", e, logPair("widgetName", () -> input.getWidgetMetaData().getName()));
          throw (e);
       }
+   }
+
+
+
+   /***************************************************************************
+    * execute the query input, producing a query output.
+    *
+    * Note, this method exists as a point where a subclass could override
+    * to customize values in the query input or even the rows selected by
+    * the query.
+    ***************************************************************************/
+   protected QueryOutput executeQuery(QueryInput queryInput) throws QException
+   {
+      return new QueryAction().execute(queryInput);
    }
 
 
@@ -482,11 +618,13 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
       {
          String prefix = "Widget " + widgetMetaData.getName() + ": ";
 
+         Map<String, Serializable> widgetMetaDataDefaultValues = CollectionUtils.nonNullMap(widgetMetaData.getDefaultValues());
+
          //////////////////////////////////
          // make sure join name is given //
          //////////////////////////////////
-         String joinName = ValueUtils.getValueAsString(CollectionUtils.nonNullMap(widgetMetaData.getDefaultValues()).get("joinName"));
-         if(qInstanceValidator.assertCondition(StringUtils.hasContent(joinName), prefix + "defaultValue for joinName must be given"))
+         String joinName = ValueUtils.getValueAsString(widgetMetaDataDefaultValues.get(KEY_JOIN_NAME));
+         if(qInstanceValidator.assertCondition(StringUtils.hasContent(joinName), prefix + "defaultValue for " + KEY_JOIN_NAME + " must be given"))
          {
             ///////////////////////////
             // make sure join exists //
@@ -494,13 +632,89 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
             QJoinMetaData join = qInstance.getJoin(joinName);
             if(qInstanceValidator.assertCondition(join != null, prefix + "No join named " + joinName + " exists in the instance"))
             {
-               //////////////////////////////////////////////////////////////////////////////////
-               // if there's a manageAssociationName, make sure the table has that association //
-               //////////////////////////////////////////////////////////////////////////////////
-               String manageAssociationName = ValueUtils.getValueAsString(widgetMetaData.getDefaultValues().get("manageAssociationName"));
+               QTableMetaData rightTable = qInstance.getTable(join.getRightTable());
+
+               ///////////////////////////////////////////////////////////////////////////////////////
+               // if there's a manageAssociationName, make sure the left-table has that association //
+               ///////////////////////////////////////////////////////////////////////////////////////
+               String manageAssociationName = ValueUtils.getValueAsString(widgetMetaDataDefaultValues.get(KEY_MANAGE_ASSOCIATION_NAME));
                if(StringUtils.hasContent(manageAssociationName))
                {
                   validateAssociationName(prefix, manageAssociationName, join, qInstance, qInstanceValidator);
+               }
+
+               /////////////////////////////////////////////////////////////////////
+               // if there are query joins, grab them, to use in later validation //
+               /////////////////////////////////////////////////////////////////////
+               List<QueryJoin> queryJoinList          = new ArrayList<>();
+               Serializable    queryJoinsSerializable = widgetMetaDataDefaultValues.get(KEY_QUERY_JOINS);
+               if(queryJoinsSerializable instanceof List l)
+               {
+                  for(Object o : l)
+                  {
+                     if(o instanceof QueryJoin queryJoin)
+                     {
+                        queryJoinList.add(queryJoin);
+                     }
+                     else
+                     {
+                        qInstanceValidator.getErrors().add(prefix + KEY_QUERY_JOINS + " has an element which is not a QueryJoin (is: " + (ObjectUtils.tryElse(() -> o.getClass(), "?")) + ")");
+                     }
+                  }
+               }
+               else
+               {
+                  qInstanceValidator.assertCondition(queryJoinsSerializable == null, prefix + KEY_QUERY_JOINS + " is not an instance of List (is: " + (ObjectUtils.tryElse(() -> queryJoinsSerializable.getClass(), "")) + ")");
+               }
+
+               ///////////////////////////////////////////////////////////////////////
+               // if there's a base filter, validate it for the table & query joins //
+               ///////////////////////////////////////////////////////////////////////
+               Serializable baseFilter = widgetMetaDataDefaultValues.get(KEY_BASE_FILTER);
+               if(baseFilter instanceof QQueryFilter baseQueryFilter)
+               {
+                  if(rightTable != null)
+                  {
+                     qInstanceValidator.validateQueryFilter(qInstance, prefix + KEY_BASE_FILTER + ": ", rightTable, baseQueryFilter, queryJoinList);
+                  }
+               }
+               else
+               {
+                  qInstanceValidator.assertCondition(baseFilter == null, prefix + KEY_BASE_FILTER + " is not an instance of QQueryFilter (is: " + (ObjectUtils.tryElse(() -> baseFilter.getClass(), "?")) + ")");
+               }
+
+               ///////////////////////////////////////////
+               // if order bys are given, validate them //
+               ///////////////////////////////////////////
+               Serializable orderBy = widgetMetaDataDefaultValues.get(KEY_ORDER_BY);
+               if(orderBy instanceof List orderByList)
+               {
+                  boolean areObjectTypesCorrect = true;
+                  if(!orderByList.isEmpty() && rightTable != null)
+                  {
+                     QQueryFilter queryFilter = new QQueryFilter();
+                     for(Object o : orderByList)
+                     {
+                        if(o instanceof QFilterOrderBy qFilterOrderBy)
+                        {
+                           queryFilter.addOrderBy(qFilterOrderBy);
+                        }
+                        else
+                        {
+                           qInstanceValidator.getErrors().add(prefix + KEY_ORDER_BY + " has an element which is not a QFilterOrderBy (is: " + (ObjectUtils.tryElse(() -> o.getClass(), "?")) + ")");
+                           areObjectTypesCorrect = false;
+                        }
+                     }
+
+                     if(areObjectTypesCorrect)
+                     {
+                        qInstanceValidator.validateQueryFilter(qInstance, prefix + KEY_ORDER_BY + ": ", rightTable, queryFilter, queryJoinList);
+                     }
+                  }
+               }
+               else
+               {
+                  qInstanceValidator.assertCondition(orderBy == null, prefix + KEY_ORDER_BY + " is not an instance of List (is: " + (ObjectUtils.tryElse(() -> baseFilter.getClass(), "?")) + ")");
                }
             }
          }

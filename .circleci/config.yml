@@ -3,7 +3,7 @@
 version: 2.1
 
 orbs:
-  qqq-orb: kingsrook/qqq-orb@0.5.0
+  qqq-orb: kingsrook/qqq-orb@0.6.0
 
 workflows:
 
@@ -16,12 +16,26 @@ workflows:
               ignore: /(develop|main|release/.*|hotfix/.*|integration.*)/
             tags:
               only: []
+      # Static analysis runs in parallel with tests
+      - qqq-orb/static_analysis:
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              ignore: /(develop|main|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
 
   publish_snapshot:
     jobs:
       - qqq-orb/mvn_publish:
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: snapshot
+          filters:
+            branches:
+              only:
+                - develop
+      - qqq-orb/static_analysis:
+          context: [qqq-maven-registry-credentials]
           filters:
             branches:
               only:

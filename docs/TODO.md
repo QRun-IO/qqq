@@ -1,72 +1,65 @@
 # TODO
 
-## Recently Completed (2026-01-09)
+## Completed (2026-01-14)
 
-### PR Merge Task
-- [x] Create merge plan (`docs/PLAN-pr-merge-order.md`)
-- [x] Merge PR #321 - child-table personalization fix
-- [x] Merge PR #320 - bulk edit query optimization
-- [x] Merge PR #335 - PostgreSQL timestamp/identifier fixes
-- [x] Merge PR #337 - OAuth2 customizer support
-- [x] Merge PR #280 - virtual fields and alternative sections
-- [x] Post-merge validation (189 tests)
-- [x] Create Daily Build Log (Discussion #340)
-
-### Issue #334 - OAuth2 Session Security Keys
-- [x] Add customizer support to OAuth2AuthenticationModule
-- [x] Add unit tests and integration tests
-- [x] Create PR #337 (MERGED)
-- [x] Create GitHub issue #336 for Phase 2 QBit
+### SpotBugs + PMD Implementation
+- [x] Create implementation plan (`docs/PLAN-spotbugs-pmd.md`)
+- [x] Add SpotBugs Maven plugin to parent pom.xml
+- [x] Create SpotBugs exclusion filter (`spotbugs/exclude-filter.xml`)
+- [x] Add PMD Maven plugin to parent pom.xml
+- [x] Create PMD ruleset (`pmd/ruleset.xml`)
+- [x] Test local Maven execution
+- [x] Add static analysis commands to qqq-orb
+- [x] Add static analysis job to qqq-orb
+- [x] Update CircleCI config with pipeline parameter
 
 ---
 
 ## Pending Work
 
-### Future: Issue #336 - QSessionStoreInterface QBit
-- [ ] Design pluggable session store interface
-- [ ] Implement default in-memory store
-- [ ] Add Redis/database store options
-- [ ] Documentation
+### Orb Release Required
+- [ ] Bump qqq-orb version to 0.6.0
+- [ ] Publish qqq-orb to CircleCI registry
+- [ ] Uncomment static_analysis workflow in qqq `.circleci/config.yml`
+
+### Future: Tune Static Analysis
+- [ ] Review SpotBugs findings and add targeted exclusions
+- [ ] Review PMD findings and tune ruleset
+- [ ] Consider enabling `failOnError` for specific high-priority rules
 
 ### Background: License Migration (Paused)
 See `docs/PLAN-license-migration.md` for details.
 
-- [x] Push LICENSE, NOTICE, README to all 25 repos
-- [x] Delete old LICENSE.txt files
-- [x] Update `checkstyle/license.txt` header
-- [ ] Update Java source file headers (~5,747 files)
-- [ ] Update pom.xml `<licenses>` sections (~20 files)
-- [ ] Update README.md AGPL references (~15 files)
-- [ ] Update package.json license field (qqq-frontend-core)
-- [ ] Run checkstyle to verify headers
-
 ---
 
-## Notes
+## Quick Reference
 
-### New Features Available (v0.36.0-SNAPSHOT)
+### Local Static Analysis Commands
+```bash
+# SpotBugs only
+mvn spotbugs:check -DskipTests
 
-**Virtual Fields:**
-```java
-new QTableMetaData()
-   .withVirtualField(new QVirtualFieldMetaData("computed")
-      .withType(QFieldType.STRING));
+# PMD only
+mvn pmd:check -DskipTests
+
+# Both with failure on issues
+mvn verify -Dspotbugs.failOnError=true -Dpmd.failOnViolation=true
+
+# Single module
+mvn spotbugs:check pmd:check -pl qqq-backend-core -DskipTests
+
+# View SpotBugs GUI
+mvn spotbugs:gui -pl qqq-backend-core
 ```
 
-**Alternative Sections:**
-```java
-new QFieldSection()
-   .withAlternative(QFieldSectionAlternativeType.MOBILE,
-      new QFieldSection().withFields(List.of("name")));
-```
+### CircleCI Trigger (after orb release)
+```bash
+# Via tag
+git tag static-analysis/$(date +%Y%m%d) && git push origin --tags
 
-**OAuth2 Customizer:**
-```java
-new OAuth2AuthenticationModule()
-   .withCustomizer(new QCodeReference(MyCustomizer.class));
+# Via API
+curl -X POST https://circleci.com/api/v2/project/gh/Kingsrook/qqq/pipeline \
+  -H "Circle-Token: $CIRCLE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"parameters": {"run_static_analysis": true}}'
 ```
-
-### Related Links
-- [Discussion #340 - Daily Build Log](https://github.com/orgs/QRun-IO/discussions/340)
-- [Issue #336 - QSessionStoreInterface](https://github.com/Kingsrook/qqq/issues/336)
-- [PR #280](https://github.com/Kingsrook/qqq/pull/280), [#320](https://github.com/Kingsrook/qqq/pull/320), [#321](https://github.com/Kingsrook/qqq/pull/321), [#335](https://github.com/Kingsrook/qqq/pull/335), [#337](https://github.com/Kingsrook/qqq/pull/337)

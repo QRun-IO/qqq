@@ -1,0 +1,128 @@
+<?xml version="1.0"?>
+<!--
+  PMD Ruleset for QQQ Framework
+
+  This ruleset is tuned for QQQ's coding patterns and style.
+  Rules reference: https://pmd.github.io/pmd/pmd_rules_java.html
+-->
+<ruleset name="QQQ Ruleset"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>PMD ruleset for QQQ Framework - focused on bug detection</description>
+
+    <!-- Best Practices -->
+    <rule ref="category/java/bestpractices.xml">
+        <!-- Exclude: QQQ uses wrapper types intentionally -->
+        <exclude name="AvoidReassigningLoopVariables"/>
+        <!-- Exclude: Test assertions handled by AssertJ -->
+        <exclude name="JUnitTestContainsTooManyAsserts"/>
+        <exclude name="JUnitAssertionsShouldIncludeMessage"/>
+        <exclude name="JUnitTestsShouldIncludeAssert"/>
+        <!-- Exclude: Fluent builders use method chaining -->
+        <exclude name="AccessorMethodGeneration"/>
+    </rule>
+
+    <!-- Code Style - minimal, since Checkstyle handles most style -->
+    <rule ref="category/java/codestyle.xml">
+        <!-- Exclude most style rules - Checkstyle covers these -->
+        <exclude name="AtLeastOneConstructor"/>
+        <exclude name="CommentDefaultAccessModifier"/>
+        <exclude name="ConfusingTernary"/>
+        <exclude name="EmptyMethodInAbstractClassShouldBeAbstract"/>
+        <exclude name="FieldDeclarationsShouldBeAtStartOfClass"/>
+        <exclude name="LocalVariableCouldBeFinal"/>
+        <exclude name="LongVariable"/>
+        <exclude name="MethodArgumentCouldBeFinal"/>
+        <exclude name="OnlyOneReturn"/>
+        <exclude name="ShortClassName"/>
+        <exclude name="ShortMethodName"/>
+        <exclude name="ShortVariable"/>
+        <exclude name="TooManyStaticImports"/>
+        <exclude name="UnnecessaryLocalBeforeReturn"/>
+        <exclude name="UselessParentheses"/>
+        <exclude name="CallSuperInConstructor"/>
+        <exclude name="UseUnderscoresInNumericLiterals"/>
+    </rule>
+
+    <!-- Design -->
+    <rule ref="category/java/design.xml">
+        <!-- Exclude: MetaData classes are large by design -->
+        <exclude name="TooManyMethods"/>
+        <exclude name="TooManyFields"/>
+        <exclude name="ExcessiveImports"/>
+        <exclude name="ExcessivePublicCount"/>
+        <exclude name="GodClass"/>
+        <exclude name="DataClass"/>
+        <!-- Exclude: QQQ uses deep inheritance for actions -->
+        <exclude name="AbstractClassWithoutAbstractMethod"/>
+        <!-- Exclude: Complex switch statements are sometimes clearer -->
+        <exclude name="SwitchDensity"/>
+        <!-- Exclude: Law of Demeter is too strict for fluent APIs -->
+        <exclude name="LawOfDemeter"/>
+        <!-- Exclude: Coupling metrics too aggressive for framework code -->
+        <exclude name="CouplingBetweenObjects"/>
+        <exclude name="ExcessiveParameterList"/>
+        <exclude name="CognitiveComplexity"/>
+        <exclude name="CyclomaticComplexity"/>
+        <exclude name="NPathComplexity"/>
+        <exclude name="NcssCount"/>
+        <exclude name="UseUtilityClass"/>
+        <exclude name="LoosePackageCoupling"/>
+        <exclude name="AvoidCatchingGenericException"/>
+        <exclude name="AvoidThrowingRawExceptionTypes"/>
+        <exclude name="SignatureDeclareThrowsException"/>
+    </rule>
+
+    <!-- Documentation - minimal, Javadoc handled by Checkstyle -->
+    <rule ref="category/java/documentation.xml">
+        <exclude name="CommentRequired"/>
+        <exclude name="CommentSize"/>
+        <exclude name="UncommentedEmptyConstructor"/>
+        <exclude name="UncommentedEmptyMethodBody"/>
+    </rule>
+
+    <!-- Error Prone - important bug detection -->
+    <rule ref="category/java/errorprone.xml">
+        <!-- Exclude: Sometimes needed for reflection/serialization -->
+        <exclude name="BeanMembersShouldSerialize"/>
+        <!-- Exclude: QQQ intentionally uses null for optional values -->
+        <exclude name="ReturnEmptyCollectionRatherThanNull"/>
+        <!-- Exclude: Some empty catch blocks are intentional -->
+        <exclude name="EmptyCatchBlock"/>
+        <!-- Exclude: Clone not used in QQQ -->
+        <exclude name="CloneMethodMustImplementCloneable"/>
+        <exclude name="ProperCloneImplementation"/>
+        <!-- Exclude: Test classes may have weird patterns -->
+        <exclude name="TestClassWithoutTestCases"/>
+        <!-- Exclude: False positives with QQQ patterns -->
+        <exclude name="NullAssignment"/>
+        <exclude name="DataflowAnomalyAnalysis"/>
+        <exclude name="AvoidLiteralsInIfCondition"/>
+        <exclude name="AvoidFieldNameMatchingMethodName"/>
+        <exclude name="AvoidDuplicateLiterals"/>
+        <exclude name="AvoidFieldNameMatchingTypeName"/>
+        <exclude name="UseLocaleWithCaseConversions"/>
+    </rule>
+
+    <!-- Multithreading -->
+    <rule ref="category/java/multithreading.xml">
+        <!-- Exclude: QContext uses thread-local intentionally -->
+        <exclude name="UseConcurrentHashMap"/>
+        <exclude name="DoNotUseThreads"/>
+    </rule>
+
+    <!-- Performance -->
+    <rule ref="category/java/performance.xml">
+        <!-- Exclude: Readability over micro-optimization -->
+        <exclude name="AvoidInstantiatingObjectsInLoops"/>
+        <exclude name="ConsecutiveLiteralAppends"/>
+        <exclude name="ConsecutiveAppendsShouldReuse"/>
+        <exclude name="UseStringBufferForStringAppends"/>
+    </rule>
+
+    <!-- Security - keep most of these -->
+    <rule ref="category/java/security.xml"/>
+
+</ruleset>

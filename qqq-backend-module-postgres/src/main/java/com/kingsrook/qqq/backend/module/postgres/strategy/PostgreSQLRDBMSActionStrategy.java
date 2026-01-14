@@ -64,7 +64,8 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
       Connection connection, String sql, List<Object> params,
       QFieldMetaData primaryKeyField) throws SQLException
    {
-      sql = sql + " RETURNING " + getColumnName(primaryKeyField);
+      String quoteString = getIdentifierQuoteString();
+      sql = sql + " RETURNING " + quoteString + getColumnName(primaryKeyField) + quoteString;
 
       try(PreparedStatement statement = connection.prepareStatement(sql))
       {

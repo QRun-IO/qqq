@@ -2,8 +2,16 @@
 
 version: 2.1
 
+# Pipeline parameters for optional workflows
+parameters:
+  run_static_analysis:
+    type: boolean
+    default: false
+    description: "Run SpotBugs and PMD static analysis"
+
 orbs:
-  qqq-orb: kingsrook/qqq-orb@0.5.0
+  # TODO: Change back to @0.6.0 after testing
+  qqq-orb: kingsrook/qqq-orb@dev:snapshot
 
 workflows:
 
@@ -69,3 +77,17 @@ workflows:
             branches:
               only:
                 - /hotfix\/.*/
+
+  # Static analysis workflow
+  # Triggered by: git tag static-analysis/$(date +%Y%m%d) && git push origin --tags
+  # Or via API: POST with run_static_analysis=true
+  static_analysis:
+    when:
+      or:
+        - matches:
+            pattern: "^static-analysis/.*"
+            value: << pipeline.git.tag >>
+        - equal: [true, << pipeline.parameters.run_static_analysis >>]
+    jobs:
+      - qqq-orb/static_analysis:
+          context: [qqq-maven-registry-credentials]

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs Exclusion Filter for QQQ Framework
+
+  This filter excludes false positives and patterns that are intentional
+  in the QQQ codebase. Add exclusions sparingly and document the reason.
+
+  Bug patterns reference: https://spotbugs.readthedocs.io/en/stable/bugDescriptions.html
+-->
+<FindBugsFilter>
+
+    <!-- Exclude all test classes from analysis -->
+    <Match>
+        <Class name="~.*Test$"/>
+    </Match>
+    <Match>
+        <Class name="~.*Tests$"/>
+    </Match>
+    <Match>
+        <Class name="~.*TestUtils?$"/>
+    </Match>
+
+    <!--
+      EI_EXPOSE_REP / EI_EXPOSE_REP2: Fluent builders intentionally return 'this'
+      and expose mutable internal state for chaining. This is by design in QQQ.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Or>
+            <Class name="~.*MetaData$"/>
+            <Class name="~.*Builder$"/>
+            <Method name="~with.*"/>
+        </Or>
+    </Match>
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Or>
+            <Class name="~.*MetaData$"/>
+            <Class name="~.*Builder$"/>
+            <Method name="~with.*"/>
+        </Or>
+    </Match>
+
+    <!--
+      MS_EXPOSE_REP: Static mutable fields in MetaDataProducers are intentional
+      for singleton metadata definitions.
+    -->
+    <Match>
+        <Bug pattern="MS_EXPOSE_REP"/>
+        <Class name="~.*MetaDataProducer$"/>
+    </Match>
+
+    <!--
+      URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD: Some fields are set via reflection
+      or exist for future extensibility in the metadata system.
+    -->
+    <Match>
+        <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+        <Class name="~.*MetaData$"/>
+    </Match>
+
+    <!--
+      SE_BAD_FIELD: QRecord and related classes use non-serializable fields
+      intentionally; serialization is handled via JSON/custom mechanisms.
+    -->
+    <Match>
+        <Bug pattern="SE_BAD_FIELD"/>
+        <Class name="~com\.kingsrook\.qqq\.backend\.core\.model\.data\..*"/>
+    </Match>
+
+    <!--
+      NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE: QContext patterns have known
+      null handling that SpotBugs cannot track across thread-local boundaries.
+    -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+        <Or>
+            <Method name="~.*getQSession.*"/>
+            <Method name="~.*getQInstance.*"/>
+        </Or>
+    </Match>
+
+</FindBugsFilter>

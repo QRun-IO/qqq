@@ -4,7 +4,7 @@
 
 QQQ is a low-code application framework for engineers by QRun-IO, LLC (formerly Kingsrook). It uses metadata-driven architecture where applications are defined through configuration rather than code generation.
 
-**Current Version:** 0.36.0-SNAPSHOT
+**Current Version:** 0.40.0-SNAPSHOT
 **License:** Apache-2.0
 **Java Version:** 17+
 
@@ -53,6 +53,20 @@ mvn checkstyle:check                           # Validate code style
 mvn test -Dtest=ClassName                      # Run specific test
 mvn test -Dtest=ClassName#methodName           # Run specific test method
 ```
+
+## Static Analysis (SpotBugs + PMD)
+
+```bash
+mvn spotbugs:check -DskipTests                 # Run SpotBugs (report only)
+mvn pmd:check -DskipTests                      # Run PMD (report only)
+mvn spotbugs:gui -pl qqq-backend-core          # SpotBugs GUI for single module
+```
+
+**Configuration files:**
+- `spotbugs/exclude-filter.xml` - Exclusions for QQQ patterns (fluent builders, singletons)
+- `pmd/ruleset.xml` - Custom ruleset tuned for QQQ conventions
+
+**CI Integration:** Static analysis runs in parallel with tests on feature branches via `qqq-orb/static_analysis` job.
 
 ## Code Style (Strictly Enforced)
 
@@ -275,3 +289,18 @@ new IsolatedSpaRouteProvider()
 - `QueryManager.getInstant()` now handles TIMESTAMPTZ with timezone offsets
 - Tries `OffsetDateTime.parse()` first, falls back to `LocalDateTime` parsing
 - Identifier quoting fixed - column names properly escaped for case sensitivity
+
+### Static Analysis - SpotBugs + PMD (PR #369)
+- **SpotBugs 4.8.6.6** with FindSecBugs plugin for security analysis
+- **PMD 7.9.0** with custom ruleset for code quality
+- Report-only by default (use `-Dspotbugs.failOnError=true` to fail builds)
+- CI runs `static_analysis` job in parallel with tests on feature branches
+- Key exclusions: `EI_EXPOSE_REP` for fluent builders, singleton patterns
+- Summary: ~70 High, ~1,550 Medium findings (many false positives for QQQ patterns)
+- See `spotbugs-summary.csv` for full breakdown by bug type
+
+### QQQ-Orb @0.6.0
+- Added `static_analysis` job for SpotBugs + PMD
+- Jobs run in parallel with test jobs
+- Reports stored as CircleCI artifacts
+- Orb repo: `/Users/james.maes/Git.Local/QRun-IO/qqq-orb/`

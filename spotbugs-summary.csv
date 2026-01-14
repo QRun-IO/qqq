@@ -1,0 +1,61 @@
+Bug Type,Count,Severity,Category,Description,Recommendation
+EI_EXPOSE_REP,554,Medium,Code Quality,Getter returns reference to mutable field - caller can modify internal state,Low priority - QQQ fluent pattern; consider defensive copies for security-sensitive fields
+CT_CONSTRUCTOR_THROW,52,Medium,Code Quality,Constructor throws exception leaving object partially initialized - vulnerable to finalizer attacks,Review - consider factory methods or two-phase initialization
+SE_BAD_FIELD,45,Medium,Serialization,Serializable class has non-transient non-serializable field,Low priority - QQQ rarely serializes objects; mark fields transient if needed
+REC_CATCH_EXCEPTION,36,Medium,Code Quality,Catching generic Exception instead of specific exception types,Yes - catch specific exceptions for better error handling
+PATH_TRAVERSAL_IN,33,Medium,Security,File path constructed from user input - potential directory traversal attack,Review each case - validate/sanitize paths or use allowlists
+ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD,23,High,Concurrency,Instance method writes to static field - potential race condition,Yes - use proper synchronization or redesign to avoid static mutation
+DM_DEFAULT_ENCODING,22,Medium,Internationalization,Uses default platform encoding instead of explicit charset,Yes - specify StandardCharsets.UTF_8 explicitly
+MS_EXPOSE_REP,20,Medium,Code Quality,Public static method returns reference to mutable static field,Review - return defensive copy or immutable wrapper
+DLS_DEAD_LOCAL_STORE,17,Medium,Code Quality,Value assigned to local variable is never used,Yes - easy cleanup; remove dead assignments
+WMI_WRONG_MAP_ITERATOR,14,Medium,Performance,Iterates over Map.keySet() then calls get() - inefficient,Yes - use Map.entrySet() for direct key-value access
+SQL_INJECTION_JDBC,13,High,Security,SQL query constructed from non-constant string - potential SQL injection,Review - ensure parameterized queries are used; may be false positives
+SING_SINGLETON_GETTER_NOT_SYNCHRONIZED,12,Medium,Concurrency,Singleton getter not synchronized - race condition in lazy init,Review - use enum singleton or synchronized initialization
+VA_FORMAT_STRING_USES_NEWLINE,11,Medium,Portability,Format string uses \n instead of %n - not portable across platforms,Yes - replace \n with %n in format strings
+RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE,7,Medium,Code Quality,Redundant null check on value that cannot be null,Yes - remove unnecessary null checks
+MS_SHOULD_BE_FINAL,6,Medium,Code Quality,Static field should be declared final,Yes - add final modifier to static fields
+UC_USELESS_OBJECT,5,Medium,Code Quality,Object created but never used,Yes - remove unused object creation
+POTENTIAL_XML_INJECTION,4,Medium,Security,XML constructed from user input - potential XML injection,Review - validate/escape XML content or use safe APIs
+PA_PUBLIC_PRIMITIVE_ATTRIBUTE,4,Medium,Encapsulation,Public primitive field should be private with accessor,Yes - encapsulate with getter/setter
+NP_LOAD_OF_KNOWN_NULL_VALUE,4,Medium,Code Quality,Loading value that is known to be null,Review - likely logic error or dead code
+NP_BOOLEAN_RETURN_NULL,4,Medium,Code Quality,Method returns null for Boolean return type - can cause NPE on unboxing,Yes - return Boolean.FALSE instead of null
+LI_LAZY_INIT_UPDATE_STATIC,4,Medium,Concurrency,Lazy initialization of static field is not thread-safe,Yes - use proper synchronization or eager initialization
+DE_MIGHT_IGNORE,4,Medium,Code Quality,Exception might be ignored silently,Yes - at minimum log the exception
+RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT,3,Medium,Code Quality,Return value of method without side effects is ignored,Review - likely missing assignment or unnecessary call
+NS_NON_SHORT_CIRCUIT,3,Medium,Code Quality,Using non-short-circuit logic operator (& instead of &&),Review - may be intentional; usually should use short-circuit
+MC_OVERRIDABLE_METHOD_CALL_IN_CLONE,3,Medium,Code Quality,Clone method calls overridable method - subclass could break clone,Review - call final or private methods in clone
+HTTP_PARAMETER_POLLUTION,3,Medium,Security,HTTP parameter constructed unsafely - potential parameter pollution,Review - validate/encode HTTP parameters
+COMMAND_INJECTION,3,High,Security,Command constructed from user input - potential command injection,Yes - validate input; use ProcessBuilder with argument list
+BC_UNCONFIRMED_CAST,3,Medium,Code Quality,Unchecked cast may throw ClassCastException at runtime,Review - add instanceof check or handle ClassCastException
+UUF_UNUSED_FIELD,2,Medium,Code Quality,Field is never used,Yes - remove unused fields
+TEMPLATE_INJECTION_VELOCITY,2,Medium,Security,Velocity template constructed from user input - potential template injection,Review - validate template content
+SE_BAD_FIELD_STORE,2,Medium,Serialization,Non-serializable value stored in serializable field,Low priority - mark field transient if serialization needed
+RV_RETURN_VALUE_IGNORED_BAD_PRACTICE,2,Medium,Code Quality,Return value should be checked (e.g. File.delete()),Yes - check return value and handle failure
+RCN_REDUNDANT_NULLCHECK_OF_NULL_VALUE,2,Medium,Code Quality,Redundant null check - value is definitely null,Review - likely logic error
+PATH_TRAVERSAL_OUT,2,Medium,Security,File path for output constructed from user input,Review - validate/sanitize output paths
+OBL_UNSATISFIED_OBLIGATION_EXCEPTION_EDGE,2,Medium,Resources,Resource may not be closed on exception path,Yes - use try-with-resources
+MS_PKGPROTECT,2,Medium,Encapsulation,Static field should have reduced visibility,Yes - reduce visibility to package-private
+LI_LAZY_INIT_STATIC,2,Medium,Concurrency,Lazy init of static field not thread-safe,Yes - use synchronization or eager init
+INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE,2,Medium,Security,Sensitive information exposed in error message,Yes - sanitize error messages shown to users
+IC_INIT_CIRCULARITY,2,Medium,Code Quality,Circular class initialization dependency,Review - may cause initialization issues
+EQ_ALWAYS_FALSE,2,High,Code Quality,Equals method always returns false,Yes - fix equals implementation
+CN_IDIOM_NO_SUPER_CALL,2,Medium,Code Quality,Clone method does not call super.clone(),Yes - call super.clone() first
+BX_UNBOXING_IMMEDIATELY_REBOXED,2,Medium,Performance,Primitive unboxed then immediately reboxed,Yes - avoid unnecessary boxing/unboxing
+URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD,1,Medium,Code Quality,Public/protected field is never read,Review - remove or reduce visibility
+URF_UNREAD_FIELD,1,Medium,Code Quality,Field is never read,Yes - remove unused field
+UNSAFE_HASH_EQUALS,1,High,Security,Unsafe comparison of hash values - timing attack possible,Yes - use constant-time comparison for security hashes
+SS_SHOULD_BE_STATIC,1,Medium,Code Quality,Unread field should be static,Yes - make field static
+SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING,1,High,Security,PreparedStatement SQL from non-constant - may still be injectable,Review - ensure SQL structure is safe
+SE_COMPARATOR_SHOULD_BE_SERIALIZABLE,1,Medium,Serialization,Comparator should implement Serializable,Low priority - add Serializable if comparator is stored
+SCRIPT_ENGINE_INJECTION,1,High,Security,Script engine evaluates user input - code injection risk,Review - validate/sandbox script execution
+RV_NEGATING_RESULT_OF_COMPARETO,1,Medium,Code Quality,Negating compareTo result can overflow for Integer.MIN_VALUE,Yes - use Integer.compare() or proper comparison
+OS_OPEN_STREAM,1,Medium,Resources,Stream opened but may not be closed,Yes - use try-with-resources
+OBL_UNSATISFIED_OBLIGATION,1,Medium,Resources,Resource not closed on all paths,Yes - use try-with-resources
+NM_CLASS_NOT_EXCEPTION,1,Medium,Naming,Class name suggests exception but doesn't extend Exception,Review - rename class or extend Exception
+MF_CLASS_MASKS_FIELD,1,Medium,Code Quality,Field in subclass masks field in superclass,Review - rename field or use super explicitly
+IM_BAD_CHECK_FOR_ODD,1,Medium,Code Quality,Using % 2 == 1 fails for negative numbers,Yes - use % 2 != 0 or (x & 1) != 0
+HARD_CODE_PASSWORD,1,High,Security,Password is hardcoded in source code,Yes - remove immediately; use config/secrets manager
+EQ_DOESNT_OVERRIDE_EQUALS,1,Medium,Code Quality,Class inherits equals but adds fields without overriding,Review - override equals to include new fields
+DMI_RANDOM_USED_ONLY_ONCE,1,Medium,Code Quality,Random object created and used only once - poor randomness,Yes - reuse Random instance
+DMI_ENTRY_SETS_MAY_REUSE_ENTRY_OBJECTS,1,Medium,Code Quality,Map.entrySet() entries may be reused - don't store references,Review - copy entry values if storing
+BC_IMPOSSIBLE_INSTANCEOF,1,High,Code Quality,instanceof check will always be false,Yes - fix type check or remove dead code

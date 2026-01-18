@@ -70,6 +70,7 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
    /***************************************************************************
     **
     ***************************************************************************/
+   @Override
    public boolean isSecured()
    {
       return (false);

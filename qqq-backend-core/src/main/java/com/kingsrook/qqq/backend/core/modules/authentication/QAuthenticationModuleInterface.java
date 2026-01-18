@@ -94,14 +94,15 @@ public interface QAuthenticationModuleInterface
    /***************************************************************************
     ** Logout a session, invalidating it server-side.
     **
-    ** @param qInstance the QInstance
+    ** @param qInstance the QInstance (provided for implementations that need it)
     ** @param sessionUUID the session UUID to invalidate
     ***************************************************************************/
    default void logout(QInstance qInstance, String sessionUUID)
    {
       ///////////////////////////////////////////////////////////////////////////
       // default implementation is a no-op - modules may override if they need //
-      // to clear caches or delete session records                             //
+      // to clear caches or delete session records. qInstance is part of the   //
+      // interface contract for implementations that require instance context. //
       ///////////////////////////////////////////////////////////////////////////
    }
 

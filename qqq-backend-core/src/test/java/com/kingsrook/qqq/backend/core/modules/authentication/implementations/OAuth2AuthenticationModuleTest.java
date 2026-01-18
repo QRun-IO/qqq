@@ -90,10 +90,11 @@ class OAuth2AuthenticationModuleTest extends BaseTest
 
       ///////////////////////////////////////////////////////////////
       // Verify the session was created with user info from the JWT //
+      // idReference uses sub (OIDC standard) over email            //
       ///////////////////////////////////////////////////////////////
       assertNotNull(session);
       assertNotNull(session.getUser());
-      assertEquals("test@example.com", session.getUser().getIdReference());
+      assertEquals("test-user-id", session.getUser().getIdReference());
       assertEquals("Test User", session.getUser().getFullName());
 
       ///////////////////////////////////////////////////////////////
@@ -301,6 +302,24 @@ class OAuth2AuthenticationModuleTest extends BaseTest
             capturedIdToken = (JSONObject) context.get("idToken");
          }
       }
+   }
+
+
+
+   /***************************************************************************
+    ** Test that logout method is available on the interface (default method)
+    ***************************************************************************/
+   @Test
+   void testLogoutMethodExistsOnInterface()
+   {
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+
+      ///////////////////////////////////////////////////////////////////////////
+      // logout should not throw, even with null sessionUUID                   //
+      // (this verifies the interface has the method and it's callable)        //
+      ///////////////////////////////////////////////////////////////////////////
+      module.logout(QContext.getQInstance(), null);
+      module.logout(QContext.getQInstance(), "non-existent-session-uuid");
    }
 
 }

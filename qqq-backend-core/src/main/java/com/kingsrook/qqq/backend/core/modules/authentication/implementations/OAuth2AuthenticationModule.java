@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
@@ -45,8 +46,12 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
@@ -394,10 +399,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       session.setUser(user);
 
       user.setFullName("Unknown");
-      String email = Objects.requireNonNullElseGet(payload.optString("email", null), () -> payload.optString("sub", null));
-      String name  = payload.optString("name", email);
+      String sub   = Objects.requireNonNullElseGet(payload.optString("sub", null), () -> payload.optString("email", null));
+      String email = payload.optString("email", sub);
+      String name  = payload.optString("name", sub);
 
-      user.setIdReference(email);
+      user.setIdReference(sub);
       user.setFullName(name);
 
       ////////////////////////////////////////////////////////////
@@ -522,6 +528,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          if(userSessionRecord != null)
          {
             accessToken = userSessionRecord.getValueString("accessToken");
+            String storedUserId = userSessionRecord.getValueString("userId");
 
             ////////////////////////////////////////////////////////////
             // decode the accessToken and make sure it is not expired //
@@ -532,6 +539,22 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
                {
                   throw (new QAuthenticationException("accessToken is expired"));
+               }
+
+               ///////////////////////////////////////////////////////////////////
+               // validate that the token's identity matches the stored userId  //
+               // this prevents session hijacking if data becomes inconsistent  //
+               // prefer sub (OIDC standard, guaranteed unique) over email      //
+               ///////////////////////////////////////////////////////////////////
+               Base64.Decoder decoder       = Base64.getUrlDecoder();
+               String         payloadString = new String(decoder.decode(jwt.getPayload()));
+               JSONObject     payload       = new JSONObject(payloadString);
+               String         tokenIdentity = Objects.requireNonNullElseGet(payload.optString("sub", null), () -> payload.optString("email", null));
+
+               if(storedUserId != null && tokenIdentity != null && !storedUserId.equals(tokenIdentity))
+               {
+                  LOG.warn("Session userId mismatch", logPair("sessionUUID", sessionUUID), logPair("storedUserId", storedUserId), logPair("tokenIdentity", tokenIdentity));
+                  throw (new QAuthenticationException("Session identity mismatch"));
                }
             }
          }
@@ -623,6 +646,48 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             QContext.setQSession(new QSystemUserSession());
             getCustomizer().finalCustomizeSession(qInstance, qSession);
          });
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Logout a session by deleting it from the database and clearing the
+    ** memoization cache.
+    ***************************************************************************/
+   @Override
+   public void logout(QInstance qInstance, String sessionUUID)
+   {
+      if(sessionUUID == null)
+      {
+         return;
+      }
+
+      QSession beforeSession = QContext.getQSession();
+      try
+      {
+         QContext.setQSession(new QSystemUserSession());
+
+         /////////////////////////////////////////////
+         // delete the session record from database //
+         /////////////////////////////////////////////
+         new DeleteAction().execute(new DeleteInput(UserSession.TABLE_NAME)
+            .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.EQUALS, sessionUUID))));
+
+         ///////////////////////////////////////////
+         // clear the session from memoization cache //
+         ///////////////////////////////////////////
+         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+
+         LOG.debug("Logged out session", logPair("sessionUUID", sessionUUID));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error during logout", logPair("sessionUUID", sessionUUID), e);
+      }
+      finally
+      {
+         QContext.setQSession(beforeSession);
       }
    }
 

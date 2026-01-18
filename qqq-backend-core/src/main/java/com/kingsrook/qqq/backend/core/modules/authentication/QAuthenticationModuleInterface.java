@@ -89,4 +89,20 @@ public interface QAuthenticationModuleInterface
       throw (new NotImplementedException("The method getLoginRedirectUrl() is not implemented in the authentication module: " + this.getClass().getSimpleName()));
    }
 
+
+
+   /***************************************************************************
+    ** Logout a session, invalidating it server-side.
+    **
+    ** @param qInstance the QInstance
+    ** @param sessionUUID the session UUID to invalidate
+    ***************************************************************************/
+   default void logout(QInstance qInstance, String sessionUUID)
+   {
+      ///////////////////////////////////////////////////////////////////////////
+      // default implementation is a no-op - modules may override if they need //
+      // to clear caches or delete session records                             //
+      ///////////////////////////////////////////////////////////////////////////
+   }
+
 }

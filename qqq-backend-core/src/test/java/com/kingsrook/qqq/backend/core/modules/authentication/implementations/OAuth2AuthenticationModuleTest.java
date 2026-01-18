@@ -104,6 +104,148 @@ class OAuth2AuthenticationModuleTest extends BaseTest
 
 
 
+   /***************************************************************************
+    ** Test that accessToken and idToken are passed to customizer context
+    ***************************************************************************/
+   @Test
+   void testAccessTokenAndIdTokenPassedToCustomizer() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      OAuth2AuthenticationMetaData authMetaData = new OAuth2AuthenticationMetaData();
+      authMetaData.setName("oauth2");
+      authMetaData.setBaseUrl("https://example.com");
+      authMetaData.setClientId("test-client");
+      authMetaData.setClientSecret("test-secret");
+      authMetaData.setCustomizer(new QCodeReference(TokenCapturingCustomizer.class));
+      qInstance.setAuthentication(authMetaData);
+
+      //////////////////////////////////////////////////////////////////////////
+      // Create a test JWT token                                              //
+      //////////////////////////////////////////////////////////////////////////
+      JSONObject header = new JSONObject();
+      header.put("alg", "none");
+      header.put("typ", "JWT");
+
+      JSONObject payload = new JSONObject();
+      payload.put("sub", "test-user-id");
+      payload.put("email", "test@example.com");
+      payload.put("name", "Test User");
+      payload.put("exp", Instant.now().plus(1, ChronoUnit.HOURS).getEpochSecond());
+      payload.put("iat", Instant.now().getEpochSecond());
+
+      String headerBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(header.toString().getBytes());
+      String payloadBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toString().getBytes());
+      String testJwt = headerBase64 + "." + payloadBase64 + ".fakesignature";
+
+      //////////////////////////////////////////////////////////////////////////
+      // Create an ID token payload with custom claims                        //
+      //////////////////////////////////////////////////////////////////////////
+      JSONObject idTokenPayload = new JSONObject();
+      idTokenPayload.put("sub", "test-user-id");
+      idTokenPayload.put("groups", new String[] {"admin", "users"});
+      idTokenPayload.put("customClaim", "customValue");
+
+      //////////////////////////////////////////////////////////////////////////
+      // Reset captured values before test                                    //
+      //////////////////////////////////////////////////////////////////////////
+      TokenCapturingCustomizer.capturedAccessToken = null;
+      TokenCapturingCustomizer.capturedIdToken = null;
+      TokenCapturingCustomizer.capturedJwtPayload = null;
+
+      ///////////////////////////////////////////////////////////////////////
+      // Use reflection to call the 3-arg createSessionFromToken method    //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      var method = OAuth2AuthenticationModule.class.getDeclaredMethod(
+         "createSessionFromToken", String.class, String.class, JSONObject.class);
+      method.setAccessible(true);
+      QSession session = (QSession) method.invoke(module, testJwt, testJwt, idTokenPayload);
+
+      ///////////////////////////////////////////////////////////////
+      // Verify the session was created                            //
+      ///////////////////////////////////////////////////////////////
+      assertNotNull(session);
+
+      ///////////////////////////////////////////////////////////////
+      // Verify the customizer received all context values         //
+      ///////////////////////////////////////////////////////////////
+      assertNotNull(TokenCapturingCustomizer.capturedAccessToken, "accessToken should be passed to customizer");
+      assertEquals(testJwt, TokenCapturingCustomizer.capturedAccessToken);
+
+      assertNotNull(TokenCapturingCustomizer.capturedIdToken, "idToken should be passed to customizer");
+      assertEquals("customValue", TokenCapturingCustomizer.capturedIdToken.getString("customClaim"));
+
+      assertNotNull(TokenCapturingCustomizer.capturedJwtPayload, "jwtPayloadJsonObject should be passed to customizer");
+      assertEquals("test@example.com", TokenCapturingCustomizer.capturedJwtPayload.getString("email"));
+   }
+
+
+
+   /***************************************************************************
+    ** Test that accessToken and idToken are NOT passed when null (session resume)
+    ***************************************************************************/
+   @Test
+   void testTokensNotPassedOnSessionResume() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      OAuth2AuthenticationMetaData authMetaData = new OAuth2AuthenticationMetaData();
+      authMetaData.setName("oauth2");
+      authMetaData.setBaseUrl("https://example.com");
+      authMetaData.setClientId("test-client");
+      authMetaData.setClientSecret("test-secret");
+      authMetaData.setCustomizer(new QCodeReference(TokenCapturingCustomizer.class));
+      qInstance.setAuthentication(authMetaData);
+
+      //////////////////////////////////////////////////////////////////////////
+      // Create a test JWT token                                              //
+      //////////////////////////////////////////////////////////////////////////
+      JSONObject header = new JSONObject();
+      header.put("alg", "none");
+      header.put("typ", "JWT");
+
+      JSONObject payload = new JSONObject();
+      payload.put("sub", "test-user-id");
+      payload.put("email", "test@example.com");
+      payload.put("exp", Instant.now().plus(1, ChronoUnit.HOURS).getEpochSecond());
+
+      String headerBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(header.toString().getBytes());
+      String payloadBase64 = Base64.getUrlEncoder().withoutPadding().encodeToString(payload.toString().getBytes());
+      String testJwt = headerBase64 + "." + payloadBase64 + ".fakesignature";
+
+      //////////////////////////////////////////////////////////////////////////
+      // Reset captured values                                                //
+      //////////////////////////////////////////////////////////////////////////
+      TokenCapturingCustomizer.capturedAccessToken = null;
+      TokenCapturingCustomizer.capturedIdToken = null;
+      TokenCapturingCustomizer.capturedJwtPayload = null;
+      TokenCapturingCustomizer.accessTokenWasInContext = false;
+      TokenCapturingCustomizer.idTokenWasInContext = false;
+
+      ///////////////////////////////////////////////////////////////////////
+      // Use reflection to call the 1-arg createSessionFromToken method    //
+      // (simulates session resume path where we only have access token)   //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      var method = OAuth2AuthenticationModule.class.getDeclaredMethod("createSessionFromToken", String.class);
+      method.setAccessible(true);
+      QSession session = (QSession) method.invoke(module, testJwt);
+
+      ///////////////////////////////////////////////////////////////
+      // Verify the session was created                            //
+      ///////////////////////////////////////////////////////////////
+      assertNotNull(session);
+
+      ///////////////////////////////////////////////////////////////
+      // Verify accessToken and idToken were NOT in context        //
+      // (they should not be present on session resume path)       //
+      ///////////////////////////////////////////////////////////////
+      assertNotNull(TokenCapturingCustomizer.capturedJwtPayload, "jwtPayloadJsonObject should always be passed");
+      assertTrue(!TokenCapturingCustomizer.accessTokenWasInContext, "accessToken should not be in context on session resume");
+      assertTrue(!TokenCapturingCustomizer.idTokenWasInContext, "idToken should not be in context on session resume");
+   }
+
+
+
    /*******************************************************************************
     ** Test customizer that sets a security key when customizeSession is called
     *******************************************************************************/
@@ -125,6 +267,38 @@ class OAuth2AuthenticationModuleTest extends BaseTest
                /////////////////////////////////////////////////////
                qSession.withSecurityKeyValue("testSecurityKey", "fromCustomizer");
             }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Test customizer that captures all context values for verification
+    *******************************************************************************/
+   public static class TokenCapturingCustomizer implements QAuthenticationModuleCustomizerInterface
+   {
+      public static String     capturedAccessToken    = null;
+      public static JSONObject capturedIdToken        = null;
+      public static JSONObject capturedJwtPayload     = null;
+      public static boolean    accessTokenWasInContext = false;
+      public static boolean    idTokenWasInContext     = false;
+
+      @Override
+      public void customizeSession(QInstance qInstance, QSession qSession, Map<String, Object> context)
+      {
+         capturedJwtPayload = (JSONObject) context.get("jwtPayloadJsonObject");
+
+         accessTokenWasInContext = context.containsKey("accessToken");
+         if(accessTokenWasInContext)
+         {
+            capturedAccessToken = (String) context.get("accessToken");
+         }
+
+         idTokenWasInContext = context.containsKey("idToken");
+         if(idTokenWasInContext)
+         {
+            capturedIdToken = (JSONObject) context.get("idToken");
          }
       }
    }

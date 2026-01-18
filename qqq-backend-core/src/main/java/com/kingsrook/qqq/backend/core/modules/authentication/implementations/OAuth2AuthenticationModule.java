@@ -77,6 +77,7 @@ import com.nimbusds.oauth2.sdk.id.State;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
 import com.nimbusds.oauth2.sdk.token.AccessToken;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
+import com.nimbusds.openid.connect.sdk.token.OIDCTokens;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -233,7 +234,29 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          ////////////////////////////////////////////////////////////////////
          // RefreshToken refreshToken = tokenResponse.toSuccessResponse().getTokens().getRefreshToken();
 
-         QSession session = createSessionFromToken(accessToken.getValue());
+         ///////////////////////////////////////////////////////////////////////
+         // extract id token claims if available (for OIDC flows)             //
+         // this gives customizers access to claims that OIDC providers       //
+         // typically place in the ID token (groups, permissions, custom claims) //
+         ///////////////////////////////////////////////////////////////////////
+         JSONObject idTokenPayload = null;
+         try
+         {
+            OIDCTokens oidcTokens = tokenResponse.toSuccessResponse().getTokens().toOIDCTokens();
+            if(oidcTokens != null && oidcTokens.getIDToken() != null)
+            {
+               idTokenPayload = new JSONObject(oidcTokens.getIDToken().getJWTClaimsSet().toJSONObject());
+            }
+         }
+         catch(Exception e)
+         {
+            ////////////////////////////////////////////////////////////////////
+            // not an OIDC flow or ID token parsing failed - continue without //
+            ////////////////////////////////////////////////////////////////////
+            LOG.debug("Could not extract ID token from token response", e);
+         }
+
+         QSession session = createSessionFromToken(accessToken.getValue(), accessToken.getValue(), idTokenPayload);
          insertUserSession(accessToken.getValue(), session);
 
          //////////////////////////////////////////////////////////////
@@ -341,9 +364,25 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
 
    /***************************************************************************
-    **
+    ** Create session from access token only (for session resume path)
     ***************************************************************************/
    private QSession createSessionFromToken(String accessToken) throws QException
+   {
+      return createSessionFromToken(accessToken, null, null);
+   }
+
+
+
+   /***************************************************************************
+    ** Create session from access token with optional tokens for customizer.
+    **
+    ** @param accessToken the JWT access token to decode for session info
+    ** @param accessTokenValue raw access token string to pass to customizer
+    **        (for calling userinfo endpoint). May be null on session resume.
+    ** @param idTokenPayload decoded ID token claims to pass to customizer.
+    **        May be null if not an OIDC flow or on session resume.
+    ***************************************************************************/
+   private QSession createSessionFromToken(String accessToken, String accessTokenValue, JSONObject idTokenPayload) throws QException
    {
       DecodedJWT     jwt           = JWT.decode(accessToken);
       Base64.Decoder decoder       = Base64.getUrlDecoder();
@@ -377,7 +416,26 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       //////////////////////////////////////////////////////////////
       if(getCustomizer() != null)
       {
-         getCustomizer().customizeSession(QContext.getQInstance(), session, Map.of("jwtPayloadJsonObject", payload));
+         Map<String, Object> context = new HashMap<>();
+         context.put("jwtPayloadJsonObject", payload);
+
+         ///////////////////////////////////////////////////////////////////////
+         // pass access token string so customizer can call userinfo endpoint //
+         ///////////////////////////////////////////////////////////////////////
+         if(accessTokenValue != null)
+         {
+            context.put("accessToken", accessTokenValue);
+         }
+
+         ////////////////////////////////////////////////////////////////////
+         // pass ID token claims if available (contains custom OIDC claims) //
+         ////////////////////////////////////////////////////////////////////
+         if(idTokenPayload != null)
+         {
+            context.put("idToken", idTokenPayload);
+         }
+
+         getCustomizer().customizeSession(QContext.getQInstance(), session, context);
       }
 
       return session;

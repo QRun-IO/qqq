@@ -257,14 +257,39 @@ new IsolatedSpaRouteProvider()
 - Default is INTEGER (backwards compatible)
 - STRING mode allows auditing tables with UUID/string PKs
 
-### OAuth2 Authentication Customizer Support
-- `OAuth2AuthenticationModule` now supports `QAuthenticationModuleCustomizerInterface`
-- Customizers are called on both initial login AND session resume
-- JWT payload is passed to `customizeSession()` via `context.get("jwtPayloadJsonObject")`
-- `finalCustomizeSession()` is called after session creation for final adjustments
-- This enables apps to set security keys that persist across requests
-- See issue #334 and PR #337 for details
-- Future: #336 proposes `QSessionStoreInterface` QBit for session persistence
+### OAuth2 Authentication Enhancements (PR #373)
+
+**Customizer Support:**
+- `OAuth2AuthenticationModule` supports `QAuthenticationModuleCustomizerInterface`
+- Customizers called on both initial login AND session resume
+- JWT payload passed via `context.get("jwtPayloadJsonObject")`
+- `finalCustomizeSession()` called after session creation for final adjustments
+
+**Tokens for Customizer (Issue #372):**
+- `accessToken` (String) - raw access token for calling userinfo endpoint
+- `idToken` (JSONObject) - decoded ID token claims (groups, permissions, custom claims)
+- Only available on initial auth, NOT on session resume (null-safe)
+
+**Scopes in API (Issue #374):**
+- `AuthenticationMetaDataResponseV1.OAuth2Values` exposes `scopes` field
+- Frontend can use scopes for PKCE flow authorization URL construction
+
+**Logout Endpoint (Issue #375):**
+- `QAuthenticationModuleInterface.logout()` - default no-op method
+- `OAuth2AuthenticationModule.logout()` - deletes session from DB, clears memoization cache
+- `POST /api/v1/logout` - endpoint clears session cookie
+- Frontend should call logout endpoint BEFORE client-side logout
+
+**Identity Validation (Issue #375):**
+- Session resume validates token identity matches stored userId
+- Defense-in-depth against session/token mismatch
+- Throws `QAuthenticationException("Session identity mismatch")` on failure
+
+**Identity Preference:**
+- Uses OIDC `sub` claim over `email` for user identity
+- `sub` is guaranteed unique per issuer; email can change or be shared
+- `user.setIdReference(sub)` - uses sub (fallback to email)
+- Frontend map still provides `email` key with actual email when available
 
 ### Virtual Fields (PR #280)
 - `QVirtualFieldMetaData` - computed fields that don't exist in backend storage

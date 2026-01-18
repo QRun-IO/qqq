@@ -39,6 +39,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    {
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new ManageSessionSpecV1());
+      list.add(new LogoutSpecV1());
 
       list.add(new MetaDataSpecV1());
 

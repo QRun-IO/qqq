@@ -51,7 +51,7 @@ class SchemaBuilderTest
 
       Schema valuesSchema = schema.getProperties().get("values");
       List<Schema> oneOf  = valuesSchema.getOneOf();
-      assertEquals(2, oneOf.size());
+      assertEquals(3, oneOf.size());
    }
 
 

@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 
 
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
@@ -60,7 +61,7 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
    /***************************************************************************
     **
     ***************************************************************************/
-   public sealed interface Values permits EmptyValues, Auth0Values
+   public sealed interface Values permits EmptyValues, Auth0Values, OAuth2Values
    {
 
    }
@@ -202,18 +203,134 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("Additional values used by the OAuth2 type authentication provider.")
+   public static final class OAuth2Values implements Values
+   {
+      @OpenAPIDescription("ClientId for OAuth2 provider")
+      private String clientId;
+
+      @OpenAPIDescription("BaseUrl for OAuth2 provider")
+      private String baseUrl;
+
+      @OpenAPIDescription("OAuth2 scopes to request (space-separated)")
+      private String scopes;
+
+
+
+      /*******************************************************************************
+       ** Getter for clientId
+       *******************************************************************************/
+      public String getClientId()
+      {
+         return clientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for clientId
+       *******************************************************************************/
+      public void setClientId(String clientId)
+      {
+         this.clientId = clientId;
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for clientId
+       *******************************************************************************/
+      public OAuth2Values withClientId(String clientId)
+      {
+         this.clientId = clientId;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for baseUrl
+       *******************************************************************************/
+      public String getBaseUrl()
+      {
+         return baseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for baseUrl
+       *******************************************************************************/
+      public void setBaseUrl(String baseUrl)
+      {
+         this.baseUrl = baseUrl;
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for baseUrl
+       *******************************************************************************/
+      public OAuth2Values withBaseUrl(String baseUrl)
+      {
+         this.baseUrl = baseUrl;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for scopes
+       *******************************************************************************/
+      public String getScopes()
+      {
+         return scopes;
+      }
+
+
+
+      /*******************************************************************************
+       ** Setter for scopes
+       *******************************************************************************/
+      public void setScopes(String scopes)
+      {
+         this.scopes = scopes;
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for scopes
+       *******************************************************************************/
+      public OAuth2Values withScopes(String scopes)
+      {
+         this.scopes = scopes;
+         return (this);
+      }
+
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @Override
    public void setAuthenticationMetaData(QAuthenticationMetaData qAuthenticationMetaData)
    {
       setType(qAuthenticationMetaData.getType().name());
       setName(qAuthenticationMetaData.getName());
 
-      if(qAuthenticationMetaData instanceof Auth0AuthenticationMetaData auth0MetaData)
+      if(qAuthenticationMetaData instanceof OAuth2AuthenticationMetaData oauth2MetaData)
       {
-         //         values = new LinkedHashMap<>();
-         //         values.put("clientId", auth0MetaData.getClientId());
-         //         values.put("baseUrl", auth0MetaData.getBaseUrl());
-         //         values.put("audience", auth0MetaData.getAudience());
+         OAuth2Values oauth2Values = new OAuth2Values();
+         values = oauth2Values;
+         oauth2Values.setClientId(oauth2MetaData.getClientId());
+         oauth2Values.setBaseUrl(oauth2MetaData.getBaseUrl());
+         oauth2Values.setScopes(oauth2MetaData.getScopes());
+      }
+      else if(qAuthenticationMetaData instanceof Auth0AuthenticationMetaData auth0MetaData)
+      {
          Auth0Values auth0Values = new Auth0Values();
          values = auth0Values;
          auth0Values.setClientId(auth0MetaData.getClientId());

@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
@@ -45,8 +46,12 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
@@ -77,6 +82,7 @@ import com.nimbusds.oauth2.sdk.id.State;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
 import com.nimbusds.oauth2.sdk.token.AccessToken;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
+import com.nimbusds.openid.connect.sdk.token.OIDCTokens;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -233,7 +239,29 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          ////////////////////////////////////////////////////////////////////
          // RefreshToken refreshToken = tokenResponse.toSuccessResponse().getTokens().getRefreshToken();
 
-         QSession session = createSessionFromToken(accessToken.getValue());
+         ///////////////////////////////////////////////////////////////////////
+         // extract id token claims if available (for OIDC flows)             //
+         // this gives customizers access to claims that OIDC providers       //
+         // typically place in the ID token (groups, permissions, custom claims) //
+         ///////////////////////////////////////////////////////////////////////
+         JSONObject idTokenPayload = null;
+         try
+         {
+            OIDCTokens oidcTokens = tokenResponse.toSuccessResponse().getTokens().toOIDCTokens();
+            if(oidcTokens != null && oidcTokens.getIDToken() != null)
+            {
+               idTokenPayload = new JSONObject(oidcTokens.getIDToken().getJWTClaimsSet().toJSONObject());
+            }
+         }
+         catch(Exception e)
+         {
+            ////////////////////////////////////////////////////////////////////
+            // not an OIDC flow or ID token parsing failed - continue without //
+            ////////////////////////////////////////////////////////////////////
+            LOG.debug("Could not extract ID token from token response", e);
+         }
+
+         QSession session = createSessionFromToken(accessToken.getValue(), accessToken.getValue(), idTokenPayload);
          insertUserSession(accessToken.getValue(), session);
 
          //////////////////////////////////////////////////////////////
@@ -341,9 +369,25 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
 
    /***************************************************************************
-    **
+    ** Create session from access token only (for session resume path)
     ***************************************************************************/
    private QSession createSessionFromToken(String accessToken) throws QException
+   {
+      return createSessionFromToken(accessToken, null, null);
+   }
+
+
+
+   /***************************************************************************
+    ** Create session from access token with optional tokens for customizer.
+    **
+    ** @param accessToken the JWT access token to decode for session info
+    ** @param accessTokenValue raw access token string to pass to customizer
+    **        (for calling userinfo endpoint). May be null on session resume.
+    ** @param idTokenPayload decoded ID token claims to pass to customizer.
+    **        May be null if not an OIDC flow or on session resume.
+    ***************************************************************************/
+   private QSession createSessionFromToken(String accessToken, String accessTokenValue, JSONObject idTokenPayload) throws QException
    {
       DecodedJWT     jwt           = JWT.decode(accessToken);
       Base64.Decoder decoder       = Base64.getUrlDecoder();
@@ -355,10 +399,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       session.setUser(user);
 
       user.setFullName("Unknown");
-      String email = Objects.requireNonNullElseGet(payload.optString("email", null), () -> payload.optString("sub", null));
-      String name  = payload.optString("name", email);
+      String sub   = Objects.requireNonNullElseGet(payload.optString("sub", null), () -> payload.optString("email", null));
+      String email = payload.optString("email", sub);
+      String name  = payload.optString("name", sub);
 
-      user.setIdReference(email);
+      user.setIdReference(sub);
       user.setFullName(name);
 
       ////////////////////////////////////////////////////////////
@@ -377,7 +422,26 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       //////////////////////////////////////////////////////////////
       if(getCustomizer() != null)
       {
-         getCustomizer().customizeSession(QContext.getQInstance(), session, Map.of("jwtPayloadJsonObject", payload));
+         Map<String, Object> context = new HashMap<>();
+         context.put("jwtPayloadJsonObject", payload);
+
+         ///////////////////////////////////////////////////////////////////////
+         // pass access token string so customizer can call userinfo endpoint //
+         ///////////////////////////////////////////////////////////////////////
+         if(accessTokenValue != null)
+         {
+            context.put("accessToken", accessTokenValue);
+         }
+
+         ////////////////////////////////////////////////////////////////////
+         // pass ID token claims if available (contains custom OIDC claims) //
+         ////////////////////////////////////////////////////////////////////
+         if(idTokenPayload != null)
+         {
+            context.put("idToken", idTokenPayload);
+         }
+
+         getCustomizer().customizeSession(QContext.getQInstance(), session, context);
       }
 
       return session;
@@ -464,6 +528,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          if(userSessionRecord != null)
          {
             accessToken = userSessionRecord.getValueString("accessToken");
+            String storedUserId = userSessionRecord.getValueString("userId");
 
             ////////////////////////////////////////////////////////////
             // decode the accessToken and make sure it is not expired //
@@ -474,6 +539,22 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
                {
                   throw (new QAuthenticationException("accessToken is expired"));
+               }
+
+               ///////////////////////////////////////////////////////////////////
+               // validate that the token's identity matches the stored userId  //
+               // this prevents session hijacking if data becomes inconsistent  //
+               // prefer sub (OIDC standard, guaranteed unique) over email      //
+               ///////////////////////////////////////////////////////////////////
+               Base64.Decoder decoder       = Base64.getUrlDecoder();
+               String         payloadString = new String(decoder.decode(jwt.getPayload()));
+               JSONObject     payload       = new JSONObject(payloadString);
+               String         tokenIdentity = Objects.requireNonNullElseGet(payload.optString("sub", null), () -> payload.optString("email", null));
+
+               if(storedUserId != null && tokenIdentity != null && !storedUserId.equals(tokenIdentity))
+               {
+                  LOG.warn("Session userId mismatch", logPair("sessionUUID", sessionUUID), logPair("storedUserId", storedUserId), logPair("tokenIdentity", tokenIdentity));
+                  throw (new QAuthenticationException("Session identity mismatch"));
                }
             }
          }
@@ -565,6 +646,48 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             QContext.setQSession(new QSystemUserSession());
             getCustomizer().finalCustomizeSession(qInstance, qSession);
          });
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Logout a session by deleting it from the database and clearing the
+    ** memoization cache.
+    ***************************************************************************/
+   @Override
+   public void logout(QInstance qInstance, String sessionUUID)
+   {
+      if(sessionUUID == null)
+      {
+         return;
+      }
+
+      QSession beforeSession = QContext.getQSession();
+      try
+      {
+         QContext.setQSession(new QSystemUserSession());
+
+         /////////////////////////////////////////////
+         // delete the session record from database //
+         /////////////////////////////////////////////
+         new DeleteAction().execute(new DeleteInput(UserSession.TABLE_NAME)
+            .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.EQUALS, sessionUUID))));
+
+         ///////////////////////////////////////////
+         // clear the session from memoization cache //
+         ///////////////////////////////////////////
+         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+
+         LOG.debug("Logged out session", logPair("sessionUUID", sessionUUID));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error during logout", logPair("sessionUUID", sessionUUID), e);
+      }
+      finally
+      {
+         QContext.setQSession(beforeSession);
       }
    }
 

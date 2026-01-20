@@ -49,6 +49,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.help.HelpRole;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.SourceQBitAware;
@@ -113,6 +114,8 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    private ShareableTableMetaData shareableTableMetaData;
 
    protected Map<String, List<QHelpContent>> helpContent;
+
+   private List<QMenu> menus;
 
 
 
@@ -1854,6 +1857,16 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
             clone.setHelpContent(clonedHelpContent);
          }
 
+         if(menus != null)
+         {
+            List<QMenu> clonedMenus = new ArrayList<>();
+            for(QMenu menu : menus)
+            {
+               clonedMenus.add(menu.clone());
+            }
+            clone.setMenus(clonedMenus);
+         }
+
          return clone;
       }
       catch(CloneNotSupportedException e)
@@ -1902,6 +1915,62 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    public QTableMetaData withVirtualFields(Map<String, QVirtualFieldMetaData> virtualFields)
    {
       this.virtualFields = virtualFields;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for menus
+    * @see #withMenus(List)
+    *******************************************************************************/
+   public List<QMenu> getMenus()
+   {
+      return (this.menus);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for menus
+    * @see #withMenus(List)
+    *******************************************************************************/
+   public void setMenus(List<QMenu> menus)
+   {
+      this.menus = menus;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for menus
+    *
+    * @param menus
+    * Specialized menus to be used for this table in UI's.
+    * @return this
+    *******************************************************************************/
+   public QTableMetaData withMenus(List<QMenu> menus)
+   {
+      this.menus = menus;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluently add a single menu
+    *
+    * @param menu
+    * A Specialized menu to be used for this table in UI's.
+    * @return this
+    *******************************************************************************/
+   public QTableMetaData withMenu(QMenu menu)
+   {
+      if(this.menus == null)
+      {
+         this.menus = new ArrayList<>();
+      }
+      this.menus.add(menu);
       return (this);
    }
 

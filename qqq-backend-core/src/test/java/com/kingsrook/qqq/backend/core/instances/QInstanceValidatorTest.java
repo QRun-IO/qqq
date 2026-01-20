@@ -79,6 +79,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenuSlot;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.defaults.QMenuDefaultViewScreenActionsMenu;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemRunProcess;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
@@ -1748,6 +1752,44 @@ public class QInstanceValidatorTest extends BaseTest
    {
       assertValidationSuccess((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
          .withUniqueKey(new UniqueKey().withFieldName("id")));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testTableMenus()
+   {
+      ///////////////////////////////////////////
+      // the view screen default menu is valid //
+      ///////////////////////////////////////////
+      assertValidationSuccess((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withMenu(new QMenuDefaultViewScreenActionsMenu()));
+
+      ///////////////////////////////////////////////
+      // an empty menu fails - it's missing a slot //
+      ///////////////////////////////////////////////
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+            .withMenu(new QMenu()),
+         "Missing a slot for menu item [null] in QTableMetaData[personMemory]");
+
+      //////////////////////////////////
+      // a menu with a bad item fails //
+      //////////////////////////////////
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+            .withMenu(new QMenu().withSlot(QMenuSlot.VIEW_SCREEN_ADDITIONAL)
+               .withItem(new QMenuItemRunProcess())),
+         "Missing a processName for menu item [null] in QTableMetaData[personMemory]");
+
+      ////////////////////////////////////
+      // a menu with a good item passes //
+      ////////////////////////////////////
+      assertValidationSuccess((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withMenu(new QMenu().withSlot(QMenuSlot.VIEW_SCREEN_ADDITIONAL)
+            .withItem(new QMenuItemRunProcess(TestUtils.PROCESS_NAME_INCREASE_BIRTHDATE))));
+
    }
 
 

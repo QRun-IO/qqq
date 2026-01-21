@@ -870,9 +870,37 @@ class MetaDataActionTest extends BaseTest
     **
     *******************************************************************************/
    @Test
-   void testTableAppAffinity()
+   void testTableAppAffinity() throws QException
    {
+      /////////////////////////////////////////////////////////////
+      // update the test instance:                               //
+      // - to have the person table in a second app ("otherApp") //
+      // - to set affinities for that table in its apps          //
+      /////////////////////////////////////////////////////////////
+      QInstance qInstance = TestUtils.defineInstance();
 
+      QAppMetaData otherApp = new QAppMetaData()
+         .withName("otherApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON));
+      qInstance.addApp(otherApp);
+      otherApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 2);
+
+      qInstance.getApp(TestUtils.APP_NAME_PEOPLE).setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 4);
+
+      reInitInstanceInContext(qInstance);
+
+      MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+      //////////////////////////////////////////////////////////
+      // assert the table-to-app affinity values are returned //
+      //////////////////////////////////////////////////////////
+      AppTreeNode otherAppTreeNode      = metaDataOutput.getAppTree().stream().filter(a -> a.getName().equals("otherApp")).findFirst().get();
+      AppTreeNode personTableInOtherApp = otherAppTreeNode.getChildren().stream().filter(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON)).findFirst().get();
+      assertEquals(2, personTableInOtherApp.getAppAffinity());
+
+      AppTreeNode peopleAppTreeNode      = metaDataOutput.getAppTree().stream().filter(a -> a.getName().equals("peopleApp")).findFirst().get();
+      AppTreeNode personTableInPeopleApp = peopleAppTreeNode.getChildren().stream().filter(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON)).findFirst().get();
+      assertEquals(4, personTableInPeopleApp.getAppAffinity());
    }
 
 

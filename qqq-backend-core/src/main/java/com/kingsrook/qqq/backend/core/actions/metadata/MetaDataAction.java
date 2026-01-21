@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
@@ -57,6 +58,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 
 
@@ -93,13 +95,7 @@ public class MetaDataAction
          String         tableName = entry.getKey();
          QTableMetaData table     = entry.getValue();
 
-         if(!customizer.allowTable(metaDataInput, table))
-         {
-            continue;
-         }
-
-         PermissionCheckResult permissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, table);
-         if(permissionResult.equals(PermissionCheckResult.DENY_HIDE))
+         if(isObjectDenied(metaDataInput, customizer, table))
          {
             continue;
          }
@@ -122,13 +118,7 @@ public class MetaDataAction
          String           processName = entry.getKey();
          QProcessMetaData process     = entry.getValue();
 
-         if(!customizer.allowProcess(metaDataInput, process))
-         {
-            continue;
-         }
-
-         PermissionCheckResult permissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, process);
-         if(permissionResult.equals(PermissionCheckResult.DENY_HIDE))
+         if(isObjectDenied(metaDataInput, customizer, process))
          {
             continue;
          }
@@ -147,13 +137,7 @@ public class MetaDataAction
          String          reportName = entry.getKey();
          QReportMetaData report     = entry.getValue();
 
-         if(!customizer.allowReport(metaDataInput, report))
-         {
-            continue;
-         }
-
-         PermissionCheckResult permissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, report);
-         if(permissionResult.equals(PermissionCheckResult.DENY_HIDE))
+         if(isObjectDenied(metaDataInput, customizer, report))
          {
             continue;
          }
@@ -172,13 +156,7 @@ public class MetaDataAction
          String                   widgetName = entry.getKey();
          QWidgetMetaDataInterface widget     = entry.getValue();
 
-         if(!customizer.allowWidget(metaDataInput, widget))
-         {
-            continue;
-         }
-
-         PermissionCheckResult permissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, widget);
-         if(permissionResult.equals(PermissionCheckResult.DENY_HIDE))
+         if(isObjectDenied(metaDataInput, customizer, widget))
          {
             continue;
          }
@@ -187,11 +165,11 @@ public class MetaDataAction
       }
       metaDataOutput.setWidgets(widgets);
 
-      ///////////////////////////////////////////////////////
-      // sort apps - by sortOrder (integer), then by label //
-      ///////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////////////////
+      // sort apps - by sortOrder (integer), then by label, finally by name //
+      ////////////////////////////////////////////////////////////////////////
       List<QAppMetaData> sortedApps = QContext.getQInstance().getApps().values().stream()
-         .sorted(Comparator.comparing((QAppMetaData a) -> a.getSortOrder())
+         .sorted(Comparator.comparing((QAppMetaData a) -> Objects.requireNonNullElse(a.getSortOrder(), QAppMetaData.DEFAULT_SORT_ORDER))
             .thenComparing((QAppMetaData a) -> Objects.requireNonNullElse(a.getLabel(), ""))
             .thenComparing((QAppMetaData a) -> Objects.requireNonNullElse(a.getName(), "")))
          .toList();
@@ -204,13 +182,7 @@ public class MetaDataAction
       {
          String appName = app.getName();
 
-         PermissionCheckResult permissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, app);
-         if(permissionResult.equals(PermissionCheckResult.DENY_HIDE))
-         {
-            continue;
-         }
-
-         if(!customizer.allowApp(metaDataInput, app))
+         if(isObjectDenied(metaDataInput, customizer, app))
          {
             continue;
          }
@@ -229,8 +201,7 @@ public class MetaDataAction
             {
                if(child instanceof MetaDataWithPermissionRules metaDataWithPermissionRules)
                {
-                  PermissionCheckResult childPermissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, metaDataWithPermissionRules);
-                  if(childPermissionResult.equals(PermissionCheckResult.DENY_HIDE))
+                  if(isObjectDenied(metaDataInput, customizer, metaDataWithPermissionRules))
                   {
                      continue;
                   }
@@ -283,7 +254,7 @@ public class MetaDataAction
       {
          if(appMetaData.getParentAppName() == null)
          {
-            buildAppTree(metaDataInput, treeNodes, appTree, appMetaData);
+            buildAppTree(metaDataInput, treeNodes, appTree, appMetaData, treeNodes.get(appMetaData.getName()), customizer);
          }
       }
       metaDataOutput.setAppTree(appTree);
@@ -297,10 +268,11 @@ public class MetaDataAction
       }
 
       metaDataOutput.setEnvironmentValues(Objects.requireNonNullElse(QContext.getQInstance().getEnvironmentValues(), Collections.emptyMap()));
-
       metaDataOutput.setHelpContents(Objects.requireNonNullElse(QContext.getQInstance().getHelpContent(), Collections.emptyMap()));
-
       metaDataOutput.setSupplementalInstanceMetaData(QContext.getQInstance().getSupplementalMetaData());
+
+      Map<String, String> redirects = buildRedirectsForMultiAppTablesWithLimitedUserAccess(metaDataInput, sortedApps, apps.keySet());
+      metaDataOutput.setRedirects(redirects);
 
       try
       {
@@ -316,6 +288,228 @@ public class MetaDataAction
       }
 
       return metaDataOutput;
+   }
+
+
+
+   /***************************************************************************
+    * look at tables that are in multiple apps, where the user has access to
+    * some but not all - so deep-links to ones they don't have permission to
+    * should redirect to the first app they have access to.
+    *
+    * <p>for example, consider a Roles table under /admin/ and under /setup/,
+    * and a user who only has access to /setup/.  We want to build a redirect
+    * from /admin/Roles to /setup/Roles.</p>
+    *
+    * @param metaDataInput input object for the request
+    * @param sortedApps list of apps, sorted by sortOrder and name.  Note, this
+    *                   is a full list of apps in the instance - not filtered by
+    *                   permissions or via the customizer.
+    * @param allowedApps set of names of apps that the user has access to.
+    * @return map of table name to redirect path
+    ***************************************************************************/
+   private Map<String, String> buildRedirectsForMultiAppTablesWithLimitedUserAccess(MetaDataInput metaDataInput, List<QAppMetaData> sortedApps, Set<String> allowedApps)
+   {
+      Map<String, String> redirects = new LinkedHashMap<>();
+
+      ////////////////////////////////////////////////////////////////////////////////////////
+      // build listing-hash from table to app, to identify tables that are in multiple apps //
+      ////////////////////////////////////////////////////////////////////////////////////////
+      MetaDataActionCustomizerInterface customizer          = getMetaDataActionCustomizer();
+      ListingHash<String, QAppMetaData> tableAppListingHash = new ListingHash<>();
+      for(QAppMetaData app : sortedApps)
+      {
+         if(CollectionUtils.nullSafeHasContents(app.getChildren()))
+         {
+            for(QAppChildMetaData child : app.getChildren())
+            {
+               if(child instanceof QTableMetaData tableMetaData)
+               {
+                  if(!isObjectDenied(metaDataInput, customizer, tableMetaData))
+                  {
+                     tableAppListingHash.add(tableMetaData.getName(), app);
+                  }
+               }
+            }
+         }
+      }
+
+      /////////////////////////////////////////////////////////////////////////////////
+      // now for table entries in the map with more than 1 app, check which apps the //
+      // user has (full) access to and if there are some that they do and some that  //
+      // they don't, then build redirects from the denied apps to the allowed apps.  //
+      /////////////////////////////////////////////////////////////////////////////////
+      for(Map.Entry<String, List<QAppMetaData>> entry : tableAppListingHash.entrySet())
+      {
+         String             tableName = entry.getKey();
+         List<QAppMetaData> tableApps = entry.getValue();
+
+         if(tableApps.size() > 1)
+         {
+            List<String> tableAppsThatUserHas         = new ArrayList<>();
+            List<String> tableAppsThatUserDoesNotHave = new ArrayList<>();
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // for each app the table is in, check if the user has full access to that app (checking each parent app) //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            for(QAppMetaData tableApp : tableApps)
+            {
+               if(doesUserHaveAppAndParents(tableApp, allowedApps))
+               {
+                  tableAppsThatUserHas.add(tableApp.getName());
+               }
+               else
+               {
+                  tableAppsThatUserDoesNotHave.add(tableApp.getName());
+               }
+            }
+
+            /////////////////////////////////////////////////////////////////////////////////
+            // if the user has access to some apps that this table is in, but not all of   //
+            // them, then we need redirects from any of the denied ones to the primary one //
+            /////////////////////////////////////////////////////////////////////////////////
+            if(tableAppsThatUserHas.size() < tableApps.size() && !tableAppsThatUserHas.isEmpty())
+            {
+               String firstAppThatUserHas = Objects.requireNonNullElseGet(getHighestAffinityAppName(tableAppsThatUserHas, tableName), () -> tableAppsThatUserHas.getFirst());
+
+               for(String appNeedingRedirect : tableAppsThatUserDoesNotHave)
+               {
+                  String fromPath = buildAppPath(appNeedingRedirect) + "/" + tableName;
+                  String toPath   = buildAppPath(firstAppThatUserHas) + "/" + tableName;
+                  LOG.debug("Redirecting {} to {}", fromPath, toPath);
+                  redirects.put(fromPath, toPath);
+                  redirects.put(fromPath + "/*", toPath);
+               }
+            }
+         }
+      }
+      return redirects;
+   }
+
+
+
+   /***************************************************************************
+    * given a set of app names, and a table name, return the app name with the
+    * highest affinity value
+    ***************************************************************************/
+   private String getHighestAffinityAppName(List<String> tableAppsThatUserHas, String tableName)
+   {
+      List<AppTreeNode> list = tableAppsThatUserHas.stream()
+         .map(appName -> QContext.getQInstance().getApps().get(appName))
+         .filter(Objects::nonNull)
+         .map(app -> new AppTreeNode(app).withAppAffinity(app.getChildAppAffinity(tableName)))
+         .sorted(Comparator.comparing((AppTreeNode atn) -> Objects.requireNonNullElse(atn.getAppAffinity(), Integer.MIN_VALUE)).reversed())
+         .toList();
+
+      if(list.isEmpty())
+      {
+         return (tableAppsThatUserHas.getFirst());
+      }
+
+      return (list.getFirst().getName());
+   }
+
+
+
+   /***************************************************************************
+    * test if the user has full access to the app and all parent apps.
+    *
+    * @param app the app to check
+    * @param allowedApps set of names of apps that the user has access to.
+    * @return true if the user has full access to the app (thorough all parent apps),
+    * false otherwise
+    ***************************************************************************/
+   private boolean doesUserHaveAppAndParents(QAppMetaData app, Set<String> allowedApps)
+   {
+      if(app == null)
+      {
+         return (false);
+      }
+
+      if(!allowedApps.contains(app.getName()))
+      {
+         return (false);
+      }
+
+      if(app.getParentAppName() == null)
+      {
+         return (true);
+      }
+
+      QAppMetaData parentApp = QContext.getQInstance().getApps().get(app.getParentAppName());
+      return (doesUserHaveAppAndParents(parentApp, allowedApps));
+   }
+
+
+
+   /***************************************************************************
+    * recursively build up path to an app, from the root, navigating through the
+    * parentAppName attribute.
+    *
+    * <p>Does not consider permissions of any kind.</p>
+    *
+    * @param appName the name of the app to build the path for
+    * @return the path to the app, starting with a /.  Will be empty string if
+    * the app isn't found.
+    ***************************************************************************/
+   private String buildAppPath(String appName)
+   {
+      StringBuilder rs = new StringBuilder();
+
+      QAppMetaData appMetaData = QContext.getQInstance().getApps().get(appName);
+      while(appMetaData != null)
+      {
+         rs.insert(0, "/" + appMetaData.getName());
+         if(appMetaData.getParentAppName() == null)
+         {
+            break;
+         }
+
+         appMetaData = QContext.getQInstance().getApps().get(appMetaData.getParentAppName());
+      }
+
+      return rs.toString();
+   }
+
+
+
+   /***************************************************************************
+    * Check both the customizer and permissions to decide if an object should
+    * be denied/hidden from the user
+    ***************************************************************************/
+   private static boolean isObjectDenied(MetaDataInput metaDataInput, MetaDataActionCustomizerInterface customizer, MetaDataWithPermissionRules object)
+   {
+      if(object instanceof QTableMetaData table && !customizer.allowTable(metaDataInput, table))
+      {
+         return true;
+      }
+
+      if(object instanceof QProcessMetaData process && !customizer.allowProcess(metaDataInput, process))
+      {
+         return true;
+      }
+
+      if(object instanceof QReportMetaData report && !customizer.allowReport(metaDataInput, report))
+      {
+         return true;
+      }
+
+      if(object instanceof QWidgetMetaDataInterface widget && !customizer.allowWidget(metaDataInput, widget))
+      {
+         return true;
+      }
+
+      if(object instanceof QAppMetaData app && !customizer.allowApp(metaDataInput, app))
+      {
+         return true;
+      }
+
+      PermissionCheckResult permissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, object);
+      if(permissionResult.equals(PermissionCheckResult.DENY_HIDE))
+      {
+         return true;
+      }
+      return false;
    }
 
 
@@ -360,33 +554,59 @@ public class MetaDataAction
 
 
    /*******************************************************************************
-    **
+    * Recursively build the tree of app children.
+    *
+    * <p>That is, at the top level are apps
+    * (which themselves implement the interface {@link QAppChildMetaData}), and then
+    * under them can be more apps, or tables, processes, etc.</p>
+    *
+    * @param metaDataInput input object for the request
+    * @param treeNodes map of app name to {@link AppTreeNode}.  So this is each table/app/process/etc
+    *                  metaData object as a tree node object.
+    * @param nodeList list of {@link AppTreeNode} objects.  This is the list of nodes
+    *                 that will be returned to the client as the appTree.
+    * @param appChildMetaData the current app child metadata object being processed.
+    *                         For the initial (non-recursive) calls to this method,
+    *                         these should be top-level apps (e.g., apps w/o parents).
+    * @param childTreeNode an AppTreeNode to use for the appChildMetaData object.
+    *                      Generally, this would come from the treeNodes map - but
+    *                      for cases where it may need some different attributes
+    *                      on it (namely, an appAffinity for a particular child (table)
+    *                      within a particular app), then this would be a clone of
+    *                      the AppTreeNode from the treeNodes map.
+    * @param customizer an optional customizer - used in here for allow/deny decisions.
     *******************************************************************************/
-   private void buildAppTree(MetaDataInput metaDataInput, Map<String, AppTreeNode> treeNodes, List<AppTreeNode> nodeList, QAppChildMetaData childMetaData)
+   private void buildAppTree(MetaDataInput metaDataInput, Map<String, AppTreeNode> treeNodes, List<AppTreeNode> nodeList, QAppChildMetaData appChildMetaData, AppTreeNode childTreeNode, MetaDataActionCustomizerInterface customizer)
    {
-      AppTreeNode treeNode = treeNodes.get(childMetaData.getName());
-      if(treeNode == null)
+      if(childTreeNode == null)
       {
          return;
       }
 
-      nodeList.add(treeNode);
-      if(childMetaData instanceof QAppMetaData app)
+      nodeList.add(childTreeNode);
+      if(appChildMetaData instanceof QAppMetaData appChildAsApp)
       {
-         if(app.getChildren() != null)
+         if(appChildAsApp.getChildren() != null)
          {
-            for(QAppChildMetaData child : app.getChildren())
+            for(QAppChildMetaData grandChild : appChildAsApp.getChildren())
             {
-               if(child instanceof MetaDataWithPermissionRules metaDataWithPermissionRules)
+               if(grandChild instanceof MetaDataWithPermissionRules metaDataWithPermissionRules)
                {
-                  PermissionCheckResult permissionResult = PermissionsHelper.getPermissionCheckResult(metaDataInput, metaDataWithPermissionRules);
-                  if(permissionResult.equals(PermissionCheckResult.DENY_HIDE))
+                  if(isObjectDenied(metaDataInput, customizer, metaDataWithPermissionRules))
                   {
                      continue;
                   }
                }
 
-               buildAppTree(metaDataInput, treeNodes, treeNode.getChildren(), child);
+               AppTreeNode grandChildTreeNode = treeNodes.get(grandChild.getName());
+               Integer     childAppAffinity   = appChildAsApp.getChildAppAffinity(grandChild.getName());
+               if(childAppAffinity != null)
+               {
+                  grandChildTreeNode = grandChildTreeNode.clone();
+                  grandChildTreeNode.setAppAffinity(childAppAffinity);
+               }
+
+               buildAppTree(metaDataInput, treeNodes, childTreeNode.getChildren(), grandChild, grandChildTreeNode, customizer);
             }
          }
       }

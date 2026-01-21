@@ -27,8 +27,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
@@ -51,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -450,6 +453,454 @@ class MetaDataActionTest extends BaseTest
       reInitInstanceInContext(instance);
       result = new MetaDataAction().execute(new MetaDataInput());
       assertFalse(result.getTables().isEmpty(), "should be some tables");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testRedirectsForTableInTwoApps() throws QException
+   {
+      /////////////////////////////////////////////////////////////
+      // update the test instance:                               //
+      // - to have hasAccess permissions                         //
+      // - to have the person table in a second app ("otherApp") //
+      /////////////////////////////////////////////////////////////
+      QInstance qInstance = TestUtils.defineInstance();
+      qInstance.setDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
+
+      qInstance.addApp(new QAppMetaData()
+         .withName("otherApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON)));
+
+      reInitInstanceInContext(qInstance);
+
+      Predicate<AppTreeNode> treeNodeHasPersonTable = at ->
+         at.getChildren().stream().anyMatch(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON));
+
+      {
+         ////////////////////////////////////////////////////////////
+         // run w/ permission to the table and only the people app //
+         ////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "peopleApp.hasAccess"
+         ));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         ///////////////////////////////////////////////////////////
+         // there should be a redirect from otherApp to peopleApp //
+         ///////////////////////////////////////////////////////////
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/otherApp/person", "/peopleApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/otherApp/person/*", "/peopleApp/person");
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .anyMatch(at -> at.getName().equals(TestUtils.APP_NAME_PEOPLE))
+            .hasSize(1);
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // vice-versa: run w/ permission to the table and only the other app //
+         ///////////////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "otherApp.hasAccess"
+         ));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         ///////////////////////////////////////////////////////////////////
+         // there should be the opposite redirect (peopleApp to otherApp) //
+         ///////////////////////////////////////////////////////////////////
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person", "/otherApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person/*", "/otherApp/person");
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .anyMatch(at -> at.getName().equals("otherApp"))
+            .hasSize(1);
+      }
+
+      {
+         ////////////////////////////////////////////////////////////
+         // run with no permissions - there should be no redirects //
+         // and no tables nor apps                                 //
+         ////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession());
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).isNullOrEmpty();
+         assertThat(metaDataOutput.getTables()).isEmpty();
+         assertThat(metaDataOutput.getApps()).isEmpty();
+         assertThat(metaDataOutput.getAppTree()).isEmpty();
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .hasSize(0);
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////
+         // run with all permissions - there should still be no redirects //
+         // but this time apps and the table                              //
+         ///////////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(PermissionsHelper.getAllAvailablePermissionNames(qInstance)));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         assertThat(metaDataOutput.getRedirects()).isNullOrEmpty();
+
+         assertThat(metaDataOutput.getTables())
+            .isNotEmpty()
+            .containsKey(TestUtils.TABLE_NAME_PERSON);
+
+         assertThat(metaDataOutput.getApps())
+            .isNotEmpty()
+            .containsKey(TestUtils.APP_NAME_PEOPLE)
+            .containsKey("otherApp");
+
+         assertThat(metaDataOutput.getAppTree()).isNotEmpty()
+            .anyMatch(at -> at.getName().equals(TestUtils.APP_NAME_PEOPLE))
+            .anyMatch(at -> at.getName().equals("otherApp"));
+
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .hasSize(2);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testRedirectsForTableInTwoAppsWithNestedApps() throws QException
+   {
+      ///////////////////////////////////////////////////////////////////////////
+      // update the test instance:                                             //
+      // - to have hasAccess permissions                                       //
+      // - to have the person table in a second app ("otherApp/otherChildApp") //
+      ///////////////////////////////////////////////////////////////////////////
+      QInstance qInstance = TestUtils.defineInstance();
+      qInstance.setDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
+
+      qInstance.addApp(new QAppMetaData()
+         .withName("otherChildApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON)));
+
+      qInstance.addApp(new QAppMetaData()
+         .withName("otherApp")
+         .withChild(qInstance.getApp("otherChildApp")));
+
+      reInitInstanceInContext(qInstance);
+
+      Predicate<AppTreeNode> treeNodeHasPersonTable = at -> at.getChildren().stream().anyMatch(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON))
+         || at.getChildren().stream().anyMatch(c -> CollectionUtils.nonNullList(c.getChildren()).stream().anyMatch(gc -> gc.getName().equals(TestUtils.TABLE_NAME_PERSON)));
+
+      {
+         ////////////////////////////////////////////////////////////
+         // run w/ permission to the table and only the people app //
+         ////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "peopleApp.hasAccess"
+         ));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         /////////////////////////////////////////////////////////////////////////
+         // there should be a redirect from otherApp/otherChildApp to peopleApp //
+         /////////////////////////////////////////////////////////////////////////
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/otherApp/otherChildApp/person", "/peopleApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/otherApp/otherChildApp/person/*", "/peopleApp/person");
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .anyMatch(at -> at.getName().equals(TestUtils.APP_NAME_PEOPLE))
+            .hasSize(1);
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // vice-versa: run w/ permission to the table and only the other app //
+         ///////////////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "otherApp.hasAccess",
+            "otherChildApp.hasAccess"
+         ));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         ///////////////////////////////////////////////////////////////////
+         // there should be the opposite redirect (peopleApp to otherApp) //
+         ///////////////////////////////////////////////////////////////////
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person", "/otherApp/otherChildApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person/*", "/otherApp/otherChildApp/person");
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .anyMatch(at -> at.getName().equals("otherApp"))
+            .hasSize(1);
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // run with only partial permissions to the otherApp - there should be no redirects, and no way to get to the table. //
+         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "otherApp.hasAccess"
+         ));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).isNullOrEmpty();
+
+         //////////////////////////////////////////////////////
+         // and again, but with only the child app this time //
+         //////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "otherChildApp.hasAccess"
+         ));
+         metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).isNullOrEmpty();
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////
+         // run with all permissions - there should still be no redirects //
+         // but this time apps and the table                              //
+         ///////////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(PermissionsHelper.getAllAvailablePermissionNames(qInstance)));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         assertThat(metaDataOutput.getRedirects()).isNullOrEmpty();
+
+         assertThat(metaDataOutput.getTables())
+            .isNotEmpty()
+            .containsKey(TestUtils.TABLE_NAME_PERSON);
+
+         assertThat(metaDataOutput.getApps())
+            .isNotEmpty()
+            .containsKey(TestUtils.APP_NAME_PEOPLE)
+            .containsKey("otherApp");
+
+         assertThat(metaDataOutput.getAppTree()).isNotEmpty()
+            .anyMatch(at -> at.getName().equals(TestUtils.APP_NAME_PEOPLE))
+            .anyMatch(at -> at.getName().equals("otherApp"));
+
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .hasSize(2);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    * this test does some verification of appAffinity for choosing which app
+    * to redirect to.
+    *******************************************************************************/
+   @Test
+   void testRedirectsForTableInThreeApps() throws QException
+   {
+      ////////////////////////////////////////////////////////////////
+      // update the test instance:                                  //
+      // - to have hasAccess permissions                            //
+      // - to have the person table in a second app ("otherApp")    //
+      // - AND to have the person table in a third app ("extraApp") //
+      ////////////////////////////////////////////////////////////////
+      QInstance qInstance = TestUtils.defineInstance();
+      qInstance.setDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
+
+      QAppMetaData otherApp = new QAppMetaData()
+         .withName("otherApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON));
+      qInstance.addApp(otherApp);
+      otherApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 2);
+
+      QAppMetaData extraApp = new QAppMetaData()
+         .withName("extraApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON));
+      qInstance.addApp(extraApp);
+      extraApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 1);
+
+      reInitInstanceInContext(qInstance);
+
+      Predicate<AppTreeNode> treeNodeHasPersonTable = at ->
+         at.getChildren().stream().anyMatch(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON));
+
+      {
+         ////////////////////////////////////////////////////////////
+         // run w/ permission to the table and only the people app //
+         ////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "peopleApp.hasAccess"
+         ));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         ////////////////////////////////////////////////////////////////////////
+         // there should be a redirect from otherApp and extraApp to peopleApp //
+         ////////////////////////////////////////////////////////////////////////
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/otherApp/person", "/peopleApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/otherApp/person/*", "/peopleApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/extraApp/person", "/peopleApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/extraApp/person/*", "/peopleApp/person");
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .anyMatch(at -> at.getName().equals(TestUtils.APP_NAME_PEOPLE))
+            .hasSize(1);
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////
+         // run with permission to other & extra apps, but not people app //
+         ///////////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(
+            "person.hasAccess",
+            "otherApp.hasAccess",
+            "extraApp.hasAccess"
+         ));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         ////////////////////////////////////////////////////////////////////////////////
+         // there should be a redirect from peopleApp to one of them based on affinity //
+         ////////////////////////////////////////////////////////////////////////////////
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person", "/otherApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person/*", "/otherApp/person");
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .anyMatch(at -> at.getName().equals("extraApp"))
+            .anyMatch(at -> at.getName().equals("otherApp"))
+            .hasSize(2);
+      }
+
+      {
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         // reverse the affinity values and re-run to confirm the other app is the redirect target //
+         ////////////////////////////////////////////////////////////////////////////////////////////
+         otherApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 1);
+         extraApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 2);
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person", "/extraApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person/*", "/extraApp/person");
+      }
+
+      {
+         ////////////////////////////////////////////////////////////////////////
+         // remove affinity values - and the sort should be based on sortOrder //
+         ////////////////////////////////////////////////////////////////////////
+         otherApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, null);
+         extraApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, null);
+         otherApp.setSortOrder(2);
+         extraApp.setSortOrder(1);
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person", "/extraApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person/*", "/extraApp/person");
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////////////////////
+         // reverse sort-order and re-run to confirm the other app is the redirect target //
+         ///////////////////////////////////////////////////////////////////////////////////
+         otherApp.setSortOrder(1);
+         extraApp.setSortOrder(2);
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person", "/otherApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person/*", "/otherApp/person");
+      }
+
+      {
+         ////////////////////////////////////////////////////
+         // and without sort order, then you get app names //
+         ////////////////////////////////////////////////////
+         otherApp.setSortOrder(null);
+         extraApp.setSortOrder(null);
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person", "/extraApp/person");
+         assertThat(metaDataOutput.getRedirects()).containsEntry("/peopleApp/person/*", "/extraApp/person");
+      }
+
+      {
+         ////////////////////////////////////////////////////////////
+         // run with no permissions - there should be no redirects //
+         // and no tables nor apps                                 //
+         ////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession());
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+         assertThat(metaDataOutput.getRedirects()).isNullOrEmpty();
+         assertThat(metaDataOutput.getTables()).isEmpty();
+         assertThat(metaDataOutput.getApps()).isEmpty();
+         assertThat(metaDataOutput.getAppTree()).isEmpty();
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .hasSize(0);
+      }
+
+      {
+         ///////////////////////////////////////////////////////////////////
+         // run with all permissions - there should still be no redirects //
+         // but this time apps and the table                              //
+         ///////////////////////////////////////////////////////////////////
+         QContext.setQSession(new QSession().withPermissions(PermissionsHelper.getAllAvailablePermissionNames(qInstance)));
+         MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+         assertThat(metaDataOutput.getRedirects()).isNullOrEmpty();
+
+         assertThat(metaDataOutput.getTables())
+            .isNotEmpty()
+            .containsKey(TestUtils.TABLE_NAME_PERSON);
+
+         assertThat(metaDataOutput.getApps())
+            .isNotEmpty()
+            .containsKey(TestUtils.APP_NAME_PEOPLE)
+            .containsKey("extraApp")
+            .containsKey("otherApp");
+
+         assertThat(metaDataOutput.getAppTree()).isNotEmpty()
+            .anyMatch(at -> at.getName().equals(TestUtils.APP_NAME_PEOPLE))
+            .anyMatch(at -> at.getName().equals("extraApp"))
+            .anyMatch(at -> at.getName().equals("otherApp"));
+
+         assertThat(metaDataOutput.getAppTree())
+            .filteredOn(treeNodeHasPersonTable)
+            .hasSize(3);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testTableAppAffinity() throws QException
+   {
+      /////////////////////////////////////////////////////////////
+      // update the test instance:                               //
+      // - to have the person table in a second app ("otherApp") //
+      // - to set affinities for that table in its apps          //
+      /////////////////////////////////////////////////////////////
+      QInstance qInstance = TestUtils.defineInstance();
+
+      QAppMetaData otherApp = new QAppMetaData()
+         .withName("otherApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON));
+      qInstance.addApp(otherApp);
+      otherApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 2);
+
+      qInstance.getApp(TestUtils.APP_NAME_PEOPLE).setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 4);
+
+      reInitInstanceInContext(qInstance);
+
+      MetaDataOutput metaDataOutput = new MetaDataAction().execute(new MetaDataInput());
+
+      //////////////////////////////////////////////////////////
+      // assert the table-to-app affinity values are returned //
+      //////////////////////////////////////////////////////////
+      AppTreeNode otherAppTreeNode      = metaDataOutput.getAppTree().stream().filter(a -> a.getName().equals("otherApp")).findFirst().get();
+      AppTreeNode personTableInOtherApp = otherAppTreeNode.getChildren().stream().filter(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON)).findFirst().get();
+      assertEquals(2, personTableInOtherApp.getAppAffinity());
+
+      AppTreeNode peopleAppTreeNode      = metaDataOutput.getAppTree().stream().filter(a -> a.getName().equals("peopleApp")).findFirst().get();
+      AppTreeNode personTableInPeopleApp = peopleAppTreeNode.getChildren().stream().filter(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON)).findFirst().get();
+      assertEquals(4, personTableInPeopleApp.getAppAffinity());
    }
 
 

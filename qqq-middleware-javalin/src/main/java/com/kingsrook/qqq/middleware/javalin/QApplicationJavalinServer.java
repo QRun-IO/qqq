@@ -197,12 +197,12 @@ public class QApplicationJavalinServer
          /////////////////////////////////////
          if(CollectionUtils.nullSafeHasContents(middlewareVersionList))
          {
-            config.router.apiBuilder(new QMiddlewareApiSpecHandler(middlewareVersionList).defineJavalinEndpointGroup());
             for(AbstractMiddlewareVersion version : middlewareVersionList)
             {
                version.setQInstance(qInstance);
                config.router.apiBuilder(version.getJavalinEndpointGroup(qInstance));
             }
+            config.router.apiBuilder(new QMiddlewareApiSpecHandler(middlewareVersionList).defineJavalinEndpointGroup());
          }
 
          ///////////////////////////////////////////////////////////////////////////////////////////

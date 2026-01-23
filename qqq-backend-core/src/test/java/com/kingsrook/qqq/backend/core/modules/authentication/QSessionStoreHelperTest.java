@@ -24,36 +24,37 @@ package com.kingsrook.qqq.backend.core.modules.authentication;
 
 import java.time.Duration;
 import java.util.Optional;
+import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
 /*******************************************************************************
- ** Tests for QSessionStoreHelper.
+ ** Unit test for QSessionStoreHelper.
+ **
+ ** These tests verify the behavior when the qbit-session-store module is NOT
+ ** on the classpath, ensuring graceful degradation and backwards compatibility.
  *******************************************************************************/
-class QSessionStoreHelperTest
+class QSessionStoreHelperTest extends BaseTest
 {
 
-   /***************************************************************************
+   /*******************************************************************************
     ** Test that session store is not available when QBit is not on classpath.
-    ***************************************************************************/
+    *******************************************************************************/
    @Test
-   void testSessionStoreNotAvailable()
+   void testIsSessionStoreAvailable_returnsFalseWhenQBitNotPresent()
    {
-      //////////////////////////////////////////////////////////////////////////
-      // without the qbit-session-store dependency, the store is unavailable //
-      //////////////////////////////////////////////////////////////////////////
       assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
    }
 
 
 
-   /***************************************************************************
-    ** Test that load returns empty when store is not available.
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Test that load returns empty Optional when store is not available.
+    *******************************************************************************/
    @Test
-   void testLoadReturnsEmptyWhenNotAvailable()
+   void testLoadSession_returnsEmptyWhenNotAvailable()
    {
       Optional<QSession> result = QSessionStoreHelper.loadSession("test-uuid");
       assertThat(result).isEmpty();
@@ -61,11 +62,11 @@ class QSessionStoreHelperTest
 
 
 
-   /***************************************************************************
-    ** Test that store is a no-op when not available.
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Test that store is a no-op when QBit is not available.
+    *******************************************************************************/
    @Test
-   void testStoreIsNoOpWhenNotAvailable()
+   void testStoreSession_isNoOpWhenNotAvailable()
    {
       ///////////////////////////////////////////
       // should not throw, just silently no-op //
@@ -77,11 +78,11 @@ class QSessionStoreHelperTest
 
 
 
-   /***************************************************************************
-    ** Test that touch is a no-op when not available.
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Test that touch is a no-op when QBit is not available.
+    *******************************************************************************/
    @Test
-   void testTouchIsNoOpWhenNotAvailable()
+   void testTouchSession_isNoOpWhenNotAvailable()
    {
       ///////////////////////////////////////////
       // should not throw, just silently no-op //
@@ -91,14 +92,30 @@ class QSessionStoreHelperTest
 
 
 
-   /***************************************************************************
-    ** Test that getDefaultTtl returns 1 hour when not available.
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Test that getDefaultTtl returns 1 hour fallback when QBit is not available.
+    *******************************************************************************/
    @Test
-   void testGetDefaultTtlReturnsOneHourWhenNotAvailable()
+   void testGetDefaultTtl_returnsOneHourFallbackWhenNotAvailable()
    {
       Duration ttl = QSessionStoreHelper.getDefaultTtl();
       assertThat(ttl).isEqualTo(Duration.ofHours(1));
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that repeated calls to isSessionStoreAvailable are consistent.
+    *******************************************************************************/
+   @Test
+   void testIsSessionStoreAvailable_isMemoized()
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // call multiple times to verify the memoization doesn't break state //
+      ///////////////////////////////////////////////////////////////////////
+      assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
+      assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
+      assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
    }
 
 }

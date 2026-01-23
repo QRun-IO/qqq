@@ -223,6 +223,89 @@ class OAuth2AuthenticationModuleIntegrationTest
 
 
    /***************************************************************************
+    ** Test that session store integration works gracefully when QBit not present
+    ** When sessionStoreEnabled=true but qbit-session-store is not on classpath,
+    ** the module should fall back to the standard flow without errors.
+    ***************************************************************************/
+   @Test
+   void testSessionResume_sessionStoreEnabled_gracefulFallbackWhenQBitNotPresent() throws Exception
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // Enable session store on the auth metadata                         //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationMetaData authMetaData = (OAuth2AuthenticationMetaData) qInstance.getAuthentication();
+      authMetaData.setSessionStoreEnabled(true);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Create session the normal way                                     //
+      ///////////////////////////////////////////////////////////////////////
+      String accessToken = createTestJwt("store-test@example.com", "Store Test User", Map.of());
+      String sessionUuid = "store-test-uuid-11111";
+      insertUserSession(sessionUuid, accessToken, "store-test@example.com");
+
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      Map<String, String> context = new HashMap<>();
+      context.put("sessionUUID", sessionUuid);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Should complete successfully even though QBit is not on classpath //
+      ///////////////////////////////////////////////////////////////////////
+      QSession session = module.createSession(qInstance, context);
+
+      assertNotNull(session);
+      assertNotNull(session.getUser());
+      assertEquals("store-test@example.com", session.getUser().getIdReference());
+      assertEquals("Store Test User", session.getUser().getFullName());
+
+      ///////////////////////////////////////////////////////////////////////
+      // Customizers should still be called                                //
+      ///////////////////////////////////////////////////////////////////////
+      assertTrue(session.hasSecurityKeyValue("testSecurityKey", "fromCustomizer"));
+      assertTrue(session.hasSecurityKeyValue("finalSecurityKey", "fromFinalCustomizer"));
+   }
+
+
+
+   /***************************************************************************
+    ** Test that token exchange works with sessionStoreEnabled=true
+    ***************************************************************************/
+   @Test
+   void testTokenExchange_sessionStoreEnabled_gracefulFallbackWhenQBitNotPresent() throws Exception
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // Enable session store on the auth metadata                         //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationMetaData authMetaData = (OAuth2AuthenticationMetaData) qInstance.getAuthentication();
+      authMetaData.setSessionStoreEnabled(true);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Set up mocks for token exchange                                   //
+      ///////////////////////////////////////////////////////////////////////
+      String accessToken = createTestJwt("pkce-store@example.com", "PKCE Store User", Map.of());
+      stubOidcDiscovery();
+      stubTokenEndpoint(accessToken);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Create session via PKCE flow with session store enabled           //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      Map<String, String> context = new HashMap<>();
+      context.put("code", "test-authorization-code-2");
+      context.put("redirectUri", "http://localhost:3000/callback");
+      context.put("codeVerifier", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk");
+
+      QSession session = module.createSession(qInstance, context);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Should complete successfully                                       //
+      ///////////////////////////////////////////////////////////////////////
+      assertNotNull(session);
+      assertEquals("pkce-store@example.com", session.getUser().getIdReference());
+   }
+
+
+
+   /***************************************************************************
     ** Build a QInstance configured for OAuth2 with memory backend
     ***************************************************************************/
    private QInstance buildQInstance(String baseUrl) throws Exception

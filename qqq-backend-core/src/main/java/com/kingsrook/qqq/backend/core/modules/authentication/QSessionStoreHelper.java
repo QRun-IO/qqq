@@ -32,14 +32,16 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 /*******************************************************************************
  ** Helper class for optionally interacting with the QSessionStore QBit.
+ **
  ** Uses reflection to avoid a hard dependency on the qbit-session-store module.
+ ** All methods are designed to fail silently (returning empty/default values)
+ ** when the QBit is not on the classpath, ensuring backwards compatibility.
  *******************************************************************************/
 public class QSessionStoreHelper
 {
    private static final QLogger LOG = QLogger.getLogger(QSessionStoreHelper.class);
 
    private static final String CONTEXT_CLASS = "com.kingsrook.qbits.sessionstore.QSessionStoreQBitContext";
-   private static final String PROVIDER_INTERFACE = "com.kingsrook.qbits.sessionstore.QSessionStoreProviderInterface";
 
    private static Boolean sessionStoreAvailable = null;
 

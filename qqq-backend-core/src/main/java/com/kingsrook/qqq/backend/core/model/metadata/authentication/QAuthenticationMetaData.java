@@ -47,6 +47,8 @@ public class QAuthenticationMetaData implements TopLevelMetaDataInterface
 
    private QCodeReference customizer;
 
+   private Boolean sessionStoreEnabled = false;
+
 
 
    /*******************************************************************************
@@ -238,4 +240,36 @@ public class QAuthenticationMetaData implements TopLevelMetaDataInterface
       // noop at base //
       //////////////////
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for sessionStoreEnabled
+    *******************************************************************************/
+   public Boolean getSessionStoreEnabled()
+   {
+      return (this.sessionStoreEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sessionStoreEnabled
+    *******************************************************************************/
+   public void setSessionStoreEnabled(Boolean sessionStoreEnabled)
+   {
+      this.sessionStoreEnabled = sessionStoreEnabled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sessionStoreEnabled
+    *******************************************************************************/
+   public QAuthenticationMetaData withSessionStoreEnabled(Boolean sessionStoreEnabled)
+   {
+      this.sessionStoreEnabled = sessionStoreEnabled;
+      return (this);
+   }
+
 }

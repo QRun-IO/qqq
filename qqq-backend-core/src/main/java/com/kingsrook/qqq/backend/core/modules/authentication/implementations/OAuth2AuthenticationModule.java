@@ -34,6 +34,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
@@ -56,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreHelper;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
@@ -178,6 +180,20 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                Objects.requireNonNullElseGet(context.get("sessionId"), () ->
                   context.get("uuid")));
 
+            ///////////////////////////////////////////////////////////////////////////
+            // if session store is enabled, try to load cached session first         //
+            // this avoids re-deriving security keys and other expensive operations  //
+            ///////////////////////////////////////////////////////////////////////////
+            if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+            {
+               Optional<QSession> cachedSession = QSessionStoreHelper.loadSession(uuid);
+               if(cachedSession.isPresent())
+               {
+                  QSessionStoreHelper.touchSession(uuid);
+                  return cachedSession.get();
+               }
+            }
+
             String   accessToken = getAccessTokenFromSessionUUID(uuid);
             QSession session     = createSessionFromToken(accessToken);
             session.setUuid(uuid);
@@ -195,6 +211,15 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // allow customizer to do custom things here, if so desired //
             //////////////////////////////////////////////////////////////
             finalCustomizeSession(qInstance, session);
+
+            ///////////////////////////////////////////////////////////////////////
+            // if session store is enabled, store the session for future use    //
+            // this happens after finalCustomizeSession so security keys cached //
+            ///////////////////////////////////////////////////////////////////////
+            if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+            {
+               QSessionStoreHelper.storeSession(uuid, session, QSessionStoreHelper.getDefaultTtl());
+            }
 
             return (session);
          }
@@ -240,6 +265,16 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          // allow customizer to do custom things here, if so desired //
          //////////////////////////////////////////////////////////////
          finalCustomizeSession(QContext.getQInstance(), session);
+
+         ///////////////////////////////////////////////////////////////////////
+         // if session store is enabled, store the session for future use    //
+         // this happens after finalCustomizeSession so security keys cached //
+         ///////////////////////////////////////////////////////////////////////
+         OAuth2AuthenticationMetaData oauth2MetaData = (OAuth2AuthenticationMetaData) QContext.getQInstance().getAuthentication();
+         if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+         {
+            QSessionStoreHelper.storeSession(session.getUuid(), session, QSessionStoreHelper.getDefaultTtl());
+         }
 
          return (session);
       }

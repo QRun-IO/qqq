@@ -85,6 +85,12 @@ class OAuth2AuthenticationModuleIntegrationTest
       wireMockServer.start();
       WireMock.configureFor("localhost", wireMockServer.port());
 
+      ////////////////////////////////////////////////////////////////////////////
+      // Clear OIDC provider metadata cache - important because WireMock starts //
+      // on a different port each test, and the cache would have stale URLs     //
+      ////////////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationModule.clearOIDCProviderMetadataCache();
+
       ///////////////////////////////
       // Build the QInstance
       ///////////////////////////////

@@ -603,4 +603,15 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       }
    }
 
+
+
+   /***************************************************************************
+    ** Clear cached OIDC provider metadata. Primarily for testing purposes
+    ** when WireMock servers restart on different ports between tests.
+    ***************************************************************************/
+   public static void clearOIDCProviderMetadataCache()
+   {
+      oidcProviderMetadataMemoization.clear();
+   }
+
 }

@@ -47,6 +47,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
@@ -90,6 +91,7 @@ public class QFrontendTableMetaData
 
    private ShareableTableMetaData          shareableTableMetaData;
    private Map<String, List<QHelpContent>> helpContents;
+   private List<QMenu>                     menus;
 
    //////////////////////////////////////////////////////////////////////////////////
    // do not add setters.  take values from the source-object in the constructor!! //
@@ -143,6 +145,8 @@ public class QFrontendTableMetaData
          this.sections = tableMetaData.getSections();
 
          this.shareableTableMetaData = tableMetaData.getShareableTableMetaData();
+
+         this.menus = tableMetaData.getMenus();
       }
 
       if(includeJoins)
@@ -487,4 +491,14 @@ public class QFrontendTableMetaData
       return virtualFields;
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for menus
+    **
+    *******************************************************************************/
+   public List<QMenu> getMenus()
+   {
+      return menus;
+   }
 }

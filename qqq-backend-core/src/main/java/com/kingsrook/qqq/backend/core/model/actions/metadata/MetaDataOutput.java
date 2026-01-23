@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.model.actions.metadata;
 
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
@@ -54,6 +55,7 @@ public class MetaDataOutput extends AbstractActionOutput
    private QBrandingMetaData               branding;
    private Map<String, List<QHelpContent>> helpContents;
 
+   private Map<String, String> redirects;
 
 
    /*******************************************************************************
@@ -273,4 +275,68 @@ public class MetaDataOutput extends AbstractActionOutput
    {
       return helpContents;
    }
+
+
+
+   /*******************************************************************************
+    * Getter for redirects
+    * @see #withRedirects(Map)
+    *******************************************************************************/
+   public Map<String, String> getRedirects()
+   {
+      return (this.redirects);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for redirects
+    * @see #withRedirects(Map)
+    *******************************************************************************/
+   public void setRedirects(Map<String, String> redirects)
+   {
+      this.redirects = redirects;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for redirects
+    *
+    * @param redirects
+    * Map of string to string, where the key is the URL path to redirect from, and
+    * the value is the URL path to redirect to.
+    *
+    * <p>The core {@link com.kingsrook.qqq.backend.core.actions.metadata.MetaDataAction}
+    * will build some of these redirects automatically, e.g., for the use case of a
+    * table in multiple apps, but where a user doesn't have permission to all of those apps.</p>
+    *
+    * <p>An app may build its own redirects via a
+    * {@link com.kingsrook.qqq.backend.core.actions.metadata.MetaDataActionCustomizerInterface},
+    * for whatever custom logic is needed.</p>
+    *
+    * @return this
+    *******************************************************************************/
+   public MetaDataOutput withRedirects(Map<String, String> redirects)
+   {
+      this.redirects = redirects;
+      return (this);
+   }
+
+
+
+   /***************************************************************************
+    * Fluent setter to add a single redirect.
+    * @see #withRedirects(Map)
+    ***************************************************************************/
+   public MetaDataOutput withRedirect(String from, String to)
+   {
+      if(this.redirects == null)
+      {
+         this.redirects = new LinkedHashMap<>();
+      }
+      this.redirects.put(from, to);
+      return (this);
+   }
+
 }

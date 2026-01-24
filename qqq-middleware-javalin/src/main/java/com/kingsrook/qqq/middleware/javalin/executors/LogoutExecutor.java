@@ -22,12 +22,20 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutOutputInterface;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -35,6 +43,9 @@ import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutOutputInterface;
  *******************************************************************************/
 public class LogoutExecutor extends AbstractMiddlewareExecutor<LogoutInput, LogoutOutputInterface>
 {
+   private static final QLogger LOG = QLogger.getLogger(LogoutExecutor.class);
+
+
 
    /***************************************************************************
     **
@@ -42,10 +53,34 @@ public class LogoutExecutor extends AbstractMiddlewareExecutor<LogoutInput, Logo
    @Override
    public void execute(LogoutInput input, LogoutOutputInterface output) throws QException
    {
+      QInstance                       qInstance                       = QContext.getQInstance();
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
-      QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(QContext.getQInstance().getAuthentication());
 
-      authenticationModule.logout(QContext.getQInstance(), input.getSessionUUID());
+      /////////////////////////////////////////////////////////////////////////
+      // Call logout on all registered authentication modules.               //
+      // This handles multi-auth scenarios (e.g., different OAuth2 providers //
+      // for different APIs/route providers). Each module's logout is either //
+      // a no-op or performs actual cleanup (delete session, clear cache).   //
+      // Using a Set to avoid calling the same module multiple times.        //
+      /////////////////////////////////////////////////////////////////////////
+      Set<QAuthenticationMetaData> processedAuthMetaData = new HashSet<>();
+      Map<AuthScope, QAuthenticationMetaData> scopedProviders = qInstance.getScopedAuthenticationProviders();
+
+      for(QAuthenticationMetaData authMetaData : scopedProviders.values())
+      {
+         if(processedAuthMetaData.add(authMetaData))
+         {
+            try
+            {
+               QAuthenticationModuleInterface authModule = qAuthenticationModuleDispatcher.getQModule(authMetaData);
+               authModule.logout(qInstance, input.getSessionUUID());
+            }
+            catch(Exception e)
+            {
+               LOG.warn("Error calling logout on auth module", logPair("authName", authMetaData.getName()), e);
+            }
+         }
+      }
    }
 
 }

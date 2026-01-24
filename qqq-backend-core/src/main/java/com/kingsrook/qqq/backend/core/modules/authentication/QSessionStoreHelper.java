@@ -91,7 +91,7 @@ public class QSessionStoreHelper
       }
       catch(Exception e)
       {
-         LOG.warn("Failed to store session in session store", logPair("sessionUuid", sessionUuid), e);
+         LOG.warn("Failed to store session in session store", e, logPair("sessionUuid", sessionUuid));
       }
    }
 
@@ -124,7 +124,7 @@ public class QSessionStoreHelper
       }
       catch(Exception e)
       {
-         LOG.warn("Failed to load session from session store", logPair("sessionUuid", sessionUuid), e);
+         LOG.warn("Failed to load session from session store", e, logPair("sessionUuid", sessionUuid));
       }
 
       return Optional.empty();
@@ -153,7 +153,7 @@ public class QSessionStoreHelper
       }
       catch(Exception e)
       {
-         LOG.warn("Failed to touch session in session store", logPair("sessionUuid", sessionUuid), e);
+         LOG.warn("Failed to touch session in session store", e, logPair("sessionUuid", sessionUuid));
       }
    }
 

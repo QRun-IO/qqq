@@ -30,6 +30,7 @@ import java.util.Map;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -62,7 +63,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /*******************************************************************************
  ** Integration tests for OAuth2AuthenticationModule with WireMock
  *******************************************************************************/
-class OAuth2AuthenticationModuleIntegrationTest
+class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
 {
    private static final String BACKEND_NAME = "memory";
    private static final String REDIRECT_STATE_TABLE = "oauthRedirectState";
@@ -101,7 +102,7 @@ class OAuth2AuthenticationModuleIntegrationTest
 
 
    /***************************************************************************
-    ** Clean up after each test
+    ** Clean up WireMock after each test (BaseTest handles QContext cleanup)
     ***************************************************************************/
    @AfterEach
    void tearDown()
@@ -110,7 +111,6 @@ class OAuth2AuthenticationModuleIntegrationTest
       {
          wireMockServer.stop();
       }
-      QContext.clear();
    }
 
 

@@ -265,6 +265,8 @@ public class QAuthenticationMetaData implements TopLevelMetaDataInterface
 
    /*******************************************************************************
     ** Fluent setter for sessionStoreEnabled
+    **
+    ** @param sessionStoreEnabled whether to use the QSessionStore QBit for caching sessions
     *******************************************************************************/
    public QAuthenticationMetaData withSessionStoreEnabled(Boolean sessionStoreEnabled)
    {

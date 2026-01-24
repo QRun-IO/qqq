@@ -46,9 +46,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditHandlerMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
-import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -89,17 +87,6 @@ class AuditHandlerIntegrationTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Clean up memory store after each test
-    *******************************************************************************/
-   @AfterEach
-   void tearDown()
-   {
-      MemoryRecordStore.getInstance().reset();
-   }
-
-
-
-   /*******************************************************************************
     ** Test that DML handler is called when performing an INSERT operation.
     *******************************************************************************/
    @Test
@@ -119,7 +106,7 @@ class AuditHandlerIntegrationTest extends BaseTest
          new QRecord().withValue("firstName", "John").withValue("lastName", "Doe")
       ));
 
-      InsertOutput insertOutput = new InsertAction().execute(insertInput);
+      new InsertAction().execute(insertInput);
 
       assertEquals(1, capturedDMLInputs.size());
       DMLAuditHandlerInput captured = capturedDMLInputs.get(0);

@@ -63,6 +63,8 @@ public class ProcessedAuditHandlerInput implements Serializable
 
    /*******************************************************************************
     ** Fluent setter for auditSingleInputs
+    **
+    ** @param auditSingleInputs list of individual audit records to be processed
     *******************************************************************************/
    public ProcessedAuditHandlerInput withAuditSingleInputs(List<AuditSingleInput> auditSingleInputs)
    {
@@ -94,6 +96,8 @@ public class ProcessedAuditHandlerInput implements Serializable
 
    /*******************************************************************************
     ** Fluent setter for timestamp
+    **
+    ** @param timestamp when the audit event occurred
     *******************************************************************************/
    public ProcessedAuditHandlerInput withTimestamp(Instant timestamp)
    {
@@ -125,6 +129,8 @@ public class ProcessedAuditHandlerInput implements Serializable
 
    /*******************************************************************************
     ** Fluent setter for session
+    **
+    ** @param session the user session associated with the audit
     *******************************************************************************/
    public ProcessedAuditHandlerInput withSession(QSession session)
    {
@@ -156,6 +162,8 @@ public class ProcessedAuditHandlerInput implements Serializable
 
    /*******************************************************************************
     ** Fluent setter for sourceType
+    **
+    ** @param sourceType identifier for the type of source that triggered the audit
     *******************************************************************************/
    public ProcessedAuditHandlerInput withSourceType(String sourceType)
    {

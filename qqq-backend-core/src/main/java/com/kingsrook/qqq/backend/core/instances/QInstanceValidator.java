@@ -41,6 +41,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditHandlerInterface;
+import com.kingsrook.qqq.backend.core.actions.audits.ProcessedAuditHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -64,6 +66,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerType;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditHandlerMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.automation.QAutomationProviderMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
@@ -206,6 +210,7 @@ public class QInstanceValidator
          validateAuthentication(qInstance);
          validateScopedAuthentication(qInstance);
          validateAutomationProviders(qInstance);
+         validateAuditHandlers(qInstance);
          validateTables(qInstance, joinGraph);
          validateProcesses(qInstance);
          validateReports(qInstance);
@@ -677,6 +682,39 @@ public class QInstanceValidator
             assertCondition(automationProvider.getType() != null, "Missing type for automationProvider: " + name);
 
             runPlugins(QAutomationProviderMetaData.class, automationProvider, qInstance);
+         });
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate audit handlers.
+    *******************************************************************************/
+   private void validateAuditHandlers(QInstance qInstance)
+   {
+      if(qInstance.getAuditHandlers() != null)
+      {
+         qInstance.getAuditHandlers().forEach((name, handler) ->
+         {
+            String prefix = "AuditHandler " + name + ": ";
+            assertCondition(Objects.equals(name, handler.getName()), prefix + "Inconsistent naming: " + name + "/" + handler.getName());
+            assertCondition(handler.getHandlerType() != null, prefix + "Missing handlerType");
+            assertCondition(handler.getHandlerCode() != null, prefix + "Missing handlerCode");
+
+            if(handler.getHandlerCode() != null)
+            {
+               if(handler.getHandlerType() == AuditHandlerType.DML)
+               {
+                  validateSimpleCodeReference(prefix + "handlerCode ", handler.getHandlerCode(), DMLAuditHandlerInterface.class);
+               }
+               else if(handler.getHandlerType() == AuditHandlerType.PROCESSED)
+               {
+                  validateSimpleCodeReference(prefix + "handlerCode ", handler.getHandlerCode(), ProcessedAuditHandlerInterface.class);
+               }
+            }
+
+            runPlugins(QAuditHandlerMetaData.class, handler, qInstance);
          });
       }
    }

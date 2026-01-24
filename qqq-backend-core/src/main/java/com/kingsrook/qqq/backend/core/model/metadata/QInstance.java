@@ -73,6 +73,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.scheduler.schedulable.SchedulableType;
+import org.apache.commons.lang3.BooleanUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -1973,7 +1974,7 @@ public class QInstance
    public List<QAuditHandlerMetaData> getAuditHandlersForTable(String tableName, AuditHandlerType handlerType)
    {
       return auditHandlers.values().stream()
-         .filter(h -> Boolean.TRUE.equals(h.getEnabled()) || h.getEnabled() == null)
+         .filter(h -> BooleanUtils.isTrue(h.getEnabled()))
          .filter(h -> handlerType.equals(h.getHandlerType()))
          .filter(h -> CollectionUtils.nullSafeIsEmpty(h.getTableNames())
                       || h.getTableNames().contains(tableName))

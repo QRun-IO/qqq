@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerFailureP
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerType;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditHandlerMetaData;
 import com.kingsrook.qqq.backend.core.utils.PrefixedDefaultThreadFactory;
+import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeVoidVoidMethod;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -146,7 +147,7 @@ public class AuditHandlerExecutor
    /*******************************************************************************
     ** Execute a handler synchronously, respecting failure policy.
     *******************************************************************************/
-   private void executeSync(QAuditHandlerMetaData handlerMetaData, ThrowingRunnable runnable) throws QException
+   private void executeSync(QAuditHandlerMetaData handlerMetaData, UnsafeVoidVoidMethod<Exception> runnable) throws QException
    {
       try
       {
@@ -165,7 +166,7 @@ public class AuditHandlerExecutor
     ** Note: FAIL_OPERATION policy cannot work with async handlers since the
     ** original operation has already completed.
     *******************************************************************************/
-   private void executeAsync(QAuditHandlerMetaData handlerMetaData, ThrowingRunnable runnable)
+   private void executeAsync(QAuditHandlerMetaData handlerMetaData, UnsafeVoidVoidMethod<Exception> runnable)
    {
       CapturedContext capturedContext = QContext.capture();
 
@@ -178,9 +179,8 @@ public class AuditHandlerExecutor
          }
          catch(Exception e)
          {
-            LOG.warn("Async audit handler failed",
-               logPair("handlerName", handlerMetaData.getName()),
-               e);
+            LOG.warn("Async audit handler failed", e,
+               logPair("handlerName", handlerMetaData.getName()));
          }
          finally
          {
@@ -206,39 +206,22 @@ public class AuditHandlerExecutor
       {
          case LOG_AND_CONTINUE ->
          {
-            LOG.warn("Audit handler failed, continuing",
-               logPair("handlerName", handlerMetaData.getName()),
-               e);
+            LOG.warn("Audit handler failed, continuing", e,
+               logPair("handlerName", handlerMetaData.getName()));
          }
          case FAIL_OPERATION ->
          {
-            LOG.error("Audit handler failed, failing operation",
-               logPair("handlerName", handlerMetaData.getName()),
-               e);
+            LOG.error("Audit handler failed, failing operation", e,
+               logPair("handlerName", handlerMetaData.getName()));
             throw new QException("Audit handler [" + handlerMetaData.getName() + "] failed", e);
          }
          default ->
          {
-            LOG.warn("Unknown failure policy, defaulting to LOG_AND_CONTINUE",
+            LOG.warn("Unknown failure policy, defaulting to LOG_AND_CONTINUE", e,
                logPair("handlerName", handlerMetaData.getName()),
-               logPair("failurePolicy", failurePolicy),
-               e);
+               logPair("failurePolicy", failurePolicy));
          }
       }
-   }
-
-
-
-   /*******************************************************************************
-    ** Functional interface for runnables that can throw exceptions.
-    *******************************************************************************/
-   @FunctionalInterface
-   private interface ThrowingRunnable
-   {
-      /***************************************************************************
-       ** Run the operation, potentially throwing an exception.
-       ***************************************************************************/
-      void run() throws Exception;
    }
 
 }

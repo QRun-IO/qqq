@@ -329,3 +329,19 @@ new IsolatedSpaRouteProvider()
 - Jobs run in parallel with test jobs
 - Reports stored as CircleCI artifacts
 - Orb repo: `/Users/james.maes/Git.Local/QRun-IO/qqq-orb/`
+
+### QSessionStore QBit Integration (PR #381)
+- **Optional dependency pattern:** `QSessionStoreHelper` uses reflection to interact with `qbit-session-store` without compile-time dependency
+- Check availability via `Class.forName()`, memoize result, fail silently if not present
+- Enable via `QAuthenticationMetaData.withSessionStoreEnabled(true)` (default: false)
+- QBit lives in separate repo: `qbit-session-store` with InMemory, TableBased, and Redis providers
+- **Key files:**
+  - `QSessionStoreHelper.java` - Reflection-based bridge to optional QBit
+  - `QAuthenticationMetaData.sessionStoreEnabled` - Opt-in flag
+  - `OAuth2AuthenticationModule` - Integration hooks for store/load/touch
+
+### OAuth2 Static Memoization Test Fix (PR #381)
+- `oidcProviderMetadataMemoization` is **static** and caches OIDC provider metadata (including token endpoint URLs)
+- When WireMock restarts on different ports between tests, cached URLs become stale causing "Connection refused"
+- **Fix:** Added `clearOIDCProviderMetadataCache()` method to clear memoization between tests
+- Call in test's `@BeforeEach` when using WireMock with dynamic ports

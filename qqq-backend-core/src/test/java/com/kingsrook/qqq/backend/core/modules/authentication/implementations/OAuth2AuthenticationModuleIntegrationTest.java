@@ -30,6 +30,7 @@ import java.util.Map;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -62,7 +63,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /*******************************************************************************
  ** Integration tests for OAuth2AuthenticationModule with WireMock
  *******************************************************************************/
-class OAuth2AuthenticationModuleIntegrationTest
+class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
 {
    private static final String BACKEND_NAME = "memory";
    private static final String REDIRECT_STATE_TABLE = "oauthRedirectState";
@@ -85,6 +86,12 @@ class OAuth2AuthenticationModuleIntegrationTest
       wireMockServer.start();
       WireMock.configureFor("localhost", wireMockServer.port());
 
+      ////////////////////////////////////////////////////////////////////////////
+      // Clear OIDC provider metadata cache - important because WireMock starts //
+      // on a different port each test, and the cache would have stale URLs     //
+      ////////////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationModule.clearOIDCProviderMetadataCache();
+
       ///////////////////////////////
       // Build the QInstance
       ///////////////////////////////
@@ -95,7 +102,7 @@ class OAuth2AuthenticationModuleIntegrationTest
 
 
    /***************************************************************************
-    ** Clean up after each test
+    ** Clean up WireMock after each test (BaseTest handles QContext cleanup)
     ***************************************************************************/
    @AfterEach
    void tearDown()
@@ -104,7 +111,6 @@ class OAuth2AuthenticationModuleIntegrationTest
       {
          wireMockServer.stop();
       }
-      QContext.clear();
    }
 
 
@@ -218,6 +224,89 @@ class OAuth2AuthenticationModuleIntegrationTest
       ///////////////////////////////////////////////////////////////////////
       assertTrue(session.hasSecurityKeyValue("finalSecurityKey", "fromFinalCustomizer"),
          "finalCustomizeSession should have been called on session resume");
+   }
+
+
+
+   /***************************************************************************
+    ** Test that session store integration works gracefully when QBit not present
+    ** When sessionStoreEnabled=true but qbit-session-store is not on classpath,
+    ** the module should fall back to the standard flow without errors.
+    ***************************************************************************/
+   @Test
+   void testSessionResume_sessionStoreEnabled_gracefulFallbackWhenQBitNotPresent() throws Exception
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // Enable session store on the auth metadata                         //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationMetaData authMetaData = (OAuth2AuthenticationMetaData) qInstance.getAuthentication();
+      authMetaData.setSessionStoreEnabled(true);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Create session the normal way                                     //
+      ///////////////////////////////////////////////////////////////////////
+      String accessToken = createTestJwt("store-test@example.com", "Store Test User", Map.of());
+      String sessionUuid = "store-test-uuid-11111";
+      insertUserSession(sessionUuid, accessToken, "store-test@example.com");
+
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      Map<String, String> context = new HashMap<>();
+      context.put("sessionUUID", sessionUuid);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Should complete successfully even though QBit is not on classpath //
+      ///////////////////////////////////////////////////////////////////////
+      QSession session = module.createSession(qInstance, context);
+
+      assertNotNull(session);
+      assertNotNull(session.getUser());
+      assertEquals("store-test@example.com", session.getUser().getIdReference());
+      assertEquals("Store Test User", session.getUser().getFullName());
+
+      ///////////////////////////////////////////////////////////////////////
+      // Customizers should still be called                                //
+      ///////////////////////////////////////////////////////////////////////
+      assertTrue(session.hasSecurityKeyValue("testSecurityKey", "fromCustomizer"));
+      assertTrue(session.hasSecurityKeyValue("finalSecurityKey", "fromFinalCustomizer"));
+   }
+
+
+
+   /***************************************************************************
+    ** Test that token exchange works with sessionStoreEnabled=true
+    ***************************************************************************/
+   @Test
+   void testTokenExchange_sessionStoreEnabled_gracefulFallbackWhenQBitNotPresent() throws Exception
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // Enable session store on the auth metadata                         //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationMetaData authMetaData = (OAuth2AuthenticationMetaData) qInstance.getAuthentication();
+      authMetaData.setSessionStoreEnabled(true);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Set up mocks for token exchange                                   //
+      ///////////////////////////////////////////////////////////////////////
+      String accessToken = createTestJwt("pkce-store@example.com", "PKCE Store User", Map.of());
+      stubOidcDiscovery();
+      stubTokenEndpoint(accessToken);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Create session via PKCE flow with session store enabled           //
+      ///////////////////////////////////////////////////////////////////////
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      Map<String, String> context = new HashMap<>();
+      context.put("code", "test-authorization-code-2");
+      context.put("redirectUri", "http://localhost:3000/callback");
+      context.put("codeVerifier", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk");
+
+      QSession session = module.createSession(qInstance, context);
+
+      ///////////////////////////////////////////////////////////////////////
+      // Should complete successfully                                       //
+      ///////////////////////////////////////////////////////////////////////
+      assertNotNull(session);
+      assertEquals("pkce-store@example.com", session.getUser().getIdReference());
    }
 
 

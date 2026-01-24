@@ -1,40 +1,48 @@
 # Session State
 
-Last updated: 2026-01-07
+Last updated: 2026-01-23
 
 ## Current Branch
-`develop` (after merging feature branches)
+`feature/session-store-integration`
 
-## Recently Completed Work
+## Active Work
 
-### PR #326 - Audit Non-Integer Support (MERGED)
-- Added `recordIdType` configuration to `AuditsMetaDataProvider`
-- Supports STRING type for UUID/string primary keys
-- Follow-up issue #328 created for LONG recordId support
+### QSessionStore QBit Integration (PR #381)
+**Status:** Complete - CI passing, awaiting review
 
-### PR #329 - RDBMS camelCase PK Quoting (OPEN)
-- Fixed `RDBMSUpdateAction.java` line 209 - added `escapeIdentifier()`
-- Added PostgreSQL 17 test with camelCase primary key
-- Closes #327
+**What was done:**
+- Added `QSessionStoreHelper.java` - reflection-based bridge to optional `qbit-session-store` QBit
+- Added `sessionStoreEnabled` field to `QAuthenticationMetaData` (default: false)
+- Added `clearOIDCProviderMetadataCache()` to `OAuth2AuthenticationModule` for test stability
+- Created `QSessionStoreHelperTest.java` - tests behavior when QBit is NOT on classpath
+- Updated `OAuth2AuthenticationModuleIntegrationTest` to clear OIDC cache in @BeforeEach
 
-## Open Issues Created This Session
-- #328 - feat(audit): support LONG recordId type
-- #330 - test(postgres): add CI matrix for multiple PostgreSQL versions
+**Key learnings:**
+- Static memoization (`oidcProviderMetadataMemoization`) causes test pollution when WireMock ports change
+- Reflection pattern allows optional dependency without compile-time coupling
+
+**Related repos:**
+- `qbit-session-store` - Separate repo with InMemory, TableBased, Redis providers
 
 ## Open PRs
-- #329 - fix(rdbms): quote camelCase PK in UPDATE WHERE clause (awaiting review)
 
-## Next Steps
-1. Wait for PR #329 review and CI results
-2. Merge PR #329 when approved
-3. Consider implementing #328 (LONG audit recordId) or #330 (PostgreSQL CI matrix)
+| PR | Branch | Description | Status |
+|----|--------|-------------|--------|
+| #381 | feature/session-store-integration | QSessionStore QBit integration | CI passing |
+| #373 | - | OAuth2 customizer tokens, scopes API | Awaiting review |
+| #356 | - | Pluggable audit handler system | Awaiting review |
 
-## Key Files Modified This Session
-- `qqq-backend-core/.../audits/` - Audit system non-integer PK support
-- `qqq-backend-module-rdbms/.../RDBMSUpdateAction.java` - escapeIdentifier fix
-- `qqq-backend-module-postgres/src/test/` - PostgreSQL 17 camelCase PK test
+## To Resume
 
-## Notes
-- PostgreSQL lowercases unquoted identifiers (case-sensitive)
-- MySQL/H2/SQLite are case-insensitive by default
-- Always use `escapeIdentifier()` for column names in SQL generation
+Say **"continue from last session"** to:
+1. Read this file for context
+2. Read `docs/TODO.md` for pending tasks
+3. Resume work
+
+## Files Modified This Session
+
+- `qqq-backend-core/.../modules/authentication/QSessionStoreHelper.java` (new)
+- `qqq-backend-core/.../modules/authentication/QSessionStoreHelperTest.java` (new)
+- `qqq-backend-core/.../model/metadata/authentication/QAuthenticationMetaData.java` (modified)
+- `qqq-backend-core/.../modules/authentication/implementations/OAuth2AuthenticationModule.java` (modified)
+- `qqq-backend-core/.../modules/authentication/implementations/OAuth2AuthenticationModuleIntegrationTest.java` (modified)

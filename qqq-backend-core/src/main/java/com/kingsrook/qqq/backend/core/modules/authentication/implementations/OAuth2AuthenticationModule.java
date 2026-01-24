@@ -683,7 +683,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       }
       catch(Exception e)
       {
-         LOG.warn("Error during logout", logPair("sessionUUID", sessionUUID), e);
+         LOG.warn("Error during logout", e, logPair("sessionUUID", sessionUUID));
       }
       finally
       {

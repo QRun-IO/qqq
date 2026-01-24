@@ -77,7 +77,7 @@ public class LogoutExecutor extends AbstractMiddlewareExecutor<LogoutInput, Logo
             }
             catch(Exception e)
             {
-               LOG.warn("Error calling logout on auth module", logPair("authName", authMetaData.getName()), e);
+               LOG.warn("Error calling logout on auth module", e, logPair("authName", authMetaData.getName()));
             }
          }
       }

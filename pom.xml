@@ -291,7 +291,7 @@
           <dependency>
             <groupId>com.puppycrawl.tools</groupId>
             <artifactId>checkstyle</artifactId>
-            <version>12.2.0</version>
+            <version>13.0.0</version>
           </dependency>
           <!-- Security: Exclude vulnerable org.iq80.snappy from transitive dependencies -->
           <dependency>

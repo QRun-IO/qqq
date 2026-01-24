@@ -46,6 +46,8 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceValidationState;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerType;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditHandlerMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
@@ -78,6 +80,7 @@ import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import io.github.cdimascio.dotenv.Dotenv;
 import io.github.cdimascio.dotenv.DotenvEntry;
+import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -123,8 +126,9 @@ public class QInstance
 
    private Map<SupplementalCustomizerType, QCodeReference> supplementalCustomizers = new LinkedHashMap<>();
 
-   private Map<String, QSchedulerMetaData> schedulers       = new LinkedHashMap<>();
-   private Map<String, SchedulableType>    schedulableTypes = new LinkedHashMap<>();
+   private Map<String, QSchedulerMetaData>     schedulers       = new LinkedHashMap<>();
+   private Map<String, SchedulableType>       schedulableTypes = new LinkedHashMap<>();
+   private Map<String, QAuditHandlerMetaData> auditHandlers    = new LinkedHashMap<>();
 
    private Map<String, QSupplementalInstanceMetaData> supplementalMetaData = new LinkedHashMap<>();
 
@@ -1998,6 +2002,83 @@ public class QInstance
       }
 
       return (this.tableCustomizers.getOrDefault(tableCustomizer.getRole(), Collections.emptyList()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Add an audit handler to the instance.
+    *******************************************************************************/
+   public void addAuditHandler(QAuditHandlerMetaData handler)
+   {
+      String name = handler.getName();
+      if(!StringUtils.hasContent(name))
+      {
+         throw new IllegalArgumentException("Attempted to add an audit handler without a name.");
+      }
+      if(this.auditHandlers.containsKey(name))
+      {
+         throw new IllegalArgumentException("Attempted to add a second audit handler with name: " + name);
+      }
+      this.auditHandlers.put(name, handler);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for auditHandlers
+    *******************************************************************************/
+   public Map<String, QAuditHandlerMetaData> getAuditHandlers()
+   {
+      return (this.auditHandlers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for auditHandlers
+    *******************************************************************************/
+   public void setAuditHandlers(Map<String, QAuditHandlerMetaData> auditHandlers)
+   {
+      this.auditHandlers = auditHandlers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for auditHandlers
+    *******************************************************************************/
+   public QInstance withAuditHandlers(Map<String, QAuditHandlerMetaData> auditHandlers)
+   {
+      this.auditHandlers = auditHandlers;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter to add a single audit handler
+    *******************************************************************************/
+   public QInstance withAuditHandler(QAuditHandlerMetaData handler)
+   {
+      addAuditHandler(handler);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get audit handlers for a specific table and handler type.
+    ** Returns global handlers (no tableNames set) plus handlers for this table.
+    *******************************************************************************/
+   public List<QAuditHandlerMetaData> getAuditHandlersForTable(String tableName, AuditHandlerType handlerType)
+   {
+      return auditHandlers.values().stream()
+         .filter(h -> BooleanUtils.isTrue(h.getEnabled()))
+         .filter(h -> handlerType.equals(h.getHandlerType()))
+         .filter(h -> CollectionUtils.nullSafeIsEmpty(h.getTableNames())
+                      || h.getTableNames().contains(tableName))
+         .toList();
    }
 
 }

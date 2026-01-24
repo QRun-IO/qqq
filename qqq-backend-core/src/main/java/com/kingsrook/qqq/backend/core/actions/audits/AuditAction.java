@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.AuditInput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.AuditOutput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.AuditSingleInput;
+import com.kingsrook.qqq.backend.core.model.actions.audits.ProcessedAuditHandlerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -359,6 +360,11 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
                insertInput.setRecords(auditDetailRecords);
                new InsertAction().execute(insertInput);
             }
+
+            ////////////////////////////////
+            // execute processed handlers //
+            ////////////////////////////////
+            executeProcessedHandlers(input.getAuditSingleInputList());
          }
          catch(Exception e)
          {
@@ -367,6 +373,54 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
       }
 
       return (auditOutput);
+   }
+
+
+
+   /*******************************************************************************
+    ** Execute processed audit handlers for the given audit single inputs.
+    ** Handlers are grouped by table name since each handler registration
+    ** may be for specific tables.
+    *******************************************************************************/
+   private void executeProcessedHandlers(List<AuditSingleInput> auditSingleInputs)
+   {
+      if(CollectionUtils.nullSafeIsEmpty(auditSingleInputs))
+      {
+         return;
+      }
+
+      try
+      {
+         //////////////////////////////////////////////////////////////////////
+         // group audit inputs by table name to call handlers appropriately //
+         //////////////////////////////////////////////////////////////////////
+         Map<String, List<AuditSingleInput>> inputsByTable = new HashMap<>();
+         for(AuditSingleInput auditSingleInput : auditSingleInputs)
+         {
+            inputsByTable.computeIfAbsent(auditSingleInput.getAuditTableName(), k -> new ArrayList<>()).add(auditSingleInput);
+         }
+
+         AuditHandlerExecutor executor = new AuditHandlerExecutor();
+         Instant              now      = Instant.now();
+
+         for(Map.Entry<String, List<AuditSingleInput>> entry : inputsByTable.entrySet())
+         {
+            String                  tableName = entry.getKey();
+            List<AuditSingleInput>  inputs    = entry.getValue();
+
+            ProcessedAuditHandlerInput handlerInput = new ProcessedAuditHandlerInput()
+               .withAuditSingleInputs(inputs)
+               .withTimestamp(now)
+               .withSession(QContext.getQSession())
+               .withSourceType("AuditAction");
+
+            executor.executeProcessedHandlers(tableName, handlerInput);
+         }
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error executing processed audit handlers", e);
+      }
    }
 
 

@@ -41,6 +41,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditHandlerInterface;
+import com.kingsrook.qqq.backend.core.actions.audits.ProcessedAuditHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -62,6 +64,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerType;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditHandlerMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.automation.QAutomationProviderMetaData;
@@ -83,6 +87,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -206,6 +211,7 @@ public class QInstanceValidator
          validateAuthentication(qInstance);
          validateScopedAuthentication(qInstance);
          validateAutomationProviders(qInstance);
+         validateAuditHandlers(qInstance);
          validateTables(qInstance, joinGraph);
          validateProcesses(qInstance);
          validateReports(qInstance);
@@ -684,6 +690,39 @@ public class QInstanceValidator
 
 
    /*******************************************************************************
+    ** Validate audit handlers.
+    *******************************************************************************/
+   private void validateAuditHandlers(QInstance qInstance)
+   {
+      if(qInstance.getAuditHandlers() != null)
+      {
+         qInstance.getAuditHandlers().forEach((name, handler) ->
+         {
+            String prefix = "AuditHandler " + name + ": ";
+            assertCondition(Objects.equals(name, handler.getName()), prefix + "Inconsistent naming: " + name + "/" + handler.getName());
+            assertCondition(handler.getHandlerType() != null, prefix + "Missing handlerType");
+            assertCondition(handler.getHandlerCode() != null, prefix + "Missing handlerCode");
+
+            if(handler.getHandlerCode() != null)
+            {
+               if(handler.getHandlerType() == AuditHandlerType.DML)
+               {
+                  validateSimpleCodeReference(prefix + "handlerCode ", handler.getHandlerCode(), DMLAuditHandlerInterface.class);
+               }
+               else if(handler.getHandlerType() == AuditHandlerType.PROCESSED)
+               {
+                  validateSimpleCodeReference(prefix + "handlerCode ", handler.getHandlerCode(), ProcessedAuditHandlerInterface.class);
+               }
+            }
+
+            runPlugins(QAuditHandlerMetaData.class, handler, qInstance);
+         });
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private void validateAuthentication(QInstance qInstance)
@@ -1042,6 +1081,11 @@ public class QInstanceValidator
             if(table.getShareableTableMetaData() != null)
             {
                table.getShareableTableMetaData().validate(qInstance, table, this);
+            }
+
+            for(QMenu menu : CollectionUtils.nonNullList(table.getMenus()))
+            {
+               menu.validate(this, qInstance, table);
             }
 
             runPlugins(QTableMetaData.class, table, qInstance);

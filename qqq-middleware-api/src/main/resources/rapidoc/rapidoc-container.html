@@ -92,8 +92,8 @@
    function safeNavigate(url)
    {
       // Security: Only allow same-origin API paths (e.g., /api/v1/docs/)
-      // Pattern: must start with /api/ followed by safe path characters
-      if (url && typeof url === 'string' && /^\/api\/[a-zA-Z0-9\/_-]*\/?$/.test(url))
+      // Pattern: must start with slash followed by safe path characters
+      if (url && typeof url === 'string' && /^\/[a-zA-Z0-9\/._-]*\/?$/.test(url))
       {
          window.location.href = url;
       }

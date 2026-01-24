@@ -45,6 +45,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.AuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditHandlerInput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
@@ -234,7 +235,53 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
          LOG.warn("Error performing DML audit", e, logPair("type", String.valueOf(dmlType)), logPair("table", table.getName()));
       }
 
+      //////////////////////////
+      // execute DML handlers //
+      //////////////////////////
+      executeDMLHandlers(input, table, dmlType);
+
       return (output);
+   }
+
+
+
+   /*******************************************************************************
+    ** Execute DML audit handlers for the table.
+    ** Handlers are called regardless of the table's audit level setting.
+    *******************************************************************************/
+   private void executeDMLHandlers(DMLAuditInput input, QTableMetaData table, DMLType dmlType)
+   {
+      try
+      {
+         DMLAuditHandlerInput.DMLType handlerDMLType = switch(dmlType)
+         {
+            case INSERT -> DMLAuditHandlerInput.DMLType.INSERT;
+            case UPDATE -> DMLAuditHandlerInput.DMLType.UPDATE;
+            case DELETE -> DMLAuditHandlerInput.DMLType.DELETE;
+            case OTHER -> null;
+         };
+
+         if(handlerDMLType == null)
+         {
+            return;
+         }
+
+         DMLAuditHandlerInput handlerInput = new DMLAuditHandlerInput()
+            .withTableName(table.getName())
+            .withDmlType(handlerDMLType)
+            .withNewRecords(input.getRecordList())
+            .withOldRecords(input.getOldRecordList())
+            .withTableActionInput(input.getTableActionInput())
+            .withTimestamp(Instant.now())
+            .withAuditContext(input.getAuditContext())
+            .withSession(QContext.getQSession());
+
+         new AuditHandlerExecutor().executeDMLHandlers(table.getName(), handlerInput);
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error executing DML audit handlers", e, logPair("table", table.getName()));
+      }
    }
 
 

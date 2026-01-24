@@ -54,6 +54,20 @@ mvn test -Dtest=ClassName                      # Run specific test
 mvn test -Dtest=ClassName#methodName           # Run specific test method
 ```
 
+## Static Analysis (SpotBugs + PMD)
+
+```bash
+mvn spotbugs:check -DskipTests                 # Run SpotBugs (report only)
+mvn pmd:check -DskipTests                      # Run PMD (report only)
+mvn spotbugs:gui -pl qqq-backend-core          # SpotBugs GUI for single module
+```
+
+**Configuration files:**
+- `spotbugs/exclude-filter.xml` - Exclusions for QQQ patterns (fluent builders, singletons)
+- `pmd/ruleset.xml` - Custom ruleset tuned for QQQ conventions
+
+**CI Integration:** Static analysis runs in parallel with tests on feature branches via `qqq-orb/static_analysis` job.
+
 ## Code Style (Strictly Enforced)
 
 ### Formatting
@@ -276,18 +290,17 @@ new IsolatedSpaRouteProvider()
 - Tries `OffsetDateTime.parse()` first, falls back to `LocalDateTime` parsing
 - Identifier quoting fixed - column names properly escaped for case sensitivity
 
-### Pluggable Audit Handlers (PR #356)
-- Infrastructure for multiple audit handlers alongside default audit system
-- Supports WORM/HIPAA-compliant storage use cases
-- Two handler types:
-  - `DMLAuditHandlerInterface` - receives full old/new QRecords after DML
-  - `ProcessedAuditHandlerInterface` - receives AuditSingleInput after audit insert
-- Key classes:
-  - `QAuditHandlerMetaData` - handler registration metadata
-  - `AuditHandlerExecutor` - executes handlers (sync/async)
-  - `AuditHandlerType` enum: DML, PROCESSED
-  - `AuditHandlerFailurePolicy` enum: LOG_AND_CONTINUE, FAIL_OPERATION
-- Registration: `qInstance.addAuditHandler(new QAuditHandlerMetaData()...)`
-- Per-table filtering via `withTableNames(Set.of("table1", "table2"))`
-- Async handlers use `CapturedContext` for QContext propagation
-- See `docs/PLAN-pluggable-audit-handlers.md` for full design
+### Static Analysis - SpotBugs + PMD (PR #369)
+- **SpotBugs 4.8.6.6** with FindSecBugs plugin for security analysis
+- **PMD 7.9.0** with custom ruleset for code quality
+- Report-only by default (use `-Dspotbugs.failOnError=true` to fail builds)
+- CI runs `static_analysis` job in parallel with tests on feature branches
+- Key exclusions: `EI_EXPOSE_REP` for fluent builders, singleton patterns
+- Summary: ~70 High, ~1,550 Medium findings (many false positives for QQQ patterns)
+- See `spotbugs-summary.csv` for full breakdown by bug type
+
+### QQQ-Orb @0.6.0
+- Added `static_analysis` job for SpotBugs + PMD
+- Jobs run in parallel with test jobs
+- Reports stored as CircleCI artifacts
+- Orb repo: `/Users/james.maes/Git.Local/QRun-IO/qqq-orb/`

@@ -26,6 +26,7 @@ import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
@@ -128,9 +129,11 @@ class QInstanceTest extends BaseTest
    void testGetTablePathNotInAnyApp() throws QException
    {
       QInstance qInstance = QContext.getQInstance();
+      qInstance.addTable(new QTableMetaData().withName("aTableInNoApps"));
 
-      GetInput getInput = new GetInput();
-
+      /////////////////////////////////////////////
+      // first run for a non-existing table name //
+      /////////////////////////////////////////////
       String tablePath = qInstance.getTablePath("notATable");
       assertNull(tablePath);
 
@@ -139,6 +142,46 @@ class QInstanceTest extends BaseTest
       ////////////////////////////////////////////////////////////////////////////////////////
       tablePath = qInstance.getTablePath("notATable");
       assertNull(tablePath);
+
+      //////////////////////////////////////
+      // now run for our table-in-no-apps //
+      //////////////////////////////////////
+      tablePath = qInstance.getTablePath("aTableInNoApps");
+      assertNull(tablePath);
+
+      ////////////////////////////////////////////////////////////////////////////////////////
+      // call again (to make sure getting from memoization works - verify w/ breakpoint...) //
+      ////////////////////////////////////////////////////////////////////////////////////////
+      tablePath = qInstance.getTablePath("aTableInNoApps");
+      assertNull(tablePath);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testTableInMultipleApps() throws QException
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+
+      QAppMetaData otherApp = new QAppMetaData()
+         .withName("otherApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON));
+      qInstance.addApp(otherApp);
+      otherApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 2);
+
+      QAppMetaData extraApp = new QAppMetaData()
+         .withName("extraApp")
+         .withChild(qInstance.getTable(TestUtils.TABLE_NAME_PERSON));
+      qInstance.addApp(extraApp);
+      extraApp.setChildAppAffinity(TestUtils.TABLE_NAME_PERSON, 1);
+
+      reInitInstanceInContext(qInstance);
+
+      String personTablePath = qInstance.getTablePath(TestUtils.TABLE_NAME_PERSON);
+      assertEquals("/otherApp/person", personTablePath);
    }
 
 }

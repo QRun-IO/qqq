@@ -87,6 +87,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -1080,6 +1081,11 @@ public class QInstanceValidator
             if(table.getShareableTableMetaData() != null)
             {
                table.getShareableTableMetaData().validate(qInstance, table, this);
+            }
+
+            for(QMenu menu : CollectionUtils.nonNullList(table.getMenus()))
+            {
+               menu.validate(this, qInstance, table);
             }
 
             runPlugins(QTableMetaData.class, table, qInstance);

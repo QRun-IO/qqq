@@ -24,11 +24,13 @@ package com.kingsrook.qqq.backend.core.model.metadata;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -157,6 +159,8 @@ public class QInstance
    private Map<String, String> memoizedTablePaths   = new HashMap<>();
    private Map<String, String> memoizedProcessPaths = new HashMap<>();
 
+   private ListingHash<String, PathWithAffinity> memoizedPathsMap = null;
+
    private JoinGraph joinGraph;
 
 
@@ -254,13 +258,109 @@ public class QInstance
       {
          QContext.withTemporaryContext(new CapturedContext(QContext.getQInstance(), new QSystemUserSession()), () ->
          {
-            MetaDataInput  input  = new MetaDataInput();
-            MetaDataOutput output = new MetaDataAction().execute(input);
-            memoizedTablePaths.put(tableName, searchAppTree(output.getAppTree(), tableName, AppTreeNodeType.TABLE, ""));
+            ////////////////////////////////////////////////////////
+            // get the (memoized) map of name to paths+affinities //
+            ////////////////////////////////////////////////////////
+            ListingHash<String, PathWithAffinity> memoizedPathsMap = getMemoizedPathsMap();
+
+            //////////////////////////////////////////
+            // get the list of paths for this table //
+            //////////////////////////////////////////
+            List<PathWithAffinity> pathWithAffinityList = memoizedPathsMap.get(tableName);
+            if(CollectionUtils.nullSafeHasContents(pathWithAffinityList))
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // sort the list of paths by affinity (desc), and return the first entry //
+               ///////////////////////////////////////////////////////////////////////////
+               pathWithAffinityList.sort(Comparator.comparing(PathWithAffinity::affinity).reversed());
+               memoizedTablePaths.put(tableName, pathWithAffinityList.getFirst().path);
+            }
+            else
+            {
+               //////////////////////////////////////////////
+               // else, if there are no paths, return null //
+               //////////////////////////////////////////////
+               memoizedTablePaths.put(tableName, null);
+            }
          });
       }
 
       return (memoizedTablePaths.get(tableName));
+   }
+
+
+
+   /***************************************************************************
+    * Get the memoizedPathsMap, building it if necessary.
+    * @see #buildPathsMap()
+    ***************************************************************************/
+   private ListingHash<String, PathWithAffinity> getMemoizedPathsMap() throws QException
+   {
+      if(memoizedPathsMap == null)
+      {
+         memoizedPathsMap = buildPathsMap();
+      }
+
+      return memoizedPathsMap;
+   }
+
+
+
+   /***************************************************************************
+    * build a map (ListingHash) keyed by object (e.g., table, process) names,
+    * with values being lists (typically singletons, but for tables in multiple
+    * apps, multi-valued) of records, containing the path to the table within
+    * an app, and an appAffinity value - indicating which app is preferred to
+    * be used for the table (e.g., in global contexts).
+    *
+    ***************************************************************************/
+   private ListingHash<String, PathWithAffinity> buildPathsMap() throws QException
+   {
+      MetaDataInput                         input    = new MetaDataInput();
+      MetaDataOutput                        output   = new MetaDataAction().execute(input);
+      ListingHash<String, PathWithAffinity> pathsMap = new ListingHash<>();
+      populatePathsMap(pathsMap, output.getAppTree(), "");
+      return (pathsMap);
+   }
+
+
+
+   /***************************************************************************
+    * recursive implementation used by buildPathsMap() to traverse the appTree
+    * and populate the pathsMap.
+    *
+    * @param pathsMap the map to populate (output parameter)
+    * @param appTreeNodes the nodes to process (for top-level call should be
+    *                     the app tree root nodes (from MetaDataAction).
+    * @param path the current path being built (e.g., accumulates entries with
+    *             recursive calls)
+    * @see #buildPathsMap()
+    ***************************************************************************/
+   private void populatePathsMap(ListingHash<String, PathWithAffinity> pathsMap, List<AppTreeNode> appTreeNodes, String path)
+   {
+      for(AppTreeNode appTreeNode : appTreeNodes)
+      {
+         if(appTreeNode.getType().equals(AppTreeNodeType.APP) && CollectionUtils.nullSafeHasContents(appTreeNode.getChildren()))
+         {
+            populatePathsMap(pathsMap, appTreeNode.getChildren(), path + "/" + appTreeNode.getName());
+         }
+         else
+         {
+            Integer affinity = Objects.requireNonNullElse(appTreeNode.getAppAffinity(), Integer.MIN_VALUE);
+            pathsMap.add(appTreeNode.getName(), new PathWithAffinity(path + "/" + appTreeNode.getName(), affinity));
+         }
+      }
+   }
+
+
+
+   /***************************************************************************
+    * private record to associate a path (through apps to a table, process, etc)
+    * with an affinity value indicating which app is preferred to be used for
+    * the table (e.g., in global contexts).
+    ***************************************************************************/
+   private record PathWithAffinity(String path, Integer affinity)
+   {
    }
 
 

@@ -39,12 +39,14 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
  ** These objects are organized into a tree - where each Node can have 0 or more
  ** other Nodes as children.
  *******************************************************************************/
-public class AppTreeNode
+public class AppTreeNode implements Cloneable
 {
    private AppTreeNodeType   type;
    private String            name;
    private String            label;
    private List<AppTreeNode> children;
+
+   private Integer appAffinity;
 
    private QIcon icon;
 
@@ -166,4 +168,67 @@ public class AppTreeNode
       }
       children.add(childTreeNode);
    }
+
+
+
+   /*******************************************************************************
+    * Getter for appAffinity
+    * @see #withAppAffinity(Integer)
+    *******************************************************************************/
+   public Integer getAppAffinity()
+   {
+      return (this.appAffinity);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for appAffinity
+    * @see #withAppAffinity(Integer)
+    *******************************************************************************/
+   public void setAppAffinity(Integer appAffinity)
+   {
+      this.appAffinity = appAffinity;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for appAffinity
+    *
+    * @param appAffinity
+    * appAffinity level for this child node, as it is related to its parent app.
+    * See {@link QAppMetaData#setChildAppAffinity(String, Integer)}.
+    * @return this
+    *******************************************************************************/
+   public AppTreeNode withAppAffinity(Integer appAffinity)
+   {
+      this.appAffinity = appAffinity;
+      return (this);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   @Override
+   public AppTreeNode clone()
+   {
+      try
+      {
+         AppTreeNode clone = (AppTreeNode) super.clone();
+         if(children != null)
+         {
+            clone.children = new ArrayList<>();
+            children.forEach(child -> clone.children.add(child.clone()));
+         }
+         return clone;
+      }
+      catch(CloneNotSupportedException e)
+      {
+         throw new AssertionError();
+      }
+   }
+
 }

@@ -140,6 +140,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                QRecord redirectStateRecord = GetAction.execute(oauth2MetaData.getRedirectStateTableName(), Map.of("state", context.get("state")));
                if(redirectStateRecord == null)
                {
+                  LOG.warn("OAuth callback state not found", logPair("state", context.get("state")));
                   throw (new QAuthenticationException("State not found"));
                }
                redirectUri.set(redirectStateRecord.getValueString("redirectUri"));
@@ -241,6 +242,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       }
       catch(Exception e)
       {
+         LOG.warn("Failed to create session", e, logPair("contextKeys", context.keySet()));
          throw (new QAuthenticationException("Failed to create session (token)", e));
       }
    }
@@ -252,10 +254,20 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
     ***************************************************************************/
    private QSession createSessionFromTokenRequest(TokenRequest tokenRequest) throws ParseException, IOException, QException
    {
+      ///////////////////////////////////////////////////////////////////////////
+      // log token request details before sending to aid debugging auth issues //
+      ///////////////////////////////////////////////////////////////////////////
+      LOG.debug("Sending token request",
+         logPair("tokenEndpoint", tokenRequest.getEndpointURI()),
+         logPair("clientId", tokenRequest.getClientAuthentication() != null ? tokenRequest.getClientAuthentication().getClientID() : null),
+         logPair("grantType", tokenRequest.getAuthorizationGrant() != null ? tokenRequest.getAuthorizationGrant().getType() : null));
+
       TokenResponse tokenResponse = TokenResponse.parse(tokenRequest.toHTTPRequest().send());
 
       if(tokenResponse.indicatesSuccess())
       {
+         LOG.debug("Token request succeeded", logPair("tokenEndpoint", tokenRequest.getEndpointURI()));
+
          AccessToken accessToken = tokenResponse.toSuccessResponse().getTokens().getAccessToken();
 
          ////////////////////////////////////////////////////////////////////
@@ -308,7 +320,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       else
       {
          ErrorObject errorObject = tokenResponse.toErrorResponse().getErrorObject();
-         LOG.info("Token request failed", logPair("code", errorObject.getCode()), logPair("description", errorObject.getDescription()));
+         LOG.warn("Token request failed",
+            logPair("code", errorObject.getCode()),
+            logPair("description", errorObject.getDescription()),
+            logPair("httpStatus", errorObject.getHTTPStatusCode()),
+            logPair("tokenEndpoint", tokenRequest.getEndpointURI()),
+            logPair("clientId", tokenRequest.getClientAuthentication() != null ? tokenRequest.getClientAuthentication().getClientID() : null));
          throw (new QAuthenticationException(errorObject.getDescription()));
       }
    }
@@ -361,6 +378,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          QTableMetaData stateTable = QContext.getQInstance().getTable(oauth2MetaData.getRedirectStateTableName());
          if(stateTable == null)
          {
+            LOG.error("OAuth redirect state table not defined in QInstance", logPair("tableName", oauth2MetaData.getRedirectStateTableName()));
             throw (new QAuthenticationException("The table specified as the oauthRedirectStateTableName [" + oauth2MetaData.getRedirectStateTableName() + "] is not defined in the QInstance"));
          }
 
@@ -382,6 +400,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                .withValue("redirectUri", originalUrl))).getRecords().get(0);
             if(CollectionUtils.nullSafeHasContents(insertedState.getErrors()))
             {
+               LOG.warn("Error storing OAuth redirect state", logPair("errors", insertedState.getErrorsAsString()));
                throw (new QAuthenticationException("Error storing redirect state: " + insertedState.getErrorsAsString()));
             }
          });
@@ -572,6 +591,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                DecodedJWT jwt = JWT.decode(accessToken);
                if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
                {
+                  LOG.warn("Session accessToken is expired", logPair("sessionUUID", sessionUUID));
                   throw (new QAuthenticationException("accessToken is expired"));
                }
 

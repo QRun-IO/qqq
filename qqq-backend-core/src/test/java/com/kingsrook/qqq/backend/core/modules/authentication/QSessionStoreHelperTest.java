@@ -24,26 +24,36 @@ package com.kingsrook.qqq.backend.core.modules.authentication;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
 /*******************************************************************************
- ** Unit test for QSessionStoreHelper.
- **
- ** These tests verify the behavior when the qbit-session-store module is NOT
- ** on the classpath, ensuring graceful degradation and backwards compatibility.
+ ** Unit test for QSessionStoreHelper and QSessionStoreRegistry.
  *******************************************************************************/
 class QSessionStoreHelperTest extends BaseTest
 {
 
+   @AfterEach
+   void tearDown()
+   {
+      ////////////////////////////////////////////////////
+      // Clear the registry after each test to isolate  //
+      ////////////////////////////////////////////////////
+      QSessionStoreRegistry.getInstance().clear();
+   }
+
+
+
    /*******************************************************************************
-    ** Test that session store is not available when QBit is not on classpath.
+    ** Test that session store is not available when no provider is registered.
     *******************************************************************************/
    @Test
-   void testIsSessionStoreAvailable_returnsFalseWhenQBitNotPresent()
+   void testIsSessionStoreAvailable_returnsFalseWhenNoProviderRegistered()
    {
       assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
    }
@@ -51,7 +61,19 @@ class QSessionStoreHelperTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Test that load returns empty Optional when store is not available.
+    ** Test that session store is available when provider is registered.
+    *******************************************************************************/
+   @Test
+   void testIsSessionStoreAvailable_returnsTrueWhenProviderRegistered()
+   {
+      QSessionStoreRegistry.getInstance().register(new TestSessionStoreProvider());
+      assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isTrue();
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that load returns empty Optional when no provider is registered.
     *******************************************************************************/
    @Test
    void testLoadSession_returnsEmptyWhenNotAvailable()
@@ -63,7 +85,7 @@ class QSessionStoreHelperTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Test that store is a no-op when QBit is not available.
+    ** Test that store is a no-op when no provider is registered.
     *******************************************************************************/
    @Test
    void testStoreSession_isNoOpWhenNotAvailable()
@@ -79,7 +101,7 @@ class QSessionStoreHelperTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Test that touch is a no-op when QBit is not available.
+    ** Test that touch is a no-op when no provider is registered.
     *******************************************************************************/
    @Test
    void testTouchSession_isNoOpWhenNotAvailable()
@@ -93,7 +115,7 @@ class QSessionStoreHelperTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Test that getDefaultTtl returns 1 hour fallback when QBit is not available.
+    ** Test that getDefaultTtl returns 1 hour fallback when no provider is registered.
     *******************************************************************************/
    @Test
    void testGetDefaultTtl_returnsOneHourFallbackWhenNotAvailable()
@@ -105,17 +127,139 @@ class QSessionStoreHelperTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Test that repeated calls to isSessionStoreAvailable are consistent.
+    ** Test that loadAndTouchSession returns empty when no provider is registered.
     *******************************************************************************/
    @Test
-   void testIsSessionStoreAvailable_isMemoized()
+   void testLoadAndTouchSession_returnsEmptyWhenNotAvailable()
    {
-      ///////////////////////////////////////////////////////////////////////
-      // call multiple times to verify the memoization doesn't break state //
-      ///////////////////////////////////////////////////////////////////////
-      assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
-      assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
-      assertThat(QSessionStoreHelper.isSessionStoreAvailable()).isFalse();
+      Optional<QSession> result = QSessionStoreHelper.loadAndTouchSession("test-uuid");
+      assertThat(result).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Test store and load with a registered provider.
+    *******************************************************************************/
+   @Test
+   void testStoreAndLoad_withProvider()
+   {
+      TestSessionStoreProvider provider = new TestSessionStoreProvider();
+      QSessionStoreRegistry.getInstance().register(provider);
+
+      QSession session = new QSession();
+      session.setUuid("test-uuid");
+
+      QSessionStoreHelper.storeSession("test-uuid", session, Duration.ofHours(1));
+
+      Optional<QSession> result = QSessionStoreHelper.loadSession("test-uuid");
+      assertThat(result).isPresent();
+      assertThat(result.get().getUuid()).isEqualTo("test-uuid");
+   }
+
+
+
+   /*******************************************************************************
+    ** Test loadAndTouchSession with a registered provider.
+    *******************************************************************************/
+   @Test
+   void testLoadAndTouchSession_withProvider()
+   {
+      TestSessionStoreProvider provider = new TestSessionStoreProvider();
+      QSessionStoreRegistry.getInstance().register(provider);
+
+      QSession session = new QSession();
+      session.setUuid("test-uuid");
+
+      QSessionStoreHelper.storeSession("test-uuid", session, Duration.ofHours(1));
+
+      Optional<QSession> result = QSessionStoreHelper.loadAndTouchSession("test-uuid");
+      assertThat(result).isPresent();
+      assertThat(result.get().getUuid()).isEqualTo("test-uuid");
+      assertThat(provider.touchCount).isEqualTo(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that getDefaultTtl returns provider's TTL when registered.
+    *******************************************************************************/
+   @Test
+   void testGetDefaultTtl_withProvider()
+   {
+      TestSessionStoreProvider provider = new TestSessionStoreProvider();
+      QSessionStoreRegistry.getInstance().register(provider);
+
+      Duration ttl = QSessionStoreHelper.getDefaultTtl();
+      assertThat(ttl).isEqualTo(Duration.ofMinutes(30));
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that registry replaces existing provider with warning.
+    *******************************************************************************/
+   @Test
+   void testRegistry_replacesProvider()
+   {
+      TestSessionStoreProvider provider1 = new TestSessionStoreProvider();
+      TestSessionStoreProvider provider2 = new TestSessionStoreProvider();
+
+      QSessionStoreRegistry.getInstance().register(provider1);
+      QSessionStoreRegistry.getInstance().register(provider2);
+
+      assertThat(QSessionStoreRegistry.getInstance().getProvider()).contains(provider2);
+   }
+
+
+
+   /*******************************************************************************
+    ** Test session store provider for testing purposes.
+    *******************************************************************************/
+   private static class TestSessionStoreProvider implements QSessionStoreProviderInterface
+   {
+      private final ConcurrentHashMap<String, QSession> sessions = new ConcurrentHashMap<>();
+      int touchCount = 0;
+
+
+
+      @Override
+      public void store(String sessionUuid, QSession session, Duration ttl)
+      {
+         sessions.put(sessionUuid, session);
+      }
+
+
+
+      @Override
+      public Optional<QSession> load(String sessionUuid)
+      {
+         return Optional.ofNullable(sessions.get(sessionUuid));
+      }
+
+
+
+      @Override
+      public void remove(String sessionUuid)
+      {
+         sessions.remove(sessionUuid);
+      }
+
+
+
+      @Override
+      public void touch(String sessionUuid)
+      {
+         touchCount++;
+      }
+
+
+
+      @Override
+      public Duration getDefaultTtl()
+      {
+         return Duration.ofMinutes(30);
+      }
    }
 
 }

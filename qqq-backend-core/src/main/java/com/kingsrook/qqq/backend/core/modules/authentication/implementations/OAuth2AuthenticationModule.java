@@ -192,10 +192,9 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             ///////////////////////////////////////////////////////////////////////////
             if(Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
             {
-               Optional<QSession> cachedSession = QSessionStoreHelper.loadSession(uuid);
+               Optional<QSession> cachedSession = QSessionStoreHelper.loadAndTouchSession(uuid);
                if(cachedSession.isPresent())
                {
-                  QSessionStoreHelper.touchSession(uuid);
                   return cachedSession.get();
                }
             }

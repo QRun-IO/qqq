@@ -22,7 +22,6 @@
 package com.kingsrook.qqq.backend.core.modules.authentication;
 
 
-import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -31,63 +30,45 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Helper class for optionally interacting with the QSessionStore QBit.
+ ** Helper class for interacting with the session store.
  **
- ** Uses reflection to avoid a hard dependency on the qbit-session-store module.
- ** All methods are designed to fail silently (returning empty/default values)
- ** when the QBit is not on the classpath, ensuring backwards compatibility.
+ ** Delegates to the provider registered with QSessionStoreRegistry. All methods
+ ** are designed to fail silently (returning empty/default values) when no
+ ** provider is registered, ensuring backwards compatibility.
  *******************************************************************************/
 public class QSessionStoreHelper
 {
    private static final QLogger LOG = QLogger.getLogger(QSessionStoreHelper.class);
 
-   private static final String CONTEXT_CLASS = "com.kingsrook.qbits.sessionstore.QSessionStoreQBitContext";
-
-   private static Boolean sessionStoreAvailable = null;
+   private static final Duration DEFAULT_TTL = Duration.ofHours(1);
 
 
 
    /***************************************************************************
-    ** Check if the session store QBit is available on the classpath.
+    ** Check if a session store provider is available.
     ***************************************************************************/
    public static boolean isSessionStoreAvailable()
    {
-      if(sessionStoreAvailable == null)
-      {
-         try
-         {
-            Class.forName(CONTEXT_CLASS);
-            sessionStoreAvailable = true;
-         }
-         catch(ClassNotFoundException e)
-         {
-            sessionStoreAvailable = false;
-         }
-      }
-      return sessionStoreAvailable;
+      return QSessionStoreRegistry.getInstance().isAvailable();
    }
 
 
 
    /***************************************************************************
-    ** Store a session in the session store (if available and configured).
+    ** Store a session in the session store (if available).
     ***************************************************************************/
    public static void storeSession(String sessionUuid, QSession session, Duration ttl)
    {
-      if(!isSessionStoreAvailable())
+      Optional<QSessionStoreProviderInterface> provider = QSessionStoreRegistry.getInstance().getProvider();
+      if(provider.isEmpty())
       {
          return;
       }
 
       try
       {
-         Object provider = getProvider();
-         if(provider != null)
-         {
-            Method storeMethod = provider.getClass().getMethod("store", String.class, QSession.class, Duration.class);
-            storeMethod.invoke(provider, sessionUuid, session, ttl);
-            LOG.debug("Stored session in session store", logPair("sessionUuid", sessionUuid));
-         }
+         provider.get().store(sessionUuid, session, ttl);
+         LOG.debug("Stored session in session store", logPair("sessionUuid", sessionUuid));
       }
       catch(Exception e)
       {
@@ -98,29 +79,24 @@ public class QSessionStoreHelper
 
 
    /***************************************************************************
-    ** Load a session from the session store (if available and configured).
+    ** Load a session from the session store (if available).
     ***************************************************************************/
-   @SuppressWarnings("unchecked")
    public static Optional<QSession> loadSession(String sessionUuid)
    {
-      if(!isSessionStoreAvailable())
+      Optional<QSessionStoreProviderInterface> provider = QSessionStoreRegistry.getInstance().getProvider();
+      if(provider.isEmpty())
       {
          return Optional.empty();
       }
 
       try
       {
-         Object provider = getProvider();
-         if(provider != null)
+         Optional<QSession> result = provider.get().load(sessionUuid);
+         if(result.isPresent())
          {
-            Method loadMethod = provider.getClass().getMethod("load", String.class);
-            Optional<QSession> result = (Optional<QSession>) loadMethod.invoke(provider, sessionUuid);
-            if(result.isPresent())
-            {
-               LOG.debug("Loaded session from session store", logPair("sessionUuid", sessionUuid));
-            }
-            return result;
+            LOG.debug("Loaded session from session store", logPair("sessionUuid", sessionUuid));
          }
+         return result;
       }
       catch(Exception e)
       {
@@ -133,23 +109,53 @@ public class QSessionStoreHelper
 
 
    /***************************************************************************
-    ** Touch a session to reset its TTL (if available and configured).
+    ** Load a session and touch it to reset its TTL in a single operation.
+    **
+    ** This is more efficient than calling loadSession + touchSession separately,
+    ** as providers may implement optimized single-call versions (e.g., Redis
+    ** GETEX, combined SQL query).
+    ***************************************************************************/
+   public static Optional<QSession> loadAndTouchSession(String sessionUuid)
+   {
+      Optional<QSessionStoreProviderInterface> provider = QSessionStoreRegistry.getInstance().getProvider();
+      if(provider.isEmpty())
+      {
+         return Optional.empty();
+      }
+
+      try
+      {
+         Optional<QSession> result = provider.get().loadAndTouch(sessionUuid);
+         if(result.isPresent())
+         {
+            LOG.debug("Loaded and touched session from session store", logPair("sessionUuid", sessionUuid));
+         }
+         return result;
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Failed to load and touch session in session store", e, logPair("sessionUuid", sessionUuid));
+      }
+
+      return Optional.empty();
+   }
+
+
+
+   /***************************************************************************
+    ** Touch a session to reset its TTL (if available).
     ***************************************************************************/
    public static void touchSession(String sessionUuid)
    {
-      if(!isSessionStoreAvailable())
+      Optional<QSessionStoreProviderInterface> provider = QSessionStoreRegistry.getInstance().getProvider();
+      if(provider.isEmpty())
       {
          return;
       }
 
       try
       {
-         Object provider = getProvider();
-         if(provider != null)
-         {
-            Method touchMethod = provider.getClass().getMethod("touch", String.class);
-            touchMethod.invoke(provider, sessionUuid);
-         }
+         provider.get().touch(sessionUuid);
       }
       catch(Exception e)
       {
@@ -160,45 +166,26 @@ public class QSessionStoreHelper
 
 
    /***************************************************************************
-    ** Get the configured default TTL from the session store config.
+    ** Get the configured default TTL from the session store provider.
     ***************************************************************************/
    public static Duration getDefaultTtl()
    {
-      if(!isSessionStoreAvailable())
+      Optional<QSessionStoreProviderInterface> provider = QSessionStoreRegistry.getInstance().getProvider();
+      if(provider.isEmpty())
       {
-         return Duration.ofHours(1);
+         return DEFAULT_TTL;
       }
 
       try
       {
-         Class<?> contextClass = Class.forName(CONTEXT_CLASS);
-         Method getConfigMethod = contextClass.getMethod("getConfig");
-         Object config = getConfigMethod.invoke(null);
-
-         if(config != null)
-         {
-            Method getTtlMethod = config.getClass().getMethod("getDefaultTtl");
-            return (Duration) getTtlMethod.invoke(config);
-         }
+         return provider.get().getDefaultTtl();
       }
       catch(Exception e)
       {
-         LOG.debug("Failed to get default TTL from session store config", e);
+         LOG.debug("Failed to get default TTL from session store provider", e);
       }
 
-      return Duration.ofHours(1);
-   }
-
-
-
-   /***************************************************************************
-    ** Get the provider instance from the context class.
-    ***************************************************************************/
-   private static Object getProvider() throws Exception
-   {
-      Class<?> contextClass = Class.forName(CONTEXT_CLASS);
-      Method getProviderMethod = contextClass.getMethod("getProvider");
-      return getProviderMethod.invoke(null);
+      return DEFAULT_TTL;
    }
 
 }

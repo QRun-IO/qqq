@@ -38,12 +38,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class QSessionStoreHelperTest extends BaseTest
 {
 
+   /*******************************************************************************
+    ** Clear the registry after each test to isolate test cases.
+    *******************************************************************************/
    @AfterEach
    void tearDown()
    {
-      ////////////////////////////////////////////////////
-      // Clear the registry after each test to isolate  //
-      ////////////////////////////////////////////////////
       QSessionStoreRegistry.getInstance().clear();
    }
 

@@ -1,34 +1,36 @@
 # Session State
 
-Last updated: 2026-01-23
+Last updated: 2026-01-25
 
 ## Current Branch
-`feature/session-store-integration`
+`develop`
 
 ## Active Work
 
-### QSessionStore QBit Integration (PR #381)
-**Status:** Complete - CI passing, awaiting review
+### Interface + Registry Refactoring (PR #381)
+**Status:** COMPLETE - Both CI pipelines passing
 
 **What was done:**
-- Added `QSessionStoreHelper.java` - reflection-based bridge to optional `qbit-session-store` QBit
-- Added `sessionStoreEnabled` field to `QAuthenticationMetaData` (default: false)
-- Added `clearOIDCProviderMetadataCache()` to `OAuth2AuthenticationModule` for test stability
-- Created `QSessionStoreHelperTest.java` - tests behavior when QBit is NOT on classpath
-- Updated `OAuth2AuthenticationModuleIntegrationTest` to clear OIDC cache in @BeforeEach
+- Addressed Darin's PR review feedback: "Core should never know about qbits"
+- Refactored from reflection to proper Interface + Registry pattern
+- Created `QSessionStoreProviderInterface` and `QSessionStoreRegistry` in core
+- qbit-session-store now extends core interface and registers on startup
+- Added `loadAndTouchSession()` combined operation (reduces remote round-trips)
 
-**Key learnings:**
-- Static memoization (`oidcProviderMetadataMemoization`) causes test pollution when WireMock ports change
-- Reflection pattern allows optional dependency without compile-time coupling
+**Architecture pattern established:**
+- Core defines interfaces; qbits provide implementations
+- Qbits register themselves with core on startup
+- Core accesses via registry with graceful fallback
 
-**Related repos:**
-- `qbit-session-store` - Separate repo with InMemory, TableBased, Redis providers
+**Commits:**
+- QQQ: `48c72a2e2`, `205cd5808`
+- qbit-session-store: `3574a52`
 
 ## Open PRs
 
 | PR | Branch | Description | Status |
 |----|--------|-------------|--------|
-| #381 | feature/session-store-integration | QSessionStore QBit integration | CI passing |
+| #381 | feature/session-store-integration | Interface+Registry refactoring | Review addressed |
 | #373 | - | OAuth2 customizer tokens, scopes API | Awaiting review |
 | #356 | - | Pluggable audit handler system | Awaiting review |
 
@@ -39,10 +41,16 @@ Say **"continue from last session"** to:
 2. Read `docs/TODO.md` for pending tasks
 3. Resume work
 
-## Files Modified This Session
+## Key Files Modified
 
-- `qqq-backend-core/.../modules/authentication/QSessionStoreHelper.java` (new)
-- `qqq-backend-core/.../modules/authentication/QSessionStoreHelperTest.java` (new)
-- `qqq-backend-core/.../model/metadata/authentication/QAuthenticationMetaData.java` (modified)
-- `qqq-backend-core/.../modules/authentication/implementations/OAuth2AuthenticationModule.java` (modified)
-- `qqq-backend-core/.../modules/authentication/implementations/OAuth2AuthenticationModuleIntegrationTest.java` (modified)
+**qqq-backend-core:**
+- `QSessionStoreProviderInterface.java` (new)
+- `QSessionStoreRegistry.java` (new)
+- `QSessionStoreHelper.java` (refactored)
+- `QSessionStoreHelperTest.java` (updated)
+- `OAuth2AuthenticationModule.java` (updated)
+
+**qbit-session-store:**
+- `QSessionStoreProviderInterface.java` (extends core)
+- `QSessionStoreQBitProducer.java` (registers with core)
+- All providers (added `getDefaultTtl()`, `loadAndTouch()`)

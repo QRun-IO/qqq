@@ -345,3 +345,28 @@ new IsolatedSpaRouteProvider()
 - When WireMock restarts on different ports between tests, cached URLs become stale causing "Connection refused"
 - **Fix:** Added `clearOIDCProviderMetadataCache()` method to clear memoization between tests
 - Call in test's `@BeforeEach` when using WireMock with dynamic ports
+
+### Architecture: Core/QBit Boundaries (Interface + Registry Pattern)
+**Pattern:** Core defines interfaces; QBits provide implementations. Never invert this.
+
+**Implementation (PR #381 - COMPLETE):**
+- `QSessionStoreProviderInterface` defined in qqq-backend-core
+- `QSessionStoreRegistry` singleton for implementations to register themselves
+- QBit calls `QSessionStoreRegistry.getInstance().register(provider)` on startup
+- Core uses `QSessionStoreRegistry.getInstance().getProvider()` with graceful fallback
+
+**Why NOT reflection:**
+- Core should NEVER know about specific qbits, even reflectively
+- Reflection is brittle, lacks compile-time safety, hard to refactor
+- Interface + Registry maintains proper dependency direction
+
+**Remote store optimization:**
+- `loadAndTouchSession()` combines load + TTL reset in single round-trip
+- Redis uses GETEX command; TableBased uses single transaction
+- Interface provides default implementation; providers override with optimized versions
+
+**Key files:**
+- `QSessionStoreProviderInterface.java` - Core interface
+- `QSessionStoreRegistry.java` - Singleton registry
+- `QSessionStoreHelper.java` - Uses registry, graceful fallback
+- Blog post: https://github.com/orgs/QRun-IO/discussions/382

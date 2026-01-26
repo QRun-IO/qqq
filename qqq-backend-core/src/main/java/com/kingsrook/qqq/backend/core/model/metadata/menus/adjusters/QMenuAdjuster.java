@@ -232,6 +232,22 @@ public class QMenuAdjuster
 
 
    /***************************************************************************
+    * Adds a new menu item at the specified index of a menu item container.
+    *
+    * <p>If the index is out of bounds - this will throw IndexOutOfBoundsException</p>
+    *
+    * @param menuItemContainer the menu item container to modify
+    * @param index (0-based) of the insertion point (see list.add)
+    * @param newItem the menu item to add
+    ***************************************************************************/
+   public static void addAtIndex(QMenuItemContainerInterface menuItemContainer, int index, QMenuItemInterface newItem)
+   {
+      menuItemContainer.getItems().add(index, newItem);
+   }
+
+
+
+   /***************************************************************************
     * Replace the first menu that matches the given matcher with a replacement
     * item.
     *

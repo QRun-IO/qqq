@@ -247,6 +247,15 @@ class QMenuAdjusterTest extends BaseTest
          assertEquals("Custom", menu.getItems().get(menu.getItems().size() - 2).getLabel());
          assertEquals(QMenuDefaultViewScreenActionsMenu.FooterSubList.class, menu.getItems().get(menu.getItems().size() - 1).getClass());
       }
+
+      ///////////////////////////
+      // add at specific index //
+      ///////////////////////////
+      {
+         QMenuDefaultViewScreenActionsMenu menu = new QMenuDefaultViewScreenActionsMenu();
+         QMenuAdjuster.addAtIndex(menu, 3, new CustomMenuItem());
+         assertEquals("Custom", menu.getItems().get(3).getLabel());
+      }
    }
 
 

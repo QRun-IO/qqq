@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.model.dashboard.widgets;
 
 
 import java.util.List;
+import java.util.Map;
 
 
 /*******************************************************************************
@@ -40,6 +41,8 @@ public class FilterAndColumnsSetupData extends QWidgetData
    private List<String> filterDefaultFieldNames;
    private List<String> omitExposedJoins;
 
+   private Map<String, String> filterDefaultFieldNameSourceFieldNames;
+
    private Boolean isApiVersioned = false;
    private String  apiName;
    private String  apiPath;
@@ -47,6 +50,9 @@ public class FilterAndColumnsSetupData extends QWidgetData
 
    private String filterFieldName = "queryFilterJson";
    private String columnFieldName = "columnsJson";
+
+   private String modalHeader;
+   private String editButtonLabel;
 
 
 
@@ -517,6 +523,128 @@ public class FilterAndColumnsSetupData extends QWidgetData
    public FilterAndColumnsSetupData withOmitExposedJoins(List<String> omitExposedJoins)
    {
       this.omitExposedJoins = omitExposedJoins;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for modalHeader
+    * @see #withModalHeader(String)
+    *******************************************************************************/
+   public String getModalHeader()
+   {
+      return (this.modalHeader);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for modalHeader
+    * @see #withModalHeader(String)
+    *******************************************************************************/
+   public void setModalHeader(String modalHeader)
+   {
+      this.modalHeader = modalHeader;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for modalHeader
+    *
+    * @param modalHeader
+    * Customize the header text for the modal dialog that appears when editing filters.
+    * Default value depends on the frontend, but "Edit Filters" is a reasonable default.
+    * @return this
+    *******************************************************************************/
+   public FilterAndColumnsSetupData withModalHeader(String modalHeader)
+   {
+      this.modalHeader = modalHeader;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for editButtonLabel
+    * @see #withEditButtonLabel(String)
+    *******************************************************************************/
+   public String getEditButtonLabel()
+   {
+      return (this.editButtonLabel);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for editButtonLabel
+    * @see #withEditButtonLabel(String)
+    *******************************************************************************/
+   public void setEditButtonLabel(String editButtonLabel)
+   {
+      this.editButtonLabel = editButtonLabel;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for editButtonLabel
+    *
+    * @param editButtonLabel
+    * Customize the text text for an edit button to be displayed with the widget.
+    * Default value depends on the frontend, but "Edit Filters" is a reasonable default.
+    * @return this
+    *******************************************************************************/
+   public FilterAndColumnsSetupData withEditButtonLabel(String editButtonLabel)
+   {
+      this.editButtonLabel = editButtonLabel;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for filterDefaultFieldNameSourceFieldNames
+    * @see #withFilterDefaultFieldNameSourceFieldNames(Map)
+    *******************************************************************************/
+   public Map<String, String> getFilterDefaultFieldNameSourceFieldNames()
+   {
+      return (this.filterDefaultFieldNameSourceFieldNames);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for filterDefaultFieldNameSourceFieldNames
+    * @see #withFilterDefaultFieldNameSourceFieldNames(Map)
+    *******************************************************************************/
+   public void setFilterDefaultFieldNameSourceFieldNames(Map<String, String> filterDefaultFieldNameSourceFieldNames)
+   {
+      this.filterDefaultFieldNameSourceFieldNames = filterDefaultFieldNameSourceFieldNames;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for filterDefaultFieldNameSourceFieldNames
+    *
+    * @param filterDefaultFieldNameSourceFieldNames
+    * If there are filterDefaultFieldNames - the field names in that list must be
+    * field names from the table being filtered.  However - in case the source values
+    * for those fields come from fields on the record with different names, then this
+    * map allows you to specify the source field names for each filterDefaultFieldName.
+    *
+    * <p>
+    *    For example, if the base table has a field "type", and the table being filtered
+    *    has a field "typeName", then the map would contain an entry with key "type" and
+    *    value "typeName" (and filterDefaultFieldNames would contain "type").
+    * </p>
+    * @return this
+    *******************************************************************************/
+   public FilterAndColumnsSetupData withFilterDefaultFieldNameSourceFieldNames(Map<String, String> filterDefaultFieldNameSourceFieldNames)
+   {
+      this.filterDefaultFieldNameSourceFieldNames = filterDefaultFieldNameSourceFieldNames;
       return (this);
    }
 

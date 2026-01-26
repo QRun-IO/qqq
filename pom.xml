@@ -203,7 +203,7 @@
       <dependency>
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
-        <version>4.33.3</version>
+        <version>4.33.4</version>
       </dependency>
       <!-- Security: Exclude vulnerable org.iq80.snappy from transitive dependencies -->
       <dependency>
@@ -242,7 +242,7 @@
       <dependency>
         <groupId>org.assertj</groupId>
         <artifactId>assertj-core</artifactId>
-        <version>3.27.6</version>
+        <version>3.27.7</version>
         <scope>test</scope>
       </dependency>
     </dependencies>

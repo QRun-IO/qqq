@@ -53,6 +53,7 @@ public class AsyncRecordPipeLoop
    private Integer minRecordsToConsume = 10;
    private String  forcedJobUUID;
 
+   private static boolean doFinalFlushInSupplierThread = System.getProperty("qqq.AsyncRecordPipeLoop.doFinalFlushInSupplierThread", "true").equalsIgnoreCase("true");
 
 
    /*******************************************************************************
@@ -81,7 +82,20 @@ public class AsyncRecordPipeLoop
          asyncJobManager.setForcedJobUUID(getForcedJobUUID());
       }
 
-      String jobUUID = asyncJobManager.startJob(jobName, supplier::apply);
+      String jobUUID = asyncJobManager.startJob(jobName, (callback) ->
+         {
+            Serializable output = supplier.apply(callback);
+
+            if(doFinalFlushInSupplierThread)
+            {
+               if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+               {
+                  bufferedRecordPipe.finalFlush();
+               }
+            }
+
+            return (output);
+         });
       LOG.debug("Started supplier job [" + jobUUID + "] for record pipe.");
 
       AsyncJobState  jobState       = AsyncJobState.RUNNING;
@@ -162,9 +176,12 @@ public class AsyncRecordPipeLoop
          jobState = asyncJobStatus.getState();
       }
 
-      if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+      if(!doFinalFlushInSupplierThread)
       {
-         bufferedRecordPipe.finalFlush();
+         if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+         {
+            bufferedRecordPipe.finalFlush();
+         }
       }
 
       LOG.debug("Job [" + jobUUID + "][" + jobName + "] completed with status: " + asyncJobStatus);

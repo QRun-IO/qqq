@@ -79,16 +79,18 @@ public class QFrontendAppMetaData
          List<String> filteredTables    = CollectionUtils.nonNullList(section.getTables()).stream().filter(n -> metaDataOutput.getTables().containsKey(n)).toList();
          List<String> filteredProcesses = CollectionUtils.nonNullList(section.getProcesses()).stream().filter(n -> metaDataOutput.getProcesses().containsKey(n)).toList();
          List<String> filteredReports   = CollectionUtils.nonNullList(section.getReports()).stream().filter(n -> metaDataOutput.getReports().containsKey(n)).toList();
+         List<String> filteredApps      = CollectionUtils.nonNullList(section.getApps());
 
          //////////////////////////////////////////////////////
          // only include the section if it has some contents //
          //////////////////////////////////////////////////////
-         if(!filteredTables.isEmpty() || !filteredProcesses.isEmpty() || !filteredReports.isEmpty())
+         if(!filteredTables.isEmpty() || !filteredApps.isEmpty() || !filteredProcesses.isEmpty() || !filteredReports.isEmpty())
          {
             QAppSection clonedSection = section.clone();
             clonedSection.setTables(filteredTables);
             clonedSection.setProcesses(filteredProcesses);
             clonedSection.setReports(filteredReports);
+            clonedSection.setApps(filteredApps);
             filteredSections.add(clonedSection);
          }
       }

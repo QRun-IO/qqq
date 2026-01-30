@@ -44,6 +44,7 @@ public class AppTreeNode implements Cloneable
    private AppTreeNodeType   type;
    private String            name;
    private String            label;
+   private Boolean           hideChildrenFromNavigation = false;
    private List<AppTreeNode> children;
 
    private Integer appAffinity;
@@ -229,6 +230,58 @@ public class AppTreeNode implements Cloneable
       {
          throw new AssertionError();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hideChildrenFromNavigation
+    *******************************************************************************/
+   public Boolean getHideChildrenFromNavigation()
+   {
+      return (this.hideChildrenFromNavigation);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hideChildrenFromNavigation
+    *******************************************************************************/
+   public void setHideChildrenFromNavigation(Boolean hideChildrenFromNavigation)
+   {
+      this.hideChildrenFromNavigation = hideChildrenFromNavigation;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hideChildrenFromNavigation
+    *******************************************************************************/
+   public AppTreeNode withHideChildrenFromNavigation(Boolean hideChildrenFromNavigation)
+   {
+      this.hideChildrenFromNavigation = hideChildrenFromNavigation;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for children
+    *******************************************************************************/
+   public void setChildren(List<AppTreeNode> children)
+   {
+      this.children = children;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for children
+    *******************************************************************************/
+   public AppTreeNode withChildren(List<AppTreeNode> children)
+   {
+      this.children = children;
+      return (this);
    }
 
 }

@@ -37,6 +37,7 @@ public class QAppSection implements Cloneable, QMetaDataObject
    private QIcon  icon;
 
    private List<String> tables;
+   private List<String> apps;
    private List<String> processes;
    private List<String> reports;
 
@@ -334,4 +335,52 @@ public class QAppSection implements Cloneable, QMetaDataObject
       this.icon = icon;
       return (this);
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for apps
+    *******************************************************************************/
+   public List<String> getApps()
+   {
+      return (this.apps);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for apps
+    *******************************************************************************/
+   public void setApps(List<String> apps)
+   {
+      this.apps = apps;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for apps
+    *******************************************************************************/
+   public QAppSection withApps(List<String> apps)
+   {
+      this.apps = apps;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for apps
+    **
+    *******************************************************************************/
+   public QAppSection withApp(String appName)
+   {
+      if(this.apps == null)
+      {
+         this.apps = new ArrayList<>();
+      }
+      this.apps.add(appName);
+      return (this);
+   }
+
 }

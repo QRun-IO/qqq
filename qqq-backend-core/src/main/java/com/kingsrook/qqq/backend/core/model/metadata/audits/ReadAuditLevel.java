@@ -23,25 +23,11 @@ package com.kingsrook.qqq.backend.core.model.metadata.audits;
 
 
 /*******************************************************************************
- ** Type of audit handler - determines which hook point it receives events from.
+ ** Level of read (view) auditing to perform on a table.
  *******************************************************************************/
-public enum AuditHandlerType
+public enum ReadAuditLevel
 {
-   /***************************************************************************
-    ** Handler receives raw DML events with full record snapshots.
-    ** Called from DMLAuditAction with old and new QRecords.
-    ***************************************************************************/
-   DML,
-
-   /***************************************************************************
-    ** Handler receives processed audit events (AuditSingleInput).
-    ** Called from AuditAction after audit records are built.
-    ***************************************************************************/
-   PROCESSED,
-
-   /***************************************************************************
-    ** Handler receives read audit events (view/query).
-    ** Called from ReadAuditAction after read operations complete.
-    ***************************************************************************/
-   READ
+   NONE,
+   GET,
+   GET_AND_QUERY
 }

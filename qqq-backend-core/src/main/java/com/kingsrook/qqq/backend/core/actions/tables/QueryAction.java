@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.audits.ReadAuditAction;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -49,6 +50,7 @@ import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.audits.ReadAuditInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -165,6 +167,11 @@ public class QueryAction
       if(queryInput.getRecordPipe() == null)
       {
          postRecordActions(queryOutput.getRecords());
+      }
+
+      if(queryInput.getRecordPipe() == null)
+      {
+         ReadAuditAction.executeAsync(table, queryInput, queryOutput.getRecords(), ReadAuditInput.ReadType.QUERY, queryInput.getFilter());
       }
 
       return queryOutput;

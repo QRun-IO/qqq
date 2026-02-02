@@ -19,29 +19,26 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.kingsrook.qqq.backend.core.model.metadata.audits;
+package com.kingsrook.qqq.backend.core.actions.audits;
+
+
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.audits.ReadAuditHandlerInput;
 
 
 /*******************************************************************************
- ** Type of audit handler - determines which hook point it receives events from.
+ ** Handler interface for receiving read audit events (views and queries).
+ ** Called from ReadAuditAction after read operations complete.
  *******************************************************************************/
-public enum AuditHandlerType
+public interface ReadAuditHandlerInterface extends AuditHandlerInterface
 {
-   /***************************************************************************
-    ** Handler receives raw DML events with full record snapshots.
-    ** Called from DMLAuditAction with old and new QRecords.
-    ***************************************************************************/
-   DML,
 
    /***************************************************************************
-    ** Handler receives processed audit events (AuditSingleInput).
-    ** Called from AuditAction after audit records are built.
+    ** Handle a read audit event.
+    **
+    ** @param input contains the table, read type, records, and result count
+    ** @throws QException if processing fails
     ***************************************************************************/
-   PROCESSED,
+   void handleReadAudit(ReadAuditHandlerInput input) throws QException;
 
-   /***************************************************************************
-    ** Handler receives read audit events (view/query).
-    ** Called from ReadAuditAction after read operations complete.
-    ***************************************************************************/
-   READ
 }

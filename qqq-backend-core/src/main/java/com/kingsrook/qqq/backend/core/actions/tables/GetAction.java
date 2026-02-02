@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.audits.ReadAuditAction;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -42,6 +43,7 @@ import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.audits.ReadAuditInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -155,6 +157,11 @@ public class GetAction
       if(getOutput.getRecord() != null && !usingDefaultGetInterface)
       {
          getOutput.setRecord(postRecordActions(getOutput.getRecord()));
+      }
+
+      if(getOutput.getRecord() != null)
+      {
+         ReadAuditAction.executeAsync(table, getInput, List.of(getOutput.getRecord()), ReadAuditInput.ReadType.GET, null);
       }
 
       return getOutput;
@@ -301,14 +308,26 @@ public class GetAction
       {
          QueryInput queryInput = convertGetInputToQueryInput(getInput);
 
-         QueryOutput queryOutput = new QueryAction().execute(queryInput);
-
-         GetOutput getOutput = new GetOutput();
-         if(!queryOutput.getRecords().isEmpty())
+         //////////////////////////////////////////////////////////////////////////////
+         // suppress read audits on the inner query - GetAction handles its own read //
+         // audit as a GET-type operation after this method returns.                 //
+         //////////////////////////////////////////////////////////////////////////////
+         ReadAuditAction.suppressOnCurrentThread();
+         try
          {
-            getOutput.setRecord(queryOutput.getRecords().get(0));
+            QueryOutput queryOutput = new QueryAction().execute(queryInput);
+
+            GetOutput getOutput = new GetOutput();
+            if(!queryOutput.getRecords().isEmpty())
+            {
+               getOutput.setRecord(queryOutput.getRecords().get(0));
+            }
+            return (getOutput);
          }
-         return (getOutput);
+         finally
+         {
+            ReadAuditAction.unsuppressOnCurrentThread();
+         }
       }
    }
 

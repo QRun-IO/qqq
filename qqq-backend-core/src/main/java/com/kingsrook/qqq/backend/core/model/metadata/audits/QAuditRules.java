@@ -30,7 +30,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
  *******************************************************************************/
 public class QAuditRules implements QMetaDataObject, Cloneable
 {
-   private AuditLevel auditLevel;
+   private AuditLevel     auditLevel;
+   private ReadAuditLevel readAuditLevel;
 
 
 
@@ -71,6 +72,37 @@ public class QAuditRules implements QMetaDataObject, Cloneable
    public QAuditRules withAuditLevel(AuditLevel auditLevel)
    {
       this.auditLevel = auditLevel;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for readAuditLevel
+    *******************************************************************************/
+   public ReadAuditLevel getReadAuditLevel()
+   {
+      return (this.readAuditLevel);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for readAuditLevel
+    *******************************************************************************/
+   public void setReadAuditLevel(ReadAuditLevel readAuditLevel)
+   {
+      this.readAuditLevel = readAuditLevel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for readAuditLevel
+    *******************************************************************************/
+   public QAuditRules withReadAuditLevel(ReadAuditLevel readAuditLevel)
+   {
+      this.readAuditLevel = readAuditLevel;
       return (this);
    }
 

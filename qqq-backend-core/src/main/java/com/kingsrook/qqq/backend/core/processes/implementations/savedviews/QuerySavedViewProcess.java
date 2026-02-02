@@ -24,10 +24,12 @@ package com.kingsrook.qqq.backend.core.processes.implementations.savedviews;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -41,10 +43,14 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.savedviews.QuickSavedView;
 import com.kingsrook.qqq.backend.core.model.savedviews.SavedView;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -111,8 +117,18 @@ public class QuerySavedViewProcess implements BackendStep
                .withOrderBy(new QFilterOrderBy("label")));
 
             QueryOutput output = new QueryAction().execute(input);
-            runBackendStepOutput.setRecords(output.getRecords());
-            runBackendStepOutput.addValue("savedViewList", (Serializable) output.getRecords());
+            List<QRecord> savedViewRecords = output.getRecords();
+
+            /////////////////////////////////////////////////////////////////////////////////////
+            // possibly add data to the saved views for "quick views"                          //
+            // note, we'll call this even if we didn't find any savedViewRecords, just in case //
+            // an application wants to sub-class this process step, to, for example, hard-code //
+            // some quick-views that get returned even if a user doesn't have any saved views  //
+            /////////////////////////////////////////////////////////////////////////////////////
+            lookupQuickViews(runBackendStepInput, savedViewRecords);
+
+            runBackendStepOutput.setRecords(savedViewRecords);
+            runBackendStepOutput.addValue("savedViewList", (Serializable) savedViewRecords);
          }
       }
       catch(QNotFoundException qnfe)
@@ -126,4 +142,63 @@ public class QuerySavedViewProcess implements BackendStep
          throw (e);
       }
    }
+
+
+
+   /***************************************************************************
+    * If the qInstance has a {@link QuickSavedView} table, then query for
+    * quick-saved view records associated with the list of saved view records
+    * that were found.
+    *
+    * <p>If corresponding {@link QuickSavedView}'s are found, then update the
+    * saved-view records with the following values from the QuickSavedView:</p>
+    * <ul>
+    *    <li>type = "quickSavedView"</li>
+    *    <li>doCount = boolean from the QuickSavedView</li>
+    *    <li>sortOrder = integer sortOrder from the QuickSavedView</li>
+    * </ul>
+    ***************************************************************************/
+   protected void lookupQuickViews(RunBackendStepInput runBackendStepInput, List<QRecord> savedViewRecords) throws QException
+   {
+      ////////////////////////////////////////////////////////////
+      // if there's no quick saved view table, return with noop //
+      ////////////////////////////////////////////////////////////
+      if(QContext.getQInstance().getTable(QuickSavedView.TABLE_NAME) == null)
+      {
+         return;
+      }
+
+      if(CollectionUtils.nullSafeIsEmpty(savedViewRecords))
+      {
+         return;
+      }
+
+      List<Integer> savedViewIds = savedViewRecords.stream().map(r -> r.getValueInteger("id")).toList();
+
+      ///////////////////////////////////////////////////////////////////////////////////////
+      // given that, based on sharing rules, multiple quick view records might be found    //
+      // for a given saved view. sort this query in a predictable manner (noting that rows //
+      // will be iterated over, and the last one found for a particular saved view is the  //
+      // one that will apply).  So sort by sortOrder descending, (so the lowest value will //
+      // be used), then by id ascending (so more recently added ones would be preferred)   //
+      ///////////////////////////////////////////////////////////////////////////////////////
+      List<QRecord> quickSavedViews = QueryAction.execute(QuickSavedView.TABLE_NAME, new QQueryFilter()
+         .withCriteria(new QFilterCriteria("savedViewId", QCriteriaOperator.IN, savedViewIds))
+         .withOrderBy(new QFilterOrderBy("sortOrder", false))
+         .withOrderBy(new QFilterOrderBy("id", true)));
+
+      Map<Integer, QRecord> quickSavedViewsBySavedViewIdMap = CollectionUtils.listToMap(quickSavedViews, r -> r.getValueInteger("savedViewId"), r -> r);
+      for(QRecord savedViewRecord : savedViewRecords)
+      {
+         QRecord quickSavedViewRecord = quickSavedViewsBySavedViewIdMap.get(savedViewRecord.getValueInteger("id"));
+         if(quickSavedViewRecord != null)
+         {
+            savedViewRecord.setValue("type", "quickView");
+            savedViewRecord.setValue("doCount", BooleanUtils.isTrue(quickSavedViewRecord.getValueBoolean("doCount")));
+            savedViewRecord.setValue("sortOrder", quickSavedViewRecord.getValueInteger("sortOrder"));
+         }
+      }
+
+   }
+
 }

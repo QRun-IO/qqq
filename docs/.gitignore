@@ -1,1 +1,8 @@
 *.html
+
+# Claude session state (stored in ClaudeCode repo)
+SESSION*.md
+TODO.md
+PLAN-*.md
+blog-draft-*.md
+SPA_BASE_HREF_FIX_REVIEW.md

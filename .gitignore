@@ -5,6 +5,7 @@ target/
 .idea
 .vscode
 .claude/
+CLAUDE.md
 
 #####################################
 ## Eclipse / NVIM Modules for Java ##

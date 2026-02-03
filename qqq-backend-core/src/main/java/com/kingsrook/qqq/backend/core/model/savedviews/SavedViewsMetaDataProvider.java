@@ -54,7 +54,7 @@ import com.kingsrook.qqq.backend.core.processes.implementations.savedviews.Store
 
 
 /*******************************************************************************
- * Define MetaData for the Shared Views functionality.
+ * Define MetaData for the Saved Views functionality.
  *
  * <p>Optionally, sharing can be enabled (so a view created by one user can be
  * seen by other users (and or groups, etc, as defined by app-level customizations).
@@ -63,10 +63,9 @@ import com.kingsrook.qqq.backend.core.processes.implementations.savedviews.Store
  * menu).</p>
  *
  * <p>An optional {@link RecordSecurityLock} is encouraged to be provided, to apply
- * to the {@link SharedSavedView} and {@link QuickSavedView} tables.  This can be
- * used to control access to these entities.  Applications may add additional fields
+ * to all the produced tables.  Applications may add additional fields
  * to these tables for custom security locks (in which case, they will need to
- * put their own {@link RecordSecurityLock} on the tables.</p>
+ * put their own {@link RecordSecurityLock} on the table)s.</p>
  *******************************************************************************/
 public class SavedViewsMetaDataProvider
 {

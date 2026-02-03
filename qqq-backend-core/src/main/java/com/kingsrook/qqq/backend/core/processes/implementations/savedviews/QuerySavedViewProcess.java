@@ -56,7 +56,14 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Process used by the saved view dialogs
+ * Load the saved view records available to the current user for the specified
+ * table.
+ *
+ * <p>Runs in an alternative mode, to just fetch one savedView, triggered by input
+ * param: `savedViewId`</p>
+ *
+ * <p>Returns a list of QRecords, based on {@link SavedView} table, as `savedViewList`.
+ * In single-mode, also returns the single savedView as `savedView`</p>
  *******************************************************************************/
 public class QuerySavedViewProcess implements BackendStep
 {
@@ -154,7 +161,7 @@ public class QuerySavedViewProcess implements BackendStep
     * <p>If corresponding {@link QuickSavedView}'s are found, then update the
     * saved-view records with the following values from the QuickSavedView:</p>
     * <ul>
-    *    <li>type = "quickSavedView"</li>
+    *    <li>type = "quickView"</li>
     *    <li>doCount = boolean from the QuickSavedView</li>
     *    <li>sortOrder = integer sortOrder from the QuickSavedView</li>
     * </ul>

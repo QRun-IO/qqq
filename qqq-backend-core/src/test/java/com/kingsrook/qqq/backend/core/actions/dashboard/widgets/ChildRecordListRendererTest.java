@@ -168,6 +168,61 @@ class ChildRecordListRendererTest extends BaseTest
     **
     *******************************************************************************/
    @Test
+   void testFlippingJoin() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+
+      ///////////////////////////////////////////////////////////////////
+      // build a many-to-one join - e.g., flipped from what's expected //
+      ///////////////////////////////////////////////////////////////////
+      qInstance.addJoin(new QJoinMetaData()
+         .withName("lineItemJoinOrder")
+         .withType(JoinType.MANY_TO_ONE)
+         .withLeftTable(TestUtils.TABLE_NAME_LINE_ITEM)
+         .withRightTable(TestUtils.TABLE_NAME_ORDER)
+         .withJoinOn(new JoinOn("orderId", "id"))
+         .withOrderBy(new QFilterOrderBy("lineNumber")));
+
+      ////////////////////////////////////////////
+      // make a widget with this backwards join //
+      ////////////////////////////////////////////
+      QWidgetMetaData widget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("lineItemJoinOrder"))
+         .withLabel("Line Items")
+         .getWidgetMetaData();
+      qInstance.addWidget(widget);
+
+      //////////////////////////////////
+      // make sure it fails to render //
+      //////////////////////////////////
+      assertThatThrownBy(() -> insertOrdersAndRenderWidget(qInstance, widget));
+
+      //////////////////////////////////////////////////////////////////////////////////
+      // remove the bad widget - replace it with one where the flipJoin param is true //
+      //////////////////////////////////////////////////////////////////////////////////
+      qInstance.getWidgets().remove(widget.getName());
+      QWidgetMetaData flippedWidget = ChildRecordListRenderer.widgetMetaDataBuilder(qInstance.getJoin("lineItemJoinOrder"))
+         .withFlipJoin(true)
+         .withLabel("Line Items")
+         .getWidgetMetaData();
+      qInstance.addWidget(flippedWidget);
+
+      ////////////////////////////////
+      // now the widget should work //
+      ////////////////////////////////
+      MemoryRecordStore.getInstance().reset();
+      ChildRecordListData childRecordListData = insertOrdersAndRenderWidget(qInstance, flippedWidget);
+
+      assertThat(childRecordListData.getChildTableMetaData()).hasFieldOrPropertyWithValue("name", TestUtils.TABLE_NAME_LINE_ITEM);
+      assertThat(childRecordListData.getQueryOutput().getRecords()).hasSize(2);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
    void testOmitFields() throws QException
    {
       QInstance qInstance = QContext.getQInstance();

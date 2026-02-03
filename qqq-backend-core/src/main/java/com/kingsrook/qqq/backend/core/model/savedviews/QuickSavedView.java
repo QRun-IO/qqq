@@ -53,6 +53,9 @@ public class QuickSavedView extends QRecordEntity
    @QField(isEditable = false)
    private Instant modifyDate;
 
+   @QField(isRequired = true)
+   private String label;
+
    @QField(isRequired = true, possibleValueSourceName = SavedView.TABLE_NAME)
    private Integer savedViewId;
 
@@ -342,6 +345,44 @@ public class QuickSavedView extends QRecordEntity
    public QuickSavedView withUserId(String userId)
    {
       this.userId = userId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for label
+    * @see #withLabel(String)
+    *******************************************************************************/
+   public String getLabel()
+   {
+      return (this.label);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for label
+    * @see #withLabel(String)
+    *******************************************************************************/
+   public void setLabel(String label)
+   {
+      this.label = label;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for label
+    *
+    * @param label
+    * Label for the quick saved view.  As you might want it different (shorter) than
+    * the saved view, and/or, different users might want it different.
+    * @return this
+    *******************************************************************************/
+   public QuickSavedView withLabel(String label)
+   {
+      this.label = label;
       return (this);
    }
 

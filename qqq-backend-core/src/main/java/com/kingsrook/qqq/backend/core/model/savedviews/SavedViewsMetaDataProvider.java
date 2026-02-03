@@ -232,14 +232,14 @@ public class SavedViewsMetaDataProvider
          .withLabel("Quick View")
          .withIcon(new QIcon().withName("dynamic_form"))
          .withRecordLabelFormat("%s")
-         .withRecordLabelFields("savedViewId")
+         .withRecordLabelFields("label")
          .withBackendName(backendName)
          .withPrimaryKeyField("id")
          .withUniqueKey(new UniqueKey("savedViewId", "userId"))
          .withFieldsFromEntity(QuickSavedView.class)
          .withRecordSecurityLock(userLevelRecordSecurityLock)
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD))
-         .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "savedViewId")))
+         .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "label", "savedViewId")))
          .withSection(new QFieldSection("data", new QIcon().withName("text_snippet"), Tier.T2, List.of("userId", "sortOrder", "doCount")))
          .withSection(new QFieldSection("dates", new QIcon().withName("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
 

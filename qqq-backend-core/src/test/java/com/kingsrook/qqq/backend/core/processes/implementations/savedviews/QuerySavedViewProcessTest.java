@@ -122,12 +122,13 @@ class QuerySavedViewProcessTest extends BaseTest
       ///////////////////////////////////////////////////////////
       {
          new InsertAction().execute(new InsertInput(QuickSavedView.TABLE_NAME).withRecordEntity(
-            new QuickSavedView().withSavedViewId(savedView0Id).withDoCount(true).withSortOrder(17)));
+            new QuickSavedView().withLabel("Quickly").withSavedViewId(savedView0Id).withDoCount(true).withSortOrder(17)));
          List<QRecord> savedViewList = runQuerySavedViewsProcess(tableName);
          assertEquals(1, savedViewList.size());
 
          QRecord savedView0 = savedViewList.get(0);
          assertEquals("quickView", savedView0.getValue("type"));
+         assertEquals("Quickly", savedView0.getValue("label"));
          assertTrue(savedView0.getValueBoolean("doCount"));
          assertEquals(17, savedView0.getValue("sortOrder"));
       }
@@ -137,7 +138,7 @@ class QuerySavedViewProcessTest extends BaseTest
       //////////////////////////////////////////////////////////////////////////////////////////////
       {
          new InsertAction().execute(new InsertInput(QuickSavedView.TABLE_NAME).withRecordEntity(
-            new QuickSavedView().withSavedViewId(savedView0Id + 1).withDoCount(true).withSortOrder(17)));
+            new QuickSavedView().withLabel("Second").withSavedViewId(savedView0Id + 1).withDoCount(true).withSortOrder(17)));
          List<QRecord> savedViewList = runQuerySavedViewsProcess(tableName);
          assertEquals(1, savedViewList.size());
       }

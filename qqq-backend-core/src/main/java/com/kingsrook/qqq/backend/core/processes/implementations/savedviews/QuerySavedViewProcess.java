@@ -50,6 +50,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.savedviews.QuickSavedView;
 import com.kingsrook.qqq.backend.core.model.savedviews.SavedView;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -196,6 +197,11 @@ public class QuerySavedViewProcess implements BackendStep
             savedViewRecord.setValue("type", "quickView");
             savedViewRecord.setValue("doCount", BooleanUtils.isTrue(quickSavedViewRecord.getValueBoolean("doCount")));
             savedViewRecord.setValue("sortOrder", quickSavedViewRecord.getValueInteger("sortOrder"));
+
+            if(StringUtils.hasContent(quickSavedViewRecord.getValueString("label")))
+            {
+               savedViewRecord.setValue("label", quickSavedViewRecord.getValueString("label"));
+            }
          }
       }
 

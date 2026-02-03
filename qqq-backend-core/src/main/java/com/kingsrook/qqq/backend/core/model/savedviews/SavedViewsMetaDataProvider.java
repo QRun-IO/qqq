@@ -25,11 +25,13 @@ package com.kingsrook.qqq.backend.core.model.savedviews;
 import java.util.List;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
+import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
@@ -92,6 +94,7 @@ public class SavedViewsMetaDataProvider
       {
          instance.addTable(defineSharedSavedViewTable(backendName, backendDetailEnricher));
          instance.addJoin(defineSharedSavedViewJoinSavedView());
+         instance.addWidget(defineSharedSavedViewJoinSavedViewWidget(instance));
          if(instance.getPossibleValueSource(ShareScopePossibleValueMetaDataProducer.NAME) == null)
          {
             instance.addPossibleValueSource(new ShareScopePossibleValueMetaDataProducer().produce(new QInstance()));
@@ -102,7 +105,36 @@ public class SavedViewsMetaDataProvider
       {
          instance.addTable(defineQuickSavedViewTable(backendName, backendDetailEnricher));
          instance.addJoin(defineQuickSavedViewJoinSavedView());
+         instance.addWidget(defineSavedViewJoinQuickSavedViewWidget(instance));
       }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private QWidgetMetaDataInterface defineSavedViewJoinQuickSavedViewWidget(QInstance instance)
+   {
+      return ChildRecordListRenderer.widgetMetaDataBuilder(instance.getJoin(QUICK_SAVED_VIEW_JOIN_SAVED_VIEW))
+         .withLabel("Quick Views")
+         .withFlipJoin(true)
+         .withCanAddChildRecord(true)
+         .getWidgetMetaData();
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private QWidgetMetaDataInterface defineSharedSavedViewJoinSavedViewWidget(QInstance instance)
+   {
+      return ChildRecordListRenderer.widgetMetaDataBuilder(instance.getJoin(SHARED_SAVED_VIEW_JOIN_SAVED_VIEW))
+         .withLabel("Shares")
+         .withFlipJoin(true)
+         .withCanAddChildRecord(true)
+         .getWidgetMetaData();
    }
 
 
@@ -143,8 +175,19 @@ public class SavedViewsMetaDataProvider
          .withFieldsFromEntity(SavedView.class)
          .withRecordSecurityLock(lock)
          .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "label")))
-         .withSection(new QFieldSection("data", new QIcon().withName("text_snippet"), Tier.T2, List.of("userId", "tableName", "viewJson")))
-         .withSection(new QFieldSection("dates", new QIcon().withName("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
+         .withSection(new QFieldSection("data", new QIcon().withName("text_snippet"), Tier.T2, List.of("userId", "tableName", "viewJson")));
+
+      if(isShareSavedViewEnabled)
+      {
+         table.withSection(new QFieldSection("shares", new QIcon().withName("share"), Tier.T2).withWidgetName(SHARED_SAVED_VIEW_JOIN_SAVED_VIEW));
+      }
+
+      if(isQuickSavedViewEnabled)
+      {
+         table.withSection(new QFieldSection("quickViews", new QIcon().withName("dynamic_form"), Tier.T2).withWidgetName(QUICK_SAVED_VIEW_JOIN_SAVED_VIEW));
+      }
+
+      table.withSection(new QFieldSection("dates", new QIcon().withName("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
 
       table.getField("viewJson").withFieldAdornment(new FieldAdornment(AdornmentType.CODE_EDITOR).withValue(AdornmentType.CodeEditorValues.languageMode("json")));
 

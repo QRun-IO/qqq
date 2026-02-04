@@ -112,6 +112,13 @@ public class MemoryRecordStore
 
    public static final ListingHash<Class<? extends AbstractActionInput>, AbstractActionInput> actionInputs = new ListingHash<>();
 
+   //////////////////////////////////////////////////////////////////////
+   // to slow-roll this change in capability, set it as a feature-flag //
+   // on the MemoryRecordStore singleton instance.  This should allow  //
+   // an individual test, for example, to toggle it, then reset it.    //
+   //////////////////////////////////////////////////////////////////////
+   public static boolean BUILD_JOIN_CROSS_PRODUCT_FROM_JOIN_CONTEXT_DEFAULT = false;
+   private       boolean buildJoinCrossProductFromJoinContext               = BUILD_JOIN_CROSS_PRODUCT_FROM_JOIN_CONTEXT_DEFAULT;
 
 
    /*******************************************************************************
@@ -206,9 +213,24 @@ public class MemoryRecordStore
 
       QQueryFilter filter       = clonedOrNewFilter(input.getFilter());
       JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), input.getTableName(), input.getQueryJoins(), filter);
-      if(CollectionUtils.nullSafeHasContents(input.getQueryJoins()))
+
+      /////////////////////////////////////////////////////////////////////////////////////////////////
+      // if we every wanted or needed per-query control here, that could look like:                  //
+      // || input.hasFlag(MemoryBackendQueryActionFlags.BUILD_JOIN_CROSS_PRODUCT_FROM_JOIN_CONTEXT)) //
+      /////////////////////////////////////////////////////////////////////////////////////////////////
+      if(buildJoinCrossProductFromJoinContext)
       {
-         tableData = buildJoinCrossProduct(input);
+         if(CollectionUtils.nullSafeHasContents(joinsContext.getQueryJoins()))
+         {
+            tableData = buildJoinCrossProduct(input.getTable(), joinsContext.getQueryJoins());
+         }
+      }
+      else
+      {
+         if(CollectionUtils.nullSafeHasContents(input.getQueryJoins()))
+         {
+            tableData = buildJoinCrossProduct(input.getTable(), input.getQueryJoins());
+         }
       }
 
       ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -273,12 +295,12 @@ public class MemoryRecordStore
    /*******************************************************************************
     **
     *******************************************************************************/
-   private Collection<QRecord> buildJoinCrossProduct(QueryInput input) throws QException
+   private Collection<QRecord> buildJoinCrossProduct(QTableMetaData table, List<QueryJoin> queryJoins) throws QException
    {
       QInstance qInstance = QContext.getQInstance();
 
       List<QRecord>  crossProduct = new ArrayList<>();
-      QTableMetaData leftTable    = input.getTable();
+      QTableMetaData leftTable    = table;
       for(QRecord record : getTableData(leftTable).values())
       {
          QRecord productRecord = new QRecord();
@@ -286,7 +308,7 @@ public class MemoryRecordStore
          crossProduct.add(productRecord);
       }
 
-      for(QueryJoin queryJoin : input.getQueryJoins())
+      for(QueryJoin queryJoin : queryJoins)
       {
          QTableMetaData      nextTable        = qInstance.getTable(queryJoin.getJoinTable());
          Collection<QRecord> nextTableRecords = getTableData(nextTable).values();
@@ -309,7 +331,11 @@ public class MemoryRecordStore
 
             if(!matchFound)
             {
-               // todo - Left & Right joins
+               if(QueryJoin.Type.LEFT.equals(queryJoin.getType()))
+               {
+                  QRecord joinRecord = new QRecord(productRecord);
+                  nextLevelProduct.add(joinRecord);
+               }
             }
          }
 
@@ -1185,5 +1211,54 @@ public class MemoryRecordStore
    private record Variant(String type, Serializable id) implements BackendIdentifier
    {
    }
+
+
+
+   /*******************************************************************************
+    * Getter for buildJoinCrossProductFromJoinContext
+    * @see #withBuildJoinCrossProductFromJoinContext(boolean)
+    *******************************************************************************/
+   public boolean getBuildJoinCrossProductFromJoinContext()
+   {
+      return (this.buildJoinCrossProductFromJoinContext);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for buildJoinCrossProductFromJoinContext
+    * @see #withBuildJoinCrossProductFromJoinContext(boolean)
+    *******************************************************************************/
+   public void setBuildJoinCrossProductFromJoinContext(boolean buildJoinCrossProductFromJoinContext)
+   {
+      this.buildJoinCrossProductFromJoinContext = buildJoinCrossProductFromJoinContext;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for buildJoinCrossProductFromJoinContext
+    *
+    * @param buildJoinCrossProductFromJoinContext
+    * The original implementation of this class only tried to build cross-products
+    * for joins based on QueryJoin objects directly added to the QueryInput.
+    * However, this meant that if a join was needed for the security key on a table,
+    * that this table wouldn't be included in the join cross product, thus incorrect
+    * query results could be returned.
+    *
+    * <p>This new behavior (to use joins from the JoinContext, which means, it includes
+    * joins needed for security) seems like the obviously more correct way to do it -
+    * but, it is a potentially breaking change, so we want to slow-roll it out.
+    * Thus, an application (or a unit test) can opt-in to the new behavior by
+    * setting this field to true on a MemoryRecordStore singleton instance.</p>
+    *
+    * @return this
+    *******************************************************************************/
+   public MemoryRecordStore withBuildJoinCrossProductFromJoinContext(boolean buildJoinCrossProductFromJoinContext)
+   {
+      this.buildJoinCrossProductFromJoinContext = buildJoinCrossProductFromJoinContext;
+      return (this);
+   }
+
 
 }

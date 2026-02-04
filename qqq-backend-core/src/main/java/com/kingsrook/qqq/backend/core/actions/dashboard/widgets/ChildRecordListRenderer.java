@@ -84,6 +84,11 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * <p>Includes a Builder class ({@see ChildRecordListRenderer.Builder}) for configuring
  * the meta-data corresponding to renderer.</p>
  *
+ * <p>The widget is based around a Join, which, in the normal mode of operation,
+ * should have the parent-table on its left side, and the child table on its right side.
+ * However, the widget supports a "flipJoin" setting, which can be used to treat the
+ * right-side of the join as the parent table, and the left-side as the child table.</p>
+ *
  * <p>Several configurations can be controlled by setting values in the widgetMetaData's
  * defaultValues map.  There are a series of public static final String keys for those
  * slots in the map.  There are also corresponding fluent-setters for each of these
@@ -94,6 +99,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
    private static final QLogger LOG = QLogger.getLogger(ChildRecordListRenderer.class);
 
    public static final String KEY_JOIN_NAME                                               = "joinName";
+   public static final String KEY_FLIP_JOIN                                               = "flipJoin";
    public static final String KEY_MAX_ROWS                                                = "maxRows";
    public static final String KEY_CAN_ADD_CHILD_RECORD                                    = "canAddChildRecord";
    public static final String KEY_DISABLED_FIELDS_FOR_NEW_CHILD_RECORDS                   = "disabledFieldsForNewChildRecords";
@@ -160,6 +166,21 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
       public Builder withLabel(String label)
       {
          widgetMetaData.setLabel(label);
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       * Indicate that the join being used needs to be "flipped" - e.g., to treat the
+       * right-side of the join as the parent table, and the left-side as the child table.
+       *
+       * <p>internally this method sets the widgetMetaData defaultValue with key:
+       * KEY_FLIP_JOIN</p>
+       *******************************************************************************/
+      public Builder withFlipJoin(Boolean flipJoin)
+      {
+         widgetMetaData.withDefaultValue(KEY_FLIP_JOIN, flipJoin);
          return (this);
       }
 
@@ -367,10 +388,20 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
    {
       try
       {
-         String         widgetLabel = input.getQueryParams().get("widgetLabel");
-         String joinName = input.getQueryParams().get(KEY_JOIN_NAME);
-         QJoinMetaData  join        = QContext.getQInstance().getJoin(joinName);
-         String         id          = input.getQueryParams().get("id");
+         String widgetLabel = input.getQueryParams().get("widgetLabel");
+         String id          = input.getQueryParams().get("id");
+
+         String        joinName = input.getQueryParams().get(KEY_JOIN_NAME);
+         QJoinMetaData join     = QContext.getQInstance().getJoin(joinName);
+
+         ///////////////////////////////////////////////////////////////////////////////
+         // flip the join (which takes care of flipping the join-ons) if so requested //
+         ///////////////////////////////////////////////////////////////////////////////
+         if(BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(input.getQueryParams().get(KEY_FLIP_JOIN))))
+         {
+            join = join.flip();
+         }
+
          QTableMetaData leftTable   = QContext.getQInstance().getTable(join.getLeftTable());
          QTableMetaData rightTable  = QContext.getQInstance().getTable(join.getRightTable());
 
@@ -632,6 +663,14 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
             QJoinMetaData join = qInstance.getJoin(joinName);
             if(qInstanceValidator.assertCondition(join != null, prefix + "No join named " + joinName + " exists in the instance"))
             {
+               ///////////////////////////////////
+               // flip the join if so requested //
+               ///////////////////////////////////
+               if(BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(widgetMetaDataDefaultValues.get(KEY_FLIP_JOIN))))
+               {
+                  join = join.flip();
+               }
+
                QTableMetaData rightTable = qInstance.getTable(join.getRightTable());
 
                ///////////////////////////////////////////////////////////////////////////////////////

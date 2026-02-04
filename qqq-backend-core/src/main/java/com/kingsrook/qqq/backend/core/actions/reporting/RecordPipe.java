@@ -43,8 +43,9 @@ public class RecordPipe
    private static final QLogger LOG = QLogger.getLogger(RecordPipe.class);
 
    private static final long BLOCKING_SLEEP_MILLIS = 100;
-   private static final long MAX_SLEEP_LOOP_MILLIS = 300_000; // 5 minutes
    private static final int  DEFAULT_CAPACITY      = 1_000;
+
+   private static long MAX_SLEEP_LOOP_MILLIS = 300_000; // 5 minutes
 
    private int capacity = DEFAULT_CAPACITY;
    private ArrayBlockingQueue<QRecord> queue = new ArrayBlockingQueue<>(capacity);

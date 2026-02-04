@@ -36,10 +36,19 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Class that knows how to Run an asynchronous job (lambda, supplier) that writes into a
- ** RecordPipe, with another lambda (consumer) that consumes records from the pipe.
- **
- ** Takes care of the job status monitoring, blocking when the pipe is empty, etc.
+ * Class that knows how to Run an asynchronous job (lambda, supplier) that writes into a
+ * RecordPipe, with another lambda (consumer) that consumes records from the pipe.
+ *
+ * Takes care of the job status monitoring, blocking when the pipe is empty, etc.
+ *
+ * There is a feature flag (System property "qqq.AsyncRecordPipeLoop.doFinalFlushInSupplierThread")
+ * to control where a finalFlush call on a {@link BufferedRecordPipe} takes place.
+ * Originally this call happened after the supplier job was complete, but it was
+ * (we believe) incorrectly done on the same thread as the consumer. This feature
+ * flag (which defaults to true - the now-believed correct behavior) moves that
+ * finalFlush call to be on the supplier thread to avoid deadlocks. But, if this
+ * fix/change turns out to not be correct, one can set this system property to
+ * anything other than "true" (recommended "false") to revert to the old behavior.
  *******************************************************************************/
 public class AsyncRecordPipeLoop
 {
@@ -53,6 +62,10 @@ public class AsyncRecordPipeLoop
    private Integer minRecordsToConsume = 10;
    private String  forcedJobUUID;
 
+   //////////////////////////////////////////////////////////////
+   // feature flag - see class javadoc and usages inline below //
+   //////////////////////////////////////////////////////////////
+   private static boolean doFinalFlushInSupplierThread = System.getProperty("qqq.AsyncRecordPipeLoop.doFinalFlushInSupplierThread", "true").equalsIgnoreCase("true");
 
 
    /*******************************************************************************
@@ -81,7 +94,27 @@ public class AsyncRecordPipeLoop
          asyncJobManager.setForcedJobUUID(getForcedJobUUID());
       }
 
-      String jobUUID = asyncJobManager.startJob(jobName, supplier::apply);
+      String jobUUID = asyncJobManager.startJob(jobName, (callback) ->
+      {
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // originally this code just ran the supplier lambda here. However, we need to do a little bit more than that:     //
+         // If the recordPipe is a BufferedRecordPipe, we need to call finalFlush() it after the supplier lambda completes  //
+         // and critically, this needs to be on the same thread as the supplier, to avoid a potential deadlock in the pipe. //
+         // And, since this is a tricky bit to know we're 100% confident changing, we'll wrap a feature flag around this    //
+         // change (see below, after the loop, in the consumer thread, where we originally did this flush).                 //
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         Serializable output = supplier.apply(callback);
+
+         if(doFinalFlushInSupplierThread)
+         {
+            if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+            {
+               bufferedRecordPipe.finalFlush();
+            }
+         }
+
+         return (output);
+      });
       LOG.debug("Started supplier job [" + jobUUID + "] for record pipe.");
 
       AsyncJobState  jobState       = AsyncJobState.RUNNING;
@@ -162,9 +195,16 @@ public class AsyncRecordPipeLoop
          jobState = asyncJobStatus.getState();
       }
 
-      if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+      /////////////////////////////////////////////////////////////////////////////////
+      // in case it turns out that it isn't right to move this flush to the supplier //
+      // thread, if this feature flag is not set to true, then do this flush here.   //
+      /////////////////////////////////////////////////////////////////////////////////
+      if(!doFinalFlushInSupplierThread)
       {
-         bufferedRecordPipe.finalFlush();
+         if(recordPipe instanceof BufferedRecordPipe bufferedRecordPipe)
+         {
+            bufferedRecordPipe.finalFlush();
+         }
       }
 
       LOG.debug("Job [" + jobUUID + "][" + jobName + "] completed with status: " + asyncJobStatus);

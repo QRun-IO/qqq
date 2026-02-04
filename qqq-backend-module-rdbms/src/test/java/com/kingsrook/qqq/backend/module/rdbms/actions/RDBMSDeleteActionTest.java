@@ -297,6 +297,59 @@ public class RDBMSDeleteActionTest extends RDBMSActionTest
    /*******************************************************************************
     **
     *******************************************************************************/
+   @Test
+   void testDeleteByDifferentPageSizes() throws Exception
+   {
+      doDeleteInListByPages(2, 3);
+
+      primeTestDatabase();
+      doDeleteInListByPages(100, 1);
+
+      primeTestDatabase();
+      doDeleteInListByPages(1, 5);
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private void doDeleteInListByPages(int pageSize, int expectedNoOfQueries) throws Exception
+   {
+      Integer originalPageSize = RDBMSDeleteAction.getPageSize();
+
+      try
+      {
+         BaseRDBMSActionStrategy actionStrategy = getBaseRDBMSActionStrategyAndActivateCollectingStatistics();
+         RDBMSDeleteAction.setPageSize(pageSize);
+
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // delete the 5 person records by id, but with page size of 2, so there should be 3 delete queries ran //
+         /////////////////////////////////////////////////////////////////////////////////////////////////////////
+         DeleteInput deleteInput = initStandardPersonDeleteRequest();
+         deleteInput.setPrimaryKeys(List.of(1, 2, 3, 4, 5));
+         DeleteOutput deleteResult = new RDBMSDeleteAction().execute(deleteInput);
+         assertEquals(5, deleteResult.getDeletedRecordCount(), "Unfiltered delete should return all rows");
+         assertEquals(0, deleteResult.getRecordsWithErrors().size(), "should have no errors");
+         runTestSql("SELECT id FROM person", (rs -> assertFalse(rs.next())));
+
+         Map<String, Integer> queryStats = actionStrategy.getStatistics();
+         assertEquals(expectedNoOfQueries, queryStats.get(BaseRDBMSActionStrategy.STAT_QUERIES_RAN), "Number of queries ran");
+      }
+      finally
+      {
+         /////////////////////////
+         // reset the page size //
+         /////////////////////////
+         RDBMSDeleteAction.setPageSize(originalPageSize);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
    private DeleteInput initChildTableInstanceAndDeleteRequest()
    {
       QInstance qInstance = TestUtils.defineInstance();

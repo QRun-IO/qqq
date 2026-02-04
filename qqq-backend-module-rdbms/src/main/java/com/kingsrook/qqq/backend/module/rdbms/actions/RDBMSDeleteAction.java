@@ -39,6 +39,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.SystemErrorStatusMessage;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
 /*******************************************************************************
@@ -48,6 +49,7 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
 {
    private static final QLogger LOG = QLogger.getLogger(RDBMSDeleteAction.class);
 
+   private static Integer PAGE_SIZE = 1000;
 
 
    /*******************************************************************************
@@ -233,33 +235,36 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
     *******************************************************************************/
    public void doDeleteList(Connection connection, QTableMetaData table, List<Serializable> primaryKeys, DeleteOutput deleteOutput) throws QException
    {
-      long   mark = System.currentTimeMillis();
-      String sql  = null;
-
       try
       {
          String tableName      = getTableName(table);
          String primaryKeyName = getColumnName(table.getField(table.getPrimaryKeyField()));
-         sql = "DELETE FROM "
-            + escapeIdentifier(tableName)
-            + " WHERE "
-            + escapeIdentifier(primaryKeyName)
-            + " IN ("
-            + primaryKeys.stream().map(x -> "?").collect(Collectors.joining(","))
-            + ")";
 
-         // todo sql customization - can edit sql and/or param list
+         for(List<Serializable> page : CollectionUtils.getPages(primaryKeys, PAGE_SIZE))
+         {
+            long mark = System.currentTimeMillis();
+            String sql = "DELETE FROM "
+               + escapeIdentifier(tableName)
+               + " WHERE "
+               + escapeIdentifier(primaryKeyName)
+               + " IN ("
+               + page.stream().map(x -> "?").collect(Collectors.joining(","))
+               + ")";
 
-         Integer rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, primaryKeys);
-         deleteOutput.addToDeletedRecordCount(rowCount);
+            try
+            {
+               Integer rowCount = getActionStrategy().executeUpdateForRowCount(connection, sql, page);
+               deleteOutput.addToDeletedRecordCount(rowCount);
+            }
+            finally
+            {
+               logSQL(sql, page, mark);
+            }
+         }
       }
       catch(Exception e)
       {
          throw new QException("Error executing delete: " + e.getMessage(), e);
-      }
-      finally
-      {
-         logSQL(sql, primaryKeys, mark);
       }
    }
 
@@ -299,5 +304,25 @@ public class RDBMSDeleteAction extends AbstractRDBMSAction implements DeleteInte
       {
          logSQL(sql, params, mark);
       }
+   }
+
+
+
+   /***************************************************************************
+    * Change the global page size used for delete in-lists.  Default is 1000.
+    ***************************************************************************/
+   public static void setPageSize(Integer pageSize)
+   {
+      PAGE_SIZE = pageSize;
+   }
+
+
+
+   /***************************************************************************
+    * Get the global page size value for delete in-lists.
+    ***************************************************************************/
+   public static Integer getPageSize()
+   {
+      return PAGE_SIZE;
    }
 }

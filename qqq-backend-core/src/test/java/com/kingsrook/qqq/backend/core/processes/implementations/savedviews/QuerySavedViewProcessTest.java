@@ -29,6 +29,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
@@ -49,7 +50,9 @@ import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,6 +81,64 @@ class QuerySavedViewProcessTest extends BaseTest
    void afterEach()
    {
       MemoryRecordStore.getInstance().setBuildJoinCrossProductFromJoinContext(MemoryRecordStore.BUILD_JOIN_CROSS_PRODUCT_FROM_JOIN_CONTEXT_DEFAULT);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testSingleViewFetch() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      new SavedViewsMetaDataProvider()
+         .withIsQuickSavedViewEnabled(true)
+         .defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+
+      ///////////////////////////////////////////////////
+      // make sure a not-found view throws as expected //
+      ///////////////////////////////////////////////////
+      {
+         assertThatThrownBy(() -> runQuerySavedViewsProcessForSingleView(tableName, -1))
+            .isInstanceOf(QNotFoundException.class);
+      }
+
+      /////////////////////////////////////////////////////
+      // insert one saved view, but no quick saved views //
+      /////////////////////////////////////////////////////
+      Integer savedViewId;
+      {
+         savedViewId = new InsertAction().execute(new InsertInput(SavedView.TABLE_NAME).withRecordEntity(
+            new SavedView().withTableName(tableName).withLabel("one").withUserId(QContext.getQSession().getUser().getIdReference()))).getRecords().get(0).getValueInteger("id");
+
+         QRecord savedView = runQuerySavedViewsProcessForSingleView(tableName, savedViewId);
+
+         assertNotNull(savedView);
+         assertEquals("one", savedView.getValue("label"));
+         assertNull(savedView.getValue("type"));
+      }
+
+      ///////////////////////////////////////////////////////////
+      // insert a quick saved view referencing that saved view //
+      ///////////////////////////////////////////////////////////
+      {
+         new InsertAction().execute(new InsertInput(QuickSavedView.TABLE_NAME).withRecordEntity(
+            new QuickSavedView().withLabel("Quickly").withSavedViewId(savedViewId).withDoCount(true).withSortOrder(17)));
+
+         QRecord savedView = runQuerySavedViewsProcessForSingleView(tableName, savedViewId);
+         assertNotNull(savedView);
+
+         //////////////////////////////////////////////////////
+         // attributes should come from the quick-saved view //
+         //////////////////////////////////////////////////////
+         assertEquals("quickView", savedView.getValue("type"));
+         assertEquals("Quickly", savedView.getValue("label"));
+         assertTrue(savedView.getValueBoolean("doCount"));
+         assertEquals(17, savedView.getValue("sortOrder"));
+      }
+
    }
 
 
@@ -301,6 +362,22 @@ class QuerySavedViewProcessTest extends BaseTest
          assertEquals("Ben's", records.get(0).getValue("label"));
          assertEquals("Jean's", records.get(1).getValue("label"));
       }
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   private static QRecord runQuerySavedViewsProcessForSingleView(String tableName, Integer id) throws QException
+   {
+      RunProcessInput runProcessInput = new RunProcessInput();
+      runProcessInput.setProcessName(QuerySavedViewProcess.getProcessMetaData().getName());
+      runProcessInput.addValue("tableName", tableName);
+      runProcessInput.addValue("id", id);
+      RunProcessOutput runProcessOutput = new RunProcessAction().execute(runProcessInput);
+      QRecord          savedView        = (QRecord) runProcessOutput.getValue("savedView");
+      return savedView;
    }
 
 

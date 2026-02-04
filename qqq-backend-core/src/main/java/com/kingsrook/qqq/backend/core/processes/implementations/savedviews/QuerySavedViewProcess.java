@@ -110,9 +110,13 @@ public class QuerySavedViewProcess implements BackendStep
                throw (new QNotFoundException("The requested view was not found."));
             }
 
-            runBackendStepOutput.addRecord(output.getRecord());
-            runBackendStepOutput.addValue("savedView", output.getRecord());
-            runBackendStepOutput.addValue("savedViewList", (Serializable) List.of(output.getRecord()));
+            List<QRecord> recordList = List.of(output.getRecord());
+
+            lookupQuickViews(runBackendStepInput, recordList);
+
+            runBackendStepOutput.addRecord(recordList.get(0));
+            runBackendStepOutput.addValue("savedView", recordList.get(0));
+            runBackendStepOutput.addValue("savedViewList", (Serializable) recordList);
          }
          else
          {

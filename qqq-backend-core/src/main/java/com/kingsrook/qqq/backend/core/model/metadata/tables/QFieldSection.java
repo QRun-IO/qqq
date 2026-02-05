@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpRole;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.CollapsibleMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.utils.collections.MutableList;
 
@@ -57,6 +58,7 @@ public class QFieldSection implements QMetaDataObject, Cloneable
 
    private Map<QFieldSectionAlternativeTypeInterface, QFieldSection> alternatives;
 
+   private CollapsibleMetaData collapsible;
 
 
    /*******************************************************************************
@@ -556,6 +558,43 @@ public class QFieldSection implements QMetaDataObject, Cloneable
       alternativeMaker.accept(alternative);
 
       this.alternatives.put(type, alternative);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for collapsible
+    * @see #withCollapsible(CollapsibleMetaData)
+    *******************************************************************************/
+   public CollapsibleMetaData getCollapsible()
+   {
+      return (this.collapsible);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for collapsible
+    * @see #withCollapsible(CollapsibleMetaData)
+    *******************************************************************************/
+   public void setCollapsible(CollapsibleMetaData collapsible)
+   {
+      this.collapsible = collapsible;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for collapsible
+    *
+    * @param collapsible
+    * collapsible behavior for the section.
+    * @return this
+    *******************************************************************************/
+   public QFieldSection withCollapsible(CollapsibleMetaData collapsible)
+   {
+      this.collapsible = collapsible;
       return (this);
    }
 

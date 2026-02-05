@@ -804,6 +804,7 @@ public class QWidgetMetaData implements QWidgetMetaDataInterface
     * Getter for collapsible
     * @see #withCollapsible(CollapsibleMetaData)
     *******************************************************************************/
+   @Override
    public CollapsibleMetaData getCollapsible()
    {
       return (this.collapsible);

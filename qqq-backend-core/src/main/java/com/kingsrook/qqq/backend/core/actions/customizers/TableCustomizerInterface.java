@@ -29,6 +29,8 @@ import java.util.Optional;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -50,6 +52,17 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public interface TableCustomizerInterface
 {
    QLogger LOG = QLogger.getLogger(TableCustomizerInterface.class);
+
+
+   /*******************************************************************************
+    ** custom actions to run after table meta data was created by the meta data action
+    **
+    *******************************************************************************/
+   default void postMetaData(TableMetaDataInput tableMetaDataInput, TableMetaDataOutput tableMetaDataOutput) throws QException
+   {
+      LOG.info("A default implementation of postMetaData is running...  Probably not expected!", logPair("tableName", tableMetaDataInput.getTableName()));
+   }
+
 
    /*******************************************************************************
     ** custom actions to run after a query (or get!) takes place.

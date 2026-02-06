@@ -19,24 +19,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.kingsrook.qqq.backend.core.actions.customizers;
+package com.kingsrook.qqq.backend.core.actions.metadata.customizers;
 
 
 /*******************************************************************************
- ** Enum definition of possible table customizers - "roles" for custom code that
- ** can be applied to tables.
+ ** Enum definition of possible table meta data customizers
  **
  *******************************************************************************/
-public enum TableCustomizers
+public enum TableMetaDataCustomizers
 {
-   POST_QUERY_RECORD("postQueryRecord", TableCustomizerInterface.class),
-   PRE_INSERT_RECORD("preInsertRecord", TableCustomizerInterface.class),
-   POST_INSERT_RECORD("postInsertRecord", TableCustomizerInterface.class),
-   PRE_UPDATE_RECORD("preUpdateRecord", TableCustomizerInterface.class),
-   POST_UPDATE_RECORD("postUpdateRecord", TableCustomizerInterface.class),
-   PRE_DELETE_RECORD("preDeleteRecord", TableCustomizerInterface.class),
-   POST_DELETE_RECORD("postDeleteRecord", TableCustomizerInterface.class),
-   POST_META_DATA("postMetaData", TableCustomizerInterface.class);
+   PRE_EXECUTE_ACTION("preExecute", TableMetaDataCustomizerInterface.class),
+   POST_EXECUTE_ACTION("postExecute", TableMetaDataCustomizerInterface.class);
 
 
    private final String   role;
@@ -47,7 +40,7 @@ public enum TableCustomizers
    /*******************************************************************************
     **
     *******************************************************************************/
-   TableCustomizers(String role, Class<?> expectedType)
+   TableMetaDataCustomizers(String role, Class<?> expectedType)
    {
       this.role = role;
       this.expectedType = expectedType;
@@ -59,9 +52,9 @@ public enum TableCustomizers
     ** Get the TableCustomer for a given role (e.g., the role used in meta-data, not
     ** the enum-constant name).
     *******************************************************************************/
-   public static TableCustomizers forRole(String name)
+   public static TableMetaDataCustomizers forRole(String name)
    {
-      for(TableCustomizers value : values())
+      for(TableMetaDataCustomizers value : values())
       {
          if(value.role.equals(name))
          {

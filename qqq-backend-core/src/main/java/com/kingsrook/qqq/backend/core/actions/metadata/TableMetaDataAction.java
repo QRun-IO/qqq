@@ -64,7 +64,7 @@ public class TableMetaDataAction
       QBackendMetaData backendForTable = QContext.getQInstance().getBackendForTable(table.getName());
       tableMetaDataOutput.setTable(new QFrontendTableMetaData(tableMetaDataInput, backendForTable, table, true, true));
 
-      Optional<TableCustomizerInterface> postMetaDataCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_META_DATA.getRole());
+      Optional<TableCustomizerInterface> postMetaDataCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_META_DATA_ACTION.getRole());
       if(postMetaDataCustomizer.isPresent())
       {
          postMetaDataCustomizer.get().postMetaDataAction(tableMetaDataInput, tableMetaDataOutput);

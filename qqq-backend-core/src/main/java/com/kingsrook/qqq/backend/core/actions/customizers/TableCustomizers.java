@@ -36,7 +36,7 @@ public enum TableCustomizers
    POST_UPDATE_RECORD("postUpdateRecord", TableCustomizerInterface.class),
    PRE_DELETE_RECORD("preDeleteRecord", TableCustomizerInterface.class),
    POST_DELETE_RECORD("postDeleteRecord", TableCustomizerInterface.class),
-   POST_META_DATA("postMetaData", TableCustomizerInterface.class);
+   POST_META_DATA_ACTION("postMetaDataAction", TableCustomizerInterface.class);
 
 
    private final String   role;

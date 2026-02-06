@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.help.HelpFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpRole;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
@@ -115,6 +116,7 @@ public class QInstanceHelpContentManager
             }
          }
 
+         String appName     = nameValuePairs.get("app");
          String tableName   = nameValuePairs.get("table");
          String processName = nameValuePairs.get("process");
          String fieldName   = nameValuePairs.get("field");
@@ -148,7 +150,11 @@ public class QInstanceHelpContentManager
          ///////////////////////////////////////////////////////////////////////////////////
          // look at what parts of the key we got, and find the meta-data object to update //
          ///////////////////////////////////////////////////////////////////////////////////
-         if(StringUtils.hasContent(tableName))
+         if(StringUtils.hasContent(appName))
+         {
+            processHelpContentForApp(qInstance, key, appName, slotName, roles, helpContent);
+         }
+         else if(StringUtils.hasContent(tableName))
          {
             processHelpContentForTable(qInstance, key, tableName, sectionName, fieldName, slotName, roles, helpContent);
          }
@@ -185,6 +191,35 @@ public class QInstanceHelpContentManager
       catch(Exception e)
       {
          LOG.warn("Error processing a helpContent record", e, logPair("id", record.getValue("id")));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static void processHelpContentForApp(QInstance qInstance, String key, String appName, String slotName, Set<HelpRole> roles, QHelpContent helpContent)
+   {
+      QAppMetaData app = qInstance.getApp(appName);
+      if(!StringUtils.hasContent(slotName))
+      {
+         LOG.info("Missing slot name in help content", logPair("key", key));
+      }
+      else if(app == null)
+      {
+         LOG.info("Unrecognized app in help content", logPair("key", key));
+      }
+      else
+      {
+         if(helpContent != null)
+         {
+            app.withHelpContent(slotName, helpContent);
+         }
+         else
+         {
+            app.removeHelpContent(slotName, roles);
+         }
       }
    }
 
@@ -268,7 +303,7 @@ public class QInstanceHelpContentManager
       if(processName.startsWith("*") && processName.length() > 1)
       {
          boolean anyMatched = false;
-         String subName = processName.substring(1);
+         String  subName    = processName.substring(1);
          for(QProcessMetaData process : qInstance.getProcesses().values())
          {
             if(process.getName().endsWith(subName))

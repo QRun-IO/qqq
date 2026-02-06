@@ -58,9 +58,9 @@ public interface TableCustomizerInterface
     ** custom actions to run after table meta data was created by the meta data action
     **
     *******************************************************************************/
-   default void postMetaData(TableMetaDataInput tableMetaDataInput, TableMetaDataOutput tableMetaDataOutput) throws QException
+   default void postMetaDataAction(TableMetaDataInput tableMetaDataInput, TableMetaDataOutput tableMetaDataOutput) throws QException
    {
-      LOG.info("A default implementation of postMetaData is running...  Probably not expected!", logPair("tableName", tableMetaDataInput.getTableName()));
+      LOG.info("A default implementation of postMetaDataAction is running...  Probably not expected!", logPair("tableName", tableMetaDataInput.getTableName()));
    }
 
 
@@ -278,7 +278,6 @@ public interface TableCustomizerInterface
          return (Optional.empty());
       }
    }
-
 
 
    /***************************************************************************

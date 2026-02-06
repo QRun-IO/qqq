@@ -30,6 +30,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
@@ -48,9 +49,10 @@ public class QFrontendAppMetaData
    private String label;
    private QIcon  icon;
 
-   private List<String>             widgets  = new ArrayList<>();
-   private List<AppTreeNode>        children = new ArrayList<>();
-   private Map<String, AppTreeNode> childMap = new HashMap<>();
+   private List<String>                    widgets  = new ArrayList<>();
+   private List<AppTreeNode>               children = new ArrayList<>();
+   private Map<String, AppTreeNode>        childMap = new HashMap<>();
+   private Map<String, List<QHelpContent>> helpContents;
 
    private List<QAppSection> sections;
 
@@ -124,6 +126,7 @@ public class QFrontendAppMetaData
          }
       }
 
+      this.helpContents = appMetaData.getHelpContent();
    }
 
 
@@ -179,6 +182,17 @@ public class QFrontendAppMetaData
    public String getIconName()
    {
       return (icon == null ? null : icon.getName());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for helpContents
+    **
+    *******************************************************************************/
+   public Map<String, List<QHelpContent>> getHelpContents()
+   {
+      return helpContents;
    }
 
 

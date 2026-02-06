@@ -67,7 +67,7 @@ public class TableMetaDataAction
       Optional<TableCustomizerInterface> postMetaDataCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_META_DATA.getRole());
       if(postMetaDataCustomizer.isPresent())
       {
-         postMetaDataCustomizer.get().postMetaData(tableMetaDataInput, tableMetaDataOutput);
+         postMetaDataCustomizer.get().postMetaDataAction(tableMetaDataInput, tableMetaDataOutput);
       }
 
       return tableMetaDataOutput;

@@ -60,6 +60,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.ReadAuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -2728,6 +2730,21 @@ public class QInstanceValidatorTest extends BaseTest
    private TableAutomationAction getAction0(QInstance qInstance)
    {
       return qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).getAutomationDetails().getActions().get(0);
+   }
+
+
+
+   /*******************************************************************************
+    ** Test that readAuditLevel != NONE fails validation when audit table is
+    ** not defined in the instance.
+    *******************************************************************************/
+   @Test
+   void testReadAuditLevel_failsWithoutAuditTable()
+   {
+      assertValidationFailureReasonsAllowingExtraReasons(
+         (qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+            .setAuditRules(new QAuditRules().withReadAuditLevel(ReadAuditLevel.GET)),
+         "readAuditLevel=GET, but the audit table is not defined");
    }
 
 

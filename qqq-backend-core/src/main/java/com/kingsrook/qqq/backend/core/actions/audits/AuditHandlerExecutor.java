@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditHandlerInput;
 import com.kingsrook.qqq.backend.core.model.actions.audits.ProcessedAuditHandlerInput;
+import com.kingsrook.qqq.backend.core.model.actions.audits.ReadAuditHandlerInput;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerFailurePolicy;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerType;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditHandlerMetaData;
@@ -44,7 +45,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 /*******************************************************************************
  ** Executor for audit handlers.
- ** Handles both sync and async execution of DML and Processed audit handlers.
+ ** Handles sync and async execution of DML, Processed, and Read audit handlers.
  *******************************************************************************/
 public class AuditHandlerExecutor
 {
@@ -53,6 +54,17 @@ public class AuditHandlerExecutor
    private static final Integer         CORE_THREADS    = 4;
    private static final Integer         MAX_THREADS     = 100;
    private static final ExecutorService executorService = new ThreadPoolExecutor(CORE_THREADS, MAX_THREADS, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(), new PrefixedDefaultThreadFactory(AuditHandlerExecutor.class));
+
+
+
+   /*******************************************************************************
+    ** Get the shared executor service for async audit operations. Used by
+    ** ReadAuditAction to submit fire-and-forget read audit work.
+    *******************************************************************************/
+   static ExecutorService getExecutorService()
+   {
+      return (executorService);
+   }
 
 
 
@@ -139,6 +151,50 @@ public class AuditHandlerExecutor
       else
       {
          executeSync(handlerMetaData, () -> handler.handleAudit(input));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Execute all read audit handlers for the given table.
+    **
+    ** @param tableName the table name to get handlers for
+    ** @param input the read audit handler input
+    ** @throws QException if a sync handler with FAIL_OPERATION policy throws
+    *******************************************************************************/
+   public void executeReadHandlers(String tableName, ReadAuditHandlerInput input) throws QException
+   {
+      List<QAuditHandlerMetaData> handlers = QContext.getQInstance().getAuditHandlersForTable(tableName, AuditHandlerType.READ);
+
+      for(QAuditHandlerMetaData handlerMetaData : handlers)
+      {
+         executeReadHandler(handlerMetaData, input);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Execute a single read audit handler.
+    *******************************************************************************/
+   private void executeReadHandler(QAuditHandlerMetaData handlerMetaData, ReadAuditHandlerInput input) throws QException
+   {
+      ReadAuditHandlerInterface handler = QCodeLoader.getAdHoc(ReadAuditHandlerInterface.class, handlerMetaData.getHandlerCode());
+      if(handler == null)
+      {
+         LOG.warn("Could not load read audit handler", logPair("handlerName", handlerMetaData.getName()));
+         return;
+      }
+
+      Boolean isAsync = handlerMetaData.getIsAsync();
+      if(isAsync != null && isAsync)
+      {
+         executeAsync(handlerMetaData, () -> handler.handleReadAudit(input));
+      }
+      else
+      {
+         executeSync(handlerMetaData, () -> handler.handleReadAudit(input));
       }
    }
 

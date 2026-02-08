@@ -43,6 +43,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.audits.ProcessedAuditHandlerInterface;
+import com.kingsrook.qqq.backend.core.actions.audits.ReadAuditHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -61,11 +62,13 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditHandlerType;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditHandlerMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.ReadAuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.automation.QAutomationProviderMetaData;
@@ -713,6 +716,10 @@ public class QInstanceValidator
                {
                   validateSimpleCodeReference(prefix + "handlerCode ", handler.getHandlerCode(), ProcessedAuditHandlerInterface.class);
                }
+               else if(handler.getHandlerType() == AuditHandlerType.READ)
+               {
+                  validateSimpleCodeReference(prefix + "handlerCode ", handler.getHandlerCode(), ReadAuditHandlerInterface.class);
+               }
             }
 
             runPlugins(QAuditHandlerMetaData.class, handler, qInstance);
@@ -1088,8 +1095,31 @@ public class QInstanceValidator
                menu.validate(this, qInstance, table);
             }
 
+            validateTableReadAuditLevel(qInstance, table);
+
             runPlugins(QTableMetaData.class, table, qInstance);
          });
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate that if a table has a non-NONE readAuditLevel, the audit tables
+    ** are defined in the QInstance.
+    *******************************************************************************/
+   private void validateTableReadAuditLevel(QInstance qInstance, QTableMetaData table)
+   {
+      if(table.getAuditRules() == null)
+      {
+         return;
+      }
+
+      ReadAuditLevel readAuditLevel = table.getAuditRules().getReadAuditLevel();
+      if(readAuditLevel != null && readAuditLevel != ReadAuditLevel.NONE)
+      {
+         assertCondition(qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT) != null,
+            "Table " + table.getName() + " has readAuditLevel=" + readAuditLevel + ", but the " + AuditsMetaDataProvider.TABLE_NAME_AUDIT + " table is not defined in the instance.");
       }
    }
 

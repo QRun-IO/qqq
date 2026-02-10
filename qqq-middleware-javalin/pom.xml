@@ -34,7 +34,7 @@
    </parent>
 
    <properties>
-      <kotlin.version>2.3.0</kotlin.version>
+      <kotlin.version>2.3.10</kotlin.version>
       <javalin.version>6.7.0</javalin.version>
    </properties>
 
@@ -66,7 +66,7 @@
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-frontend-material-dashboard</artifactId>
-         <version>0.28.0-20251201.170136-2</version>
+         <version>0.36.1</version>
          <scope>test</scope>
          <optional>true</optional>
       </dependency>
@@ -155,7 +155,7 @@
          <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.14.1</version>
+            <version>3.15.0</version>
             <configuration>
                <source>11</source>
                <target>11</target>

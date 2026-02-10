@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpRole;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.CollapsibleMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 
@@ -72,6 +73,7 @@ public class QWidgetMetaData implements QWidgetMetaDataInterface
 
    protected QInstanceValidatorPluginInterface<QWidgetMetaDataInterface> validatorPlugin;
 
+   protected CollapsibleMetaData collapsible;
 
    /*******************************************************************************
     ** Getter for name
@@ -793,6 +795,44 @@ public class QWidgetMetaData implements QWidgetMetaDataInterface
    public QWidgetMetaData withValidatorPlugin(QInstanceValidatorPluginInterface<QWidgetMetaDataInterface> validatorPlugin)
    {
       this.validatorPlugin = validatorPlugin;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for collapsible
+    * @see #withCollapsible(CollapsibleMetaData)
+    *******************************************************************************/
+   @Override
+   public CollapsibleMetaData getCollapsible()
+   {
+      return (this.collapsible);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for collapsible
+    * @see #withCollapsible(CollapsibleMetaData)
+    *******************************************************************************/
+   public void setCollapsible(CollapsibleMetaData collapsible)
+   {
+      this.collapsible = collapsible;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for collapsible
+    *
+    * @param collapsible
+    * collapsible behavior for the widget.
+    * @return this
+    *******************************************************************************/
+   public QWidgetMetaData withCollapsible(CollapsibleMetaData collapsible)
+   {
+      this.collapsible = collapsible;
       return (this);
    }
 

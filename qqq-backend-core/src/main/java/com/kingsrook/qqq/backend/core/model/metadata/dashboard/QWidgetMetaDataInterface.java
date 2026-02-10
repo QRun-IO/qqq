@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.TopLevelMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpRole;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.CollapsibleMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 
@@ -286,5 +287,18 @@ public interface QWidgetMetaDataInterface extends MetaDataWithPermissionRules, T
    {
       return (null);
    }
+
+
+   /*******************************************************************************
+    * Getter for collapsible - specification of whether the widget should be
+    * collapsible or not, and if so, what the initial state is.
+    *
+    * @return Collapsible - null in default implementation (which means not collapsible)
+    *******************************************************************************/
+   default CollapsibleMetaData getCollapsible()
+   {
+      return (null);
+   }
+
 }
 

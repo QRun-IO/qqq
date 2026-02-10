@@ -22,7 +22,11 @@
 package com.kingsrook.qqq.backend.core.actions.metadata;
 
 
+import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -40,14 +44,14 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
  *******************************************************************************/
 public class TableMetaDataAction
 {
+
+
    /*******************************************************************************
     **
     *******************************************************************************/
    public TableMetaDataOutput execute(TableMetaDataInput tableMetaDataInput) throws QException
    {
       ActionHelper.validateSession(tableMetaDataInput);
-
-      // todo pre-customization - just get to modify the request?
       TableMetaDataOutput tableMetaDataOutput = new TableMetaDataOutput();
 
       QTableMetaData table = QContext.getQInstance().getTable(tableMetaDataInput.getTableName());
@@ -60,7 +64,11 @@ public class TableMetaDataAction
       QBackendMetaData backendForTable = QContext.getQInstance().getBackendForTable(table.getName());
       tableMetaDataOutput.setTable(new QFrontendTableMetaData(tableMetaDataInput, backendForTable, table, true, true));
 
-      // todo post-customization - can do whatever w/ the result if you want
+      Optional<TableCustomizerInterface> postMetaDataCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_META_DATA_ACTION.getRole());
+      if(postMetaDataCustomizer.isPresent())
+      {
+         postMetaDataCustomizer.get().postMetaDataAction(tableMetaDataInput, tableMetaDataOutput);
+      }
 
       return tableMetaDataOutput;
    }

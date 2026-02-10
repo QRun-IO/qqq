@@ -23,6 +23,8 @@ package com.kingsrook.qqq.backend.core.actions.metadata;
 
 
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -30,6 +32,10 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -113,6 +119,55 @@ class TableMetaDataActionTest extends BaseTest
       assertFalse(result.getTable().getFields().containsKey("total"));
       assertEquals("orderLine", result.getTable().getExposedJoins().get(0).getJoinTable().getName());
       assertFalse(result.getTable().getExposedJoins().get(0).getJoinTable().getFields().containsKey("lineNumber"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testPostMetaDataAction() throws QException
+   {
+      //////////////////////////////////////////////////////
+      // establish baseline without post meta data action //
+      //////////////////////////////////////////////////////
+      TableMetaDataInput request = new TableMetaDataInput();
+      request.setTableName(TestUtils.TABLE_NAME_ORDER);
+      request.setInputSource(QInputSource.USER);
+      TableMetaDataOutput result = new TableMetaDataAction().execute(request);
+      assertFalse(result.getTable().getFields().containsKey("hello"));
+      assertTrue(result.getTable().getFields().containsKey("orderNo"));
+      assertTrue(result.getTable().getFields().containsKey("total"));
+      assertEquals("orderLine", result.getTable().getExposedJoins().get(0).getJoinTable().getName());
+      assertTrue(result.getTable().getExposedJoins().get(0).getJoinTable().getFields().containsKey("lineNumber"));
+
+      //////////////////////////////////////////////////
+      // now make total and lineNumber fields go away //
+      //////////////////////////////////////////////////
+      QContext.getQSession().getUser().setIdReference("jdoe");
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER).withCustomizer(TableCustomizers.POST_META_DATA_ACTION.getRole(), new QCodeReference(TestPostMetaDataCustomizer.class));
+      result = new TableMetaDataAction().execute(request);
+      assertTrue(result.getTable().getFields().containsKey("hello"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static class TestPostMetaDataCustomizer implements TableCustomizerInterface
+   {
+
+      /*******************************************************************************
+       ** custom actions to run after table meta data was created by the meta data action
+       **
+       *******************************************************************************/
+      @Override
+      public void postMetaDataAction(TableMetaDataInput tableMetaDataInput, TableMetaDataOutput tableMetaDataOutput) throws QException
+      {
+         tableMetaDataOutput.getTable().getFields().put("hello", new QFrontendFieldMetaData(new QFieldMetaData("hello", QFieldType.INTEGER)));
+      }
    }
 
 }

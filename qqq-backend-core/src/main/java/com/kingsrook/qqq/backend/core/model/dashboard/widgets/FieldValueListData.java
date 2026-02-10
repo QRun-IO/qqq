@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
@@ -150,13 +151,15 @@ public class FieldValueListData extends QWidgetData
          }
       }
 
-      QTableMetaData table = null;
       if(record != null && record.getTableName() != null)
       {
-         QInstance qInstance = QContext.getQInstance();
-         table = qInstance.getTable(record.getTableName());
-
+         QInstance      qInstance = QContext.getQInstance();
+         QTableMetaData table     = qInstance.getTable(record.getTableName());
          QValueFormatter.setDisplayValuesInRecordsIncludingPossibleValueTranslations(table, List.of(record));
+      }
+      else
+      {
+         QValueFormatter.setDisplayValuesInRecord(null, fields.stream().collect(Collectors.toMap(f -> f.getName(), f -> f)), record);
       }
    }
 

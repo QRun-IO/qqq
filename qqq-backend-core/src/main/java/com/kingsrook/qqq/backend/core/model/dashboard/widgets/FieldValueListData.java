@@ -27,12 +27,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.Pair;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
@@ -148,7 +150,14 @@ public class FieldValueListData extends QWidgetData
          }
       }
 
-      QValueFormatter.setDisplayValuesInRecord(null, fields.stream().collect(Collectors.toMap(f -> f.getName(), f -> f)), record);
+      QTableMetaData table = null;
+      if(record != null && record.getTableName() != null)
+      {
+         QInstance qInstance = QContext.getQInstance();
+         table = qInstance.getTable(record.getTableName());
+
+         QValueFormatter.setDisplayValuesInRecordsIncludingPossibleValueTranslations(table, List.of(record));
+      }
    }
 
 

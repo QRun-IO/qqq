@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -137,6 +138,50 @@ class TableExportSpecV1Test extends SpecTestBase
          .asString();
 
       assertThat(response.getStatus()).isIn(400, 500);
+   }
+
+
+
+   /*******************************************************************************
+    ** Test JSON export format to verify multi-format support.
+    *******************************************************************************/
+   @Test
+   void testJsonExport()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of(
+            "format", "json",
+            "filter", new QQueryFilter(new QFilterCriteria("lastName", QCriteriaOperator.EQUALS, "Kelkhoff"))
+         )))
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      assertThat(response.getHeaders().getFirst("Content-Type")).contains("json");
+      assertThat(response.getHeaders().getFirst("Content-Disposition")).contains("person.json");
+      assertThat(response.getBody()).contains("Kelkhoff");
+   }
+
+
+
+   /*******************************************************************************
+    ** Test export with specific field names subset.
+    *******************************************************************************/
+   @Test
+   void testExportWithFieldNames()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/export")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of(
+            "format", "csv",
+            "fieldNames", List.of("firstName", "lastName")
+         )))
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      String body = response.getBody();
+      assertThat(body).contains("First Name");
+      assertThat(body).contains("Last Name");
    }
 
 }

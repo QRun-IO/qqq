@@ -22,8 +22,11 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLConnection;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -53,7 +56,20 @@ public class GeneralDownloadExecutor extends AbstractMiddlewareExecutor<GeneralD
    {
       try
       {
-         output.setFilename(input.getFile());
+         String filename = input.getFile();
+         output.setFilename(filename);
+
+         ///////////////////////////////////////////////////////////////
+         // infer content type from the filename extension if present //
+         ///////////////////////////////////////////////////////////////
+         if(StringUtils.hasContent(filename))
+         {
+            String contentType = URLConnection.guessContentTypeFromName(filename);
+            if(StringUtils.hasContent(contentType))
+            {
+               output.setContentType(contentType);
+            }
+         }
 
          String filePath         = input.getFilePath();
          String storageTableName = input.getStorageTableName();
@@ -61,7 +77,10 @@ public class GeneralDownloadExecutor extends AbstractMiddlewareExecutor<GeneralD
 
          if(StringUtils.hasContent(filePath))
          {
-            InputStream inputStream = new FileInputStream(filePath);
+            validateFilePathWithinTempDir(filePath);
+
+            File        file        = new File(filePath);
+            InputStream inputStream = new FileInputStream(file);
             output.setInputStream(inputStream);
          }
          else if(StringUtils.hasContent(storageTableName) && StringUtils.hasContent(storageReference))
@@ -81,6 +100,23 @@ public class GeneralDownloadExecutor extends AbstractMiddlewareExecutor<GeneralD
       catch(Exception e)
       {
          throw (new QException("Error executing file download", e));
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** Validate that a file path resolves to within java.io.tmpdir, to prevent
+    ** path traversal attacks.
+    ***************************************************************************/
+   private void validateFilePathWithinTempDir(String filePath) throws QBadRequestException, IOException
+   {
+      File   file          = new File(filePath);
+      String canonicalPath = file.getCanonicalPath();
+      String tempDir       = new File(System.getProperty("java.io.tmpdir")).getCanonicalPath();
+      if(!canonicalPath.startsWith(tempDir))
+      {
+         throw new QBadRequestException("File path is not within the allowed directory");
       }
    }
 

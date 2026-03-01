@@ -34,6 +34,7 @@ public class RecordFieldDownloadResponseV1 implements RecordFieldDownloadOutputI
    private byte[] bytes;
    private String contentType;
    private String filename;
+   private String redirectUrl;
 
 
 
@@ -96,6 +97,27 @@ public class RecordFieldDownloadResponseV1 implements RecordFieldDownloadOutputI
    public String getFilename()
    {
       return (this.filename);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for redirectUrl
+    *******************************************************************************/
+   @Override
+   public void setRedirectUrl(String url)
+   {
+      this.redirectUrl = url;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for redirectUrl
+    *******************************************************************************/
+   public String getRedirectUrl()
+   {
+      return (this.redirectUrl);
    }
 
 }

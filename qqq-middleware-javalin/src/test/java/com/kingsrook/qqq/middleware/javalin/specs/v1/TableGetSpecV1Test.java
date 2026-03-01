@@ -122,4 +122,24 @@ class TableGetSpecV1Test extends SpecTestBase
       assertThat(error).contains("Permission denied");
    }
 
+
+
+   /*******************************************************************************
+    ** Verify that includeAssociations=true parameter does not cause an error,
+    ** and that the record is still returned successfully.
+    *******************************************************************************/
+   @Test
+   void testIncludeAssociations()
+   {
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/table/person/1?includeAssociations=true")
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      JSONObject record     = jsonObject.getJSONObject("record");
+      assertNotNull(record);
+      assertThat(record.getString("tableName")).isEqualTo("person");
+      assertThat(record.getJSONObject("values").getString("firstName")).isEqualTo("Darin");
+   }
+
 }

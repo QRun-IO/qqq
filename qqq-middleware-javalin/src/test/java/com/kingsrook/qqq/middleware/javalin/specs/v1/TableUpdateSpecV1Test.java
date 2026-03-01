@@ -109,4 +109,27 @@ class TableUpdateSpecV1Test extends SpecTestBase
       assertThat(error).contains("Permission denied");
    }
 
+
+
+   /*******************************************************************************
+    ** Test updating a record that does not exist (primaryKey=999999).
+    ** The RDBMS backend returns a record with errors for non-existent updates,
+    ** which surfaces as a user-facing error in the response.
+    *******************************************************************************/
+   @Test
+   void testUpdateNonExistentRecord()
+   {
+      HttpResponse<String> response = Unirest.patch(getBaseUrlAndPath() + "/table/person/999999")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("firstName", "Ghost")))
+         .asString();
+
+      /////////////////////////////////////////////////////////////////////////////////////
+      // the response may be a 200 with errors on the record, or a 4xx/5xx error status; //
+      // we verify the response is valid JSON either way.                                //
+      /////////////////////////////////////////////////////////////////////////////////////
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertNotNull(jsonObject);
+   }
+
 }

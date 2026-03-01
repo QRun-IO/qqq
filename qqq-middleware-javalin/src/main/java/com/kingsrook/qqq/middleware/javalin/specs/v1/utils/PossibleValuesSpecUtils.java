@@ -22,6 +22,8 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.utils;
 
 
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,8 @@ import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 
 /*******************************************************************************
@@ -63,6 +67,15 @@ public class PossibleValuesSpecUtils
          .withType(Type.STRING)
          .withEnumValues(List.of("FORM", "FILTER")));
 
+      properties.put("labels", new Schema()
+         .withDescription("List of specific labels to look up")
+         .withType(Type.ARRAY)
+         .withItems(new Schema().withType(Type.STRING)));
+
+      properties.put("processValues", new Schema()
+         .withDescription("Map of field values from the current process step, used for filter interpolation")
+         .withType(Type.OBJECT));
+
       properties.put("filter", new Schema()
          .withDescription("Optional default filter to apply to the possible value search")
          .withRef("#/components/schemas/QueryFilter"));
@@ -74,6 +87,108 @@ public class PossibleValuesSpecUtils
                   .withType(Type.OBJECT)
                   .withProperties(properties))
          ));
+   }
+
+
+
+   /***************************************************************************
+    ** Extract a string field from the JSON request body.
+    ***************************************************************************/
+   public static String extractStringField(JSONObject requestBody, String fieldName)
+   {
+      if(requestBody != null && requestBody.has(fieldName) && !requestBody.isNull(fieldName))
+      {
+         return requestBody.getString(fieldName);
+      }
+      return (null);
+   }
+
+
+
+   /***************************************************************************
+    ** Extract the id list from the JSON request body.
+    ***************************************************************************/
+   public static List<String> extractIdList(JSONObject requestBody)
+   {
+      if(requestBody != null && requestBody.has("ids") && !requestBody.isNull("ids"))
+      {
+         JSONArray idsArray = requestBody.getJSONArray("ids");
+         List<String> idList = new ArrayList<>();
+         for(int i = 0; i < idsArray.length(); i++)
+         {
+            idList.add(idsArray.getString(i));
+         }
+         return idList;
+      }
+      return (null);
+   }
+
+
+
+   /***************************************************************************
+    ** Extract the label list from the JSON request body.
+    ***************************************************************************/
+   public static List<String> extractLabelList(JSONObject requestBody)
+   {
+      if(requestBody != null && requestBody.has("labels") && !requestBody.isNull("labels"))
+      {
+         JSONArray labelsArray = requestBody.getJSONArray("labels");
+         List<String> labelList = new ArrayList<>();
+         for(int i = 0; i < labelsArray.length(); i++)
+         {
+            labelList.add(labelsArray.getString(i));
+         }
+         return labelList;
+      }
+      return (null);
+   }
+
+
+
+   /***************************************************************************
+    ** Extract other values map from the JSON request body.
+    ***************************************************************************/
+   public static Map<String, Serializable> extractOtherValues(JSONObject requestBody)
+   {
+      if(requestBody != null && requestBody.has("values") && !requestBody.isNull("values"))
+      {
+         JSONObject valuesObject = requestBody.getJSONObject("values");
+         Map<String, Serializable> otherValues = new LinkedHashMap<>();
+         for(String key : valuesObject.keySet())
+         {
+            Object value = valuesObject.get(key);
+            if(value instanceof Serializable s)
+            {
+               otherValues.put(key, s);
+            }
+         }
+         return otherValues;
+      }
+      return (null);
+   }
+
+
+
+   /***************************************************************************
+    ** Extract process values map from the JSON request body.
+    ***************************************************************************/
+   public static Map<String, Serializable> extractProcessValues(JSONObject requestBody)
+   {
+      if(requestBody != null && requestBody.has("processValues") && !requestBody.isNull("processValues"))
+      {
+         JSONObject processValuesObject = requestBody.getJSONObject("processValues");
+         Map<String, Serializable> processValues = new LinkedHashMap<>();
+         for(String key : processValuesObject.keySet())
+         {
+            Object value = processValuesObject.get(key);
+            if(value instanceof Serializable s)
+            {
+               processValues.put(key, s);
+            }
+         }
+         return processValues;
+      }
+      return (null);
    }
 
 }

@@ -51,7 +51,8 @@ public class WidgetSpecV1 extends AbstractEndpointSpec<WidgetInput, WidgetRespon
 {
 
    /***************************************************************************
-    **
+    ** Note: Legacy widget endpoint supported both GET and POST. V1 API uses POST-only
+    ** since widget parameters are passed in the JSON request body.
     ***************************************************************************/
    @Override
    public BasicOperation defineBasicOperation()

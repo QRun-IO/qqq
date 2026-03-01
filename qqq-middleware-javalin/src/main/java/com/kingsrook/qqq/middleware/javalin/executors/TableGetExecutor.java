@@ -67,6 +67,7 @@ public class TableGetExecutor extends AbstractMiddlewareExecutor<TableGetInput, 
          getInput.setShouldTranslatePossibleValues(true);
          getInput.setShouldFetchHeavyFields(true);
          getInput.setPrimaryKey(input.getPrimaryKey());
+         getInput.setQueryJoins(input.getQueryJoins());
 
          if(BooleanUtils.isTrue(input.getIncludeAssociations()))
          {

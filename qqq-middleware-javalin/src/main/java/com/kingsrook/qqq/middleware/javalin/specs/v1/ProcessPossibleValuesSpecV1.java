@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValu
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.executors.PossibleValuesExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.PossibleValuesInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -148,28 +150,41 @@ public class ProcessPossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleVa
       input.setFieldName(fieldName);
 
       JSONObject requestBody = getRequestBodyAsJsonObject(context);
-      Map<String, Serializable> otherValues = TablePossibleValuesSpecV1.extractOtherValues(requestBody);
+      Map<String, Serializable> otherValues = PossibleValuesSpecUtils.extractOtherValues(requestBody);
       input.setOtherValues(otherValues);
+
+      ///////////////////////////////////////////////////////////////////////////////////
+      // extract processValues from the request body, for use in filter interpolation  //
+      ///////////////////////////////////////////////////////////////////////////////////
+      Map<String, Serializable> processValues = PossibleValuesSpecUtils.extractProcessValues(requestBody);
+      if(processValues == null)
+      {
+         processValues = new HashMap<>();
+      }
 
       QQueryFilter defaultFilter = null;
       if(field.getPossibleValueSourceFilter() != null)
       {
          defaultFilter = field.getPossibleValueSourceFilter().clone();
 
-         String useCase = TablePossibleValuesSpecV1.extractStringField(requestBody, "useCase");
-         PossibleValueSearchFilterUseCase filterUseCase = ObjectUtils.tryElse(
-            () -> PossibleValueSearchFilterUseCase.valueOf(useCase.toUpperCase()),
-            PossibleValueSearchFilterUseCase.FORM);
+         String useCase = PossibleValuesSpecUtils.extractStringField(requestBody, "useCase");
+         PossibleValueSearchFilterUseCase filterUseCase = (useCase != null)
+            ? ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCase.toUpperCase()), PossibleValueSearchFilterUseCase.FORM)
+            : PossibleValueSearchFilterUseCase.FORM;
 
-         defaultFilter.interpretValues(filterUseCase, otherValues);
+         defaultFilter.interpretValues(MapBuilder.of("input", otherValues, "processValues", processValues), filterUseCase);
       }
       input.setDefaultFilter(defaultFilter);
 
       if(requestBody != null)
       {
-         input.setSearchTerm(TablePossibleValuesSpecV1.extractStringField(requestBody, "searchTerm"));
-         input.setIdList(TablePossibleValuesSpecV1.extractIdList(requestBody));
+         input.setSearchTerm(PossibleValuesSpecUtils.extractStringField(requestBody, "searchTerm"));
+         input.setIdList(PossibleValuesSpecUtils.extractIdList(requestBody));
+         input.setLabelList(PossibleValuesSpecUtils.extractLabelList(requestBody));
       }
+
+      input.setPathParams(context.pathParamMap());
+      input.setQueryParams(context.queryParamMap());
 
       return (input);
    }

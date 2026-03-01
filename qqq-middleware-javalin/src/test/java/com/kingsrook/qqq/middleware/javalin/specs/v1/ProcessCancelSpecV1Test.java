@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.util.List;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -31,6 +32,7 @@ import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -103,6 +105,25 @@ class ProcessCancelSpecV1Test extends SpecTestBase
 
       assertEquals(200, cancelResponse.getStatus());
       assertEquals("{}", cancelResponse.getBody());
+   }
+
+
+
+   /*******************************************************************************
+    ** Test cancelling a non-existent process (random UUID) returns an error.
+    *******************************************************************************/
+   @Test
+   void testCancelNonExistentProcess()
+   {
+      String fakeUUID = UUID.randomUUID().toString();
+
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/" + fakeUUID + "/cancel")
+         .asString();
+
+      assertThat(response.getStatus()).isIn(400, 500);
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertThat(jsonObject.has("error")).isTrue();
+      assertThat(jsonObject.getString("error")).isNotEmpty();
    }
 
 }

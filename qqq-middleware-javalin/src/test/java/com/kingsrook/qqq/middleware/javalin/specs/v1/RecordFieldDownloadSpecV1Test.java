@@ -24,8 +24,10 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import kong.unirest.Config;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import kong.unirest.UnirestInstance;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -100,6 +102,34 @@ class RecordFieldDownloadSpecV1Test extends SpecTestBase
          .asString();
 
       assertEquals(404, response.getStatus());
+   }
+
+
+
+   /*******************************************************************************
+    ** Test downloading a non-blob field (licenseScanPdfUrl), which should result
+    ** in a redirect to the URL stored in that field.
+    *******************************************************************************/
+   @Test
+   void testDownloadNonBlobField_redirect()
+   {
+      ///////////////////////////////////////////////////////////////////////
+      // use a UnirestInstance with redirects disabled so we can inspect   //
+      // the 3xx response rather than following the redirect automatically //
+      ///////////////////////////////////////////////////////////////////////
+      UnirestInstance unirest = new UnirestInstance(new Config().followRedirects(false));
+      try
+      {
+         HttpResponse<String> response = unirest.get(getBaseUrlAndPath() + "/table/person/1/licenseScanPdfUrl/License-1.pdf")
+            .asString();
+
+         assertThat(response.getStatus()).isEqualTo(302);
+         assertThat(response.getHeaders().getFirst("Location")).contains("somedomain");
+      }
+      finally
+      {
+         unirest.close();
+      }
    }
 
 }

@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.middleware.javalin.executors.ProcessCancelExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessCancelInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -99,6 +100,17 @@ public class ProcessCancelSpecV1 extends AbstractEndpointSpec<ProcessCancelInput
       input.setProcessName(getRequestParam(context, "processName"));
       input.setProcessUUID(getRequestParam(context, "processUUID"));
       return (input);
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public Map<String, Schema> defineComponentSchemas()
+   {
+      return Map.of(ProcessCancelResponseV1.class.getSimpleName(), new ProcessCancelResponseV1().toSchema());
    }
 
 

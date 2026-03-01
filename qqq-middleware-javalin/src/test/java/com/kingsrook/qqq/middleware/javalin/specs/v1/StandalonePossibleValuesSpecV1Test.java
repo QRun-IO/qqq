@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -153,6 +154,24 @@ class StandalonePossibleValuesSpecV1Test extends SpecTestBase
       assertTrue(jsonObject.has("options"));
       JSONArray options = jsonObject.getJSONArray("options");
       assertThat(options.length()).isGreaterThan(0);
+   }
+
+
+
+   /*******************************************************************************
+    ** Test searching by labels returns matching results.
+    *******************************************************************************/
+   @Test
+   void testSearchByLabels()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/possibleValues/person")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("labels", List.of("Kelkhoff"))))
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertTrue(jsonObject.has("options"));
    }
 
 }

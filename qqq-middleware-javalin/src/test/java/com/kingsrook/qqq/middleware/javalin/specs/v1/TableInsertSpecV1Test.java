@@ -115,4 +115,35 @@ class TableInsertSpecV1Test extends SpecTestBase
       assertThat(error).contains("Permission denied");
    }
 
+
+
+   /*******************************************************************************
+    ** Verify that a JSON body with a null value does not cause an error,
+    ** and that an empty string is treated as null.
+    *******************************************************************************/
+   @Test
+   void testNullAndEmptyStringValues()
+   {
+      ///////////////////////////////////////////////////////////////////////////////////////
+      // send a body with explicit null for birthDate and empty string for partnerPersonId; //
+      // both should be stored as null values. Required fields (firstName, lastName, email) //
+      // are populated to satisfy NOT NULL constraints.                                     //
+      ///////////////////////////////////////////////////////////////////////////////////////
+      String body = """
+         {"firstName": "NullTest", "lastName": "Person", "email": "null@test.com", "birthDate": null, "partnerPersonId": ""}""";
+
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(body)
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      JSONObject record     = jsonObject.getJSONObject("record");
+      assertNotNull(record);
+      assertThat(record.getJSONObject("values").getString("firstName")).isEqualTo("NullTest");
+      assertThat(record.getJSONObject("values").isNull("birthDate")).isTrue();
+      assertThat(record.getJSONObject("values").isNull("partnerPersonId")).isTrue();
+   }
+
 }

@@ -39,9 +39,11 @@ public class PossibleValuesInput extends AbstractMiddlewareInput
    private String                    fieldName;
    private String                    searchTerm;
    private List<String>              idList;
+   private List<String>              labelList;
    private Map<String, Serializable> otherValues;
-   private String                    useCase;
    private QQueryFilter              defaultFilter;
+   private Map<String, String>       pathParams;
+   private Map<String, List<String>> queryParams;
 
 
 
@@ -263,37 +265,6 @@ public class PossibleValuesInput extends AbstractMiddlewareInput
 
 
    /*******************************************************************************
-    ** Getter for useCase
-    *******************************************************************************/
-   public String getUseCase()
-   {
-      return (this.useCase);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for useCase
-    *******************************************************************************/
-   public void setUseCase(String useCase)
-   {
-      this.useCase = useCase;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for useCase
-    *******************************************************************************/
-   public PossibleValuesInput withUseCase(String useCase)
-   {
-      this.useCase = useCase;
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
     ** Getter for defaultFilter
     *******************************************************************************/
    public QQueryFilter getDefaultFilter()
@@ -319,6 +290,99 @@ public class PossibleValuesInput extends AbstractMiddlewareInput
    public PossibleValuesInput withDefaultFilter(QQueryFilter defaultFilter)
    {
       this.defaultFilter = defaultFilter;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for labelList
+    *******************************************************************************/
+   public List<String> getLabelList()
+   {
+      return (this.labelList);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for labelList
+    *******************************************************************************/
+   public void setLabelList(List<String> labelList)
+   {
+      this.labelList = labelList;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for labelList
+    *******************************************************************************/
+   public PossibleValuesInput withLabelList(List<String> labelList)
+   {
+      this.labelList = labelList;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pathParams
+    *******************************************************************************/
+   public Map<String, String> getPathParams()
+   {
+      return (this.pathParams);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pathParams
+    *******************************************************************************/
+   public void setPathParams(Map<String, String> pathParams)
+   {
+      this.pathParams = pathParams;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pathParams
+    *******************************************************************************/
+   public PossibleValuesInput withPathParams(Map<String, String> pathParams)
+   {
+      this.pathParams = pathParams;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for queryParams
+    *******************************************************************************/
+   public Map<String, List<String>> getQueryParams()
+   {
+      return (this.queryParams);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for queryParams
+    *******************************************************************************/
+   public void setQueryParams(Map<String, List<String>> queryParams)
+   {
+      this.queryParams = queryParams;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for queryParams
+    *******************************************************************************/
+   public PossibleValuesInput withQueryParams(Map<String, List<String>> queryParams)
+   {
+      this.queryParams = queryParams;
       return (this);
    }
 

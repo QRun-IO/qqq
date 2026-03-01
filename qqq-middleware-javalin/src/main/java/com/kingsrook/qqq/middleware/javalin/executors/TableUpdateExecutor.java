@@ -93,7 +93,8 @@ public class TableUpdateExecutor extends AbstractMiddlewareExecutor<TableUpdateI
 
          if(CollectionUtils.nullSafeHasContents(outputRecord.getErrors()))
          {
-            throw (new QUserFacingException("Error updating record: "
+            String tableLabel = tableMetaData != null ? tableMetaData.getLabel() : input.getTableName();
+            throw (new QUserFacingException("Error updating " + tableLabel + ": "
                + StringUtils.joinWithCommasAndAnd(outputRecord.getErrors().stream().map(QStatusMessage::getMessage).toList())));
          }
 

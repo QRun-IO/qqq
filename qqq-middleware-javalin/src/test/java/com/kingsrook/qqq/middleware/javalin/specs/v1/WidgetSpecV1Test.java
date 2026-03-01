@@ -83,6 +83,25 @@ class WidgetSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** Test rendering a widget with an empty JSON body -- should not NPE and
+    ** should return 200 with widget data (html will be null since no input).
+    *******************************************************************************/
+   @Test
+   void testRenderWidgetWithEmptyBody()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/widget/EchoWidgetRenderer")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body("{}")
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertThat(jsonObject.getString("type")).isEqualTo("html");
+   }
+
+
+
+   /*******************************************************************************
     ** Test that requesting a non-existent widget returns an appropriate error.
     *******************************************************************************/
    @Test

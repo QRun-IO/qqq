@@ -57,6 +57,21 @@ public class PossibleValuesExecutor extends AbstractMiddlewareExecutor<PossibleV
          searchInput.setIdList(new ArrayList<>(input.getIdList()));
       }
 
+      if(CollectionUtils.nullSafeHasContents(input.getLabelList()))
+      {
+         searchInput.setLabelList(input.getLabelList());
+      }
+
+      if(input.getPathParams() != null)
+      {
+         searchInput.setPathParamMap(input.getPathParams());
+      }
+
+      if(input.getQueryParams() != null)
+      {
+         searchInput.setQueryParamMap(input.getQueryParams());
+      }
+
       SearchPossibleValueSourceOutput searchOutput = new SearchPossibleValueSourceAction().execute(searchInput);
       output.setOptions(searchOutput.getResults());
    }

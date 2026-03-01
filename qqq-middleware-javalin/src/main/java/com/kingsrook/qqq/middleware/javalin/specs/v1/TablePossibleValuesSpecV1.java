@@ -23,7 +23,6 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValu
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.executors.PossibleValuesExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.PossibleValuesInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -51,7 +51,6 @@ import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.Context;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 
@@ -156,7 +155,7 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
       // also handle use case for filter interpretation, matching the legacy behavior.  //
       ///////////////////////////////////////////////////////////////////////////////////
       JSONObject requestBody = getRequestBodyAsJsonObject(context);
-      Map<String, Serializable> otherValues = extractOtherValues(requestBody);
+      Map<String, Serializable> otherValues = PossibleValuesSpecUtils.extractOtherValues(requestBody);
       input.setOtherValues(otherValues);
 
       QQueryFilter defaultFilter = null;
@@ -164,20 +163,24 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
       {
          defaultFilter = field.getPossibleValueSourceFilter().clone();
 
-         String useCase = extractStringField(requestBody, "useCase");
-         PossibleValueSearchFilterUseCase filterUseCase = ObjectUtils.tryElse(
-            () -> PossibleValueSearchFilterUseCase.valueOf(useCase.toUpperCase()),
-            PossibleValueSearchFilterUseCase.FORM);
+         String useCase = PossibleValuesSpecUtils.extractStringField(requestBody, "useCase");
+         PossibleValueSearchFilterUseCase filterUseCase = (useCase != null)
+            ? ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCase.toUpperCase()), PossibleValueSearchFilterUseCase.FORM)
+            : PossibleValueSearchFilterUseCase.FORM;
 
-         defaultFilter.interpretValues(filterUseCase, otherValues);
+         defaultFilter.interpretValues(MapBuilder.of("input", otherValues), filterUseCase);
       }
       input.setDefaultFilter(defaultFilter);
 
       if(requestBody != null)
       {
-         input.setSearchTerm(extractStringField(requestBody, "searchTerm"));
-         input.setIdList(extractIdList(requestBody));
+         input.setSearchTerm(PossibleValuesSpecUtils.extractStringField(requestBody, "searchTerm"));
+         input.setIdList(PossibleValuesSpecUtils.extractIdList(requestBody));
+         input.setLabelList(PossibleValuesSpecUtils.extractLabelList(requestBody));
       }
+
+      input.setPathParams(context.pathParamMap());
+      input.setQueryParams(context.queryParamMap());
 
       return (input);
    }
@@ -211,61 +214,5 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
    }
 
 
-
-   /***************************************************************************
-    ** Extract a string field from the JSON request body.
-    ***************************************************************************/
-   static String extractStringField(JSONObject requestBody, String fieldName)
-   {
-      if(requestBody != null && requestBody.has(fieldName) && !requestBody.isNull(fieldName))
-      {
-         return requestBody.getString(fieldName);
-      }
-      return (null);
-   }
-
-
-
-   /***************************************************************************
-    ** Extract the id list from the JSON request body.
-    ***************************************************************************/
-   static List<String> extractIdList(JSONObject requestBody)
-   {
-      if(requestBody != null && requestBody.has("ids") && !requestBody.isNull("ids"))
-      {
-         JSONArray idsArray = requestBody.getJSONArray("ids");
-         List<String> idList = new ArrayList<>();
-         for(int i = 0; i < idsArray.length(); i++)
-         {
-            idList.add(idsArray.getString(i));
-         }
-         return idList;
-      }
-      return (null);
-   }
-
-
-
-   /***************************************************************************
-    ** Extract other values map from the JSON request body.
-    ***************************************************************************/
-   static Map<String, Serializable> extractOtherValues(JSONObject requestBody)
-   {
-      if(requestBody != null && requestBody.has("values") && !requestBody.isNull("values"))
-      {
-         JSONObject valuesObject = requestBody.getJSONObject("values");
-         Map<String, Serializable> otherValues = new LinkedHashMap<>();
-         for(String key : valuesObject.keySet())
-         {
-            Object value = valuesObject.get(key);
-            if(value instanceof Serializable s)
-            {
-               otherValues.put(key, s);
-            }
-         }
-         return otherValues;
-      }
-      return (null);
-   }
 
 }

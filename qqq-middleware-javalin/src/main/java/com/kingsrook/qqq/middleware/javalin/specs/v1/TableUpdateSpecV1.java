@@ -136,7 +136,11 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
          for(String key : requestBody.keySet())
          {
             Object value = requestBody.get(key);
-            if(value instanceof Serializable s)
+            if(JSONObject.NULL.equals(value) || "".equals(value))
+            {
+               recordValues.put(key, null);
+            }
+            else if(value instanceof Serializable s)
             {
                recordValues.put(key, s);
             }

@@ -101,4 +101,37 @@ class GeneralDownloadSpecV1Test extends SpecTestBase
       assertThat(response.getStatus()).isIn(400, 500);
    }
 
+
+
+   /*******************************************************************************
+    ** Verify that a path traversal attack is blocked (file outside of tmpdir).
+    *******************************************************************************/
+   @Test
+   void testPathTraversalAttack_etcPasswd()
+   {
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/download/passwd")
+         .queryString("filePath", "/etc/passwd")
+         .asString();
+
+      assertThat(response.getStatus()).isIn(400, 500);
+      assertThat(response.getBody()).doesNotContain("root:");
+   }
+
+
+
+   /*******************************************************************************
+    ** Verify that a path traversal using relative segments is blocked.
+    *******************************************************************************/
+   @Test
+   void testPathTraversalAttack_dotDot()
+   {
+      String tmpDir = System.getProperty("java.io.tmpdir");
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/download/passwd")
+         .queryString("filePath", tmpDir + "/../etc/passwd")
+         .asString();
+
+      assertThat(response.getStatus()).isIn(400, 500);
+      assertThat(response.getBody()).doesNotContain("root:");
+   }
+
 }

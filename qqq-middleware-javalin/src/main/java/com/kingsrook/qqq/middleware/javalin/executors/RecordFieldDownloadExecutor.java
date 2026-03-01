@@ -25,23 +25,30 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 import java.io.Serializable;
 import java.util.Map;
 import java.util.Optional;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
+import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.RecordFieldDownloadInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.RecordFieldDownloadOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.misc.DownloadFileSupplementalAction;
 
 
 /*******************************************************************************
@@ -123,6 +130,42 @@ public class RecordFieldDownloadExecutor extends AbstractMiddlewareExecutor<Reco
 
       output.setFilename(filename);
 
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      // if the adornment has a supplemental process name in it, or a supplemental code reference //
+      // then execute that custom code, e.g., to log that the file was downloaded.                //
+      //////////////////////////////////////////////////////////////////////////////////////////////
+      if(fileDownloadAdornment.isPresent())
+      {
+         String processName = ValueUtils.getValueAsString(adornmentValues.get(AdornmentType.FileDownloadValues.SUPPLEMENTAL_PROCESS_NAME));
+         if(StringUtils.hasContent(processName))
+         {
+            RunProcessInput runProcessInput = new RunProcessInput();
+            runProcessInput.setProcessName(processName);
+            runProcessInput.setCallback(QProcessCallbackFactory.forRecord(getOutput.getRecord()));
+            runProcessInput.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+            runProcessInput.addValue("tableName", tableName);
+            runProcessInput.addValue("primaryKey", primaryKey);
+            runProcessInput.addValue("fieldName", fieldName);
+            runProcessInput.addValue("filename", filename);
+            new RunProcessAction().execute(runProcessInput);
+         }
+         else if(adornmentValues.containsKey(AdornmentType.FileDownloadValues.SUPPLEMENTAL_CODE_REFERENCE))
+         {
+            QCodeReference codeReference = (QCodeReference) adornmentValues.get(AdornmentType.FileDownloadValues.SUPPLEMENTAL_CODE_REFERENCE);
+
+            DownloadFileSupplementalAction action = QCodeLoader.getAdHoc(DownloadFileSupplementalAction.class, codeReference);
+
+            DownloadFileSupplementalAction.DownloadFileSupplementalActionInput supplementalInput = new DownloadFileSupplementalAction.DownloadFileSupplementalActionInput()
+               .withTableName(tableName)
+               .withFieldName(fieldName)
+               .withPrimaryKey(primaryKey)
+               .withFileName(filename);
+
+            DownloadFileSupplementalAction.DownloadFileSupplementalActionOutput supplementalOutput = new DownloadFileSupplementalAction.DownloadFileSupplementalActionOutput();
+            action.run(supplementalInput, supplementalOutput);
+         }
+      }
+
       /////////////////////////////////////////////////////////
       // if the field is a BLOB - send the bytes to the user //
       /////////////////////////////////////////////////////////
@@ -133,14 +176,13 @@ public class RecordFieldDownloadExecutor extends AbstractMiddlewareExecutor<Reco
       }
       else
       {
-         //////////////////////////////////////////////////////////////////////
-         // for non-blob fields, the value is treated as a string (e.g. URL) //
-         // in the v1 API we return the value as bytes                       //
-         //////////////////////////////////////////////////////////////////////
+         //////////////////////////////////////////////////////////////////
+         // else - assume a string is a URL - and issue a redirect to it //
+         //////////////////////////////////////////////////////////////////
          String value = getOutput.getRecord().getValueString(fieldName);
          if(value != null)
          {
-            output.setBytes(value.getBytes());
+            output.setRedirectUrl(value);
          }
       }
    }

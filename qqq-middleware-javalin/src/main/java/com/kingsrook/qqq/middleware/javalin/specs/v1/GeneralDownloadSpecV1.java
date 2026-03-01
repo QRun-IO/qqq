@@ -31,9 +31,11 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.GeneralDownloadResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
+import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
 import com.kingsrook.qqq.openapi.model.In;
 import com.kingsrook.qqq.openapi.model.Parameter;
+import com.kingsrook.qqq.openapi.model.Response;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.Context;
@@ -128,6 +130,21 @@ public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadI
 
 
    /***************************************************************************
+    ** Binary download endpoints do not return a JSON schema. Override to
+    ** describe the response as application/octet-stream binary content.
+    ***************************************************************************/
+   @Override
+   public Map<Integer, Response> defineResponses()
+   {
+      return Map.of(200, new Response()
+         .withDescription("Binary file content")
+         .withContent(Map.of("application/octet-stream", new Content()
+            .withSchema(new Schema().withType(Type.STRING).withFormat("binary")))));
+   }
+
+
+
+   /***************************************************************************
     ** Override handleOutput to stream binary content rather than JSON.
     ***************************************************************************/
    @Override
@@ -140,7 +157,7 @@ public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadI
 
       if(StringUtils.hasContent(output.getFilename()))
       {
-         context.header("Content-Disposition", "filename=" + output.getFilename());
+         context.header("Content-Disposition", "attachment; filename=\"" + output.getFilename() + "\"");
       }
 
       if(output.getInputStream() != null)

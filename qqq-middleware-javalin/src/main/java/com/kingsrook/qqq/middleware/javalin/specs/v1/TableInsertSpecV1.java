@@ -128,7 +128,11 @@ public class TableInsertSpecV1 extends AbstractEndpointSpec<TableInsertInput, Ta
          for(String key : requestBody.keySet())
          {
             Object value = requestBody.get(key);
-            if(value instanceof Serializable s)
+            if(JSONObject.NULL.equals(value) || "".equals(value))
+            {
+               recordValues.put(key, null);
+            }
+            else if(value instanceof Serializable s)
             {
                recordValues.put(key, s);
             }

@@ -99,4 +99,20 @@ class TableDeleteSpecV1Test extends SpecTestBase
       assertThat(error).contains("Permission denied");
    }
 
+
+
+   /*******************************************************************************
+    ** Test deleting a record that does not exist.
+    *******************************************************************************/
+   @Test
+   void testDeleteNonExistentRecord()
+   {
+      HttpResponse<String> response = Unirest.delete(getBaseUrlAndPath() + "/table/person/999999")
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertEquals(0, jsonObject.getInt("deletedRecordCount"));
+   }
+
 }

@@ -29,6 +29,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -36,6 +37,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
@@ -88,7 +90,9 @@ public class TableInsertExecutor extends AbstractMiddlewareExecutor<TableInsertI
 
          if(CollectionUtils.nullSafeHasContents(outputRecord.getErrors()))
          {
-            throw (new QUserFacingException("Error inserting record: "
+            QTableMetaData table = QContext.getQInstance().getTable(input.getTableName());
+            String tableLabel = table != null ? table.getLabel() : input.getTableName();
+            throw (new QUserFacingException("Error inserting " + tableLabel + ": "
                + StringUtils.joinWithCommasAndAnd(outputRecord.getErrors().stream().map(QStatusMessage::getMessage).toList())));
          }
 

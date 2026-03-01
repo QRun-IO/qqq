@@ -117,6 +117,47 @@ class ProcessRecordsSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** Test pagination parameters (skip and limit) return the correct number of
+    ** records while totalRecords reflects the actual total.
+    *******************************************************************************/
+   @Test
+   void testProcessRecordsPagination()
+   {
+      ///////////////////////////////////////////////////////////////////////////
+      // first, init a process that will produce records in its process state. //
+      ///////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> initResponse = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .multiPartContent()
+         .field("recordsParam", "recordIds")
+         .field("recordIds", "1,2,3")
+         .asString();
+
+      assertEquals(200, initResponse.getStatus());
+      JSONObject initJson    = JsonUtils.toJSONObject(initResponse.getBody());
+      String     processUUID = initJson.getString("processUUID");
+      assertNotNull(processUUID);
+
+      ///////////////////////////////////////////////////////
+      // fetch records with skip=0&limit=1 -- expect only  //
+      // 1 record back, but totalRecords should be >= 3.   //
+      ///////////////////////////////////////////////////////
+      HttpResponse<String> recordsResponse = Unirest.get(getBaseUrlAndPath() + "/processes/greet/" + processUUID + "/records?skip=0&limit=1")
+         .asString();
+
+      assertEquals(200, recordsResponse.getStatus());
+      JSONObject recordsJson = JsonUtils.toJSONObject(recordsResponse.getBody());
+      assertNotNull(recordsJson);
+
+      JSONArray records = recordsJson.getJSONArray("records");
+      assertEquals(1, records.length());
+
+      int totalRecords = recordsJson.getInt("totalRecords");
+      assertThat(totalRecords).isGreaterThanOrEqualTo(3);
+   }
+
+
+
+   /*******************************************************************************
     ** Test that requesting records for a non-existent process UUID returns error.
     *******************************************************************************/
    @Test

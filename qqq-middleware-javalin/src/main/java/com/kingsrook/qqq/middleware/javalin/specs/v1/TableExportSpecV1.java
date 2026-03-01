@@ -40,6 +40,7 @@ import com.kingsrook.qqq.openapi.model.HttpMethod;
 import com.kingsrook.qqq.openapi.model.In;
 import com.kingsrook.qqq.openapi.model.Parameter;
 import com.kingsrook.qqq.openapi.model.RequestBody;
+import com.kingsrook.qqq.openapi.model.Response;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
@@ -200,6 +201,21 @@ public class TableExportSpecV1 extends AbstractEndpointSpec<TableExportInput, Ta
 
 
    /***************************************************************************
+    ** Binary download endpoints do not return a JSON schema. Override to
+    ** describe the response as application/octet-stream binary content.
+    ***************************************************************************/
+   @Override
+   public Map<Integer, Response> defineResponses()
+   {
+      return Map.of(200, new Response()
+         .withDescription("Binary file content in the requested export format")
+         .withContent(Map.of("application/octet-stream", new Content()
+            .withSchema(new Schema().withType(Type.STRING).withFormat("binary")))));
+   }
+
+
+
+   /***************************************************************************
     ** Override handleOutput to stream binary content rather than JSON.
     ***************************************************************************/
    @Override
@@ -212,7 +228,7 @@ public class TableExportSpecV1 extends AbstractEndpointSpec<TableExportInput, Ta
 
       if(StringUtils.hasContent(output.getFilename()))
       {
-         context.header("Content-Disposition", "filename=" + output.getFilename());
+         context.header("Content-Disposition", "attachment; filename=\"" + output.getFilename() + "\"");
       }
 
       if(output.getInputStream() != null)

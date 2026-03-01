@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValu
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
+import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.executors.PossibleValuesExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.PossibleValuesInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -126,7 +127,7 @@ public class StandalonePossibleValuesSpecV1 extends AbstractEndpointSpec<Possibl
       input.setPossibleValueSourceName(possibleValueSourceName);
 
       JSONObject requestBody = getRequestBodyAsJsonObject(context);
-      Map<String, Serializable> otherValues = TablePossibleValuesSpecV1.extractOtherValues(requestBody);
+      Map<String, Serializable> otherValues = PossibleValuesSpecUtils.extractOtherValues(requestBody);
       input.setOtherValues(otherValues);
 
       ///////////////////////////////////////
@@ -140,21 +141,25 @@ public class StandalonePossibleValuesSpecV1 extends AbstractEndpointSpec<Possibl
          {
             defaultFilter = JsonUtils.toObject(filterJsonObject.toString(), QQueryFilter.class);
 
-            String useCase = TablePossibleValuesSpecV1.extractStringField(requestBody, "useCase");
-            PossibleValueSearchFilterUseCase filterUseCase = ObjectUtils.tryElse(
-               () -> PossibleValueSearchFilterUseCase.valueOf(useCase.toUpperCase()),
-               PossibleValueSearchFilterUseCase.FORM);
+            String useCase = PossibleValuesSpecUtils.extractStringField(requestBody, "useCase");
+            PossibleValueSearchFilterUseCase filterUseCase = (useCase != null)
+               ? ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCase.toUpperCase()), PossibleValueSearchFilterUseCase.FORM)
+               : PossibleValueSearchFilterUseCase.FORM;
 
-            defaultFilter.interpretValues(filterUseCase, otherValues);
+            defaultFilter.interpretValues(MapBuilder.of("input", otherValues), filterUseCase);
          }
       }
       input.setDefaultFilter(defaultFilter);
 
       if(requestBody != null)
       {
-         input.setSearchTerm(TablePossibleValuesSpecV1.extractStringField(requestBody, "searchTerm"));
-         input.setIdList(TablePossibleValuesSpecV1.extractIdList(requestBody));
+         input.setSearchTerm(PossibleValuesSpecUtils.extractStringField(requestBody, "searchTerm"));
+         input.setIdList(PossibleValuesSpecUtils.extractIdList(requestBody));
+         input.setLabelList(PossibleValuesSpecUtils.extractLabelList(requestBody));
       }
+
+      input.setPathParams(context.pathParamMap());
+      input.setQueryParams(context.queryParamMap());
 
       return (input);
    }

@@ -22,10 +22,14 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.TableGetExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableGetInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -40,6 +44,8 @@ import com.kingsrook.qqq.openapi.model.Parameter;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.Context;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 
 /*******************************************************************************
@@ -92,6 +98,14 @@ public class TableGetSpecV1 extends AbstractEndpointSpec<TableGetInput, TableGet
             .withRequired(false)
             .withSchema(new Schema().withType(Type.BOOLEAN))
             .withExample("true")
+            .withIn(In.QUERY),
+         new Parameter()
+            .withName("queryJoins")
+            .withDescription("JSON array of QueryJoin objects specifying tables to join into the get.")
+            .withRequired(false)
+            .withSchema(new Schema().withType(Type.STRING))
+            .withExample("""
+               [{"joinTable":"orderLine","select":true}]""")
             .withIn(In.QUERY)
       );
    }
@@ -112,6 +126,44 @@ public class TableGetSpecV1 extends AbstractEndpointSpec<TableGetInput, TableGet
       if("true".equals(includeAssociations))
       {
          input.setIncludeAssociations(true);
+      }
+
+      String queryJoinsParam = getRequestParam(context, "queryJoins");
+      if(StringUtils.hasContent(queryJoinsParam))
+      {
+         List<QueryJoin> queryJoins = new ArrayList<>();
+         JSONArray       queryJoinsJSON = new JSONArray(queryJoinsParam);
+         for(int i = 0; i < queryJoinsJSON.length(); i++)
+         {
+            QueryJoin  queryJoin  = new QueryJoin();
+            JSONObject jsonObject = queryJoinsJSON.getJSONObject(i);
+
+            queryJoin.setJoinTable(jsonObject.optString("joinTable"));
+            queryJoin.setSelect(jsonObject.optBoolean("select"));
+
+            if(jsonObject.has("baseTableOrAlias") && !jsonObject.isNull("baseTableOrAlias"))
+            {
+               queryJoin.setBaseTableOrAlias(jsonObject.optString("baseTableOrAlias"));
+            }
+
+            if(jsonObject.has("alias") && !jsonObject.isNull("alias"))
+            {
+               queryJoin.setAlias(jsonObject.optString("alias"));
+            }
+
+            if(jsonObject.has("type") && !jsonObject.isNull("type"))
+            {
+               queryJoin.setType(QueryJoin.Type.valueOf(jsonObject.getString("type")));
+            }
+
+            if(jsonObject.has("joinName") && !jsonObject.isNull("joinName"))
+            {
+               queryJoin.setJoinMetaData(QContext.getQInstance().getJoin(jsonObject.getString("joinName")));
+            }
+
+            queryJoins.add(queryJoin);
+         }
+         input.setQueryJoins(queryJoins);
       }
 
       return (input);

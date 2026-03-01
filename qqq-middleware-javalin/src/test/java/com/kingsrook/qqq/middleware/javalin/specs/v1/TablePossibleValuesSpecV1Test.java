@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -170,6 +171,33 @@ class TablePossibleValuesSpecV1Test extends SpecTestBase
       assertThat(response.getStatus()).isGreaterThanOrEqualTo(400);
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertThat(jsonObject.getString("error")).contains("not associated with a possible value source");
+   }
+
+
+
+   /*******************************************************************************
+    ** Test searching by specific ids returns results for those ids.
+    *******************************************************************************/
+   @Test
+   void testSearchByIds()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/possibleValues/partnerPersonId")
+         .contentType(ContentType.APPLICATION_JSON.getMimeType())
+         .body(JsonUtils.toJson(Map.of("ids", List.of("1", "2"))))
+         .asString();
+
+      assertEquals(200, response.getStatus());
+      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+      assertTrue(jsonObject.has("options"));
+      JSONArray options = jsonObject.getJSONArray("options");
+      assertThat(options.length()).isGreaterThan(0);
+
+      for(int i = 0; i < options.length(); i++)
+      {
+         JSONObject option = options.getJSONObject(i);
+         assertTrue(option.has("id"));
+         assertTrue(option.has("label"));
+      }
    }
 
 }

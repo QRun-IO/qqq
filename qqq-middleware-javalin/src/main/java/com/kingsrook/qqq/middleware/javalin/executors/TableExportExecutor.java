@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableExportInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableExportOutputInterface;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -128,9 +129,36 @@ public class TableExportExecutor extends AbstractMiddlewareExecutor<TableExportI
             }
             catch(Exception e)
             {
-               LOG.warn("Exception in export async job", e);
-               pipedOutputStream.close();
+               LOG.warn("Exception in export async job", e, logPair("tableName", input.getTableName()));
+
+               ////////////////////////////////////////////////////////////////////////
+               // write the error message into the output stream so the client sees  //
+               // something meaningful rather than an empty or truncated file         //
+               ////////////////////////////////////////////////////////////////////////
+               try
+               {
+                  String message = e.getMessage();
+                  pipedOutputStream.write(("Error generating report: " + message).getBytes());
+               }
+               catch(Exception writeException)
+               {
+                  LOG.warn("Failed to write error message to export output stream", writeException);
+               }
+
                return (false);
+            }
+            finally
+            {
+               try
+               {
+                  pipedOutputStream.close();
+               }
+               catch(Exception closeException)
+               {
+                  LOG.warn("Failed to close pipedOutputStream", closeException);
+               }
+
+               QContext.clear();
             }
          });
 

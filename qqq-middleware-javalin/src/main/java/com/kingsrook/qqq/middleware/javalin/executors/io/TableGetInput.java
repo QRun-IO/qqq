@@ -22,14 +22,19 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import java.util.List;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+
+
 /*******************************************************************************
  **
  *******************************************************************************/
 public class TableGetInput extends AbstractMiddlewareInput
 {
-   private String  tableName;
-   private String  primaryKey;
-   private Boolean includeAssociations;
+   private String          tableName;
+   private String          primaryKey;
+   private Boolean         includeAssociations;
+   private List<QueryJoin> queryJoins;
 
 
 
@@ -130,6 +135,40 @@ public class TableGetInput extends AbstractMiddlewareInput
    public TableGetInput withIncludeAssociations(Boolean includeAssociations)
    {
       this.includeAssociations = includeAssociations;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for queryJoins
+    **
+    *******************************************************************************/
+   public List<QueryJoin> getQueryJoins()
+   {
+      return queryJoins;
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for queryJoins
+    **
+    *******************************************************************************/
+   public void setQueryJoins(List<QueryJoin> queryJoins)
+   {
+      this.queryJoins = queryJoins;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for queryJoins
+    **
+    *******************************************************************************/
+   public TableGetInput withQueryJoins(List<QueryJoin> queryJoins)
+   {
+      this.queryJoins = queryJoins;
       return (this);
    }
 

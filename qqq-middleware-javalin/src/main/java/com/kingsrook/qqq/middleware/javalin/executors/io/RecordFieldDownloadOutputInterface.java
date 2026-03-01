@@ -41,4 +41,9 @@ public interface RecordFieldDownloadOutputInterface extends AbstractMiddlewareOu
     **
     ***************************************************************************/
    void setFilename(String filename);
+
+   /***************************************************************************
+    ** Set a redirect URL for non-blob field downloads (URL-type values).
+    ***************************************************************************/
+   void setRedirectUrl(String url);
 }

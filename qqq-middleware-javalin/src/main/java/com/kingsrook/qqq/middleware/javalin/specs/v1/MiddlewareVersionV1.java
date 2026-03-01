@@ -47,11 +47,28 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableMetaDataSpecV1());
       list.add(new TableQuerySpecV1());
       list.add(new TableCountSpecV1());
+      list.add(new TableGetSpecV1());
+      list.add(new TableInsertSpecV1());
+      list.add(new TableUpdateSpecV1());
+      list.add(new TableDeleteSpecV1());
+
+      list.add(new TablePossibleValuesSpecV1());
+      list.add(new ProcessPossibleValuesSpecV1());
+      list.add(new StandalonePossibleValuesSpecV1());
+
+      list.add(new WidgetSpecV1());
 
       list.add(new ProcessMetaDataSpecV1());
       list.add(new ProcessInitSpecV1());
       list.add(new ProcessStepSpecV1());
       list.add(new ProcessStatusSpecV1());
+      list.add(new ProcessRecordsSpecV1());
+      list.add(new ProcessCancelSpecV1());
+
+      list.add(new TableExportSpecV1());
+
+      list.add(new RecordFieldDownloadSpecV1());
+      list.add(new GeneralDownloadSpecV1());
    }
 
    /***************************************************************************

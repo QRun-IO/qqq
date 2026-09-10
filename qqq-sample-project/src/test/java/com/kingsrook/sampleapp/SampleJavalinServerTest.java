@@ -32,11 +32,18 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
@@ -51,7 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /*******************************************************************************
  ** First-party acceptance of the sample over HTTP with synthetic H2 data.
  *******************************************************************************/
-class SampleJavalinServerTest
+public class SampleJavalinServerTest
 {
    /*******************************************************************************
     **
@@ -155,6 +162,91 @@ class SampleJavalinServerTest
          {
             System.setProperty("qqq.sample.mockAuthentication", originalMockAuthentication);
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testCountHttpContracts() throws Exception
+   {
+      QInstance instance = SampleMetaDataProvider.defineTestInstance();
+      instance.getAuthentication().setCustomizer(new QCodeReference(CountPermissions.class));
+      instance.getTable("person").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      instance.getTable("pet").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      SampleJavalinServer server = new SampleJavalinServer(new SampleMetaDataProvider()
+      {
+         /*******************************************************************************
+          **
+          *******************************************************************************/
+         @Override
+         public QInstance defineQInstance()
+         {
+            return instance;
+         }
+      });
+      AtomicReference<Javalin> service = new AtomicReference<>();
+      server.setPort(0);
+      server.withJavalinConfigurationCustomizer(service::set);
+      try
+      {
+         server.start();
+         try(HttpClient client = HttpClient.newHttpClient())
+         {
+            URI baseUri = URI.create("http://localhost:" + service.get().port());
+            JSONObject total = requestJson(client, baseUri, "GET", "/data/person/count", null);
+            assertEquals(5, total.getInt("count"));
+            assertTrue(total.isNull("distinctCount"));
+            String filter = URLEncoder.encode("{\"criteria\":[{\"fieldName\":\"isEmployed\",\"operator\":\"EQUALS\",\"values\":[true]}],\"skip\":50,\"limit\":1}", StandardCharsets.UTF_8);
+            HttpResponse<String> filtered = request(client, baseUri, "POST", "/data/person/count", "filter=" + filter, "application/x-www-form-urlencoded");
+            assertEquals(200, filtered.statusCode(), filtered.body());
+            assertEquals(4, JsonUtils.toJSONObject(filtered.body()).getInt("count"));
+            String joins = URLEncoder.encode("[{\"joinTable\":\"pet\",\"type\":\"LEFT\",\"alias\":\"animal\"}]", StandardCharsets.UTF_8);
+            JSONObject joined = requestJson(client, baseUri, "GET", "/data/person/count?includeDistinct=true&queryJoins=" + joins, null);
+            assertEquals(8, joined.getInt("count"));
+            assertEquals(5, joined.getInt("distinctCount"));
+            String species = URLEncoder.encode("{\"criteria\":[{\"fieldName\":\"animal.speciesId\",\"operator\":\"EQUALS\",\"values\":[1]}]}", StandardCharsets.UTF_8);
+            JSONObject selected = requestJson(client, baseUri, "GET", "/data/person/count?includeDistinct=true&queryJoins=" + joins + "&filter=" + species, null);
+            assertEquals(5, selected.getInt("count"));
+            assertEquals(2, selected.getInt("distinctCount"));
+
+            HttpResponse<String> denied = request(client, baseUri, "GET", "/data/pet/count", null, null);
+            assertEquals(403, denied.statusCode(), denied.body());
+            JSONObject deniedBody = JsonUtils.toJSONObject(denied.body());
+            assertEquals("Permission denied.", deniedBody.getString("error"));
+            assertFalse(deniedBody.has("count"));
+            assertFalse(deniedBody.has("distinctCount"));
+            String invalid = URLEncoder.encode("{\"criteria\":[{\"fieldName\":\"missingField\",\"operator\":\"EQUALS\",\"values\":[1]}]}", StandardCharsets.UTF_8);
+            HttpResponse<String> rejected = request(client, baseUri, "GET", "/data/person/count?filter=" + invalid, null, null);
+            assertEquals(500, rejected.statusCode(), rejected.body());
+            assertFalse(JsonUtils.toJSONObject(rejected.body()).has("count"));
+            assertEquals(5, requestJson(client, baseUri, "GET", "/data/person/count", null).getInt("count"));
+         }
+      }
+      finally
+      {
+         server.stop();
+         QContext.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The fixture grants Person reads and only Pet writes, which cannot authorize counts.
+    *******************************************************************************/
+   public static class CountPermissions implements QAuthenticationModuleCustomizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
+      {
+         session.withPermissions("person.read", "pet.write");
       }
    }
 

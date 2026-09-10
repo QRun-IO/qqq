@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.module.rdbms.actions;
 
 import java.io.Serializable;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -69,7 +70,7 @@ public class RDBMSCountAction extends AbstractRDBMSAction implements CountInterf
          JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(table.getPrimaryKeyField());
 
          boolean requiresDistinct = doesSelectClauseRequireDistinct(table);
-         String  primaryKeyColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(fieldAndTableNameOrAlias.field().getName());
+         String  primaryKeyColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(fieldAndTableNameOrAlias.field()));
          String  clausePrefix     = (requiresDistinct) ? "SELECT COUNT(DISTINCT (" + primaryKeyColumn + "))" : "SELECT COUNT(*)";
 
          if(BooleanUtils.isTrue(countInput.getIncludeDistinctCount()))
@@ -100,9 +101,9 @@ public class RDBMSCountAction extends AbstractRDBMSAction implements CountInterf
             needToCloseConnection = true;
          }
 
-         try
+         try(PreparedStatement countStatement = connection.prepareStatement(sql))
          {
-            statement = connection.prepareStatement(sql);
+            statement = countStatement;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // set up & start an actionTimeoutHelper (note, internally it'll deal with the time being null or negative as meaning not to timeout) //

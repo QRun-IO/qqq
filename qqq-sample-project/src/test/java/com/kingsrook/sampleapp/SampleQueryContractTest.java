@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -128,6 +129,7 @@ class SampleQueryContractTest
          List<QRecord> records = QueryAction.execute(TABLE, new QQueryFilter(testCase.getKey()));
          assertEquals(testCase.getValue(), records.stream().map(record -> record.getValueString("name")).collect(Collectors.toSet()), testCase.getKey().getOperator().name());
          assertEquals(testCase.getValue().size(), records.size(), testCase.getKey().getOperator().name());
+         assertEquals(testCase.getValue().size(), CountAction.execute(TABLE, new QQueryFilter(testCase.getKey())), testCase.getKey().getOperator().name());
       }
    }
 
@@ -150,9 +152,12 @@ class SampleQueryContractTest
             .withCriteria(new QFilterCriteria("textValue", QCriteriaOperator.STARTS_WITH, "alp"))
             .withCriteria(new QFilterCriteria("name", QCriteriaOperator.EQUALS, "Null")));
       assertEquals(List.of("Alphabet"), QueryAction.execute(TABLE, selective).stream().map(record -> record.getValueString("name")).toList());
+      assertEquals(2, CountAction.execute(TABLE, filter));
+      assertEquals(1, CountAction.execute(TABLE, selective));
       filter.withLimit(1);
       assertEquals(List.of("Beta"), QueryAction.execute(TABLE, filter).stream().map(record -> record.getValueString("name")).toList());
       filter.withSkip(1);
+      assertEquals(2, CountAction.execute(TABLE, filter));
       assertEquals(List.of("Alphabet"), QueryAction.execute(TABLE, filter).stream().map(record -> record.getValueString("name")).toList());
       filter.withSkip(10);
       assertTrue(QueryAction.execute(TABLE, filter).isEmpty());

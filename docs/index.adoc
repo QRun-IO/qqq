@@ -54,9 +54,7 @@ include::actions/QueryAction.adoc[leveloffset=+1]
 
 include::actions/GetAction.adoc[leveloffset=+1]
 
-=== CountAction
-
-This action is implemented; its detailed reference is available in {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/CountAction.java[CountAction source]. Use the matching input/output classes and the current QContext.
+include::actions/CountAction.adoc[leveloffset=+1]
 
 === AggregateAction
 

@@ -50,7 +50,7 @@ public class CountAction
 {
    private static final QLogger LOG = QLogger.getLogger(CountAction.class);
 
-   private CountInterface countInterface;
+   private volatile CountInterface countInterface;
 
 
 

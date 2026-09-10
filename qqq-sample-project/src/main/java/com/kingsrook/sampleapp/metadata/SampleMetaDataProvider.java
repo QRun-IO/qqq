@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.instances.loaders.MetaDataLoaderHelper;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecordEnum;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerHelper;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -77,6 +78,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.RedirectStateMetaDataProducer;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionMetaDataProducer;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.enumeration.EnumerationBackendModule;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.enumeration.EnumerationTableBackendDetails;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.LoadViaInsertStep;
@@ -101,9 +104,10 @@ import org.apache.commons.io.IOUtils;
  *******************************************************************************/
 public class SampleMetaDataProvider extends AbstractQQQApplication
 {
-   public static final String RDBMS_BACKEND_NAME      = "rdbms";
-   public static final String FILESYSTEM_BACKEND_NAME = "filesystem";
-   public static final String MEMORY_BACKEND_NAME     = "memory";
+   public static final String RDBMS_BACKEND_NAME       = "rdbms";
+   public static final String FILESYSTEM_BACKEND_NAME  = "filesystem";
+   public static final String MEMORY_BACKEND_NAME      = "memory";
+   public static final String ENUMERATION_BACKEND_NAME = "enumeration";
 
    public static final String APP_NAME_GREETINGS     = "greetingsApp";
    public static final String APP_NAME_PEOPLE        = "peopleApp";
@@ -178,12 +182,18 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
       qInstance.addBackend(defineRdbmsBackend());
       qInstance.addBackend(defineMemoryBackend());
+      qInstance.addBackend(new QBackendMetaData().withName(ENUMERATION_BACKEND_NAME).withBackendType(EnumerationBackendModule.class));
       qInstance.addBackend(defineFilesystemBackend());
       qInstance.addTable(defineTableCarrier());
       qInstance.addTable(defineTablePerson());
       qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PERSON));
       qInstance.addPossibleValueSource(QPossibleValueSource.newForEnum(PetSpecies.NAME, PetSpecies.values()));
       qInstance.addTable(defineTablePet());
+      qInstance.addTable(new QTableMetaData().withName(PetSpecies.NAME).withLabel("Pet Species")
+         .withBackendName(ENUMERATION_BACKEND_NAME).withBackendDetails(new EnumerationTableBackendDetails().withEnumClass(PetSpecies.class))
+         .withPrimaryKeyField("possibleValueId").withRecordLabelFormat("%s").withRecordLabelFields("possibleValueLabel")
+         .withField(new QFieldMetaData("possibleValueId", QFieldType.INTEGER).withLabel("ID"))
+         .withField(new QFieldMetaData("possibleValueLabel", QFieldType.STRING).withLabel("Species")));
       qInstance.addJoin(defineTablePersonJoinPet());
       qInstance.addTable(defineTableCityFile());
       qInstance.addProcess(defineProcessGreetPeople());
@@ -350,6 +360,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withIcon(new QIcon().withName("stars"))
          .withChild(qInstance.getTable(TABLE_NAME_CARRIER).withIcon(new QIcon("local_shipping")))
          .withChild(qInstance.getTable(FieldLabTableMetaDataProducer.NAME).withIcon(new QIcon("science")))
+         .withChild(qInstance.getTable(PetSpecies.NAME).withIcon(new QIcon("pets")))
          .withChild(qInstance.getProcess(PROCESS_NAME_SIMPLE_SLEEP))
          .withChild(qInstance.getProcess(PROCESS_NAME_SLEEP_INTERACTIVE))
          .withChild(qInstance.getProcess(PROCESS_NAME_SIMPLE_THROW)));
@@ -782,7 +793,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    /***************************************************************************
     **
     ***************************************************************************/
-   public enum PetSpecies implements PossibleValueEnum<Integer>
+   public enum PetSpecies implements PossibleValueEnum<Integer>, QRecordEnum
    {
       DOG(1, "Dog"),
       CAT(2, "Cat");

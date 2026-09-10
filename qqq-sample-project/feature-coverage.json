@@ -353,24 +353,49 @@
       "id": "core.actions.count",
       "feature": "CountAction public data operation",
       "source_paths": [
-        "docs/index.adoc",
-        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/CountAction.java"
+        "docs/actions/CountAction.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/CountAction.java",
+        "qqq-backend-module-rdbms/src/main/java/com/kingsrook/qqq/backend/module/rdbms/actions/RDBMSCountAction.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/modules/backend/implementations/enumeration/EnumerationCountAction.java"
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
-        "Filtered counts agree with query results",
-        "Distinct counts (CountInput.includeDistinctCount), count inside a transaction"
+        "RDBMS all/filtered/empty counts, every supported query operator and nested AND/OR, independent expected populations; pagination ignored without changing the caller filter",
+        "Inner/left/aliased joins, raw and distinct base-record counts including mapped primary keys; security joins deduplicate default counts across QInstance reuse",
+        "Explicit transaction sees pending changes without committing or closing the caller connection; rollback/commit and ordinary-connection visibility",
+        "Read-only backend hint, fallback to primary, and explicit transaction precedence with two owned H2 databases",
+        "Multiple security keys, null ALLOW/DENY/ALLOW_WRITE_ONLY and READ/WRITE lock scopes, user OR filter cannot broaden authorization",
+        "Enumeration all/filtered/empty counts ignore pagination; enum distinct/transaction/timeout/cancellation options are unsupported",
+        "Actual sample GET/POST Count JSON, query/form filters, joins/includeDistinct and base-table READ permission enforcement",
+        "Null/zero/negative timeout accepted by fast counts; actual blocked PostgreSQL positive timeout and explicit cancellation, lock cleanup and successful recovery count"
       ],
       "negative_cases": [
-        "Denied/malformed query; empty result count zero",
-        "Filtered tenant denial including missing security key; timeout/cancellation"
+        "Missing/invalid session and missing execution context, unspecified/unknown table, nested/joined/order-by invalid fields and invalid typed operands",
+        "Personalized USER metadata rejects a removed filter field while trusted programmatic Count retains its established field access",
+        "No security key, null-denied records and unauthorized OR branches do not contribute to counts",
+        "HTTP base-table write permission alone cannot authorize a direct count; denied/malformed responses omit count values",
+        "HTTP joins do not independently enforce joined-table READ permission; broader joined authorization remains in the pending permissions review",
+        "Timeout and cancellation report distinct user-facing errors; the timeout starts after connection acquisition/preparation and pre-statement cancellation is best-effort"
       ],
-      "gap": "Distinct count, transaction and timeout/cancellation variants remain unverified; tenant scenario currently exists only as a programmatic fixture.",
+      "gap": "",
       "verified_tests": [
-        "com.kingsrook.sampleapp.SampleDataContractTest#testFilteredCountsAndInvalidFields",
-        "com.kingsrook.sampleapp.SampleDataContractTest#testTenantReadAndWriteIsolation"
+        "com.kingsrook.sampleapp.SampleCountContractTest#testTotalAndTimeoutConfiguration",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testJoinsAndDistinctCounts",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testDistinctWithMappedPrimaryKey",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testTransactionVisibilityRollbackAndCommit",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testReadOnlyRoutingAndTransactionPriority",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testInvalidContextAndFilters",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testPersonalizedFilterBoundary",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testJoinedSecurityAcrossInstances",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testSecurityKeysAndNullPolicies",
+        "com.kingsrook.sampleapp.SampleQueryContractTest#testEveryCriteriaOperator",
+        "com.kingsrook.sampleapp.SampleQueryContractTest#testNestedFiltersOrderingAndPagination",
+        "com.kingsrook.sampleapp.SampleEnumerationContractTest#testEnumerationCountIgnoresPagination",
+        "com.kingsrook.sampleapp.SampleJavalinServerTest#testCountHttpContracts",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCountTimeoutAndCancellation",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testFilterNormalizationAcrossReadActions"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source"
     },
     {
@@ -583,7 +608,7 @@
       "negative_cases": [
         "Denied read/insert/edit/delete/process through direct API as well as metadata/UI"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "gap": "Complete the listed permission contracts, including joined-table authorization review: legacy Count permits Pet join/filter cardinality with Person READ even when direct Pet Count is denied. The current Count test proves only base-table READ enforcement.",
       "verified_tests": [],
       "acceptance_status": "pending",
       "acceptance_stage": "source"

@@ -33,10 +33,19 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -53,9 +62,12 @@ import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 
 /*******************************************************************************
@@ -106,6 +118,144 @@ class SampleDatabaseIT
             .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'"));
          exerciseTemporalValues(backend, "postgres");
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Real blocked PostgreSQL counts must time out or cancel, then recover.
+    *******************************************************************************/
+   @Test
+   void testPostgresCountTimeoutAndCancellation() throws Exception
+   {
+      try(PostgreSQLContainer database = new PostgreSQLContainer("postgres:17-alpine")
+         .withDatabaseName("qqq_sample").withUsername("sample").withPassword("sample-fixture-only"))
+      {
+         database.start();
+         RDBMSBackendMetaData backend = new PostgreSQLBackendMetaData()
+            .withName(SampleMetaDataProvider.RDBMS_BACKEND_NAME)
+            .withHostName(database.getHost()).withPort(database.getFirstMappedPort())
+            .withDatabaseName(database.getDatabaseName()).withUsername(database.getUsername()).withPassword(database.getPassword())
+            .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'", "SET application_name = 'qqq-sample-count'"));
+         try
+         {
+            ConnectionManager.resetConnectionProviders();
+            QInstance instance = SampleMetaDataProvider.defineTestInstance();
+            instance.getBackends().put(backend.getName(), backend);
+            instance.getTable(TABLE).setBackendDetails(new PostgreSQLTableBackendDetails().withTableName("field_lab"));
+            QContext.init(instance, new QSession());
+            try(Connection connection = ConnectionManager.getConnection(backend);
+                Statement statement = connection.createStatement();
+                InputStream schema = SampleDatabaseIT.class.getResourceAsStream("/database/field-lab-postgres.sql"))
+            {
+               assertNotNull(schema);
+               statement.execute(new String(schema.readAllBytes(), StandardCharsets.UTF_8));
+               statement.executeUpdate("INSERT INTO field_lab(name) VALUES ('count-recovery')");
+            }
+            exerciseBlockedPostgresCount(instance, backend, true);
+            exerciseBlockedPostgresCount(instance, backend, false);
+         }
+         finally
+         {
+            QContext.clear();
+            ConnectionManager.resetConnectionProviders();
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Hold a table lock until the driver has ended the count; release on any failure.
+    *******************************************************************************/
+   private void exerciseBlockedPostgresCount(QInstance instance, RDBMSBackendMetaData backend, boolean timeout) throws Exception
+   {
+      ExecutorService worker = Executors.newSingleThreadExecutor();
+      CountAction action = new CountAction();
+      try(Connection lock = ConnectionManager.getConnection(backend);
+          Connection monitor = ConnectionManager.getConnection(backend))
+      {
+         lock.setAutoCommit(false);
+         try(Statement statement = lock.createStatement())
+         {
+            statement.execute("LOCK TABLE field_lab IN ACCESS EXCLUSIVE MODE");
+            int lockPid;
+            try(ResultSet result = statement.executeQuery("SELECT pg_backend_pid()"))
+            {
+               assertTrue(result.next());
+               lockPid = result.getInt(1);
+            }
+            Future<CountOutput> count = worker.submit(() ->
+            {
+               QContext.init(instance, new QSession());
+               try
+               {
+                  return action.execute(new CountInput(TABLE).withTimeoutSeconds(timeout ? 3 : null));
+               }
+               finally
+               {
+                  QContext.clear();
+               }
+            });
+            int countPid = awaitBlockedCount(monitor, lockPid);
+            if(!timeout)
+            {
+               action.cancel();
+            }
+            ExecutionException failure = assertThrows(ExecutionException.class, () -> count.get(10, TimeUnit.SECONDS));
+            QUserFacingException cause = assertInstanceOf(QUserFacingException.class, failure.getCause());
+            assertEquals(timeout ? "Count timed out." : "Count was cancelled.", cause.getMessage());
+            try(PreparedStatement waiting = monitor.prepareStatement("SELECT 1 FROM pg_locks WHERE pid = ? AND NOT granted"))
+            {
+               waiting.setInt(1, countPid);
+               try(ResultSet result = waiting.executeQuery())
+               {
+                  assertFalse(result.next(), "The completed count must leave no blocked PostgreSQL request");
+               }
+            }
+         }
+         finally
+         {
+            lock.rollback();
+         }
+      }
+      finally
+      {
+         worker.shutdownNow();
+         assertTrue(worker.awaitTermination(10, TimeUnit.SECONDS), "Count worker must terminate after releasing its owned lock");
+      }
+      assertEquals(1, CountAction.execute(TABLE, null), "A fresh count must recover after " + (timeout ? "timeout" : "cancellation"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Synchronize on the real driver query waiting for this scenario's table lock.
+    *******************************************************************************/
+   private int awaitBlockedCount(Connection monitor, int lockPid) throws Exception
+   {
+      String sql = "SELECT activity.pid FROM pg_stat_activity activity JOIN pg_locks locks USING (pid) "
+         + "WHERE locks.relation = 'field_lab'::regclass AND NOT locks.granted "
+         + "AND activity.wait_event_type = 'Lock' AND activity.application_name = 'qqq-sample-count' "
+         + "AND activity.query ILIKE 'SELECT COUNT(%' AND ? = ANY(pg_blocking_pids(activity.pid))";
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      try(PreparedStatement statement = monitor.prepareStatement(sql))
+      {
+         statement.setQueryTimeout(2);
+         statement.setInt(1, lockPid);
+         while(System.nanoTime() < deadline)
+         {
+            try(ResultSet result = statement.executeQuery())
+            {
+               if(result.next())
+               {
+                  return result.getInt(1);
+               }
+            }
+            Thread.sleep(25);
+         }
+      }
+      return fail("PostgreSQL never observed the Count query blocked by the owned table lock");
    }
 
 

@@ -28,6 +28,8 @@ mvn -f qqq-sample-project/pom.xml exec:java \
   -Dqqq.sample.mockAuthentication=true
 ```
 
+Open **Miscellaneous → Pet Species** to inspect the same Dog/Cat enum used by pets as a read-only table. Try `curl 'http://localhost:8000/data/person/count'` for the seeded total of five; the [Count reference](../docs/actions/CountAction.adoc) explains filters, joined/distinct counts, transactions, permissions and backend-specific timeout/cancellation. Count acceptance uses the existing Person/Pet data plus explicit owned metadata/database variants; these variants are identified in `SampleCountContractTest` and do not change the default app's security policy.
+
 ## Acceptance coverage
 
 This application is the first-party release acceptance target. It uses synthetic H2 data and explicit local mock authentication; no downstream application, account or sign-off is involved. Field Lab exposes every field type, length/case/whitespace/range policy examples, dynamic defaults, and fixed/record-specific timezone display. Its tests cover daylight-saving boundaries and invalid/missing-zone fallback as well as persistence. `SampleJavalinServerTest` exercises the real dashboard bundle, metadata, HTTP CRUD and query, independent JDBC readback, required-field rejection without persistence, and greeting-process output.

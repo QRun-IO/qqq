@@ -50,7 +50,7 @@ public class ActionTimeoutHelper
    private final Runnable           runnable;
    private       ScheduledFuture<?> future;
 
-   private boolean didTimeout = false;
+   private volatile boolean didTimeout = false;
 
    private static Integer                  CORE_THREADS             = 10;
    private static ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(CORE_THREADS, new PrefixedDefaultThreadFactory(ActionTimeoutHelper.class));

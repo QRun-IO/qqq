@@ -27,7 +27,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -80,7 +79,6 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
-import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSFieldFunctionAdapterInterface;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
@@ -113,11 +111,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public abstract class AbstractRDBMSAction
 {
    private static final QLogger LOG = QLogger.getLogger(AbstractRDBMSAction.class);
-   private static Memoization<String, Boolean> doesSelectClauseRequireDistinctMemoization = new Memoization<String, Boolean>()
-      .withTimeout(Duration.ofDays(365));
    protected QueryStat queryStat;
-   protected PreparedStatement statement;
-   protected boolean           isCancelled = false;
+   protected volatile PreparedStatement statement;
+   protected volatile boolean           isCancelled = false;
 
    protected RDBMSBackendMetaData         backendMetaData;
    protected RDBMSActionStrategyInterface actionStrategy;
@@ -1108,10 +1104,10 @@ public abstract class AbstractRDBMSAction
     **
     ** Analyzes the table's RecordSecurityLocks to detect one-to-many joins where
     ** the base table is on the "left" side. Such joins can produce duplicate rows
-    ** that must be eliminated with SELECT DISTINCT. 
+    ** that must be eliminated with SELECT DISTINCT.
     **
-    ** Memoized because the analysis is complex and the result never changes for a
-    ** given table during server runtime. Cache expires after 365 days.
+    ** Use the current metadata because different instances and personalized tables
+    ** can have different security policies despite sharing the same table name.
     **
     ** @param table the table metadata to analyze for DISTINCT requirement
     ** @return true if SELECT DISTINCT is required, false otherwise
@@ -1123,11 +1119,8 @@ public abstract class AbstractRDBMSAction
          return (false);
       }
 
-      return doesSelectClauseRequireDistinctMemoization.getResult(table.getName(), (name) ->
-      {
-         MultiRecordSecurityLock multiRecordSecurityLock = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(table.getRecordSecurityLocks()));
-         return doesMultiLockRequireDistinct(multiRecordSecurityLock, table);
-      }).orElse(false);
+      MultiRecordSecurityLock multiRecordSecurityLock = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(table.getRecordSecurityLocks()));
+      return doesMultiLockRequireDistinct(multiRecordSecurityLock, table);
    }
 
 

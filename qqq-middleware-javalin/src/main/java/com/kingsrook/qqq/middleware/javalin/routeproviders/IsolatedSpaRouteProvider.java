@@ -258,6 +258,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       String pathPattern = spaPath + "/*";
       for(Handler handler : beforeHandlers)
       {
+         service.before(spaPath, onlyAtExactSpaPath(handler));
          service.before(pathPattern, handler);
       }
 
@@ -266,6 +267,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       ///////////////////////////////////
       if(authenticator != null)
       {
+         service.before(spaPath, onlyAtExactSpaPath(this::authenticateRequest));
          service.before(pathPattern, this::authenticateRequest);
       }
 
@@ -274,6 +276,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       /////////////////////////////
       for(Handler handler : afterHandlers)
       {
+         service.after(spaPath, onlyAtExactSpaPath(handler));
          service.after(pathPattern, handler);
       }
 
@@ -285,6 +288,23 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       {
          SpaNotFoundHandlerRegistry.getInstance().registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, true));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Javalin's exact match also accepts a trailing slash, which is already handled
+    ** by the wildcard registration. Keep these registrations disjoint.
+    *******************************************************************************/
+   private Handler onlyAtExactSpaPath(Handler handler)
+   {
+      return context ->
+      {
+         if(!context.path().endsWith("/"))
+         {
+            handler.handle(context);
+         }
+      };
    }
 
 
@@ -651,6 +671,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       {
          LOG.error("QInstance is null in authenticateRequest", logPair("path", ctx.path()), logPair("spaPath", spaPath));
          ctx.status(500);
+         ctx.skipRemainingHandlers();
          return;
       }
 
@@ -667,6 +688,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
          if(!authenticated)
          {
             LOG.warn("Authentication failed for request", logPair("path", ctx.path()), logPair("spaPath", spaPath));
+            ctx.skipRemainingHandlers();
          }
       }
       catch(Exception e)

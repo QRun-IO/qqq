@@ -64,6 +64,7 @@ public class FieldLabTableMetaDataProducer extends MetaDataProducer<QTableMetaDa
          .withBackendDetails(new RDBMSTableBackendDetails().withTableName("field_lab"))
          .withPrimaryKeyField("id").withRecordLabelFields("name")
          .withUniqueKey(new UniqueKey("name"))
+         .withUniqueKey(new UniqueKey("normalizedKey"))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
          .withField(new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true).withMaxLength(80))
          .withField(new QFieldMetaData("longValue", QFieldType.LONG))
@@ -78,6 +79,9 @@ public class FieldLabTableMetaDataProducer extends MetaDataProducer<QTableMetaDa
          .withField(new QFieldMetaData("userIdValue", QFieldType.STRING).withBehavior(DynamicDefaultValueBehavior.USER_ID))
          .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withIsEditable(false))
          .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withIsEditable(false))
+         .withField(new QFieldMetaData("createdDay", QFieldType.DATE).withBehavior(DynamicDefaultValueBehavior.CREATE_DATE))
+         .withField(new QFieldMetaData("modifiedDay", QFieldType.DATE).withBehavior(DynamicDefaultValueBehavior.MODIFY_DATE))
+         .withField(new QFieldMetaData("manualDateTime", QFieldType.DATE_TIME).withBehavior(DynamicDefaultValueBehavior.NONE))
          .withField(new QFieldMetaData("textValue", QFieldType.TEXT))
          .withField(new QFieldMetaData("htmlValue", QFieldType.HTML))
          .withField(new QFieldMetaData("passwordValue", QFieldType.PASSWORD))
@@ -93,6 +97,7 @@ public class FieldLabTableMetaDataProducer extends MetaDataProducer<QTableMetaDa
          .withField(new QFieldMetaData("trimLeftValue", QFieldType.STRING).withBehavior(WhiteSpaceBehavior.TRIM_LEFT))
          .withField(new QFieldMetaData("trimRightValue", QFieldType.STRING).withBehavior(WhiteSpaceBehavior.TRIM_RIGHT))
          .withField(new QFieldMetaData("removeSpaceValue", QFieldType.STRING).withBehavior(WhiteSpaceBehavior.REMOVE_ALL_WHITESPACE))
+         .withField(new QFieldMetaData("normalizedKey", QFieldType.STRING).withBehavior(CaseChangeBehavior.TO_UPPER_CASE).withBehavior(WhiteSpaceBehavior.TRIM))
          .withField(new QFieldMetaData("boundedValue", QFieldType.DECIMAL).withBehavior(new ValueRangeBehavior().withMinValue(0).withMaxValue(100)))
          .withField(new QFieldMetaData("exclusiveBoundedValue", QFieldType.DECIMAL).withBehavior(new ValueRangeBehavior().withMin(0, false, ValueRangeBehavior.Behavior.ERROR, null).withMax(100, false, ValueRangeBehavior.Behavior.ERROR, null)))
          .withField(new QFieldMetaData("inclusiveClippedValue", QFieldType.DECIMAL).withBehavior(new ValueRangeBehavior()
@@ -103,13 +108,14 @@ public class FieldLabTableMetaDataProducer extends MetaDataProducer<QTableMetaDa
 
       QInstanceEnricher.setInferredFieldBackendNames(table);
       table.addSection(new QFieldSection("identity", "Identity", new QIcon("badge"), Tier.T1, List.of("id", "name", "createDate", "modifyDate", "userIdValue")));
+      table.addSection(new QFieldSection("defaults", "Date Defaults", new QIcon("event"), Tier.T2, List.of("createdDay", "modifiedDay", "manualDateTime")));
       table.addSection(new QFieldSection("types", "Field Types", new QIcon("data_object"), Tier.T2,
          List.of("longValue", "decimalValue", "booleanValue", "dateValue", "timeValue", "dateTimeValue", "textValue", "htmlValue", "passwordValue", "blobValue")));
       table.addSection(new QFieldSection("timeZones", "Time Zones", new QIcon("schedule"), Tier.T2, List.of("timeZone", "fixedZoneDateTime", "recordZoneDateTime")));
       table.addSection(new QFieldSection("length", "Length Policies", new QIcon("text_fields"), Tier.T2,
          List.of("truncateValue", "ellipsisValue", "rejectLongValue", "passThroughValue")));
       table.addSection(new QFieldSection("normalization", "Case and Whitespace", new QIcon("abc"), Tier.T2,
-         List.of("upperValue", "lowerValue", "unchangedValue", "trimValue", "trimLeftValue", "trimRightValue", "removeSpaceValue")));
+         List.of("upperValue", "lowerValue", "unchangedValue", "trimValue", "trimLeftValue", "trimRightValue", "removeSpaceValue", "normalizedKey")));
       table.addSection(new QFieldSection("range", "Numeric Bounds", new QIcon("numbers"), Tier.T2, List.of("boundedValue", "exclusiveBoundedValue", "clippedValue", "inclusiveClippedValue")));
       return table;
    }

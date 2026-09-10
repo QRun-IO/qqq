@@ -92,6 +92,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Metadata directory loading now rejects missing directories, invalid properties and mapping errors instead of reporting partial success. Packaged sample launchers share the same guarded H2 bootstrap and bundled Person YAML.
+- Isolated SPA authentication rejection stops endpoint execution, including requests to the bare protected path.
+- `DynamicDefaultValueBehavior.USER_ID` applies only during insert/update; reading a stored null no longer fabricates the current reader's ID.
 - PicoCLI now runs with its own authenticated session and restores the caller's context on completion or failure. Separate CLI instances no longer share static instance/session state.
 - String truncation preserves supplementary Unicode characters at UTF-16 boundaries and handles ellipsis limits shorter than the suffix.
 - The sample CLI initializes its disposable H2 data in a fresh process. Sample reset refuses any other database, including a cached connection provider with the same backend name; obsolete external MySQL reset configuration and unused Liquibase bootstrap/dependencies were removed.

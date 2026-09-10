@@ -1215,6 +1215,7 @@ class IsolatedSpaRouteProviderTest
       method.invoke(provider, ctx);
 
       verify(ctx).status(500);
+      verify(ctx).skipRemainingHandlers();
    }
 
 

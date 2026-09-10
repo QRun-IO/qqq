@@ -92,14 +92,14 @@ Used to set a dynamic default value to a field when it is being inserted or upda
 For example, instead of having a hard-coded `defaultValue` specified in the field meta-data,
 and instead of having to add, for example, a pre-insert custom action.
 
-* `CREATE_DATE` - On inserts, sets the field's value to the current time.
-* `MODIFY_DATE` - On inserts and updates, sets the field's value to the current time.
-* `USER_ID` - On inserts and updates, sets the field's value to the current user's id (but only if the value is currently null).
+* `CREATE_DATE` - On inserts, replaces the input value with the current `Instant` for `DATE_TIME` fields or the server's current local calendar date for `DATE` fields. Updates preserve the supplied or stored creation value.
+* `MODIFY_DATE` - On inserts and updates, replaces the input value using the same `DATE_TIME`/`DATE` rules. `UpdateInput.withOmitModifyDateUpdate(true)` suppresses automatic modification-date assignment for that update.
+* `USER_ID` - On inserts and updates, sets missing or blank input fields to the current user's nonblank ID. Blank follows `StringUtils.hasContent` (null, empty or trim-empty strings). An omitted field in a sparse update receives this default; an explicit nonblank value is preserved. Reads preserve stored values and never substitute the reader's ID.
+* `NONE` - Disables this behavior on the field, including automatic inference for fields named `createDate` and `modifyDate`.
 
 _Note that the `QInstanceEnricher` will, by default, add the `CREATE_DATE` and `MODIFY_DATE` `DynamicDefaultValueBehavior`
 options to any fields named `"createDate"` or `"modifyDate"`.
-This behavior can be disabled by setting the `configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate` property
-on the `QInstanceEnricher` instance used by the application to `false`._
+Setting `configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate=false` affects only that `QInstanceEnricher` instance. Normal validation can run another enricher with its defaults, so use an explicit `DynamicDefaultValueBehavior.NONE` on a field when the opt-out must survive validation._
 
 [source,java]
 .Examples of using DynamicDefaultValueBehavior
@@ -152,6 +152,8 @@ new QTableMetaData().withName("flights").withFields(List.of(
 A field can be made to always go through a toUpperCase or toLowerCase transformation, both before it is stored in a backend,
 and after it is read from a backend, by adding a CaseChangeBehavior to it:
 
+The behavior also normalizes string filter operands, including unique-key and primary-key lookups. It uses Java's default-locale case conversion. Read normalization changes the returned value without rewriting storage; caller-owned filters are preserved. Active normalization requires a string-like field (`STRING`, `TEXT`, `HTML` or `PASSWORD`). `NONE` preserves the value.
+
 [source,java]
 .Examples of using CaseChangeBehavior
 ----
@@ -163,3 +165,7 @@ new QTableMetaData().withName("item").withFields(List.of(
    new QFieldMetaData("username", QFieldType.STRING)
       .withBehavior(CaseChangeBehavior.TO_LOWER_CASE)));
 ----
+
+===== WhiteSpaceBehavior
+
+Whitespace policies apply on writes, reads and string filter operands, with the same string-like field requirement. `TRIM` uses Java `String.trim`, `TRIM_LEFT` and `TRIM_RIGHT` use `stripLeading` and `stripTrailing`, and `REMOVE_ALL_WHITESPACE` removes characters for which `Character.isWhitespace` is true. These Java operations have different Unicode whitespace rules. `NONE` preserves the value. Whitespace and case behaviors can be combined on a field; read normalization does not modify stored values.

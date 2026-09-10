@@ -17,8 +17,12 @@
       "negative_cases": [
         "Duplicate names, missing referenced metadata, invalid producer type or configuration"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases. The config-file launcher currently depends on source-directory paths/external configuration and must pass packaged acceptance with owned fixtures.",
-      "verified_tests": [],
+      "gap": "Packaged canonical YAML and optional JSON additions pass, including nonzero failure for missing directories, unknown properties and duplicate tables. Scanned/annotated/multi-output producers and full round-trip contracts remain to be covered.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testBundledApplicationAndJsonAdditions",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testInvalidConfigurationHasNonzeroExit",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testDuplicateMetadataHasNonzeroExit"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source"
     },
@@ -202,18 +206,29 @@
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
-        "CREATE_DATE, MODIFY_DATE, USER_ID; inferred defaults",
-        "DATE and DATE_TIME CREATE_DATE/MODIFY_DATE; explicitly disabled default inference"
+        "DATE_TIME uses the current Instant and DATE uses the host calendar date for CREATE_DATE/MODIFY_DATE",
+        "CREATE_DATE replaces INSERT input; UPDATE preserves omitted creation values and accepts explicit replacements",
+        "MODIFY_DATE replaces INSERT/UPDATE input, including sparse updates; omitModifyDateUpdate preserves explicit or omitted values",
+        "Explicit NONE disables behavior and survives normal validation; createDate/modifyDate inference applies only without an explicit policy",
+        "The configured enricher can disable its own inference run; this is not a persistent application-wide switch",
+        "USER_ID defaults missing/null/empty/trim-blank write input when a user ID exists, including omitted sparse-update input; explicit nonblank values survive",
+        "Get/Query preserve stored user IDs and do not attribute stored nulls to the reader"
       ],
       "negative_cases": [
-        "Preserve explicit values where specified; missing user; update does not reset creation time"
+        "Missing user leaves omitted UPDATE values unchanged and permits explicit null; no invented read identity",
+        "NONE preserves null/explicit input; omitModifyDateUpdate prevents automatic DATE/DATE_TIME replacement",
+        "Temporal default support is DATE/DATE_TIME; unsupported field-type fallback is not advertised as a valid temporal default"
       ],
-      "gap": "DATE defaults and disabled inference have no sample acceptance evidence yet; existing DATE_TIME/USER_ID tests remain mapped.",
+      "gap": "",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleFieldContractTest#testDynamicDefaults",
-        "com.kingsrook.sampleapp.SampleFieldContractTest#testRequiredUniqueDefaultsAndSparseUpdates"
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testRequiredUniqueDefaultsAndSparseUpdates",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testDateDefaultsAndModifyOptOut",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testDateDefaultsAcrossHostCalendarBoundaries",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testConfiguredInferenceAndExplicitNone",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testUserDefaultsAcrossReadsAndSparseUpdates"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source"
     },
     {
@@ -250,17 +265,27 @@
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
-        "Upper/lower case and supported whitespace behavior",
-        "Normalization on insert and update, sparse update preservation, filter-operand normalization"
+        "Upper/lower/NONE and every whitespace policy on INSERT/UPDATE; independent SQL readback, sparse preservation and explicit nulls",
+        "Get/Query READ normalization returns transformed values without rewriting raw SQL storage",
+        "String filter operands normalize in Query/Count/Aggregate and Get unique/primary-key lookups; NONE preserves exact operands",
+        "Combined policies, multi-value IN, nested filters, qualified field references, behavior omission and immutable caller filters",
+        "Active normalization validates STRING/TEXT/HTML/PASSWORD fields; type-boundary checks are programmatic fixtures",
+        "Case uses Java default locale; trim/strip/Character.isWhitespace policies retain their documented Unicode semantics"
       ],
       "negative_cases": [
-        "Null, whitespace-only, Unicode case conversion"
+        "Null, whitespace-only, accented case conversion, NONE nonmatch and non-String filter operands",
+        "Invalid DECIMAL normalization fails normal metadata validation",
+        "Read normalization must not hide missing write normalization; caller operands and raw stored values remain independently checked"
       ],
-      "gap": "Insert/update assertions do not yet establish normalization of filter operands.",
+      "gap": "",
       "verified_tests": [
-        "com.kingsrook.sampleapp.SampleFieldContractTest#testCaseAndWhitespacePolicies"
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testCaseAndWhitespacePolicies",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testReadNormalizationDoesNotRewriteStorage",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testFilterNormalizationAcrossReadActions",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testNormalizationConfigurationBoundaries",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testLocaleAndUnicodeWhitespaceSemantics"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source"
     },
     {
@@ -2249,9 +2274,12 @@
       "negative_cases": [
         "Invalid configuration, port conflict, missing asset, unknown path and resource cleanup"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases. The isolated-SPA launcher names absent assets and requires consolidation onto packaged resources and nonzero startup-failure checks.",
+      "gap": "The isolated SPA and configuration launchers now pass real packaged startup/cleanup, deep links, assets and authentication rejection. Remaining server lifecycle and configuration contracts still require review.",
       "verified_tests": [
-        "com.kingsrook.sampleapp.SampleBootstrapTest#testResetRefusesAnotherDatabaseWithTheSameBackendName"
+        "com.kingsrook.sampleapp.SampleIsolatedSpaIT#testPackagedIsolatedSpas",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testBundledApplicationAndJsonAdditions",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testInvalidConfigurationHasNonzeroExit",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testDuplicateMetadataHasNonzeroExit"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source"

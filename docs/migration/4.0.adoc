@@ -715,3 +715,11 @@ addressed in a future 4.x release:
 RDBMS `DATE` values now use JDBC 4.2 `LocalDate` reads instead of returning `java.sql.Date` from the generic strategy. Prefer `record.getValueLocalDate("fieldName")` over casting raw `record.getValue(...)`; the typed accessor also works with older records. `DATE` and `TIME` writes preserve their calendar date and wall-clock time independently of the JVM timezone.
 
 QQQ's zone-less `DATE_TIME` storage convention is UTC. The generic RDBMS strategy now binds `Instant` as a UTC `LocalDateTime`, avoiding MySQL driver conversion through the host timezone. Configure database sessions for UTC when using timestamp columns that apply a connection timezone. Existing timestamp rows are not rewritten by this change; applications that previously stored local times need an explicit data correction before treating those rows as UTC. The sample acceptance profile checks independent stored-value readback across host timezones.
+
+== Dynamic user defaults
+
+The `USER_ID` dynamic default now applies only during INSERT and UPDATE. Reads preserve stored blank or null values instead of substituting the reader's user ID. Missing or blank write values still default to the current user, including an omitted field in a sparse UPDATE. Applications that need to display the current user independently of stored data should obtain that value explicitly from the session.
+
+== Metadata file errors
+
+`MetaDataLoaderHelper.processAllMetaDataFilesInDirectory` now throws for unreadable directories, invalid metadata and loading problems instead of logging them and continuing. Every file in the directory tree must contain valid metadata; move README files and other non-metadata resources elsewhere. Configuration failures should prevent startup. Loading uses each type's existing registration rules; it does not provide a generic replacement or transactional rollback mechanism.

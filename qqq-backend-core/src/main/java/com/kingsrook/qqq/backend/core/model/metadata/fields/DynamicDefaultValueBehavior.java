@@ -141,6 +141,11 @@ public enum DynamicDefaultValueBehavior implements FieldBehavior<DynamicDefaultV
     *******************************************************************************/
    private void applyUserId(ValueBehaviorApplier.Action action, List<QRecord> recordList, QTableMetaData table, QFieldMetaData field)
    {
+      if(action != ValueBehaviorApplier.Action.INSERT && action != ValueBehaviorApplier.Action.UPDATE)
+      {
+         return;
+      }
+
       String fieldName = field.getName();
       String userId    = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
       if(StringUtils.hasContent(userId))

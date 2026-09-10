@@ -200,4 +200,25 @@ class DynamicDefaultValueBehaviorTest extends BaseTest
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Reading a record must not attribute a missing stored user ID to the reader.
+    *******************************************************************************/
+   @Test
+   void testUserIdDoesNotDefaultOnRead()
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QTableMetaData table = qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      table.getField("firstName").withBehavior(DynamicDefaultValueBehavior.USER_ID);
+      QRecord missing = new QRecord().withValue("id", 1);
+      QRecord empty = new QRecord().withValue("id", 2).withValue("firstName", "");
+      QRecord explicit = new QRecord().withValue("id", 3).withValue("firstName", "stored-user");
+
+      ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.READ, qInstance, table, List.of(missing, empty, explicit), null);
+      assertNull(missing.getValue("firstName"));
+      assertEquals("", empty.getValue("firstName"));
+      assertEquals("stored-user", explicit.getValue("firstName"));
+   }
+
 }

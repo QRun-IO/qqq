@@ -142,19 +142,6 @@
       <plugins>
          <!-- plugins specifically for this module -->
 
-         <!-- Legacy launcher exclusions. Packaged acceptance for these two launchers
-              is still pending in feature-coverage.json; this is not coverage evidence. -->
-         <plugin>
-            <groupId>org.jacoco</groupId>
-            <artifactId>jacoco-maven-plugin</artifactId>
-            <configuration>
-               <excludes>
-                  <exclude>com/kingsrook/sampleapp/IsolatedSpaServer.class</exclude>
-                  <exclude>com/kingsrook/sampleapp/ConfigFileBasedSampleJavalinServer.class</exclude>
-               </excludes>
-            </configuration>
-         </plugin>
-
          <!-- qqq-sample-project is not part of the main qqq reactor; PMD ruleset.xml
               is at the qqq root and resolves via maven.multiModuleProjectDirectory when
               run from within the full build, but requires an explicit path override here

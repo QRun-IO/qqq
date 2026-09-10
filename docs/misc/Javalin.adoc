@@ -16,24 +16,20 @@ For example, if your application metadata is defined in a directory of yaml file
 ----
 public class MyServer
 {
-   private static final QLogger LOG = QLogger.getLogger(MyServer.class);
-
-   public static void main(String[] args)
+   public static void main(String[] args) throws QException
    {
-      try
+      if(args.length != 1)
       {
-         String path = "src/main/resources/metadata";
-         ConfigFilesBasedQQQApplication application = new ConfigFilesBasedQQQApplication(path);
-         QApplicationJavalinServer javalinServer = new QApplicationJavalinServer(application);
-         javalinServer.start();
+         throw new IllegalArgumentException("Usage: MyServer <metadata-directory>");
       }
-      catch(Exception e)
-      {
-         LOG.error("Failed to start javalin server.  See stack trace for details.", e);
-      }
+      ConfigFilesBasedQQQApplication application = new ConfigFilesBasedQQQApplication(args[0]);
+      QApplicationJavalinServer server = new QApplicationJavalinServer(application);
+      server.start();
    }
 }
 ----
+
+Pass an existing metadata directory. Startup exceptions propagate so an invalid configuration produces a nonzero process exit. For metadata bundled in a JAR, use resource streams as described in <<QInstance>>; source-directory paths are not available in a deployed artifact.
 
 A similar class exists if your metadata is produced by a package of Java MetaDataProducer objects:  `MetaDataProducerBasedQQQApplication`.
 

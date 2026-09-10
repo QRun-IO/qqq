@@ -17,6 +17,8 @@ qInstance.addProcess(defineSendPersonHomeProcess());
 
 `ConfigFilesBasedQQQApplication` supports metadata files such as YAML and JSON. `MetaDataProducerBasedQQQApplication` loads Java metadata producers. See <<MetaDataProduction>> for the Java patterns.
 
+Directory loading is recursive and ordered by filename. Every file must contain valid top-level YAML/JSON metadata: missing directories, unsupported files, unknown properties and mapping failures throw `QException` rather than leaving a successful partial load. For a packaged resource, `MetaDataLoaderHelper.readMetaDataFile(instance, inputStream, fileName)` reads one object with the same validation; the caller closes the stream and adds the returned object to the instance. The sample's Person table uses this path, so its YAML definition works outside a source checkout.
+
 The middleware and/or frontends being used in an application will drive how the `QInstance` is connected to the running server/process.
 For HTTP applications, pass a configured `AbstractQQQApplication` to `QApplicationJavalinServer`. Here, `application` supplies the instance; the caller handles `QException`. See <<Javalin,the Javalin server guide>> for a complete entry point.
 

@@ -22,6 +22,7 @@
 package com.kingsrook.sampleapp.metadata;
 
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +38,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.instances.loaders.MetaDataLoaderHelper;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerHelper;
@@ -127,13 +129,42 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
 
 
+   private final String metadataDirectory;
+
+
+
+   /*******************************************************************************
+    ** Use the metadata bundled with the sample.
+    *******************************************************************************/
+   public SampleMetaDataProvider()
+   {
+      this(null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Optionally apply external metadata definitions after the bundled sample.
+    *******************************************************************************/
+   public SampleMetaDataProvider(String metadataDirectory)
+   {
+      this.metadataDirectory = metadataDirectory;
+   }
+
+
+
    /***************************************************************************
     **
     ***************************************************************************/
    @Override
    public QInstance defineQInstance() throws QException
    {
-      return (Boolean.getBoolean("qqq.sample.mockAuthentication") ? defineTestInstance() : defineInstance());
+      QInstance instance = Boolean.getBoolean("qqq.sample.mockAuthentication") ? defineTestInstance() : defineInstance();
+      if(metadataDirectory != null)
+      {
+         MetaDataLoaderHelper.processAllMetaDataFilesInDirectory(instance, metadataDirectory);
+      }
+      return instance;
    }
 
 
@@ -403,39 +434,19 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QTableMetaData defineTablePerson()
+   public static QTableMetaData defineTablePerson() throws QException
    {
-      QTableMetaData qTableMetaData = new QTableMetaData()
-         .withName(TABLE_NAME_PERSON)
-         .withLabel("Person")
-         .withBackendName(RDBMS_BACKEND_NAME)
-         .withPrimaryKeyField("id")
-         .withRecordLabelFormat("%s %s")
-         .withRecordLabelFields("firstName", "lastName")
-         .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
-         .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withBackendName("create_date").withIsEditable(false))
-         .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withBackendName("modify_date").withIsEditable(false))
-         .withField(new QFieldMetaData("firstName", QFieldType.STRING).withBackendName("first_name").withIsRequired(true))
-         .withField(new QFieldMetaData("lastName", QFieldType.STRING).withBackendName("last_name").withIsRequired(true))
-         .withField(new QFieldMetaData("birthDate", QFieldType.DATE).withBackendName("birth_date"))
-         .withField(new QFieldMetaData("email", QFieldType.STRING).withIsRequired(true))
-         .withField(new QFieldMetaData("isEmployed", QFieldType.BOOLEAN).withBackendName("is_employed"))
-         .withField(new QFieldMetaData("annualSalary", QFieldType.DECIMAL).withBackendName("annual_salary").withDisplayFormat(DisplayFormat.CURRENCY))
-         .withField(new QFieldMetaData("daysWorked", QFieldType.INTEGER).withBackendName("days_worked").withDisplayFormat(DisplayFormat.COMMAS))
-
-         .withSection(new QFieldSection("identity", "Identity", new QIcon("badge"), Tier.T1, List.of("id", "firstName", "lastName")))
-         .withSection(new QFieldSection("basicInfo", "Basic Info", new QIcon("dataset"), Tier.T2, List.of("email", "birthDate")))
-         .withSection(new QFieldSection("employmentInfo", "Employment Info", new QIcon("work"), Tier.T2, List.of("isEmployed", "annualSalary", "daysWorked")))
-         .withSection(new QFieldSection("dates", "Dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
-
-      QInstanceEnricher.setInferredFieldBackendNames(qTableMetaData);
-
-      qTableMetaData.withAssociation(new Association()
-         .withAssociatedTableName(TABLE_NAME_PET)
-         .withName("pets")
-         .withJoinName(QJoinMetaData.makeInferredJoinName(TABLE_NAME_PERSON, TABLE_NAME_PET)));
-
-      return (qTableMetaData);
+      String resource = "/metadata/personTable.yaml";
+      try(InputStream input = SampleMetaDataProvider.class.getResourceAsStream(resource))
+      {
+         QTableMetaData table = (QTableMetaData) MetaDataLoaderHelper.readMetaDataFile(new QInstance(), input, resource);
+         QInstanceEnricher.setInferredFieldBackendNames(table);
+         return table;
+      }
+      catch(IOException e)
+      {
+         throw new QException("Unable to read the bundled Person metadata.", e);
+      }
    }
 
 

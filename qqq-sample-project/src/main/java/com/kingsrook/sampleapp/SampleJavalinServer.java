@@ -23,6 +23,7 @@ package com.kingsrook.sampleapp;
 
 
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import static com.kingsrook.sampleapp.metadata.SampleMetaDataProvider.primeTestDatabase;
@@ -38,7 +39,18 @@ public class SampleJavalinServer extends QApplicationJavalinServer
     *******************************************************************************/
    public SampleJavalinServer()
    {
-      super(new SampleMetaDataProvider());
+      this(new SampleMetaDataProvider());
+   }
+
+
+
+   /*******************************************************************************
+    ** Sample modes share the same owned database and startup lifecycle.
+    *******************************************************************************/
+   public SampleJavalinServer(AbstractQQQApplication application)
+   {
+      super(application);
+      setPort(Integer.getInteger("qqq.sample.port", 8000));
    }
 
 

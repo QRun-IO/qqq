@@ -21,4 +21,14 @@ QPermissionRules rules = new QPermissionRules()
 
 Attach the rule to the relevant metadata object and supply the matching permissions in the session. QPermissionRules.defaultInstance() uses NOT_PROTECTED and HIDDEN; it is not a secure application-wide policy by itself. Record-level security keys are a separate part of access control.
 
+=== Joined HTTP reads
+
+The legacy and V1 Query/Count endpoints require READ for the base table and every table requested through joins, qualified filter fields or ordering. Aliases and intermediate tables in a join path do not bypass this check. Legacy Get applies the same rule to requested joins and associated-record expansion, including nested associations. Making a join exposed or granting WRITE does not grant READ. Denied requests return HTTP 403 without records or counts. A join added solely to enforce a record-security lock remains internal to that enforcement; a client who also requests its data must have READ permission.
+
+These checks apply at the HTTP boundary. Trusted core actions still support internal application operations without automatically requiring the public endpoint's table grants. This distinction does not replace authentication or record-level security.
+
+HTTP Query/Count inputs use `QInputSource.USER`, and associated-record queries inherit their parent's input source. A personalizer that removes fields for USER reads therefore applies to associated children and grandchildren as well. Association authorization follows the personalized association metadata; removed associations are not expanded.
+
+If personalization fails while validating a joined filter field, the filter is rejected. An error must not restore the table's unrestricted field definitions.
+
 See {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/permissions/QPermissionRules.java[QPermissionRules] and {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/permissions/PermissionsHelper.java[permission evaluation and permission-name construction].

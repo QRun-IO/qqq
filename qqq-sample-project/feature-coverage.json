@@ -366,7 +366,7 @@
         "Read-only backend hint, fallback to primary, and explicit transaction precedence with two owned H2 databases",
         "Multiple security keys, null ALLOW/DENY/ALLOW_WRITE_ONLY and READ/WRITE lock scopes, user OR filter cannot broaden authorization",
         "Enumeration all/filtered/empty counts ignore pagination; enum distinct/transaction/timeout/cancellation options are unsupported",
-        "Actual sample GET/POST Count JSON, query/form filters, joins/includeDistinct and base-table READ permission enforcement",
+        "Actual sample legacy GET/POST and V1 Count JSON, query/form filters, joins/includeDistinct; READ required for the base table and all client-requested explicit/implicit joined tables, with record-security-only joins preserved",
         "Null/zero/negative timeout accepted by fast counts; actual blocked PostgreSQL positive timeout and explicit cancellation, lock cleanup and successful recovery count"
       ],
       "negative_cases": [
@@ -374,8 +374,9 @@
         "Personalized USER metadata rejects a removed filter field while trusted programmatic Count retains its established field access",
         "No security key, null-denied records and unauthorized OR branches do not contribute to counts",
         "HTTP base-table write permission alone cannot authorize a direct count; denied/malformed responses omit count values",
-        "HTTP joins do not independently enforce joined-table READ permission; broader joined authorization remains in the pending permissions review",
-        "Timeout and cancellation report distinct user-facing errors; the timeout starts after connection acquisition/preparation and pre-statement cancellation is best-effort"
+        "Timeout and cancellation report distinct user-facing errors; the timeout starts after connection acquisition/preparation and pre-statement cancellation is best-effort",
+        "Client-requested explicit/implicit joins must require READ on every participating table; framework security-lock-only joins preserve record enforcement without a public read grant.",
+        "A failing joined-table personalizer rejects filtering instead of falling back to unrestricted metadata."
       ],
       "gap": "",
       "verified_tests": [
@@ -393,7 +394,9 @@
         "com.kingsrook.sampleapp.SampleEnumerationContractTest#testEnumerationCountIgnoresPagination",
         "com.kingsrook.sampleapp.SampleJavalinServerTest#testCountHttpContracts",
         "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCountTimeoutAndCancellation",
-        "com.kingsrook.sampleapp.SampleFieldContractTest#testFilterNormalizationAcrossReadActions"
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testFilterNormalizationAcrossReadActions",
+        "com.kingsrook.sampleapp.SampleJavalinServerTest#testJoinedTableReadPermissions",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testPersonalizerFailureRejectsJoinedFilters"
       ],
       "acceptance_status": "verified",
       "acceptance_stage": "source"
@@ -599,7 +602,11 @@
       "id": "core.security.permissions",
       "feature": "Object permissions and custom permission checking",
       "source_paths": [
-        "docs/metaData/PermissionRules.adoc"
+        "docs/metaData/PermissionRules.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/permissions/PermissionsHelper.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/QueryAction.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/helpers/FilterValidationHelper.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/JoinedTablePermissions.java"
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
@@ -608,8 +615,12 @@
       "negative_cases": [
         "Denied read/insert/edit/delete/process through direct API as well as metadata/UI"
       ],
-      "gap": "Complete the listed permission contracts, including joined-table authorization review: legacy Count permits Pet join/filter cardinality with Person READ even when direct Pet Count is denied. The current Count test proves only base-table READ enforcement.",
-      "verified_tests": [],
+      "gap": "Legacy/V1 Count/Query and legacy Get now deny unreadable requested joins and associations; USER personalization and failed joined-field policies have sample regressions. Remaining permission levels, object/write/process/API variants, custom checking and frontend read-versus-write behavior still require complete sample contracts.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleJavalinServerTest#testCountHttpContracts",
+        "com.kingsrook.sampleapp.SampleJavalinServerTest#testJoinedTableReadPermissions",
+        "com.kingsrook.sampleapp.SampleCountContractTest#testPersonalizerFailureRejectsJoinedFilters"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source"
     },

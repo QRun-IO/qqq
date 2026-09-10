@@ -710,6 +710,16 @@ addressed in a future 4.x release:
   `com.amazonaws`) remains in the RDBMS and S3 filesystem modules. No action required for 4.0
   migration; consolidation tracked for a future release.
 
+== Joined HTTP read permissions
+
+Legacy and V1 Query/Count now require READ permission for client-requested joined tables, including implicit joins from filters and ordering. Legacy Get also checks requested joins and associated records, including nested associations. Earlier versions checked only the base table, allowing related values or counts to be disclosed without the related table's READ permission. Those requests now return HTTP 403.
+
+Review saved views, filters, sorts and clients that automatically request exposed joins. Grant related-table READ only when intended, or remove the unauthorized join/filter/sort. Exposing a metadata relationship does not grant access. Unprotected tables and callers with the relevant grants retain their access. Joins used solely to enforce record-security locks remain operational, and trusted core action calls retain their existing permission semantics.
+
+Legacy Query/Count now identify HTTP input as USER, matching V1. Associated-record queries inherit their parent's input source, so USER-specific field personalization also applies to children and grandchildren. Private fields that were previously returned or accepted in legacy filters through the accidental SYSTEM path are now omitted or rejected. Explicit trusted SYSTEM calls preserve their existing behavior.
+
+A joined-table personalizer failure now rejects the filter instead of falling back to unrestricted metadata. This failure handling applies to any input source; successful trusted SYSTEM personalization remains available.
+
 == SQL date and time values
 
 RDBMS `DATE` values now use JDBC 4.2 `LocalDate` reads instead of returning `java.sql.Date` from the generic strategy. Prefer `record.getValueLocalDate("fieldName")` over casting raw `record.getValue(...)`; the typed accessor also works with older records. `DATE` and `TIME` writes preserve their calendar date and wall-clock time independently of the JVM timezone.

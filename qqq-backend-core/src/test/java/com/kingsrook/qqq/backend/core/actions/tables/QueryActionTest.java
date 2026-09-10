@@ -214,6 +214,47 @@ class QueryActionTest extends BaseTest
     **
     *******************************************************************************/
    @Test
+   void testAssociationQueriesPreserveInputSource() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      QContext.getQSession().getUser().setIdReference("association-reader");
+      insert2OrdersWith3Lines3LineExtrinsicsAnd4OrderExtrinsicAssociations();
+
+      ExamplePersonalizer.registerInQInstance();
+      ExamplePersonalizer.addCustomizableTable(TestUtils.TABLE_NAME_LINE_ITEM);
+      ExamplePersonalizer.addCustomizableTable(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC);
+      ExamplePersonalizer.addFieldToRemoveForUserId(TestUtils.TABLE_NAME_LINE_ITEM, "sku", "association-reader");
+      ExamplePersonalizer.addFieldToRemoveForUserId(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC, "value", "association-reader");
+
+      QueryInput userInput = new QueryInput(TestUtils.TABLE_NAME_ORDER).withInputSource(QInputSource.USER)
+         .withFilter(new QQueryFilter(new QFilterCriteria("orderNo", QCriteriaOperator.EQUALS, "ORD123")))
+         .withIncludeAssociations(true);
+      QRecord userOrder = new QueryAction().execute(userInput).getRecords().get(0);
+      assertEquals(2, userOrder.getAssociatedRecords().get("orderLine").size());
+      QRecord userLine = userOrder.getAssociatedRecords().get("orderLine").get(0);
+      assertEquals(1, userLine.getValueInteger("quantity"));
+      assertThat(userLine.getValues()).doesNotContainKey("sku");
+      assertEquals(1, userLine.getAssociatedRecords().get("extrinsics").size());
+      QRecord userExtrinsic = userLine.getAssociatedRecords().get("extrinsics").get(0);
+      assertEquals("LINE-EXT-1.1", userExtrinsic.getValueString("key"));
+      assertThat(userExtrinsic.getValues()).doesNotContainKey("value");
+      assertEquals(QInputSource.USER, userInput.getInputSource());
+
+      QueryInput systemInput = new QueryInput(TestUtils.TABLE_NAME_ORDER).withInputSource(QInputSource.SYSTEM)
+         .withFilter(new QQueryFilter(new QFilterCriteria("orderNo", QCriteriaOperator.EQUALS, "ORD123")))
+         .withIncludeAssociations(true);
+      QRecord systemOrder = new QueryAction().execute(systemInput).getRecords().get(0);
+      QRecord systemLine = systemOrder.getAssociatedRecords().get("orderLine").get(0);
+      assertEquals("BASIC1", systemLine.getValueString("sku"));
+      assertEquals("LINE-VAL-1", systemLine.getAssociatedRecords().get("extrinsics").get(0).getValueString("value"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
    void testQueryAssociationsWithPipe() throws QException
    {
       QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);

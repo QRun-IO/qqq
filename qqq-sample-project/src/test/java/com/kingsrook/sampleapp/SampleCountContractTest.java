@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter.BooleanOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -58,6 +59,7 @@ import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -269,6 +271,27 @@ public class SampleCountContractTest
 
 
    /*******************************************************************************
+    ** A failed joined-table personalizer must not restore access to private filters.
+    *******************************************************************************/
+   @Test
+   void testPersonalizerFailureRejectsJoinedFilters() throws Exception
+   {
+      QContext.getQInstance().addSupplementalCustomizer(TableMetaDataPersonalizerInterface.CUSTOMIZER_TYPE, new QCodeReference(FailingPetPersonalizer.class));
+      QQueryFilter petName = new QQueryFilter(new QFilterCriteria("pet.name", QCriteriaOperator.EQUALS, "Charlie"));
+      assertEquals(1, new CountAction().execute(new CountInput(PERSON).withInputSource(QInputSource.SYSTEM)
+         .withQueryJoin(new QueryJoin("pet")).withFilter(petName)).getCount());
+      assertEquals(1, new QueryAction().execute(new QueryInput(PERSON).withInputSource(QInputSource.SYSTEM)
+         .withQueryJoin(new QueryJoin("pet").withSelect(false)).withFilter(petName)).getRecords().size());
+      assertAll(
+         () -> assertThrows(QException.class, () -> new CountAction().execute(new CountInput(PERSON).withInputSource(QInputSource.USER)
+            .withQueryJoin(new QueryJoin("pet")).withFilter(petName))),
+         () -> assertThrows(QException.class, () -> new QueryAction().execute(new QueryInput(PERSON).withInputSource(QInputSource.USER)
+            .withQueryJoin(new QueryJoin("pet").withSelect(false)).withFilter(petName))));
+   }
+
+
+
+   /*******************************************************************************
     ** A joined security lock counts authorized parents once, across instance reuse.
     *******************************************************************************/
    @Test
@@ -361,6 +384,27 @@ public class SampleCountContractTest
          QTableMetaData personalized = input.getTable().clone();
          personalized.getFields().remove("annualSalary");
          return personalized;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A synthetic unavailable USER policy; trusted SYSTEM behavior remains available.
+    *******************************************************************************/
+   public static class FailingPetPersonalizer implements TableMetaDataPersonalizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public QTableMetaData execute(TableMetaDataPersonalizerInput input) throws QException
+      {
+         if("pet".equals(input.getTableName()) && QInputSource.USER.equals(input.getInputSource()))
+         {
+            throw new QException("Sample user field policy is unavailable.");
+         }
+         return input.getTable();
       }
    }
 }

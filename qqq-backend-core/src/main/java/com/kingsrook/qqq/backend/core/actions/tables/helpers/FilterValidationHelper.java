@@ -119,18 +119,14 @@ public class FilterValidationHelper
             }
             else
             {
-               QTableMetaData joinTable = joinTables.computeIfAbsent(fieldAndJoinTable.joinTable().getName(), joinTableName ->
+               String         joinTableName = fieldAndJoinTable.joinTable().getName();
+               QTableMetaData joinTable     = joinTables.get(joinTableName);
+               if(joinTable == null)
                {
                   QTableMetaData table = fieldAndJoinTable.joinTable();
-                  try
-                  {
-                     return TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableMetaData(table).withInputSource(input.getInputSource()));
-                  }
-                  catch(QException e)
-                  {
-                     return table;
-                  }
-               });
+                  joinTable = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableMetaData(table).withInputSource(input.getInputSource()));
+                  joinTables.put(joinTableName, joinTable);
+               }
 
                found = isFieldNameFoundAndAllowedForFilter(fieldAndJoinTable, joinTable);
             }

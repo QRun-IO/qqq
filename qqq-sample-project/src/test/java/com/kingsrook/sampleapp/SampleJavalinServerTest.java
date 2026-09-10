@@ -32,16 +32,24 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
+import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -50,6 +58,8 @@ import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -175,8 +185,10 @@ public class SampleJavalinServerTest
    {
       QInstance instance = SampleMetaDataProvider.defineTestInstance();
       instance.getAuthentication().setCustomizer(new QCodeReference(CountPermissions.class));
+      instance.addSupplementalCustomizer(TableMetaDataPersonalizerInterface.CUSTOMIZER_TYPE, new QCodeReference(PrivateReadFields.class));
       instance.getTable("person").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
       instance.getTable("pet").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      instance.getTable("fieldLab").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
       SampleJavalinServer server = new SampleJavalinServer(new SampleMetaDataProvider()
       {
          /*******************************************************************************
@@ -212,8 +224,13 @@ public class SampleJavalinServerTest
             JSONObject selected = requestJson(client, baseUri, "GET", "/data/person/count?includeDistinct=true&queryJoins=" + joins + "&filter=" + species, null);
             assertEquals(5, selected.getInt("count"));
             assertEquals(2, selected.getInt("distinctCount"));
+            String selectedJoin = URLEncoder.encode("[{\"joinTable\":\"pet\",\"alias\":\"animal\",\"select\":true}]", StandardCharsets.UTF_8);
+            JSONObject joinedRecord = requestJson(client, baseUri, "GET", "/data/person/1?queryJoins=" + selectedJoin, null);
+            assertTrue(joinedRecord.getJSONObject("values").has("animal.id"));
+            JSONObject associatedRecord = requestJson(client, baseUri, "GET", "/data/person/1?includeAssociations=true", null);
+            assertEquals(4, associatedRecord.getJSONObject("associatedRecords").getJSONArray("pets").length());
 
-            HttpResponse<String> denied = request(client, baseUri, "GET", "/data/pet/count", null, null);
+            HttpResponse<String> denied = request(client, baseUri, "GET", "/data/fieldLab/count", null, null);
             assertEquals(403, denied.statusCode(), denied.body());
             JSONObject deniedBody = JsonUtils.toJSONObject(denied.body());
             assertEquals("Permission denied.", deniedBody.getString("error"));
@@ -224,6 +241,15 @@ public class SampleJavalinServerTest
             assertEquals(500, rejected.statusCode(), rejected.body());
             assertFalse(JsonUtils.toJSONObject(rejected.body()).has("count"));
             assertEquals(5, requestJson(client, baseUri, "GET", "/data/person/count", null).getInt("count"));
+            String privateFilter = URLEncoder.encode("{\"criteria\":[{\"fieldName\":\"annualSalary\",\"operator\":\"GREATER_THAN\",\"values\":[100000]}]}", StandardCharsets.UTF_8);
+            JSONObject legacyQuery = requestJson(client, baseUri, "GET", "/data/person", null);
+            JSONObject versionedQuery = requestJson(client, baseUri, "POST", "/qqq/v1/table/person/query", "{}");
+            assertAll(
+               () -> assertFalse(legacyQuery.getJSONArray("records").getJSONObject(0).getJSONObject("values").has("annualSalary")),
+               () -> assertFalse(versionedQuery.getJSONArray("records").getJSONObject(0).getJSONObject("values").has("annualSalary")),
+               () -> assertEquals(500, request(client, baseUri, "GET", "/data/person/count?filter=" + privateFilter, null, null).statusCode()),
+               () -> assertFalse(joinedRecord.getJSONObject("values").has("animal.name")),
+               () -> assertFalse(associatedRecord.getJSONObject("associatedRecords").getJSONArray("pets").getJSONObject(0).getJSONObject("values").has("name")));
          }
       }
       finally
@@ -236,7 +262,7 @@ public class SampleJavalinServerTest
 
 
    /*******************************************************************************
-    ** The fixture grants Person reads and only Pet writes, which cannot authorize counts.
+    ** Happy-path joins require both tables' reads; Field Lab writes cannot authorize counts.
     *******************************************************************************/
    public static class CountPermissions implements QAuthenticationModuleCustomizerInterface
    {
@@ -246,7 +272,133 @@ public class SampleJavalinServerTest
       @Override
       public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
       {
+         session.withPermissions("person.read", "pet.read", "fieldLab.write");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** User reads must preserve field personalization through joins and associations.
+    *******************************************************************************/
+   public static class PrivateReadFields implements TableMetaDataPersonalizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public QTableMetaData execute(TableMetaDataPersonalizerInput input)
+      {
+         String privateField = Map.of("person", "annualSalary", "pet", "name").get(input.getTableName());
+         if(!QInputSource.USER.equals(input.getInputSource()) || privateField == null)
+         {
+            return input.getTable();
+         }
+         QTableMetaData personalized = input.getTable().clone();
+         personalized.getFields().remove(privateField);
+         return personalized;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Both HTTP versions must enforce READ for explicit and implicitly joined tables.
+    *******************************************************************************/
+   @Test
+   void testJoinedTableReadPermissions() throws Exception
+   {
+      QInstance instance = SampleMetaDataProvider.defineTestInstance();
+      instance.getAuthentication().setCustomizer(new QCodeReference(PersonOnlyReads.class));
+      instance.getTable("person").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      instance.getTable("pet").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      instance.addSecurityKeyType(new QSecurityKeyType().withName("species"));
+      instance.getTable("person").withRecordSecurityLock(new RecordSecurityLock().withSecurityKeyType("species")
+         .withFieldName("pet.speciesId").withJoinNameChain(List.of("personJoinPet")));
+      SampleJavalinServer server = new SampleJavalinServer(new SampleMetaDataProvider()
+      {
+         /*******************************************************************************
+          **
+          *******************************************************************************/
+         @Override
+         public QInstance defineQInstance()
+         {
+            return instance;
+         }
+      });
+      AtomicReference<Javalin> service = new AtomicReference<>();
+      server.setPort(0);
+      server.withJavalinConfigurationCustomizer(service::set);
+      try
+      {
+         server.start();
+         try(HttpClient client = HttpClient.newHttpClient())
+         {
+            URI baseUri = URI.create("http://localhost:" + service.get().port());
+            assertEquals(2, requestJson(client, baseUri, "GET", "/data/person/count", null).getInt("count"));
+            assertEquals(2, requestJson(client, baseUri, "POST", "/qqq/v1/table/person/count", "{}").getInt("count"));
+            JSONObject allowedQuery = requestJson(client, baseUri, "GET", "/data/person", null);
+            assertEquals(2, allowedQuery.getJSONArray("records").length());
+            assertEquals(403, request(client, baseUri, "GET", "/data/pet/count", null, null).statusCode());
+            List<Executable> checks = new ArrayList<>();
+            String getJoin = URLEncoder.encode("[{\"joinTable\":\"pet\",\"select\":true}]", StandardCharsets.UTF_8);
+            checks.add(() -> assertReadDenied(request(client, baseUri, "GET", "/data/person/1?queryJoins=" + getJoin, null, null)));
+            checks.add(() -> assertReadDenied(request(client, baseUri, "GET", "/data/person/1?includeAssociations=true", null, null)));
+            for(String json : List.of(
+               "{\"joins\":[{\"joinTable\":\"pet\",\"alias\":\"animal\",\"type\":\"LEFT\",\"select\":true}]}",
+               "{\"filter\":{\"subFilters\":[{\"criteria\":[{\"fieldName\":\"pet.speciesId\",\"operator\":\"EQUALS\",\"values\":[1]}]}]}}",
+               "{\"filter\":{\"orderBys\":[{\"fieldName\":\"pet.name\",\"isAscending\":true}]}}"))
+            {
+               JSONObject input = new JSONObject(json);
+               String parameters = input.has("joins") ? "queryJoins=" + URLEncoder.encode(input.getJSONArray("joins").toString(), StandardCharsets.UTF_8)
+                  : "filter=" + URLEncoder.encode(input.getJSONObject("filter").toString(), StandardCharsets.UTF_8);
+               checks.add(() -> assertReadDenied(request(client, baseUri, "GET", "/data/person/count?" + parameters, null, null)));
+               checks.add(() -> assertReadDenied(request(client, baseUri, "GET", "/data/person?" + parameters, null, null)));
+               checks.add(() -> assertReadDenied(request(client, baseUri, "POST", "/qqq/v1/table/person/count", json, "application/json")));
+               checks.add(() -> assertReadDenied(request(client, baseUri, "POST", "/qqq/v1/table/person/query", json, "application/json")));
+            }
+            assertAll(checks);
+         }
+      }
+      finally
+      {
+         server.stop();
+         QContext.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void assertReadDenied(HttpResponse<String> response)
+   {
+      assertEquals(403, response.statusCode(), response.uri() + ": " + response.body());
+      JSONObject body = JsonUtils.toJSONObject(response.body());
+      assertFalse(body.has("records"));
+      assertFalse(body.has("record"));
+      assertFalse(body.has("values"));
+      assertFalse(body.has("associatedRecords"));
+      assertFalse(body.has("count"));
+      assertFalse(body.has("distinctCount"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A Pet WRITE permission cannot authorize revealing joined Pet values or counts.
+    *******************************************************************************/
+   public static class PersonOnlyReads implements QAuthenticationModuleCustomizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
+      {
          session.withPermissions("person.read", "pet.write");
+         session.withSecurityKeyValue("species", 1);
       }
    }
 

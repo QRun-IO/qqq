@@ -280,6 +280,7 @@ public class QueryAction
 
             QueryInput nextLevelQueryInput = new QueryInput();
             nextLevelQueryInput.setTableName(association.getAssociatedTableName());
+            nextLevelQueryInput.setInputSource(queryInput.getInputSource());
             nextLevelQueryInput.setIncludeAssociations(true);
             nextLevelQueryInput.setAssociationNamesToInclude(buildNextLevelAssociationNamesToInclude(association.getName(), queryInput.getAssociationNamesToInclude()));
             nextLevelQueryInput.setTransaction(queryInput.getTransaction());

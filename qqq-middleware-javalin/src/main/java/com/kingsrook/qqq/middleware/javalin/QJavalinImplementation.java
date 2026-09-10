@@ -936,6 +936,9 @@ public class QJavalinImplementation
 
          PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
 
+         JoinedTablePermissions.checkReadPermissions(getInput, getInput.getQueryJoins(), null);
+         JoinedTablePermissions.checkAssociationReadPermissions(getInput);
+
          // todo - validate that the primary key is of the proper type (e.g,. not a string for an id field)
          //  and throw a 400-series error (tell the user bad-request), rather than, we're doing a 500 (server error)
 
@@ -1173,6 +1176,7 @@ public class QJavalinImplementation
          CountInput countInput = new CountInput();
          setupSession(context, countInput);
          countInput.setTableName(table);
+         countInput.setInputSource(QInputSource.USER);
          QJavalinAccessLogger.logStartSilent("count");
 
          PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
@@ -1187,6 +1191,8 @@ public class QJavalinImplementation
          countInput.setQueryJoins(processQueryJoinsParam(context));
          countInput.setIncludeDistinctCount(QJavalinUtils.queryParamIsTrue(context, "includeDistinct"));
          countInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
+
+         JoinedTablePermissions.checkReadPermissions(countInput, countInput.getQueryJoins(), countInput.getFilter());
 
          CountAction countAction = new CountAction();
          CountOutput countOutput = countAction.execute(countInput);
@@ -1239,6 +1245,7 @@ public class QJavalinImplementation
          QJavalinAccessLogger.logStart("query", logPair("table", table));
 
          queryInput.setTableName(table);
+         queryInput.setInputSource(QInputSource.USER);
          queryInput.setShouldGenerateDisplayValues(true);
          queryInput.setShouldTranslatePossibleValues(true);
          queryInput.setTimeoutSeconds(DEFAULT_QUERY_TIMEOUT_SECONDS);
@@ -1273,6 +1280,8 @@ public class QJavalinImplementation
 
          List<QueryJoin> queryJoins = processQueryJoinsParam(context);
          queryInput.setQueryJoins(queryJoins);
+
+         JoinedTablePermissions.checkReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
 
          QueryAction queryAction = new QueryAction();
          QueryOutput queryOutput = queryAction.execute(queryInput);

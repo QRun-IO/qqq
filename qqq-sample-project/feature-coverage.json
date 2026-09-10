@@ -257,9 +257,11 @@
       "negative_cases": [
         "Below/above bound, null, exact boundary"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testNumericBoundsAndClipping"
+      ],
+      "acceptance_status": "verified",
       "baseline_sample": {
         "status": "absent",
         "scenario_paths": [],
@@ -282,9 +284,12 @@
       "negative_cases": [
         "Preserve explicit values where specified; missing user; update does not reset creation time"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testDynamicDefaults",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testRequiredUniqueDefaultsAndSparseUpdates"
+      ],
+      "acceptance_status": "verified",
       "baseline_sample": {
         "status": "scenario_only",
         "scenario_paths": [
@@ -309,9 +314,12 @@
       "negative_cases": [
         "Invalid/missing zone; daylight-saving boundary"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testDateTimeDisplayZonesAndFallback",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testUtcStorageAcrossHostTimeZones"
+      ],
+      "acceptance_status": "verified",
       "baseline_sample": {
         "status": "absent",
         "scenario_paths": [],
@@ -414,8 +422,12 @@
       "negative_cases": [
         "Empty results, bad field/operator/type, invalid limits, denied data and cancellation"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "All24 operators, nested filters, sorting, pagination, invalid field/value and denied data have sample checks. Streaming, cancellation, joins and invalid-limit behavior still need complete sample acceptance.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleQueryContractTest#testEveryCriteriaOperator",
+        "com.kingsrook.sampleapp.SampleQueryContractTest#testNestedFiltersOrderingAndPagination",
+        "com.kingsrook.sampleapp.SampleDataContractTest#testTenantReadAndWriteIsolation"
+      ],
       "acceptance_status": "pending",
       "baseline_sample": {
         "status": "partial",

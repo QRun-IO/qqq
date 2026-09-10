@@ -38,11 +38,13 @@ import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.sampleapp.metadata.FieldLabTableMetaDataProducer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
@@ -215,6 +217,21 @@ class SampleFieldContractTest
       assertEquals(new BigDecimal("100.00"), insertAndRead(new QRecord().withValue("name", "maximum").withValue("boundedValue", 100)).getValueBigDecimal("boundedValue"));
       assertRejected(new QRecord().withValue("name", "below").withValue("boundedValue", -1), "too small");
       assertRejected(new QRecord().withValue("name", "above").withValue("boundedValue", 101), "too large");
+      for(int value : new int[] { -1, 0, 100, 101 })
+      {
+         assertRejected(new QRecord().withValue("name", "exclusive-" + value).withValue("exclusiveBoundedValue", value), value <= 0 ? "too small" : "too large");
+         QRecord clipped = insertAndRead(new QRecord().withValue("name", "inclusive-" + value).withValue("inclusiveClippedValue", value));
+         assertEquals(value <= 0 ? new BigDecimal("0.00") : new BigDecimal("100.00"), clipped.getValueBigDecimal("inclusiveClippedValue"));
+      }
+      QRecord inside = insertAndRead(new QRecord().withValue("name", "inside-all-ranges")
+         .withValue("exclusiveBoundedValue", new BigDecimal("12.34")).withValue("inclusiveClippedValue", new BigDecimal("12.34")));
+      assertEquals(new BigDecimal("12.34"), inside.getValueBigDecimal("exclusiveBoundedValue"));
+      assertEquals(new BigDecimal("12.34"), inside.getValueBigDecimal("inclusiveClippedValue"));
+      QRecord missing = insertAndRead(new QRecord().withValue("name", "missing-ranges"));
+      for(String field : new String[] { "boundedValue", "exclusiveBoundedValue", "clippedValue", "inclusiveClippedValue" })
+      {
+         assertNull(missing.getValue(field));
+      }
    }
 
 
@@ -261,6 +278,76 @@ class SampleFieldContractTest
       finally
       {
          TimeZone.setDefault(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Defaults are persisted; explicit user IDs survive, timestamps follow policy.
+    *******************************************************************************/
+   @Test
+   void testDynamicDefaults() throws Exception
+   {
+      QRecord anonymous = insertAndRead(new QRecord().withValue("name", "no-user-default"));
+      assertNull(anonymous.getValue("userIdValue"));
+      QContext.getQSession().setUser(new QUser().withIdReference("sample-user"));
+      Instant before = Instant.now().minusSeconds(1);
+      QRecord generated = insertAndRead(new QRecord().withValue("name", "generated-defaults")
+         .withValue("createDate", Instant.EPOCH).withValue("modifyDate", Instant.EPOCH));
+      assertEquals("sample-user", generated.getValueString("userIdValue"));
+      assertFalse(generated.getValueInstant("createDate").isBefore(before));
+      assertFalse(generated.getValueInstant("modifyDate").isBefore(before));
+      Instant created = generated.getValueInstant("createDate");
+      QRecord explicit = insertAndRead(new QRecord().withValue("name", "explicit-user").withValue("userIdValue", "explicit-sample-user"));
+      assertEquals("explicit-sample-user", explicit.getValueString("userIdValue"));
+      QRecord update = UpdateAction.executeForRecords(new UpdateInput(TABLE).withRecord(new QRecord()
+         .withValue("id", generated.getValueInteger("id")).withValue("textValue", "updated")
+         .withValue("userIdValue", "explicit-updated-user").withValue("modifyDate", Instant.EPOCH))).get(0);
+      assertTrue(update.getErrors().isEmpty());
+      QRecord updated = GetAction.execute(TABLE, generated.getValueInteger("id"));
+      assertEquals(created, updated.getValueInstant("createDate"));
+      assertFalse(updated.getValueInstant("modifyDate").isBefore(before));
+      assertEquals("explicit-updated-user", updated.getValueString("userIdValue"));
+      QContext.getQSession().setUser(new QUser().withIdReference("second-sample-user"));
+      update = UpdateAction.executeForRecords(new UpdateInput(TABLE).withRecord(new QRecord()
+         .withValue("id", generated.getValueInteger("id")).withValue("userIdValue", null))).get(0);
+      assertTrue(update.getErrors().isEmpty());
+      updated = GetAction.execute(TABLE, generated.getValueInteger("id"));
+      assertEquals("second-sample-user", updated.getValueString("userIdValue"));
+      assertEquals(created, updated.getValueInstant("createDate"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Display zones change presentation across DST while stored values stay UTC.
+    *******************************************************************************/
+   @Test
+   void testDateTimeDisplayZonesAndFallback() throws Exception
+   {
+      String[] instants = { "2026-03-08T07:59:59Z", "2026-03-08T08:00:00Z" };
+      String[] expected = { "2026-03-08 01:59:59 AM CST", "2026-03-08 03:00:00 AM CDT" };
+      for(int i = 0; i < instants.length; i++)
+      {
+         Instant instant = Instant.parse(instants[i]);
+         QRecord record = insertAndRead(new QRecord().withValue("name", "dst-" + i).withValue("timeZone", "America/Chicago")
+            .withValue("fixedZoneDateTime", instant).withValue("recordZoneDateTime", instant));
+         QRecord display = new GetAction().executeForRecord(new GetInput(TABLE).withPrimaryKey(record.getValueInteger("id")).withShouldGenerateDisplayValues(true));
+         assertEquals(expected[i], display.getDisplayValue("fixedZoneDateTime"));
+         assertEquals(expected[i], display.getDisplayValue("recordZoneDateTime"));
+         assertEquals(instant, display.getValueInstant("fixedZoneDateTime"));
+         assertEquals(instant, display.getValueInstant("recordZoneDateTime"));
+      }
+      for(String zone : new String[] { null, "invalid/sample-zone" })
+      {
+         Instant instant = Instant.parse("2026-03-08T08:00:00Z");
+         QRecord record = insertAndRead(new QRecord().withValue("name", "fallback-" + zone).withValue("timeZone", zone).withValue("recordZoneDateTime", instant));
+         QRecord display = new GetAction().executeForRecord(new GetInput(TABLE).withPrimaryKey(record.getValueInteger("id")).withShouldGenerateDisplayValues(true));
+         assertEquals("2026-03-08 08:00:00 AM UTC", display.getDisplayValue("recordZoneDateTime"));
+         assertNull(display.getValue("fixedZoneDateTime"));
+         assertNull(display.getDisplayValue("fixedZoneDateTime"));
+         assertEquals(instant, display.getValueInstant("recordZoneDateTime"));
       }
    }
 

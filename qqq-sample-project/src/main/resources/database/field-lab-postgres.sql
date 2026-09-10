@@ -9,6 +9,10 @@ CREATE TABLE field_lab
    date_value DATE,
    time_value TIME,
    date_time_value TIMESTAMP,
+   fixed_zone_date_time TIMESTAMP,
+   record_zone_date_time TIMESTAMP,
+   time_zone VARCHAR(80),
+   user_id_value VARCHAR(255),
    create_date TIMESTAMP,
    modify_date TIMESTAMP,
    text_value TEXT,
@@ -27,5 +31,7 @@ CREATE TABLE field_lab
    trim_right_value VARCHAR(255),
    remove_space_value VARCHAR(255),
    bounded_value DECIMAL(10, 2),
+   exclusive_bounded_value DECIMAL(10, 2),
+   inclusive_clipped_value DECIMAL(10, 2),
    clipped_value DECIMAL(10, 2)
 );

@@ -28,6 +28,8 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DateTimeDisplayValueBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
@@ -70,6 +72,10 @@ public class FieldLabTableMetaDataProducer extends MetaDataProducer<QTableMetaDa
          .withField(new QFieldMetaData("dateValue", QFieldType.DATE))
          .withField(new QFieldMetaData("timeValue", QFieldType.TIME))
          .withField(new QFieldMetaData("dateTimeValue", QFieldType.DATE_TIME))
+         .withField(new QFieldMetaData("fixedZoneDateTime", QFieldType.DATE_TIME).withBehavior(new DateTimeDisplayValueBehavior().withDefaultZoneId("America/Chicago")))
+         .withField(new QFieldMetaData("recordZoneDateTime", QFieldType.DATE_TIME).withBehavior(new DateTimeDisplayValueBehavior().withZoneIdFromFieldName("timeZone").withFallbackZoneId("UTC")))
+         .withField(new QFieldMetaData("timeZone", QFieldType.STRING))
+         .withField(new QFieldMetaData("userIdValue", QFieldType.STRING).withBehavior(DynamicDefaultValueBehavior.USER_ID))
          .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withIsEditable(false))
          .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withIsEditable(false))
          .withField(new QFieldMetaData("textValue", QFieldType.TEXT))
@@ -88,19 +94,23 @@ public class FieldLabTableMetaDataProducer extends MetaDataProducer<QTableMetaDa
          .withField(new QFieldMetaData("trimRightValue", QFieldType.STRING).withBehavior(WhiteSpaceBehavior.TRIM_RIGHT))
          .withField(new QFieldMetaData("removeSpaceValue", QFieldType.STRING).withBehavior(WhiteSpaceBehavior.REMOVE_ALL_WHITESPACE))
          .withField(new QFieldMetaData("boundedValue", QFieldType.DECIMAL).withBehavior(new ValueRangeBehavior().withMinValue(0).withMaxValue(100)))
+         .withField(new QFieldMetaData("exclusiveBoundedValue", QFieldType.DECIMAL).withBehavior(new ValueRangeBehavior().withMin(0, false, ValueRangeBehavior.Behavior.ERROR, null).withMax(100, false, ValueRangeBehavior.Behavior.ERROR, null)))
+         .withField(new QFieldMetaData("inclusiveClippedValue", QFieldType.DECIMAL).withBehavior(new ValueRangeBehavior()
+            .withMin(0, true, ValueRangeBehavior.Behavior.CLIP, null).withMax(100, true, ValueRangeBehavior.Behavior.CLIP, null)))
          .withField(new QFieldMetaData("clippedValue", QFieldType.DECIMAL).withBehavior(new ValueRangeBehavior()
             .withMin(0, false, ValueRangeBehavior.Behavior.CLIP, new BigDecimal("0.01"))
             .withMax(100, false, ValueRangeBehavior.Behavior.CLIP, new BigDecimal("0.01"))));
 
       QInstanceEnricher.setInferredFieldBackendNames(table);
-      table.addSection(new QFieldSection("identity", "Identity", new QIcon("badge"), Tier.T1, List.of("id", "name", "createDate", "modifyDate")));
+      table.addSection(new QFieldSection("identity", "Identity", new QIcon("badge"), Tier.T1, List.of("id", "name", "createDate", "modifyDate", "userIdValue")));
       table.addSection(new QFieldSection("types", "Field Types", new QIcon("data_object"), Tier.T2,
          List.of("longValue", "decimalValue", "booleanValue", "dateValue", "timeValue", "dateTimeValue", "textValue", "htmlValue", "passwordValue", "blobValue")));
+      table.addSection(new QFieldSection("timeZones", "Time Zones", new QIcon("schedule"), Tier.T2, List.of("timeZone", "fixedZoneDateTime", "recordZoneDateTime")));
       table.addSection(new QFieldSection("length", "Length Policies", new QIcon("text_fields"), Tier.T2,
          List.of("truncateValue", "ellipsisValue", "rejectLongValue", "passThroughValue")));
       table.addSection(new QFieldSection("normalization", "Case and Whitespace", new QIcon("abc"), Tier.T2,
          List.of("upperValue", "lowerValue", "unchangedValue", "trimValue", "trimLeftValue", "trimRightValue", "removeSpaceValue")));
-      table.addSection(new QFieldSection("range", "Numeric Bounds", new QIcon("numbers"), Tier.T2, List.of("boundedValue", "clippedValue")));
+      table.addSection(new QFieldSection("range", "Numeric Bounds", new QIcon("numbers"), Tier.T2, List.of("boundedValue", "exclusiveBoundedValue", "clippedValue", "inclusiveClippedValue")));
       return table;
    }
 }

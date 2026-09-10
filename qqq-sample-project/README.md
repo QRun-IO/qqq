@@ -28,7 +28,7 @@ mvn -f qqq-sample-project/pom.xml exec:java \
 
 ## Acceptance coverage
 
-This application is the first-party release acceptance target. It uses synthetic H2 data and explicit local mock authentication; no downstream application, account or sign-off is involved. `SampleJavalinServerTest` exercises the real dashboard bundle, metadata, HTTP CRUD and query, independent JDBC readback, required-field rejection without persistence, and greeting-process output.
+This application is the first-party release acceptance target. It uses synthetic H2 data and explicit local mock authentication; no downstream application, account or sign-off is involved. Field Lab exposes every field type, length/case/whitespace/range policy examples, dynamic defaults, and fixed/record-specific timezone display. Its tests cover daylight-saving boundaries and invalid/missing-zone fallback as well as persistence. `SampleJavalinServerTest` exercises the real dashboard bundle, metadata, HTTP CRUD and query, independent JDBC readback, required-field rejection without persistence, and greeting-process output.
 
 The required goal is coverage of every supported QQQ feature and use case. The [feature inventory](feature-coverage.json) records the remaining scenario/browser/integration gaps; the current sample does **not** yet meet that goal. Core unit-test coverage alone does not establish sample feature coverage.
 

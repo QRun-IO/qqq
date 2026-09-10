@@ -51,6 +51,7 @@ import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -172,6 +173,36 @@ class SampleFieldContractTest
 
 
    /*******************************************************************************
+    ** A length boundary must not persist half of a supplementary character.
+    *******************************************************************************/
+   @Test
+   void testSupplementaryUnicodeLengthBoundaries() throws Exception
+   {
+      String supplementary = "\uD834\uDD1E"; // Musical symbol G clef is represented by a surrogate pair.
+      QRecord record = insertAndRead(new QRecord().withValue("name", "unicode-boundaries")
+         .withValue("truncateValue", "1234567" + supplementary + "X")
+         .withValue("ellipsisValue", supplementary.repeat(5)));
+      QRecord updated = UpdateAction.executeForRecords(new UpdateInput(TABLE).withRecord(new QRecord()
+         .withValue("id", record.getValueInteger("id")).withValue("truncateValue", "ABCDEFG" + supplementary + "X")
+         .withValue("ellipsisValue", "XY" + supplementary.repeat(4)))).get(0);
+      assertTrue(updated.getErrors().isEmpty());
+      QRecord persistedUpdate = GetAction.execute(TABLE, record.getValueInteger("id"));
+      assertAll(
+         () -> assertEquals("1234567", record.getValueString("truncateValue")),
+         () -> assertEquals(supplementary.repeat(2) + "...", record.getValueString("ellipsisValue")),
+         () -> assertEquals("ABCDEFG", persistedUpdate.getValueString("truncateValue")),
+         () -> assertEquals("XY" + supplementary + "...", persistedUpdate.getValueString("ellipsisValue")),
+         () ->
+         {
+            QContext.getQInstance().getTable(TABLE).getField("ellipsisValue").setMaxLength(2);
+            QRecord shortened = insertAndRead(new QRecord().withValue("name", "short-ellipsis").withValue("ellipsisValue", "abcdef"));
+            assertEquals("..", shortened.getValueString("ellipsisValue"));
+         });
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -196,6 +227,23 @@ class SampleFieldContractTest
       assertEquals("", blank.getValueString("removeSpaceValue"));
       assertNull(blank.getValueString("upperValue"));
       assertNull(blank.getValueString("lowerValue"));
+
+      QRecord updated = UpdateAction.executeForRecords(new UpdateInput(TABLE).withRecord(new QRecord()
+         .withValue("id", record.getValueInteger("id")).withValue("upperValue", "mixed")
+         .withValue("trimValue", " \t updated \n "))).get(0);
+      assertTrue(updated.getErrors().isEmpty());
+      try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend());
+          PreparedStatement statement = connection.prepareStatement("SELECT upper_value, trim_value, lower_value FROM field_lab WHERE id = ?"))
+      {
+         statement.setInt(1, record.getValueInteger("id"));
+         try(ResultSet values = statement.executeQuery())
+         {
+            assertTrue(values.next());
+            assertEquals("MIXED", values.getString(1));
+            assertEquals("updated", values.getString(2));
+            assertEquals(record.getValueString("lowerValue"), values.getString(3));
+         }
+      }
    }
 
 
@@ -227,6 +275,27 @@ class SampleFieldContractTest
          .withValue("exclusiveBoundedValue", new BigDecimal("12.34")).withValue("inclusiveClippedValue", new BigDecimal("12.34")));
       assertEquals(new BigDecimal("12.34"), inside.getValueBigDecimal("exclusiveBoundedValue"));
       assertEquals(new BigDecimal("12.34"), inside.getValueBigDecimal("inclusiveClippedValue"));
+      QRecord updated = UpdateAction.executeForRecords(new UpdateInput(TABLE).withRecord(new QRecord()
+         .withValue("id", inside.getValueInteger("id")).withValue("boundedValue", 42)
+         .withValue("clippedValue", 101).withValue("inclusiveClippedValue", -1))).get(0);
+      assertTrue(updated.getErrors().isEmpty());
+      QRecord rejected = UpdateAction.executeForRecords(new UpdateInput(TABLE).withRecord(new QRecord()
+         .withValue("id", inside.getValueInteger("id")).withValue("boundedValue", 101)
+         .withValue("exclusiveBoundedValue", 0))).get(0);
+      assertFalse(rejected.getErrors().isEmpty());
+      try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend());
+          PreparedStatement statement = connection.prepareStatement("SELECT bounded_value, clipped_value, inclusive_clipped_value, exclusive_bounded_value FROM field_lab WHERE id = ?"))
+      {
+         statement.setInt(1, inside.getValueInteger("id"));
+         try(ResultSet values = statement.executeQuery())
+         {
+            assertTrue(values.next());
+            assertEquals(new BigDecimal("42.00"), values.getBigDecimal(1));
+            assertEquals(new BigDecimal("99.99"), values.getBigDecimal(2));
+            assertEquals(new BigDecimal("0.00"), values.getBigDecimal(3));
+            assertEquals(new BigDecimal("12.34"), values.getBigDecimal(4));
+         }
+      }
       QRecord missing = insertAndRead(new QRecord().withValue("name", "missing-ranges"));
       for(String field : new String[] { "boundedValue", "exclusiveBoundedValue", "clippedValue", "inclusiveClippedValue" })
       {

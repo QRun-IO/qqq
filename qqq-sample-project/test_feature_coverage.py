@@ -14,13 +14,21 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.addCleanup(self.work.cleanup)
         self.sample = Path(self.work.name)
         shutil.copy(Path(__file__).with_name('verify-feature-coverage.py'), self.sample)
-        self.feature = {'id': 'example', 'acceptance_status': 'verified',
-                        'verified_tests': ['SampleTest#testExample']}
+        self.inventory = json.loads(Path(__file__).with_name('feature-coverage.json').read_text())
+        for feature in self.inventory['features']:
+            if feature['acceptance_status'] != 'unsupported':
+                feature['acceptance_status'] = 'verified'
+                feature['verified_tests'] = ['SampleTest#testExample']
+        self.feature = self.inventory['features'][0]
+        self.supported_count = len(self.inventory['features']) - 1
         self.reports = self.sample / 'target' / 'surefire-reports'
         self.reports.mkdir(parents=True)
 
     def run_gate(self, features=None, outcome='', report_only=False, stage='published'):
-        (self.sample / 'feature-coverage.json').write_text(json.dumps({'features': features or [self.feature]}))
+        inventory = dict(self.inventory)
+        if features is not None:
+            inventory['features'] = features
+        (self.sample / 'feature-coverage.json').write_text(json.dumps(inventory))
         (self.reports / 'TEST-sample.xml').write_text(
             '<testsuite><testcase classname="SampleTest" name="testExample">'
             + outcome + '</testcase></testsuite>')
@@ -33,7 +41,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         code, result = self.run_gate()
         self.assertEqual(0, code)
         self.assertTrue(result['complete'])
-        self.assertEqual(1, result['verified'])
+        self.assertEqual(self.supported_count, result['verified'])
         self.feature['acceptance_status'] = 'pending'
         self.assertEqual(1, self.run_gate()[0])
 
@@ -50,16 +58,42 @@ class FeatureCoverageGateTest(unittest.TestCase):
         code, result = self.run_gate(outcome='<failure/>', report_only=True)
         self.assertEqual(0, code)
         self.assertFalse(result['complete'])
-
-    def test_source_stage_defers_public_artifact_checks_without_claiming_completion(self):
-        published = {'id': 'public-artifacts', 'acceptance_stage': 'published',
-                     'acceptance_status': 'pending', 'verified_tests': []}
-        code, result = self.run_gate(features=[self.feature, published], stage='source')
+        code, result = self.run_gate(report_only=True)
         self.assertEqual(0, code)
         self.assertTrue(result['stage_passed'])
         self.assertFalse(result['complete'])
-        self.assertEqual(['public-artifacts'], result['deferred'])
-        self.assertEqual(1, self.run_gate(features=[self.feature, published])[0])
+
+    def test_source_stage_defers_public_artifact_checks_without_claiming_completion(self):
+        published = next(f for f in self.inventory['features'] if f['id'] == 'train.bom')
+        published['acceptance_status'] = 'pending'
+        published['verified_tests'] = []
+        code, result = self.run_gate(stage='source')
+        self.assertEqual(0, code)
+        self.assertTrue(result['stage_passed'])
+        self.assertFalse(result['complete'])
+        self.assertEqual(['train.bom'], result['deferred'])
+        self.assertEqual(1, self.run_gate()[0])
+
+    def test_source_features_cannot_be_deferred(self):
+        self.feature['acceptance_stage'] = 'published'
+        self.assertNotEqual(0, self.run_gate(stage='source')[0])
+        for feature in self.inventory['features']:
+            feature['acceptance_stage'] = 'published'
+        self.assertNotEqual(0, self.run_gate(stage='source')[0])
+
+    def test_shrinking_or_renaming_scope_cannot_certify(self):
+        self.assertNotEqual(0, self.run_gate(features=[self.feature])[0])
+        self.assertNotEqual(0, self.run_gate(features=[])[0])
+        self.feature['id'] = 'renamed'
+        self.assertNotEqual(0, self.run_gate()[0])
+
+    def test_invalid_inventory_does_not_leave_a_previous_success_report(self):
+        self.assertEqual(0, self.run_gate()[0])
+        code, result = self.run_gate(features=[], report_only=True)
+        self.assertNotEqual(0, code)
+        self.assertIsNone(result)
+        self.inventory['schema_version'] = 99
+        self.assertNotEqual(0, self.run_gate()[0])
 
     def test_duplicate_inventory_is_rejected(self):
         self.assertNotEqual(0, self.run_gate(features=[self.feature, self.feature])[0])
@@ -72,20 +106,22 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.assertEqual(1, self.run_gate()[0])
 
     def test_only_reviewed_enum_placeholders_can_be_excluded(self):
-        unsupported = {'id': 'placeholder', 'acceptance_status': 'unsupported', 'verified_tests': [],
-                       'source_paths': ['WidgetType.java'],
-                       'support': {'status': 'enum_only', 'detail': 'No implementation exists'},
-                       'support_review': {'source_sha': 'reviewed-source', 'reason': 'Enum only', 'evidence': 'Source review'}}
-        code, result = self.run_gate(features=[self.feature, unsupported])
+        unsupported = next(f for f in self.inventory['features'] if f['id'] == 'core.widget.generic')
+        code, result = self.run_gate()
         self.assertEqual(0, code)
-        self.assertEqual(2, result['inventory_entries'])
-        self.assertEqual(1, result['features'])
+        self.assertEqual(self.supported_count, result['features'])
         self.assertEqual(1, len(result['unsupported']))
+        self.feature.update({key: unsupported[key] for key in ('support', 'support_review', 'source_paths')})
+        self.feature['acceptance_status'] = 'unsupported'
+        self.feature['verified_tests'] = []
+        self.assertEqual(1, self.run_gate()[0])
+        self.feature['acceptance_status'] = 'verified'
+        self.feature['verified_tests'] = ['SampleTest#testExample']
         unsupported['support']['status'] = 'implemented_frontend_contract'
-        self.assertEqual(1, self.run_gate(features=[self.feature, unsupported])[0])
+        self.assertEqual(1, self.run_gate()[0])
         unsupported['support']['status'] = 'enum_only'
         unsupported['support_review'] = {}
-        self.assertEqual(1, self.run_gate(features=[self.feature, unsupported])[0])
+        self.assertEqual(1, self.run_gate()[0])
 
 
 if __name__ == '__main__':

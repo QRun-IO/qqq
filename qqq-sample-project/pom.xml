@@ -112,12 +112,6 @@
          <version>4.19.1</version>
          <scope>test</scope>
       </dependency>
-      <dependency>
-         <groupId>io.github.bonigarcia</groupId>
-         <artifactId>webdrivermanager</artifactId>
-         <version>6.1.0</version>
-         <scope>test</scope>
-      </dependency>
 
       <!-- Common deps for all qqq modules -->
       <dependency>
@@ -142,21 +136,14 @@
          <artifactId>assertj-core</artifactId>
          <scope>test</scope>
       </dependency>
-      <dependency>
-         <groupId>org.liquibase</groupId>
-         <artifactId>liquibase-core</artifactId>
-         <version>4.10.0</version>
-      </dependency>
    </dependencies>
 
    <build>
       <plugins>
          <!-- plugins specifically for this module -->
 
-         <!-- Exclude server entry-point main-classes from JaCoCo coverage measurement.
-              IsolatedSpaServer and ConfigFileBasedSampleJavalinServer are executable
-              server launchers that call javalinServer.start() — not unit-testable — and
-              should not count against the class-coverage gate. -->
+         <!-- Legacy launcher exclusions. Packaged acceptance for these two launchers
+              is still pending in feature-coverage.json; this is not coverage evidence. -->
          <plugin>
             <groupId>org.jacoco</groupId>
             <artifactId>jacoco-maven-plugin</artifactId>
@@ -200,18 +187,6 @@
             </executions>
          </plugin>
 
-         <plugin>
-            <groupId>org.liquibase</groupId>
-            <artifactId>liquibase-maven-plugin</artifactId>
-            <version>4.10.0</version>
-            <configuration>
-               <propertyFile>/src/main/resources/liquibase/liquibase.properties</propertyFile>
-               <url>${env.RDBMS_URL}</url>
-               <username>${env.RDBMS_USERNAME}</username>
-               <password>${env.RDBMS_PASSWORD}</password>
-               <contexts>${env.LB_CONTEXTS}</contexts>
-            </configuration>
-         </plugin>
       </plugins>
    </build>
 

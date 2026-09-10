@@ -49,6 +49,8 @@ import com.kingsrook.qqq.backend.core.adapters.CsvToQRecordAdapter;
 import com.kingsrook.qqq.backend.core.adapters.JsonToQFieldMappingAdapter;
 import com.kingsrook.qqq.backend.core.adapters.JsonToQRecordAdapter;
 import com.kingsrook.qqq.backend.core.adapters.QInstanceAdapter;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
@@ -113,8 +115,7 @@ public class QPicoCliImplementation
 {
    public static final int DEFAULT_QUERY_LIMIT = 20;
 
-   private static QInstance qInstance;
-   private static QSession  session;
+   private final QInstance qInstance;
 
 
 
@@ -123,15 +124,12 @@ public class QPicoCliImplementation
     *******************************************************************************/
    public static void main(String[] args) throws IOException
    {
-      // todo - authentication
-      // qInstance.addBackend(QMetaDataProvider.getQBackend());
-
       // parse args to look up metaData and prime instance
       if(args.length > 0 && args[0].startsWith("--qInstanceJsonFile="))
       {
          String filePath      = args[0].replaceFirst("--.*=", "");
          String qInstanceJson = FileUtils.readFileToString(new File(filePath), StandardCharsets.UTF_8);
-         qInstance = new QInstanceAdapter().jsonToQInstanceIncludingBackends(qInstanceJson);
+         QInstance qInstance = new QInstanceAdapter().jsonToQInstanceIncludingBackends(qInstanceJson);
 
          String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
 
@@ -161,7 +159,7 @@ public class QPicoCliImplementation
          Configurator.initialize(null, "qqq-picocli-log4j2.xml");
       }
 
-      QPicoCliImplementation.qInstance = qInstance;
+      this.qInstance = qInstance;
    }
 
 
@@ -193,59 +191,71 @@ public class QPicoCliImplementation
     *******************************************************************************/
    public int runCli(String name, String[] args, PrintStream out, PrintStream err)
    {
-      CommandSpec topCommandSpec = new QCommandBuilder(qInstance).buildCommandSpec(name);
-
-      CommandLine commandLine = new CommandLine(topCommandSpec);
-      commandLine.setOut(new PrintWriter(out, true));
-      commandLine.setErr(new PrintWriter(err, true));
-
+      CapturedContext originalContext = QContext.capture();
+      Map<String, Serializable> originalObjects = QContext.getObjects();
       try
       {
-         setupSession(args);
-         // todo - think about, do some tables get turned off based on authentication?
+         QContext.setObjects(null);
+         QContext.init(qInstance, null);
+         CommandSpec topCommandSpec = new QCommandBuilder(qInstance).buildCommandSpec(name);
 
-         ParseResult parseResult = commandLine.parseArgs(args);
+         CommandLine commandLine = new CommandLine(topCommandSpec);
+         commandLine.setOut(new PrintWriter(out, true));
+         commandLine.setErr(new PrintWriter(err, true));
 
-         ///////////////////////////////////////////
-         // Did user request usage help (--help)? //
-         ///////////////////////////////////////////
-         if(commandLine.isUsageHelpRequested())
+         try
          {
-            commandLine.usage(commandLine.getOut());
-            return commandLine.getCommandSpec().exitCodeOnUsageHelp();
-         }
-         ////////////////////////////////////////////////
-         // Did user request version help (--version)? //
-         ////////////////////////////////////////////////
-         else if(commandLine.isVersionHelpRequested())
-         {
-            commandLine.printVersionHelp(commandLine.getOut());
-            return commandLine.getCommandSpec().exitCodeOnVersionHelp();
-         }
+            QContext.setQSession(setupSession());
+            // todo - think about, do some tables get turned off based on authentication?
 
-         ///////////////////////////
-         // else, run the command //
-         ///////////////////////////
-         return run(commandLine, parseResult);
+            ParseResult parseResult = commandLine.parseArgs(args);
+
+            ///////////////////////////////////////////
+            // Did user request usage help (--help)? //
+            ///////////////////////////////////////////
+            if(commandLine.isUsageHelpRequested())
+            {
+               commandLine.usage(commandLine.getOut());
+               return commandLine.getCommandSpec().exitCodeOnUsageHelp();
+            }
+            ////////////////////////////////////////////////
+            // Did user request version help (--version)? //
+            ////////////////////////////////////////////////
+            else if(commandLine.isVersionHelpRequested())
+            {
+               commandLine.printVersionHelp(commandLine.getOut());
+               return commandLine.getCommandSpec().exitCodeOnVersionHelp();
+            }
+
+            ///////////////////////////
+            // else, run the command //
+            ///////////////////////////
+            return run(commandLine, parseResult);
+         }
+         catch(ParameterException ex)
+         {
+            //////////////////////////////////////////////////
+            // handle command-line/param parsing exceptions //
+            //////////////////////////////////////////////////
+            commandLine.getErr().println(ex.getMessage());
+            UnmatchedArgumentException.printSuggestions(ex, commandLine.getErr());
+            ex.getCommandLine().usage(commandLine.getErr());
+            return commandLine.getCommandSpec().exitCodeOnInvalidInput();
+         }
+         catch(Exception ex)
+         {
+            ///////////////////////////////////////////
+            // handle exceptions from business logic //
+            ///////////////////////////////////////////
+            ex.printStackTrace();
+            commandLine.getErr().println("Error: " + ex.getMessage());
+            return (commandLine.getCommandSpec().exitCodeOnExecutionException());
+         }
       }
-      catch(ParameterException ex)
+      finally
       {
-         //////////////////////////////////////////////////
-         // handle command-line/param parsing exceptions //
-         //////////////////////////////////////////////////
-         commandLine.getErr().println(ex.getMessage());
-         UnmatchedArgumentException.printSuggestions(ex, commandLine.getErr());
-         ex.getCommandLine().usage(commandLine.getErr());
-         return commandLine.getCommandSpec().exitCodeOnInvalidInput();
-      }
-      catch(Exception ex)
-      {
-         ///////////////////////////////////////////
-         // handle exceptions from business logic //
-         ///////////////////////////////////////////
-         ex.printStackTrace();
-         commandLine.getErr().println("Error: " + ex.getMessage());
-         return (commandLine.getCommandSpec().exitCodeOnExecutionException());
+         QContext.setObjects(originalObjects);
+         QContext.init(originalContext);
       }
    }
 
@@ -274,7 +284,7 @@ public class QPicoCliImplementation
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void setupSession(String[] args) throws QModuleDispatchException, QAuthenticationException
+   private QSession setupSession() throws QModuleDispatchException, QAuthenticationException
    {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
@@ -295,7 +305,7 @@ public class QPicoCliImplementation
          authenticationContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, sessionId);
 
          // todo - does this need some per-provider logic actually?  mmm...
-         session = authenticationModule.createSession(qInstance, authenticationContext);
+         return authenticationModule.createSession(qInstance, authenticationContext);
       }
       catch(QAuthenticationException qae)
       {

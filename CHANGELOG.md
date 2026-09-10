@@ -92,6 +92,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PicoCLI now runs with its own authenticated session and restores the caller's context on completion or failure. Separate CLI instances no longer share static instance/session state.
+- String truncation preserves supplementary Unicode characters at UTF-16 boundaries and handles ellipsis limits shorter than the suffix.
+- The sample CLI initializes its disposable H2 data in a fresh process. Sample reset refuses any other database, including a cached connection provider with the same backend name; obsolete external MySQL reset configuration and unused Liquibase bootstrap/dependencies were removed.
+
 - `QBackendMetaData.withoutCapabilities(Set<Capability>)` now disables the supplied capabilities, matching the varargs overload. Previously it enabled them, so tables could retain operations the backend configuration intended to exclude.
 
 **Resolved bugs:**

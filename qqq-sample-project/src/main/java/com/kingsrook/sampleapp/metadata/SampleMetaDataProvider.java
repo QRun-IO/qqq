@@ -99,8 +99,6 @@ import org.apache.commons.io.IOUtils;
  *******************************************************************************/
 public class SampleMetaDataProvider extends AbstractQQQApplication
 {
-   public static boolean USE_MYSQL = false;
-
    public static final String RDBMS_BACKEND_NAME      = "rdbms";
    public static final String FILESYSTEM_BACKEND_NAME = "filesystem";
    public static final String MEMORY_BACKEND_NAME     = "memory";
@@ -222,9 +220,21 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
     *******************************************************************************/
    public static void primeTestDatabase(String sqlFileName) throws Exception
    {
-      try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend()))
+      try(Connection connection = ConnectionManager.getConnection(defineRdbmsBackend());
+         InputStream primeTestDatabaseSqlStream = SampleMetaDataProvider.class.getResourceAsStream("/" + sqlFileName))
       {
-         InputStream  primeTestDatabaseSqlStream = SampleMetaDataProvider.class.getResourceAsStream("/" + sqlFileName);
+         //////////////////////////////////////////////////////////////////////////////////////
+         // Connection providers are cached by backend name; refuse a reused external provider //
+         // before any fixture SQL can reset data outside the sample's in-memory database.     //
+         //////////////////////////////////////////////////////////////////////////////////////
+         if(!"jdbc:h2:mem:test_database".equals(connection.getMetaData().getURL()))
+         {
+            throw new IllegalStateException("Sample reset requires the owned in-memory H2 database.");
+         }
+         if(primeTestDatabaseSqlStream == null)
+         {
+            throw new IllegalArgumentException("Missing sample database resource: " + sqlFileName);
+         }
          List<String> lines                      = IOUtils.readLines(primeTestDatabaseSqlStream, StandardCharsets.UTF_8);
          lines = lines.stream().filter(line -> !line.startsWith("-- ")).toList();
          String joinedSQL = String.join("\n", lines);
@@ -333,35 +343,13 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
     *******************************************************************************/
    public static RDBMSBackendMetaData defineRdbmsBackend()
    {
-      if(USE_MYSQL)
-      {
-         QMetaDataVariableInterpreter interpreter  = new QMetaDataVariableInterpreter();
-         String                       vendor       = interpreter.interpret("${env.RDBMS_VENDOR}");
-         String                       hostname     = interpreter.interpret("${env.RDBMS_HOSTNAME}");
-         Integer                      port         = Integer.valueOf(interpreter.interpret("${env.RDBMS_PORT}"));
-         String                       databaseName = interpreter.interpret("${env.RDBMS_DATABASE_NAME}");
-         String                       username     = interpreter.interpret("${env.RDBMS_USERNAME}");
-         String                       password     = interpreter.interpret("${env.RDBMS_PASSWORD}");
-
-         return new RDBMSBackendMetaData()
-            .withName(RDBMS_BACKEND_NAME)
-            .withVendor(vendor)
-            .withHostName(hostname)
-            .withPort(port)
-            .withDatabaseName(databaseName)
-            .withUsername(username)
-            .withPassword(password);
-      }
-      else
-      {
-         return (new RDBMSBackendMetaData()
-            .withName(RDBMS_BACKEND_NAME)
-            .withVendor("h2")
-            .withHostName("mem")
-            .withDatabaseName("test_database")
-            .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'"))
-            .withUsername("sa"));
-      }
+      return new RDBMSBackendMetaData()
+         .withName(RDBMS_BACKEND_NAME)
+         .withVendor("h2")
+         .withHostName("mem")
+         .withDatabaseName("test_database")
+         .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'"))
+         .withUsername("sa");
    }
 
 

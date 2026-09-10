@@ -20,7 +20,7 @@ Used to set values in the `displayValues` map within a `QRecord`.
 * `defaultValue` - Value to use for the field if no other value is given.  Type is based on the field's `type`.
 * `possibleValueSourceName` - *String* - Reference to a {link-pvs} to be used for this field.
 Values in this field should correspond to ids from the referenced Possible Value Source.
-* `maxLength` - *Integer* - Maximum length (number of characters) allowed for values in this field.
+* `maxLength` - *Integer* - Maximum string length in Java UTF-16 units. A supplementary Unicode character occupies two units.
 Only applicable for fields with `type=STRING`.  Needs to be used with a `FieldBehavior` of type `ValueTooLongBehavior`.
 
 ==== Field Behaviors
@@ -38,8 +38,8 @@ Used on String fields.  Requires the field to have a `maxLength` set.
 Depending on the chosen instance of this enum, before a record is Inserted or Updated,
 if the value in the field is longer than the `maxLength`, then one of the following actions can occur:
 
-* `TRUNCATE` - The value will be simply truncated to the `maxLength`.
-* `TRUNCATE_ELLIPSIS` - The value will be truncated to 3 characters less than the `maxLength`, and three periods (an ellipsis) will be placed at the end.
+* `TRUNCATE` - Truncate to at most `maxLength` UTF-16 units, keeping surrogate pairs intact.
+* `TRUNCATE_ELLIPSIS` - Reserve three units for `...` and truncate the value without splitting a surrogate pair. For a nonnegative maximum shorter than three, return only the periods that fit. The result can be shorter than `maxLength` to preserve a complete pair.
 * `ERROR` - An error will be reported, and the record will not be inserted or updated.
 * `PASS_THROUGH` - Nothing will happen.  This is the same as not having a `ValueTooLongBehavior` on the field.
 

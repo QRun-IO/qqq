@@ -2,6 +2,8 @@
 
 Command-line interface built with picocli. `QPicoCliImplementation` takes a configured `QInstance`; `runCli(String name, String[] args)` returns the command exit code. `QCommandBuilder` defines the available commands and options. Use the [sample CLI](../qqq-sample-project/README.md) and its `--help` output for runnable invocation examples.
 
+Each invocation initializes its own `QContext` and authenticates using that instance's configured provider. Commands use the resulting session, and the caller's context is restored afterward, including on failure. Embedded callers must configure the CLI's authentication provider; a pre-existing caller session does not authorize CLI operations.
+
 QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md) and [4.0 migration guide](../docs/migration/4.0.adoc).
 
 ## Source and examples

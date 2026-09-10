@@ -30,7 +30,9 @@ mvn -f qqq-sample-project/pom.xml exec:java \
 
 This application is the first-party release acceptance target. It uses synthetic H2 data and explicit local mock authentication; no downstream application, account or sign-off is involved. Field Lab exposes every field type, length/case/whitespace/range policy examples, dynamic defaults, and fixed/record-specific timezone display. Its tests cover daylight-saving boundaries and invalid/missing-zone fallback as well as persistence. `SampleJavalinServerTest` exercises the real dashboard bundle, metadata, HTTP CRUD and query, independent JDBC readback, required-field rejection without persistence, and greeting-process output.
 
-The required goal is coverage of every supported QQQ feature and use case. The [feature inventory](feature-coverage.json) records the remaining scenario/browser/integration gaps; the current sample does **not** yet meet that goal. Core unit-test coverage alone does not establish sample feature coverage.
+The required goal is coverage of every supported QQQ feature and use case. The [feature inventory](feature-coverage.json) records the remaining scenario/browser/integration gaps; the current sample does **not** yet meet that goal. Core unit-test coverage alone does not establish sample feature coverage. A verified feature needs a reviewed list of public contracts, runnable examples, and assertions for their successful and rejected outcomes. Passing one example does not certify the entire family: filtered tenant counts, distinct counts, update normalization, filter normalization, DATE defaults and DATE_TIME defaults are separate cases.
+
+Field Lab is part of the running application. Tenant security currently uses programmatic test fixtures; it is not yet a navigable sample mode. MySQL/PostgreSQL tests use explicitly disposable containers. These forms of evidence remain distinct so an integration test is not mistaken for a runnable application example.
 
 Run acceptance with Java 21, Docker, and a locally installed Chrome (or Chrome for Testing):
 
@@ -39,7 +41,9 @@ mvn -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
 python3 qqq-sample-project/verify-feature-coverage.py --report-only
 ```
 
-The profile runs browser workflows, packaged static/SPA routes, and Field Lab temporal readback against disposable MySQL 8.4 and PostgreSQL 17 containers. It pulls the database images when needed, requires no shared database or provider account, and fails if Docker is unavailable. The browser uses a new disposable profile and the test owns/stops its sample server and database containers. Screenshots and test reports are under `qqq-sample-project/target/`. These integration tests are mandatory for release acceptance; ordinary unit tests remain available without Chrome or Docker. The coverage checker without `--report-only` fails for pending, unmapped, skipped, missing or failed feature checks. `baseline_sample` in the inventory preserves the initial audit; `verified_tests` binds current evidence. A reviewed enum-only declaration is listed separately as unsupported; implemented backend-only contracts still require tests.
+The profile runs browser workflows, packaged static/SPA routes, and Field Lab temporal readback against disposable MySQL 8.4 and PostgreSQL 17 containers. It pulls the database images when needed, requires no shared database or provider account, and fails if Docker is unavailable. The browser uses a new disposable profile and the test owns/stops its sample server and database containers. Screenshots and test reports are under `qqq-sample-project/target/`. These integration tests are mandatory for release acceptance; ordinary unit tests remain available without Chrome or Docker. The coverage checker without `--report-only` fails for pending, unmapped, skipped, missing or failed feature checks. `verified_tests` binds current evidence; signed Git history preserves the initial audit. A reviewed enum-only declaration is listed separately as unsupported; implemented backend-only contracts still require tests.
+
+The checker pins the reviewed set of feature IDs and allows only `train.bom` to wait for published artifacts. Removing/renaming a feature or changing that boundary requires a source review and an explicit checker change. This prevents accidental scope shrinkage; it does not prove the inventory is exhaustive. Always run a clean Maven verification immediately before checking the ledger, because XML test reports alone do not identify the source revision they exercised.
 
 CI runs the sample for feature changes and before publication. RC/final/hotfix publication requires `--stage source` to pass; public-artifact resolution is checked after publication by the default `published` stage. A source-stage pass explicitly leaves those artifact checks deferred and never claims complete release acceptance. Run `python3 qqq-sample-project/test_feature_coverage.py` to check the gate itself.
 
@@ -59,6 +63,8 @@ All paths below are under `src/main/java/com/kingsrook/sampleapp/`:
 - `metadata/FieldLabTableMetaDataProducer.java`: field types and behavior examples.
 - `SampleJavalinServer.java`: HTTP server and sample database initialization.
 - `SampleCli.java`: command-line entry point.
+
+The legacy `ConfigFileBasedSampleJavalinServer` and `IsolatedSpaServer` are incomplete examples: they depend on source-directory configuration or absent SPA assets. Their packaged acceptance remains pending. Consolidating them onto the owned bootstrap and actual bundled resources is required before claiming those scenarios work. The unused parallel Liquibase bootstrap was removed because its schema and paths had drifted from the running application; framework Liquibase generation still requires its own acceptance scenario.
 
 This sample is built from the repository and is not published to Maven Central. See the [4.0 migration guide](../docs/migration/4.0.adoc) for API changes.
 

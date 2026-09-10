@@ -27,6 +27,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -37,6 +38,17 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
  *******************************************************************************/
 class SampleCliTest
 {
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void clearContext()
+   {
+      QContext.clear();
+   }
+
+
+
 
    /*******************************************************************************
     **

@@ -50,6 +50,7 @@ public class SampleCli
    {
       try
       {
+         SampleMetaDataProvider.primeTestDatabase("prime-test-database.sql");
          QInstance qInstance = new SampleMetaDataProvider().defineQInstance();
          return (run(qInstance, args));
       }

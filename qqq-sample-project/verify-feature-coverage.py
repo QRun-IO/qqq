@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """Check the sample's feature ledger against actual Maven test reports."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
+
+
+# Reviewed 128-feature scope at 28d4e22fe; change only after reviewing the source
+# inventory delta. The digest prevents accidental removal/renaming from passing.
+INVENTORY_IDS_SHA256 = 'b6fa55382bb7100e936a24aaf93d7f9398c290b8e46b06138a9a5e97558ed5aa'
+PUBLISHED_FEATURES = {'train.bom'}
+UNSUPPORTED_FEATURES = {'core.widget.generic'}
 
 
 def main():
@@ -14,10 +22,22 @@ def main():
     parser.add_argument('--report-only', action='store_true', help='List gaps without certifying acceptance')
     args = parser.parse_args()
     sample = Path(__file__).resolve().parent
-    features = json.loads((sample / 'feature-coverage.json').read_text())['features']
+    output = sample / 'target' / 'feature-coverage-result.json'
+    output.unlink(missing_ok=True)
+    inventory = json.loads((sample / 'feature-coverage.json').read_text())
+    if inventory.get('schema_version') != 1:
+        parser.error('Unsupported feature inventory schema_version')
+    features = inventory['features']
     identifiers = [feature['id'] for feature in features]
     if not identifiers or len(identifiers) != len(set(identifiers)):
         parser.error('The inventory must contain unique feature IDs')
+    digest = hashlib.sha256('\n'.join(sorted(identifiers)).encode()).hexdigest()
+    if digest != INVENTORY_IDS_SHA256:
+        parser.error('Feature IDs differ from the reviewed scope; review the source inventory delta before updating its digest')
+    for feature in features:
+        expected_stage = 'published' if feature['id'] in PUBLISHED_FEATURES else 'source'
+        if feature.get('acceptance_stage') != expected_stage:
+            parser.error('Invalid acceptance stage for ' + feature['id'] + ': expected ' + expected_stage)
 
     outcomes = {}
     for directory in ('surefire-reports', 'failsafe-reports'):
@@ -39,7 +59,8 @@ def main():
         if feature['acceptance_status'] == 'unsupported':
             support = feature.get('support', {})
             review = feature.get('support_review', {})
-            if (support.get('status') == 'enum_only' and support.get('detail')
+            if (feature['id'] in UNSUPPORTED_FEATURES
+                    and support.get('status') == 'enum_only' and support.get('detail')
                     and feature.get('source_paths') and review.get('source_sha')
                     and review.get('reason') and review.get('evidence') and not tests):
                 unsupported.append({'id': feature['id'], 'reason': review['reason']})
@@ -60,10 +81,9 @@ def main():
         'verified': len(features) - len(unsupported) - len(deferred) - len(gaps),
         'unsupported': unsupported, 'deferred': deferred, 'stage': args.stage,
         'stage_passed': not gaps,
-        'complete': not gaps and not deferred, 'gaps': gaps,
+        'complete': not args.report_only and not gaps and not deferred, 'gaps': gaps,
         'scope': 'This checks recorded scenarios against these reports. Inventory completeness requires source review; use clean verify to avoid stale reports.',
     }
-    output = sample / 'target' / 'feature-coverage-result.json'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + '\n')
     print(f"Sample features verified ({args.stage}): {result['verified']}/{result['features']}; report: {output}")

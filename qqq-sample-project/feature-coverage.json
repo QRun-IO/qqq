@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
   "inventory_source_sha": "a2a9e367d6ee8369a31e9aa191c093800b26840a",
-  "inventory_sha256": "027d0a28b2b119bc255ea2712e9aee76307b18923c1b649d5c3e3f8bd5f49364",
   "scope": "All supported QQQ features and use cases. Support boundaries are explicit; enum-only placeholders do not require new product implementations. The count alone does not prove completeness.",
   "features": [
     {
@@ -18,18 +17,9 @@
       "negative_cases": [
         "Duplicate names, missing referenced metadata, invalid producer type or configuration"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "gap": "Add a first-party sample scenario and assertions for the listed cases. The config-file launcher currently depends on source-directory paths/external configuration and must pass packaged acceptance with owned fixtures.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java",
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/ConfigFileBasedSampleJavalinServer.java"
-        ],
-        "test_paths": [],
-        "evidence": "Sample combines explicit metadata and package discovery; a YAML-based alternate server exists."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -50,16 +40,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
-        ],
-        "evidence": "Real sample startup indirectly validates/enriches metadata; no sample invalid-metadata assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -81,16 +61,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
-        ],
-        "evidence": "People/Greetings/Miscellaneous apps, field sections and branding are defined; HTTP test only asserts HTML shell."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -109,17 +79,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#beforeEach",
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#afterEach"
-        ],
-        "evidence": "Several tests initialize and clear context, but concurrent-request/session isolation is not asserted."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -139,16 +98,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess"
-        ],
-        "evidence": "Sample reads QRecords and passes them through processes; annotated entity conversion and typed error behavior untested."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -179,14 +128,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Person/Pet demonstrate STRING, INTEGER, DECIMAL, BOOLEAN, DATE and DATE_TIME; no complete type round-trip assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -206,14 +147,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Basic field metadata is present, but these boundary cases have no sample assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -228,19 +161,14 @@
         "TRUNCATE, TRUNCATE_ELLIPSIS, ERROR, PASS_THROUGH"
       ],
       "negative_cases": [
-        "Over-length Unicode string; error prevents persistence"
+        "Over-length BMP/supplementary Unicode on insert/update; rejection prevents persistence; ellipsis with maximum shorter than suffix"
       ],
       "gap": "",
       "verified_tests": [
-        "com.kingsrook.sampleapp.SampleFieldContractTest#testLengthPoliciesAndRejectedWrite"
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testLengthPoliciesAndRejectedWrite",
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testSupplementaryUnicodeLengthBoundaries"
       ],
       "acceptance_status": "verified",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -252,7 +180,8 @@
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
-        "Inclusive/exclusive bounds, ERROR and CLIP, decimal clip amount"
+        "Inclusive/exclusive bounds, ERROR and CLIP, decimal clip amount",
+        "Insert and update clipping/rejection with independent persisted readback"
       ],
       "negative_cases": [
         "Below/above bound, null, exact boundary"
@@ -262,12 +191,6 @@
         "com.kingsrook.sampleapp.SampleFieldContractTest#testNumericBoundsAndClipping"
       ],
       "acceptance_status": "verified",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -279,25 +202,18 @@
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
-        "CREATE_DATE, MODIFY_DATE, USER_ID; inferred defaults"
+        "CREATE_DATE, MODIFY_DATE, USER_ID; inferred defaults",
+        "DATE and DATE_TIME CREATE_DATE/MODIFY_DATE; explicitly disabled default inference"
       ],
       "negative_cases": [
         "Preserve explicit values where specified; missing user; update does not reset creation time"
       ],
-      "gap": "",
+      "gap": "DATE defaults and disabled inference have no sample acceptance evidence yet; existing DATE_TIME/USER_ID tests remain mapped.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleFieldContractTest#testDynamicDefaults",
         "com.kingsrook.sampleapp.SampleFieldContractTest#testRequiredUniqueDefaultsAndSparseUpdates"
       ],
-      "acceptance_status": "verified",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Basic field metadata is present, but these boundary cases have no sample assertions."
-      },
+      "acceptance_status": "pending",
       "acceptance_stage": "source"
     },
     {
@@ -317,15 +233,11 @@
       "gap": "",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleFieldContractTest#testDateTimeDisplayZonesAndFallback",
-        "com.kingsrook.sampleapp.SampleFieldContractTest#testUtcStorageAcrossHostTimeZones"
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testUtcStorageAcrossHostTimeZones",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testMySqlTemporalValuesAcrossHostTimeZones",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresTemporalValuesAcrossHostTimeZones"
       ],
       "acceptance_status": "verified",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -338,22 +250,17 @@
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
-        "Upper/lower case and supported whitespace behavior"
+        "Upper/lower case and supported whitespace behavior",
+        "Normalization on insert and update, sparse update preservation, filter-operand normalization"
       ],
       "negative_cases": [
         "Null, whitespace-only, Unicode case conversion"
       ],
-      "gap": "",
+      "gap": "Insert/update assertions do not yet establish normalization of filter operands.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleFieldContractTest#testCaseAndWhitespacePolicies"
       ],
-      "acceptance_status": "verified",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
+      "acceptance_status": "pending",
       "acceptance_stage": "source"
     },
     {
@@ -373,12 +280,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -398,14 +299,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -429,17 +322,6 @@
         "com.kingsrook.sampleapp.SampleDataContractTest#testTenantReadAndWriteIsolation"
       ],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess",
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/processes/clonepeople/ClonePeopleTransformStepTest.java#testProcessStep"
-        ],
-        "evidence": "An unfiltered H2 query supplies process records; filter/operator, paging and security combinations are untested."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -451,25 +333,19 @@
       ],
       "owning_module": "qqq-backend-core",
       "acceptance_cases": [
-        "Filtered counts agree with query results"
+        "Filtered counts agree with query results",
+        "Distinct counts (CountInput.includeDistinctCount), count inside a transaction"
       ],
       "negative_cases": [
-        "Denied/malformed query; empty result count zero"
+        "Denied/malformed query; empty result count zero",
+        "Filtered tenant denial including missing security key; timeout/cancellation"
       ],
-      "gap": "",
+      "gap": "Distinct count, transaction and timeout/cancellation variants remain unverified; tenant scenario currently exists only as a programmatic fixture.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleDataContractTest#testFilteredCountsAndInvalidFields",
         "com.kingsrook.sampleapp.SampleDataContractTest#testTenantReadAndWriteIsolation"
       ],
-      "acceptance_status": "verified",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
-      },
+      "acceptance_status": "pending",
       "acceptance_stage": "source"
     },
     {
@@ -489,12 +365,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -514,14 +384,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -541,14 +403,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -568,14 +422,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -595,12 +441,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -621,14 +461,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Person-to-Pet one-to-many join and association exist; no sample join/cascade assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -648,14 +480,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Person table and PetSpecies enum PVS are defined; custom/search/translation assertions absent."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -675,12 +499,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -701,14 +519,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "H2, memory and local-file backends are registered; overrides and variants are untested."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -733,17 +543,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java",
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/OAuth2MetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
-        ],
-        "evidence": "Test asserts explicit MOCK selection and default OAUTH2 metadata type only; no real token/login acceptance."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -762,12 +561,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -787,12 +580,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -819,12 +606,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -847,12 +628,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -873,12 +648,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -898,17 +667,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess",
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testThrowProcess"
-        ],
-        "evidence": "Greet checks output records retain ids; Throw checks QException. Full business output and lifecycle not asserted."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -927,14 +685,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "GreetInteractive and sleepInteractive define EDIT_FORM/VIEW_FORM/RECORD_LIST screens; no sample HTTP/browser step assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -953,12 +703,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -978,14 +722,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Sleeper/Thrower demo steps exist; cancellation and worker cleanup are not asserted."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1007,17 +743,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java",
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/processes/clonepeople/ClonePeopleTransformStep.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/processes/clonepeople/ClonePeopleTransformStepTest.java#testProcessStep"
-        ],
-        "evidence": "ClonePeople transform asserts summary 4 OK/1 ERROR; it does not run full extract-preview-validate-load or assert database writes."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1036,12 +761,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1061,12 +780,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1086,16 +799,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "disabled",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/selenium/BulkLoadSeleniumTest.java#testSimple"
-        ],
-        "evidence": "BulkLoadSeleniumTest is disabled and its browser support is commented out; it is not acceptance coverage."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1115,14 +818,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Default framework process may be exposed by the sample, but no sample end-to-end assertion exists."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1142,14 +837,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Default framework process may be exposed by the sample, but no sample end-to-end assertion exists."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1169,12 +856,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1194,12 +875,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1225,12 +900,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1250,12 +919,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1277,12 +940,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1301,12 +958,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1325,12 +976,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1352,12 +997,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1376,12 +1015,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1401,12 +1034,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1434,12 +1061,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1467,16 +1088,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleBarChartWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1506,16 +1117,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/dashboard/widgets/PersonsByCreateDateBarChart.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/PersonsByCreateDateBarChartTest.java#test"
-        ],
-        "evidence": "PersonsByCreateDateBarChart returns fixed illustrative data; test asserts ChartData type, nonblank title and nonnull chart payload. It does not query persisted records or test browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1543,12 +1144,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1576,12 +1171,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1610,12 +1199,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "unsupported",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "support_review": {
         "source_sha": "a2a9e367d6ee8369a31e9aa191c093800b26840a",
         "reason": "GENERIC declaration has no backend use beyond WidgetType and no dashboard branch in the audited sources.",
@@ -1648,12 +1231,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1681,16 +1258,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleHTMLWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1718,16 +1285,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleLineChartWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1755,16 +1312,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleSmallLineChartWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1794,12 +1341,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1827,16 +1368,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleMultiStatisticsWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1864,12 +1395,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1897,16 +1422,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SamplePieChartWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1934,16 +1449,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "skipped",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Registered with a fixed dashboard id and environment credentials; RenderAllWidgetsTest explicitly skips QuickSight."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -1971,16 +1476,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleStatisticsWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2008,16 +1503,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleStackedBarChartWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2045,16 +1530,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleStepperWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2082,16 +1557,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleTableWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2119,12 +1584,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2152,12 +1611,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2185,12 +1638,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2218,16 +1665,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "smoke_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleBigNumberBlocksWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2255,12 +1692,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2288,12 +1719,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2321,12 +1746,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2354,12 +1773,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2387,12 +1800,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2420,12 +1827,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2453,12 +1854,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2486,12 +1881,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2519,12 +1908,6 @@
       },
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2544,16 +1927,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleBigNumberBlocksWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "Sample composite has big-number/up-down blocks; no complete block or interaction assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2573,14 +1946,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "A memory backend and carrier metadata are registered; sample tests do not assert its full storage behavior."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2600,16 +1965,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess"
-        ],
-        "evidence": "H2-backed sample QueryAction is exercised; optional MySQL configuration exists, but sample does not assert backend CRUD/aggregate matrix."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2629,12 +1984,6 @@
       "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2654,12 +2003,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample dependency, metadata or scenario for this published backend."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2679,12 +2022,6 @@
       "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2704,12 +2041,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample dependency, metadata or scenario for this published backend."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2729,12 +2060,6 @@
       "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2754,12 +2079,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample dependency, metadata or scenario for this published backend."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2779,12 +2098,6 @@
       "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2805,12 +2118,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2830,12 +2137,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2855,16 +2156,6 @@
       "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testCityFileTable"
-        ],
-        "evidence": "Sample City CSV query asserts three rows only; other operations/formats/cardinalities untested."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2884,12 +2175,6 @@
       "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion for this transport."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2909,12 +2194,6 @@
       "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion for this transport."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2935,16 +2214,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testCityFileTable"
-        ],
-        "evidence": "CSV with MANY cardinality is the only asserted sample parser case."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2964,12 +2233,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -2986,20 +2249,11 @@
       "negative_cases": [
         "Invalid configuration, port conflict, missing asset, unknown path and resource cleanup"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases. The isolated-SPA launcher names absent assets and requires consolidation onto packaged resources and nonzero startup-failure checks.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleBootstrapTest#testResetRefusesAnotherDatabaseWithTheSameBackendName"
+      ],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleJavalinServer.java",
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/IsolatedSpaServer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
-        ],
-        "evidence": "Starts a real random-port server, checks root status 200 and HTML, then stops; dashboard JS and application behavior are not asserted."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3020,14 +2274,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleJavalinServer.java"
-        ],
-        "test_paths": [],
-        "evidence": "Sample exposes the middleware; only HTML shell response is asserted."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3048,14 +2294,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "Interactive processes exist; no HTTP process contract assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3077,14 +2315,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/OAuth2MetaDataProvider.java"
-        ],
-        "test_paths": [],
-        "evidence": "OAuth2 metadata exists; mock selection is tested but provider/session HTTP contracts are not."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3103,15 +2333,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleJavalinMetaDataProducer.java",
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/DynamicSiteProcessMetaDataProducer.java"
-        ],
-        "test_paths": [],
-        "evidence": "Public/private/dynamic site routes are defined without sample HTTP authorization/output assertions."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3130,12 +2351,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3156,12 +2371,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3182,12 +2391,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3207,12 +2410,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3234,12 +2431,6 @@
       "gap": "Add sample consumer serialization/compatibility scenario. README claim that only Server remains is inaccurate; correction handed to parent.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3258,12 +2449,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3285,12 +2470,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3307,21 +2486,11 @@
       "negative_cases": [
         "Unknown command/option and malformed argument produce nonzero exit plus useful error"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Fresh-process seeded count and unknown-command exit are tested. Remaining help accuracy, typed arguments, command families, denied actions and process failures still need sample assertions.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePackagedCliIT#testCountAndInvalidCommandFromEmptyWorkingDirectory"
+      ],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleCli.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleCliTest.java#testExitSuccess",
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleCliTest.java#testNotExitSuccess",
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleCliTest.java#testHelpWithExplicitMockAuthentication"
-        ],
-        "evidence": "Tests assert metadata success, unknown-command failure, and help with explicit mock auth; output content is not checked."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3338,17 +2507,11 @@
       "negative_cases": [
         "Bad typed argument, missing required option, denied action, process exception and nonzero exit"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Fresh-process seeded count and unknown-command exit are tested. Remaining help accuracy, typed arguments, command families, denied actions and process failures still need sample assertions.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePackagedCliIT#testCountAndInvalidCommandFromEmptyWorkingDirectory"
+      ],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "scenario_only",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleCli.java"
-        ],
-        "test_paths": [],
-        "evidence": "CLI entry point exists but no sample action/persistence/output assertion."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3371,12 +2534,6 @@
       "gap": "Add first-party stream/process/custom-handler acceptance and explicit support boundary. QStandardLambdaHandler.setupSession is empty; application must supply valid context/session. README standard-dispatch wording needs qualification; handed to parent.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3396,12 +2553,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3421,12 +2572,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3446,12 +2591,6 @@
       "gap": "Handler currently uses default AWS credentials and logs incoming body; add first-party capture/fixture and failure assertions without unrelated accounts or data.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3471,16 +2610,6 @@
       "gap": "Add candidate-resolved acceptance profile covering all 16 published libraries; keep source/reactor tests distinct from published-artifact consumption.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleJavalinServer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
-        ],
-        "evidence": "H2 seed/bootstrap and real HTTP shell work; current pom explicitly consumes only core, RDBMS, filesystem, Javalin and PicoCLI plus dashboard."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3502,17 +2631,6 @@
       "gap": "Create runnable browser acceptance against the first-party sample; assert real records and output. Map each supported UI contract to the inventory; HTML 200 is insufficient.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/selenium/BulkLoadSeleniumTest.java#testSimple",
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
-        ],
-        "evidence": "Dashboard dependency is pinned 0.40.0; browser bulk-load test is disabled and server test only checks the HTML shell."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3533,12 +2651,6 @@
       "gap": "Use a clean isolated Maven repository and candidate consumer build; local reactor installation alone does not prove registry consumption.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "published"
     },
     {
@@ -3557,12 +2669,6 @@
       "gap": "Run starter acceptance with QRun-owned disposable fixtures and exact candidate dependency evidence; do not count its tests as sample coverage.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "Separate starter exists; it is not a scenario in qqq-sample-project and its own tests must be recorded separately."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3585,12 +2691,6 @@
       "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "Separate template source/generated checks exist outside the sample; no template scenario found in qqq-sample-project."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3613,12 +2713,6 @@
       "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "Separate template source/generated checks exist outside the sample; no template scenario found in qqq-sample-project."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3639,12 +2733,6 @@
       "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "Separate template source/generated checks exist outside the sample; no template scenario found in qqq-sample-project."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3664,12 +2752,6 @@
       "gap": "Keep compile checks for migration examples and exact candidate sample; compilation alone does not satisfy behavioral coverage.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3689,16 +2771,6 @@
       "gap": "Add a first-party sample scenario and assertions for the listed cases.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "partial",
-        "scenario_paths": [
-          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleHTMLWidgetMetaDataProducer.java"
-        ],
-        "test_paths": [
-          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
-        ],
-        "evidence": "HTML sample uses QNoCodeWidgetMetaData; smoke loop does not assert values or calculations."
-      },
       "acceptance_stage": "source"
     },
     {
@@ -3719,14 +2791,8 @@
       "gap": "Add sample browser assertions for supported shared controls and all 12 WidgetBlock dispatch types; rendering a card shell is not interaction acceptance.",
       "verified_tests": [],
       "acceptance_status": "pending",
-      "baseline_sample": {
-        "status": "absent",
-        "scenario_paths": [],
-        "test_paths": [],
-        "evidence": "No sample scenario or assertion found."
-      },
       "acceptance_stage": "source"
     }
   ],
-  "baseline_note": "baseline_sample records the initial source audit at inventory_source_sha, before acceptance expansion; verified_tests records current executable evidence."
+  "baseline_note": "Initial baseline details are preserved in signed Git history at 769897db1. The active ledger records current evidence and remaining cases; the checker pins the reviewed feature-ID scope."
 }

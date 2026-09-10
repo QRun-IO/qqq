@@ -117,6 +117,8 @@ class SampleDataContractTest
       QContext.setQSession(new QSession().withSecurityKeyValue("tenant", "tenant-a"));
 
       assertEquals(1, CountAction.execute(PERSON, null));
+      assertEquals(1, CountAction.execute(PERSON, equalsFilter("firstName", "Allowed")));
+      assertEquals(0, CountAction.execute(PERSON, equalsFilter("firstName", "Denied")));
       assertEquals(List.of(allowedId), QueryAction.execute(PERSON, null).stream().map(record -> record.getValueInteger("id")).toList());
       assertNull(GetAction.execute(PERSON, deniedId));
       assertEquals("Allowed", GetAction.execute(PERSON, allowedId).getValueString("firstName"));
@@ -129,6 +131,8 @@ class SampleDataContractTest
       assertNull(GetAction.execute(PERSON, allowedId));
       QContext.setQSession(new QSession());
       assertEquals(0, CountAction.execute(PERSON, null));
+      assertEquals(0, CountAction.execute(PERSON, equalsFilter("firstName", "Allowed")));
+      assertEquals(0, CountAction.execute(PERSON, equalsFilter("firstName", "Denied")));
       assertEquals(0, QueryAction.execute(PERSON, null).size());
    }
 

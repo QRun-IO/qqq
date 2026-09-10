@@ -102,7 +102,7 @@ See [qqq-frontend-material-dashboard](https://github.com/QRun-IO/qqq-frontend-ma
 
 ## Project Status
 
-QQQ 4.0 is undergoing release validation. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). Final publication follows candidate verification and partner acceptance.
+QQQ 4.0 is undergoing release validation. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). Final publication follows candidate verification and QRun-owned reference-application acceptance.
 
 ## Contributing
 

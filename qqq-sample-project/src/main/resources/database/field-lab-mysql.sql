@@ -1,0 +1,31 @@
+-- Disposable Field Lab fixture; UTC connections, never production data.
+CREATE TABLE field_lab
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   name VARCHAR(80) NOT NULL UNIQUE,
+   long_value BIGINT,
+   decimal_value DECIMAL(20, 4),
+   boolean_value BOOLEAN,
+   date_value DATE,
+   time_value TIME,
+   date_time_value DATETIME(6),
+   create_date DATETIME(6),
+   modify_date DATETIME(6),
+   text_value TEXT,
+   html_value TEXT,
+   password_value VARCHAR(255),
+   blob_value BLOB,
+   truncate_value VARCHAR(255),
+   ellipsis_value VARCHAR(255),
+   reject_long_value VARCHAR(255),
+   pass_through_value VARCHAR(255),
+   upper_value VARCHAR(255),
+   lower_value VARCHAR(255),
+   unchanged_value VARCHAR(255),
+   trim_value VARCHAR(255),
+   trim_left_value VARCHAR(255),
+   trim_right_value VARCHAR(255),
+   remove_space_value VARCHAR(255),
+   bounded_value DECIMAL(10, 2),
+   clipped_value DECIMAL(10, 2)
+);

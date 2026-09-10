@@ -308,6 +308,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withName(APP_NAME_MISCELLANEOUS)
          .withIcon(new QIcon().withName("stars"))
          .withChild(qInstance.getTable(TABLE_NAME_CARRIER).withIcon(new QIcon("local_shipping")))
+         .withChild(qInstance.getTable(FieldLabTableMetaDataProducer.NAME).withIcon(new QIcon("science")))
          .withChild(qInstance.getProcess(PROCESS_NAME_SIMPLE_SLEEP))
          .withChild(qInstance.getProcess(PROCESS_NAME_SLEEP_INTERACTIVE))
          .withChild(qInstance.getProcess(PROCESS_NAME_SIMPLE_THROW)));
@@ -358,6 +359,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
             .withVendor("h2")
             .withHostName("mem")
             .withDatabaseName("test_database")
+            .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'"))
             .withUsername("sa"));
       }
    }

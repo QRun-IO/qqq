@@ -1,0 +1,3720 @@
+{
+  "schema_version": 1,
+  "inventory_source_sha": "a2a9e367d6ee8369a31e9aa191c093800b26840a",
+  "inventory_sha256": "027d0a28b2b119bc255ea2712e9aee76307b18923c1b649d5c3e3f8bd5f49364",
+  "scope": "All supported QQQ features and use cases. Support boundaries are explicit; enum-only placeholders do not require new product implementations. The count alone does not prove completeness.",
+  "features": [
+    {
+      "id": "core.metadata.production",
+      "feature": "Programmatic, package-scanned, annotation and config-file metadata production",
+      "source_paths": [
+        "docs/metaData/MetaDataProduction.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/MetaDataProducerHelper.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Programmatic and scanned producers; multi-output producers; annotated entities/enums/child metadata; config-file round trip"
+      ],
+      "negative_cases": [
+        "Duplicate names, missing referenced metadata, invalid producer type or configuration"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java",
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/ConfigFileBasedSampleJavalinServer.java"
+        ],
+        "test_paths": [],
+        "evidence": "Sample combines explicit metadata and package discovery; a YAML-based alternate server exists."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.metadata.validation",
+      "feature": "QInstance enrichment and validation",
+      "source_paths": [
+        "docs/metaData/QInstance.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/instances/QInstanceValidator.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/instances/QInstanceEnricher.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Complete instance enrichment and validation with inferred labels, sections, backend names and timestamps"
+      ],
+      "negative_cases": [
+        "Missing backend/table/field/PVS, invalid join/section, duplicate keys and invalid code reference"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
+        ],
+        "evidence": "Real sample startup indirectly validates/enriches metadata; no sample invalid-metadata assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.metadata.presentation",
+      "feature": "App hierarchy, sections, branding, icons and metadata personalization",
+      "source_paths": [
+        "docs/metaData/Apps.adoc",
+        "docs/metaData/Icons.adoc",
+        "docs/metaData/Tables.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/metadata/personalization/TableMetaDataPersonalizerAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Nested app navigation, hidden items, custom record labels, icon/section rendering, personalized fields/order"
+      ],
+      "negative_cases": [
+        "Invalid parent/cycles and inaccessible metadata must not appear as usable actions"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
+        ],
+        "evidence": "People/Greetings/Miscellaneous apps, field sections and branding are defined; HTTP test only asserts HTML shell."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.context.isolation",
+      "feature": "Thread-local QContext and QSession lifecycle",
+      "source_paths": [
+        "docs/misc/QContext.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Initialize, resolve current instance/session, propagate context to supported workers, clear in cleanup"
+      ],
+      "negative_cases": [
+        "Missing context, exception cleanup, cross-thread/cross-user leakage"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#beforeEach",
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#afterEach"
+        ],
+        "evidence": "Several tests initialize and clear context, but concurrent-request/session isolation is not asserted."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.records.entities",
+      "feature": "QRecord values, display values, backend details, associations and entity conversion",
+      "source_paths": [
+        "docs/misc/QRecords.adoc",
+        "docs/misc/QRecordEntities.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Typed getters/setters, record/entity conversion, associated records, display/backend values and structured warnings/errors"
+      ],
+      "negative_cases": [
+        "Invalid coercion, null/missing field, malformed entity mapping, warnings versus rejecting errors"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess"
+        ],
+        "evidence": "Sample reads QRecords and passes them through processes; annotated entity conversion and typed error behavior untested."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.types",
+      "feature": "All declared field types and their serialization/display behavior",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/QFieldType.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "STRING",
+        "INTEGER",
+        "LONG",
+        "DECIMAL",
+        "BOOLEAN",
+        "DATE",
+        "TIME",
+        "DATE_TIME",
+        "TEXT",
+        "HTML",
+        "PASSWORD",
+        "BLOB"
+      ],
+      "negative_cases": [
+        "Nulls, numeric bounds/precision, invalid temporal values, password masking, binary preservation"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Person/Pet demonstrate STRING, INTEGER, DECIMAL, BOOLEAN, DATE and DATE_TIME; no complete type round-trip assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.required",
+      "feature": "Required/editable/default/unique field constraints",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/QFieldMetaData.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Required and optional insert/update, immutable fields, defaults and composite unique keys"
+      ],
+      "negative_cases": [
+        "Missing required value, duplicate key, forbidden edit"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Basic field metadata is present, but these boundary cases have no sample assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.length",
+      "feature": "String maximum-length policies",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/ValueTooLongBehavior.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "TRUNCATE, TRUNCATE_ELLIPSIS, ERROR, PASS_THROUGH"
+      ],
+      "negative_cases": [
+        "Over-length Unicode string; error prevents persistence"
+      ],
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testLengthPoliciesAndRejectedWrite"
+      ],
+      "acceptance_status": "verified",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.range",
+      "feature": "Numeric ranges and clipping",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/ValueRangeBehavior.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Inclusive/exclusive bounds, ERROR and CLIP, decimal clip amount"
+      ],
+      "negative_cases": [
+        "Below/above bound, null, exact boundary"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.defaults",
+      "feature": "Dynamic timestamp and user defaults",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/DynamicDefaultValueBehavior.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "CREATE_DATE, MODIFY_DATE, USER_ID; inferred defaults"
+      ],
+      "negative_cases": [
+        "Preserve explicit values where specified; missing user; update does not reset creation time"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Basic field metadata is present, but these boundary cases have no sample assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.datetime",
+      "feature": "Timezone-aware datetime display",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/DateTimeDisplayValueBehavior.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Fixed and record-specific time zones; UTC storage"
+      ],
+      "negative_cases": [
+        "Invalid/missing zone; daylight-saving boundary"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.case",
+      "feature": "Case and whitespace normalization",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/CaseChangeBehavior.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/WhiteSpaceBehavior.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Upper/lower case and supported whitespace behavior"
+      ],
+      "negative_cases": [
+        "Null, whitespace-only, Unicode case conversion"
+      ],
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleFieldContractTest#testCaseAndWhitespacePolicies"
+      ],
+      "acceptance_status": "verified",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.fields.virtual",
+      "feature": "Virtual fields and registered field functions",
+      "source_paths": [
+        "docs/metaData/Fields.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/fields/QVirtualFieldMetaData.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "String length, substring, weekday-of-date/datetime in supported backends"
+      ],
+      "negative_cases": [
+        "Invalid parameters, null values, unsupported backend function"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.get",
+      "feature": "GetAction public data operation",
+      "source_paths": [
+        "docs/actions/GetAction.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/GetAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Primary-key fetch; display/PVS translation and associations"
+      ],
+      "negative_cases": [
+        "Missing key, nonexistent record, denied record"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.query",
+      "feature": "QueryAction public data operation",
+      "source_paths": [
+        "docs/actions/QueryAction.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/QueryAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "All 24 QCriteriaOperator values where supported; AND/OR nested filters; sort, limit, skip, streaming and joins"
+      ],
+      "negative_cases": [
+        "Empty results, bad field/operator/type, invalid limits, denied data and cancellation"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess",
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/processes/clonepeople/ClonePeopleTransformStepTest.java#testProcessStep"
+        ],
+        "evidence": "An unfiltered H2 query supplies process records; filter/operator, paging and security combinations are untested."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.count",
+      "feature": "CountAction public data operation",
+      "source_paths": [
+        "docs/index.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/CountAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Filtered counts agree with query results"
+      ],
+      "negative_cases": [
+        "Denied/malformed query; empty result count zero"
+      ],
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleDataContractTest#testFilteredCountsAndInvalidFields",
+        "com.kingsrook.sampleapp.SampleDataContractTest#testTenantReadAndWriteIsolation"
+      ],
+      "acceptance_status": "verified",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.aggregate",
+      "feature": "AggregateAction public data operation",
+      "source_paths": [
+        "docs/index.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/AggregateAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Grouping and supported aggregate operators; joined/grouped statistics"
+      ],
+      "negative_cases": [
+        "Empty groups, invalid field/function and denied source records"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.insert",
+      "feature": "InsertAction public data operation",
+      "source_paths": [
+        "docs/actions/InsertAction.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/InsertAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Single/batch inserts, generated keys, associated records and persistence readback"
+      ],
+      "negative_cases": [
+        "Required/unique/type/permission failure and mixed-success batch; no invalid persisted writes"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.update",
+      "feature": "UpdateAction public data operation",
+      "source_paths": [
+        "docs/index.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/UpdateAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Partial/single/batch updates preserve omitted fields and read back changes"
+      ],
+      "negative_cases": [
+        "Missing key, validation failure, denied row/field and transactional rollback"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.delete",
+      "feature": "DeleteAction public data operation",
+      "source_paths": [
+        "docs/index.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/DeleteAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Single/batch deletion and associated-record policy"
+      ],
+      "negative_cases": [
+        "Missing record, denied row, association constraints and rollback"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Table metadata exposes the action through the framework, but no sample assertion exercises its complete contract."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.actions.replace",
+      "feature": "ReplaceAction public data operation",
+      "source_paths": [
+        "docs/index.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/ReplaceAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Replacement of supported records with explicit existing/missing-key semantics"
+      ],
+      "negative_cases": [
+        "Invalid replacement, denied target and no partial destructive write"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.query.joins",
+      "feature": "Explicit joins, association trees and exposed joins",
+      "source_paths": [
+        "docs/metaData/Joins.adoc",
+        "docs/metaData/Tables.adoc",
+        "docs/actions/QueryAction.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Join cardinalities, explicit QueryJoin, joined filters/sorts, includeAssociations and parent/child DML"
+      ],
+      "negative_cases": [
+        "Missing child, orphan reference, duplicate join path, denied child/parent and empty association"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Person-to-Pet one-to-many join and association exist; no sample join/cascade assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.query.possible-values",
+      "feature": "TABLE, ENUM and CUSTOM possible-value sources",
+      "source_paths": [
+        "docs/metaData/PossibleValueSources.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/values/SearchPossibleValueSourceAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Search, selected-value lookup, labels, sort, override id, table/enum/custom providers"
+      ],
+      "negative_cases": [
+        "Unknown/missing id fallback, forbidden foreign record, invalid identifier type"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Person table and PetSpecies enum PVS are defined; custom/search/translation assertions absent."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.query.lookup-cache",
+      "feature": "RecordLookupHelper preload/lazy lookup and table CacheOf",
+      "source_paths": [
+        "docs/utilities/RecordLookupHelper.adoc",
+        "docs/metaData/Tables.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Preload by primary/unique key and filter; lazy fetch; configured cache key modes, expiry and cached source misses"
+      ],
+      "negative_cases": [
+        "Missing source, expiration refresh, invalid key, stale cached permission-sensitive data"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.backends.capabilities",
+      "feature": "Backend registration, capabilities and backend/table variants",
+      "source_paths": [
+        "docs/metaData/Backends.adoc",
+        "docs/metaData/Tables.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/tables/Capability.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Backend dispatch; all declared capabilities; enable/disable precedence; variant resolution"
+      ],
+      "negative_cases": [
+        "Unknown backend/variant, unsupported operation, disabled capability must remain denied"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "H2, memory and local-file backends are registered; overrides and variants are untested."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.security.authentication",
+      "feature": "Configured authentication providers and session lifecycle",
+      "source_paths": [
+        "docs/Introduction.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/QAuthenticationType.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "OAUTH2",
+        "AUTH_0",
+        "TABLE_BASED",
+        "FULLY_ANONYMOUS",
+        "MOCK",
+        "Session creation/refresh/logout with QRun-owned test identities and local protocol fixtures"
+      ],
+      "negative_cases": [
+        "Missing/expired/invalid token, invalid credentials, disabled user, replay and unauthorized session"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java",
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/OAuth2MetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
+        ],
+        "evidence": "Test asserts explicit MOCK selection and default OAUTH2 metadata type only; no real token/login acceptance."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.security.permissions",
+      "feature": "Object permissions and custom permission checking",
+      "source_paths": [
+        "docs/metaData/PermissionRules.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "NOT_PROTECTED, HAS_ACCESS_PERMISSION, READ_WRITE_PERMISSIONS, READ_INSERT_EDIT_DELETE_PERMISSIONS; HIDDEN/DISABLED; custom checker"
+      ],
+      "negative_cases": [
+        "Denied read/insert/edit/delete/process through direct API as well as metadata/UI"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.security.record-locks",
+      "feature": "Row-level security, tenant isolation and lock overrides",
+      "source_paths": [
+        "docs/metaData/SecurtiyKeyTypes.adoc",
+        "docs/metaData/Tables.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Direct/joined locks, multiple key values, read-and-write versus write-only, all-access and null overrides"
+      ],
+      "negative_cases": [
+        "Cross-tenant get/query/count/aggregate/export/DML, null DENY/ALLOW/ALLOW_WRITE_ONLY and missing session key"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.customizers",
+      "feature": "Table lifecycle and metadata customizers",
+      "source_paths": [
+        "docs/metaData/Tables.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/customizers/TableCustomizers.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "POST_QUERY_RECORD",
+        "PRE_INSERT_RECORD",
+        "POST_INSERT_RECORD",
+        "PRE_UPDATE_RECORD",
+        "POST_UPDATE_RECORD",
+        "PRE_DELETE_RECORD",
+        "POST_DELETE_RECORD",
+        "POST_META_DATA_ACTION"
+      ],
+      "negative_cases": [
+        "Customizer rejection, exception cleanup, incorrect code type; failed writes must remain absent"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.audit",
+      "feature": "Record/field audits and audit retrieval",
+      "source_paths": [
+        "docs/metaData/Tables.adoc",
+        "docs/index.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/audits/AuditAction.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/audits/DMLAuditAction.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/audits/GetAuditsForRecordProcess.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "NONE/RECORD/FIELD audit levels, explicit audit event and old/new field history"
+      ],
+      "negative_cases": [
+        "Denied audit access, no event for failed write, sensitive-value policy and missing record"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.automation",
+      "feature": "Insert/update table automation, status tracking and recovery",
+      "source_paths": [
+        "docs/metaData/Tables.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/automation/RunTableAutomationsProcessStep.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/automation/HealBadRecordAutomationStatusesProcessStep.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "POST_INSERT/POST_UPDATE, process/code handler, filter, priority, batch size, association loading and failed-status recovery"
+      ],
+      "negative_cases": [
+        "Handler failure, retries/duplicate work, invalid status/provider; PRE_DELETE is documented unimplemented and excluded"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.linear",
+      "feature": "Linear backend processes and typed inputs/outputs",
+      "source_paths": [
+        "docs/metaData/Processes.adoc",
+        "docs/misc/ProcessBackendSteps.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Input fields/records, output values, step ordering and custom flow"
+      ],
+      "negative_cases": [
+        "Missing required inputs, step failure, invalid code reference and no leaked QContext"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess",
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testThrowProcess"
+        ],
+        "evidence": "Greet checks output records retain ids; Throw checks QException. Full business output and lifecycle not asserted."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.interactive",
+      "feature": "Interactive process init/step/status, forms and resumable flow",
+      "source_paths": [
+        "docs/metaData/Processes.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Init/step/status round trip; edit/view/help/html/download/widget components; selected records; back navigation and progress"
+      ],
+      "negative_cases": [
+        "Wrong process id, out-of-order step, lost/expired session, invalid form values and cross-user resume"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "GreetInteractive and sleepInteractive define EDIT_FORM/VIEW_FORM/RECORD_LIST screens; no sample HTTP/browser step assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.state-machine",
+      "feature": "State-machine and dynamically changed process flow",
+      "source_paths": [
+        "docs/metaData/Processes.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Frontend/backend/combined states, explicit transitions, optional steps and linear flow override"
+      ],
+      "negative_cases": [
+        "Invalid next state, illegal back transition and bounded termination"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.cancellation",
+      "feature": "Cancellation and long-running process cleanup",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/processes/CancelProcessAction.java",
+        "docs/metaData/Processes.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Cancel active process, observe terminal status and release resources"
+      ],
+      "negative_cases": [
+        "Unknown/completed process id, unauthorized cancel, exception during cancellation"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Sleeper/Thrower demo steps exist; cancellation and worker cleanup are not asserted."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.etl.streamed",
+      "feature": "Basic/streamed ETL and frontend preview/validation/load",
+      "source_paths": [
+        "docs/metaData/Processes.adoc",
+        "docs/misc/ProcessBackendSteps.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/etl/basic/BasicETLProcess.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/etl/streamed/StreamedETLProcess.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Basic and streamed ETL; multiple pages; preview/full validation; process summaries; insert/update/delete load; auto/page/process transactions"
+      ],
+      "negative_cases": [
+        "Mixed record errors, extractor/transformer/loader failure, cancel, backpressure and rollback; preview must not persist"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java",
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/processes/clonepeople/ClonePeopleTransformStep.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/processes/clonepeople/ClonePeopleTransformStepTest.java#testProcessStep"
+        ],
+        "evidence": "ClonePeople transform asserts summary 4 OK/1 ERROR; it does not run full extract-preview-validate-load or assert database writes."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.etl.table-sync",
+      "feature": "TableSync natural-key insert/update/skip pipeline",
+      "source_paths": [
+        "docs/implementations/TableSync.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Insert new, update changed, skip unchanged, custom lookups/filters and no-insert/no-update options"
+      ],
+      "negative_cases": [
+        "Duplicate/invalid natural key, mixed errors, source failure; preview must not persist; repeated sync idempotence"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.etl.basepull",
+      "feature": "Incremental basepull timestamps",
+      "source_paths": [
+        "docs/metaData/Processes.adoc",
+        "docs/implementations/TableSync.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Initial lookback, persisted last-run watermark, incremental and variant runs"
+      ],
+      "negative_cases": [
+        "Failure must not advance watermark incorrectly; equal timestamps, empty batch and clock boundary"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.bulk-insert",
+      "feature": "Bulk load upload, field/value mapping and saved profiles",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/bulk/insert/BulkInsertTransformStep.java",
+        "docs/metaData/Processes.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "CSV/spreadsheet upload, map columns/PVS values, preview and load, save/reuse/delete profile"
+      ],
+      "negative_cases": [
+        "Malformed file, missing required columns, invalid rows, duplicate keys and permission denial"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "disabled",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/selenium/BulkLoadSeleniumTest.java#testSimple"
+        ],
+        "evidence": "BulkLoadSeleniumTest is disabled and its browser support is commented out; it is not acceptance coverage."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.bulk-edit",
+      "feature": "Bulk editing selected/query-matched records",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/bulk/edit/BulkEditTransformStep.java",
+        "docs/metaData/Processes.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Select records/filter, preview, apply field changes and verify persisted results"
+      ],
+      "negative_cases": [
+        "No selection, invalid field values, denied records and partial errors"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Default framework process may be exposed by the sample, but no sample end-to-end assertion exists."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.bulk-delete",
+      "feature": "Bulk delete with preview and result summary",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/bulk/delete/BulkDeleteTransformStep.java",
+        "docs/metaData/Processes.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Select records, preview, delete, verify association behavior and summary"
+      ],
+      "negative_cases": [
+        "Denied rows, invalid selection, cancellation and rollback"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Default framework process may be exposed by the sample, but no sample end-to-end assertion exists."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.process.merge",
+      "feature": "Merge duplicate records",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/mergeduplicates/MergeDuplicatesProcess.java",
+        "docs/metaData/Processes.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Select duplicates, choose survivor, merge fields/associations and verify persistence"
+      ],
+      "negative_cases": [
+        "Unrelated records, denied record, unique conflict and failed merge rollback"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.scheduling",
+      "feature": "Simple/Quartz scheduling and scheduled job management",
+      "source_paths": [
+        "docs/misc/ScheduledJobs.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/scheduler/QScheduleManager.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Interval/cron, initial delay, process/automation/queue runners, variant serial/parallel; schedule/reschedule/pause/resume/unschedule"
+      ],
+      "negative_cases": [
+        "Invalid cron, duplicate job, job exception, timeout, shutdown cleanup and context isolation"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.reporting.export",
+      "feature": "Table export in every current ReportFormat",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/reporting/ExportAction.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/actions/reporting/ReportFormat.java",
+        "docs/metaData/Reports.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "XLSX",
+        "JSON",
+        "CSV",
+        "TSV",
+        "LIST_OF_MAPS",
+        "Filtered/selected records, field selection and PVS/display translation; parse output contents"
+      ],
+      "negative_cases": [
+        "Empty result, denied fields/rows, unsupported format and streaming limits"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.reporting.views",
+      "feature": "Report TABLE/SUMMARY/PIVOT views and formulas",
+      "source_paths": [
+        "docs/metaData/Reports.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/reporting/GenerateReportAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Table/static supplier sources, input filters, multiple views, summary/variance, formulas/totals, custom transforms, native XLSX pivot and capability-appropriate formats"
+      ],
+      "negative_cases": [
+        "Missing source/view, bad formula, zero denominator, empty data, invalid native pivot format and denied source"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.reporting.saved",
+      "feature": "Saved views, saved reports, scheduling and sharing",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/savedviews/StoreSavedViewProcess.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/savedreports/RenderSavedReportExecuteStep.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/savedreports/RunScheduledReportExecuteStep.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/sharing/SharingMetaDataProvider.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Save/query/update/delete view/report; schedule report; share with explicit permissions and revoke"
+      ],
+      "negative_cases": [
+        "Cross-user private view/report access, invalid recipient, stale shared record and failed scheduled delivery"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.templates.render",
+      "feature": "Template rendering from string/resource with context",
+      "source_paths": [
+        "docs/actions/RenderTemplateAction.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Canonical and convenience forms; escaping, loops/conditions and exact rendered output"
+      ],
+      "negative_cases": [
+        "Missing template/context, syntax error and unescaped data"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.templates.pdf",
+      "feature": "HTML-to-PDF conversion",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/templates/ConvertHtmlToPdfAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Convert sample HTML and inspect PDF text/pages"
+      ],
+      "negative_cases": [
+        "Malformed HTML, missing asset and conversion failure; no external private resources"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.scripts.associated",
+      "feature": "Store/test/run associated and ad-hoc record scripts",
+      "source_paths": [
+        "docs/metaData/Tables.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/scripts/StoreAssociatedScriptAction.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/scripts/RunAssociatedScriptAction.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/scripts/RunAdHocRecordScriptAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Script revisions, record/process script input/output, test versus persist and summary"
+      ],
+      "negative_cases": [
+        "Invalid code/parameters, script exception, permission denial and test run must not persist"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.messaging",
+      "feature": "Configured message delivery",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/messaging/SendMessageAction.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Dispatch supported configured message type to a first-party local receiver and inspect envelope/body"
+      ],
+      "negative_cases": [
+        "Invalid receiver/configuration, delivery failure and no unrelated recipient transmission"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.maintenance",
+      "feature": "Metadata-driven garbage collection and column statistics",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/garbagecollector/GarbageCollectorProcessMetaDataProducer.java",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/columnstats/ColumnStatsStep.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Configured expired-record cleanup; column statistics match fixture values"
+      ],
+      "negative_cases": [
+        "Nonexpired/denied records untouched, empty table and invalid configuration"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.alert",
+      "feature": "Widget contract: ALERT",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.bar_chart",
+      "feature": "Widget contract: BAR_CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleBarChartWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.chart",
+      "feature": "Widget contract: CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/ChartData.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Verify backend data serialization where implemented; do not claim a standalone Dashboard renderer for this enum value"
+      ],
+      "negative_cases": [
+        "Do not advertise this enum value as a supported standalone Dashboard 0.40.0 widget"
+      ],
+      "gap": "Exclude from the supported standalone dashboard-widget denominator. Preserve documented backend-data/extension compatibility where applicable; no new renderer is authorized by this inventory.",
+      "support": {
+        "status": "backend_data_only",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": false,
+        "detail": "ChartData is implemented and consumed as chart payload; use explicit barChart/lineChart/pieChart metadata for a supported renderer. Sample PersonsByCreateDateBarChart does not set a concrete widget metadata type."
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/dashboard/widgets/PersonsByCreateDateBarChart.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/PersonsByCreateDateBarChartTest.java#test"
+        ],
+        "evidence": "PersonsByCreateDateBarChart returns fixed illustrative data; test asserts ChartData type, nonblank title and nonnull chart payload. It does not query persisted records or test browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.divider",
+      "feature": "Widget contract: DIVIDER",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.field_value_list",
+      "feature": "Widget contract: FIELD_VALUE_LIST",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.generic",
+      "feature": "Widget contract: GENERIC",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Verify backend data serialization where implemented; do not claim a standalone Dashboard renderer for this enum value"
+      ],
+      "negative_cases": [
+        "Do not advertise this enum value as a supported standalone Dashboard 0.40.0 widget"
+      ],
+      "gap": "Exclude from the supported standalone dashboard-widget denominator. Preserve documented backend-data/extension compatibility where applicable; no new renderer is authorized by this inventory.",
+      "support": {
+        "status": "enum_only",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": false,
+        "detail": "GENERIC declaration has no backend use beyond WidgetType and no dashboard branch in the audited sources."
+      },
+      "verified_tests": [],
+      "acceptance_status": "unsupported",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "support_review": {
+        "source_sha": "a2a9e367d6ee8369a31e9aa191c093800b26840a",
+        "reason": "GENERIC declaration has no backend use beyond WidgetType and no dashboard branch in the audited sources.",
+        "evidence": "source_paths and pinned frontend source in support; enum declaration is retained for completeness"
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.horizontal_bar_chart",
+      "feature": "Widget contract: HORIZONTAL_BAR_CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.html",
+      "feature": "Widget contract: HTML",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleHTMLWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.line_chart",
+      "feature": "Widget contract: LINE_CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleLineChartWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.small_line_chart",
+      "feature": "Widget contract: SMALL_LINE_CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleSmallLineChartWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.location",
+      "feature": "Widget contract: LOCATION",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/LocationData.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Verify backend data serialization where implemented; do not claim a standalone Dashboard renderer for this enum value"
+      ],
+      "negative_cases": [
+        "Do not advertise this enum value as a supported standalone Dashboard 0.40.0 widget"
+      ],
+      "gap": "Exclude from the supported standalone dashboard-widget denominator. Preserve documented backend-data/extension compatibility where applicable; no new renderer is authorized by this inventory.",
+      "support": {
+        "status": "backend_data_only",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": false,
+        "detail": "LocationData exists; no location branch in DashboardWidgets v0.40.0."
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.multi_statistics",
+      "feature": "Widget contract: MULTI_STATISTICS",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleMultiStatisticsWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.multi_table",
+      "feature": "Widget contract: MULTI_TABLE",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.pie_chart",
+      "feature": "Widget contract: PIE_CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SamplePieChartWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.quick_sight_chart",
+      "feature": "Widget contract: QUICK_SIGHT_CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Provide QRun-owned QuickSight protocol/embed fixture or controlled sandbox configuration, and assert backend output plus iframe/error behavior; no unrelated account or credentials.",
+      "support": {
+        "status": "implemented_external_integration",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "skipped",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Registered with a fixed dashboard id and environment credentials; RenderAllWidgetsTest explicitly skips QuickSight."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.statistics",
+      "feature": "Widget contract: STATISTICS",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleStatisticsWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.stacked_bar_chart",
+      "feature": "Widget contract: STACKED_BAR_CHART",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleStackedBarChartWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.stepper",
+      "feature": "Widget contract: STEPPER",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleStepperWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.table",
+      "feature": "Widget contract: TABLE",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleTableWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.usa_map",
+      "feature": "Widget contract: USA_MAP",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.process",
+      "feature": "Widget contract: PROCESS",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.parent_widget",
+      "feature": "Widget contract: PARENT_WIDGET",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.composite",
+      "feature": "Widget contract: COMPOSITE",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "smoke_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleBigNumberBlocksWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample producer exists; renderer smoke loop does not assert output values or browser rendering."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.child_record_list",
+      "feature": "Widget contract: CHILD_RECORD_LIST",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.custom_component",
+      "feature": "Widget contract: CUSTOM_COMPONENT",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Serve a first-party custom component from a local fixture and verify dynamic loading/rendered props; missing component produces the supported loading/error behavior"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_extension_point",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.cron_ui",
+      "feature": "Widget contract: CRON_UI",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.dynamic_form",
+      "feature": "Widget contract: DYNAMIC_FORM",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.data_bag_viewer",
+      "feature": "Widget contract: DATA_BAG_VIEWER",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.pivot_table_setup",
+      "feature": "Widget contract: PIVOT_TABLE_SETUP",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.filter_and_columns_setup",
+      "feature": "Widget contract: FILTER_AND_COLUMNS_SETUP",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.row_builder",
+      "feature": "Widget contract: ROW_BUILDER",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.script_viewer",
+      "feature": "Widget contract: SCRIPT_VIEWER",
+      "source_paths": [
+        "docs/metaData/Widgets.adoc",
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/DashboardWidgets.tsx"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Valid metadata and correctly typed data; meaningful rendered output in Dashboard 0.40.0"
+      ],
+      "negative_cases": [
+        "Empty/malformed data, invalid reference, renderer failure and denied source data"
+      ],
+      "gap": "Add explicit sample metadata/data and rendered/browser assertions for this implemented Dashboard 0.40.0 contract; framework tests are not sample coverage.",
+      "support": {
+        "status": "implemented_frontend_contract",
+        "frontend_version": "0.40.0",
+        "frontend_source_commit": "6039fcff426ae05a058d169f68872ea4f313a4b3",
+        "frontend_dispatch_present": true
+      },
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No explicit sample producer or test for this widget contract; enum membership does not establish dashboard support."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.blocks",
+      "feature": "Composite widget block types, styles, links and interactions",
+      "source_paths": [
+        "docs/misc/RenderingWidgets.adoc",
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/CompositeWidgetData.java"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Text, image, icon, audio, button, input, divider, progress, number badges, nested composition, links/tooltips/styles"
+      ],
+      "negative_cases": [
+        "Missing asset, invalid slot/value, empty children, action permission denial and unsafe user content"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleBigNumberBlocksWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "Sample composite has big-number/up-down blocks; no complete block or interaction assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.backend.memory",
+      "feature": "Built-in memory backend contract",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/modules/backend/implementations/memory/MemoryBackendModule.java",
+        "docs/metaData/Backends.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Supported CRUD/query/count/aggregate operations, generated keys and isolated state"
+      ],
+      "negative_cases": [
+        "Missing/duplicate key, invalid query, denied rows and fixture leakage between runs"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "A memory backend and carrier metadata are registered; sample tests do not assert its full storage behavior."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.rdbms.data",
+      "feature": "Shared JDBC/RDBMS data operations",
+      "source_paths": [
+        "qqq-backend-module-rdbms/README.md",
+        "qqq-backend-module-rdbms/src/main/java/com/kingsrook/qqq/backend/module/rdbms/RDBMSBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-rdbms",
+      "acceptance_cases": [
+        "Isolated backend fixture; supported CRUD, count, aggregate, paging/sort/filter/type round trips and generated keys; joins where implemented"
+      ],
+      "negative_cases": [
+        "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testGreetProcess"
+        ],
+        "evidence": "H2-backed sample QueryAction is exercised; optional MySQL configuration exists, but sample does not assert backend CRUD/aggregate matrix."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.rdbms.lifecycle",
+      "feature": "Shared JDBC/RDBMS connection, batch and transaction behavior",
+      "source_paths": [
+        "qqq-backend-module-rdbms/README.md",
+        "qqq-backend-module-rdbms/src/main/java/com/kingsrook/qqq/backend/module/rdbms/RDBMSBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-rdbms",
+      "acceptance_cases": [
+        "Open/reuse/close connections, batch writes, commit/rollback and database-specific strategy behavior where supported"
+      ],
+      "negative_cases": [
+        "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
+      ],
+      "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.postgres.data",
+      "feature": "PostgreSQL data operations",
+      "source_paths": [
+        "qqq-backend-module-postgres/README.md",
+        "qqq-backend-module-postgres/src/main/java/com/kingsrook/qqq/backend/module/postgres/PostgreSQLBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-postgres",
+      "acceptance_cases": [
+        "Isolated backend fixture; supported CRUD, count, aggregate, paging/sort/filter/type round trips and generated keys; joins where implemented"
+      ],
+      "negative_cases": [
+        "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample dependency, metadata or scenario for this published backend."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.postgres.lifecycle",
+      "feature": "PostgreSQL connection, batch and transaction behavior",
+      "source_paths": [
+        "qqq-backend-module-postgres/README.md",
+        "qqq-backend-module-postgres/src/main/java/com/kingsrook/qqq/backend/module/postgres/PostgreSQLBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-postgres",
+      "acceptance_cases": [
+        "Open/reuse/close connections, batch writes, commit/rollback and database-specific strategy behavior where supported"
+      ],
+      "negative_cases": [
+        "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
+      ],
+      "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.sqlite.data",
+      "feature": "SQLite data operations",
+      "source_paths": [
+        "qqq-backend-module-sqlite/README.md",
+        "qqq-backend-module-sqlite/src/main/java/com/kingsrook/qqq/backend/module/sqlite/SQLiteBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-sqlite",
+      "acceptance_cases": [
+        "Isolated backend fixture; supported CRUD, count, aggregate, paging/sort/filter/type round trips and generated keys; joins where implemented"
+      ],
+      "negative_cases": [
+        "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample dependency, metadata or scenario for this published backend."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.sqlite.lifecycle",
+      "feature": "SQLite connection, batch and transaction behavior",
+      "source_paths": [
+        "qqq-backend-module-sqlite/README.md",
+        "qqq-backend-module-sqlite/src/main/java/com/kingsrook/qqq/backend/module/sqlite/SQLiteBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-sqlite",
+      "acceptance_cases": [
+        "Open/reuse/close connections, batch writes, commit/rollback and database-specific strategy behavior where supported"
+      ],
+      "negative_cases": [
+        "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
+      ],
+      "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.mongodb.data",
+      "feature": "MongoDB data operations",
+      "source_paths": [
+        "qqq-backend-module-mongodb/README.md",
+        "qqq-backend-module-mongodb/src/main/java/com/kingsrook/qqq/backend/module/mongodb/MongoDBBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-mongodb",
+      "acceptance_cases": [
+        "Isolated backend fixture; supported CRUD, count, aggregate, paging/sort/filter/type round trips and generated keys; joins where implemented"
+      ],
+      "negative_cases": [
+        "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample dependency, metadata or scenario for this published backend."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.mongodb.lifecycle",
+      "feature": "MongoDB connection, batch and transaction behavior",
+      "source_paths": [
+        "qqq-backend-module-mongodb/README.md",
+        "qqq-backend-module-mongodb/src/main/java/com/kingsrook/qqq/backend/module/mongodb/MongoDBBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-mongodb",
+      "acceptance_cases": [
+        "Open/reuse/close connections, batch writes, commit/rollback and database-specific strategy behavior where supported"
+      ],
+      "negative_cases": [
+        "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
+      ],
+      "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.api.mapping",
+      "feature": "External API table/action mapping and transformations",
+      "source_paths": [
+        "qqq-backend-module-api/README.md",
+        "docs/metaData/Backends.adoc",
+        "qqq-backend-module-api/src/main/java/com/kingsrook/qqq/backend/module/api/APIBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-api",
+      "acceptance_cases": [
+        "GET/query/count/insert/update/delete mapping, request/response translation and paginated local HTTP fixture"
+      ],
+      "negative_cases": [
+        "Non-2xx/timeout, missing/malformed body, missing record, bad response type and no duplicate writes"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.api.authentication",
+      "feature": "Outbound API authorization and OAuth token handling",
+      "source_paths": [
+        "docs/metaData/Backends.adoc",
+        "qqq-backend-module-api/src/main/java/com/kingsrook/qqq/backend/module/api/actions/BaseAPIActionUtil.java"
+      ],
+      "owning_module": "qqq-backend-module-api",
+      "acceptance_cases": [
+        "API_KEY_HEADER, API_TOKEN, BASIC_AUTH_API_KEY, BASIC_AUTH_USERNAME_PASSWORD, OAUTH2, API_KEY_QUERY_PARAM, CUSTOM against QRun-owned local fixtures"
+      ],
+      "negative_cases": [
+        "Missing/rejected credential, expired token, malformed token response and secret-free diagnostic output"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.filesystem.local",
+      "feature": "Local filesystem record and storage operations",
+      "source_paths": [
+        "qqq-backend-module-filesystem/README.md",
+        "qqq-backend-module-filesystem/src/main/java/com/kingsrook/qqq/backend/module/filesystem/local/FilesystemBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-filesystem",
+      "acceptance_cases": [
+        "Query/count/insert/update/delete and raw storage contracts; CSV/JSON; ONE/MANY cardinality; path/file-name behavior and post-read handling"
+      ],
+      "negative_cases": [
+        "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
+      ],
+      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testCityFileTable"
+        ],
+        "evidence": "Sample City CSV query asserts three rows only; other operations/formats/cardinalities untested."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.filesystem.s3",
+      "feature": "S3 record and storage operations",
+      "source_paths": [
+        "qqq-backend-module-filesystem/README.md",
+        "qqq-backend-module-filesystem/src/main/java/com/kingsrook/qqq/backend/module/filesystem/s3/S3BackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-filesystem",
+      "acceptance_cases": [
+        "Query/count/insert/update/delete and raw storage contracts; CSV/JSON; ONE/MANY cardinality; path/file-name behavior and post-read handling"
+      ],
+      "negative_cases": [
+        "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
+      ],
+      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion for this transport."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.filesystem.sftp",
+      "feature": "SFTP record and storage operations",
+      "source_paths": [
+        "qqq-backend-module-filesystem/README.md",
+        "qqq-backend-module-filesystem/src/main/java/com/kingsrook/qqq/backend/module/filesystem/sftp/SFTPBackendModule.java"
+      ],
+      "owning_module": "qqq-backend-module-filesystem",
+      "acceptance_cases": [
+        "Query/count/insert/update/delete and raw storage contracts; CSV/JSON; ONE/MANY cardinality; path/file-name behavior and post-read handling"
+      ],
+      "negative_cases": [
+        "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
+      ],
+      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion for this transport."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "backend.filesystem.formats",
+      "feature": "Filesystem parsing/cardinality and post-read customizers",
+      "source_paths": [
+        "qqq-backend-module-filesystem/README.md",
+        "qqq-backend-module-filesystem/src/main/java/com/kingsrook/qqq/backend/module/filesystem/base/model/metadata/RecordFormat.java",
+        "qqq-backend-module-filesystem/src/main/java/com/kingsrook/qqq/backend/module/filesystem/base/actions/AbstractPostReadFileCustomizer.java"
+      ],
+      "owning_module": "qqq-backend-module-filesystem",
+      "acceptance_cases": [
+        "CSV/JSON, one/many records per file, escaping/Unicode/null values and post-read customizer"
+      ],
+      "negative_cases": [
+        "Malformed/truncated file, invalid data type, duplicate headers and customizer failure"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleMetaDataProviderTest.java#testCityFileTable"
+        ],
+        "evidence": "CSV with MANY cardinality is the only asserted sample parser case."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "javascript.executor",
+      "feature": "Nashorn execution via QCodeExecutor",
+      "source_paths": [
+        "qqq-language-support-javascript/README.md",
+        "qqq-language-support-javascript/src/main/java/com/kingsrook/qqq/languages/javascript/QJavaScriptExecutor.java"
+      ],
+      "owning_module": "qqq-language-support-javascript",
+      "acceptance_cases": [
+        "QCodeReference script, typed input context, execution logger and result/record mutation through sample customizer/process"
+      ],
+      "negative_cases": [
+        "Syntax/runtime exception, missing code reference, invalid result type and no unintended persistence"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "http.server.lifecycle",
+      "feature": "Application HTTP server and dashboard/static asset lifecycle",
+      "source_paths": [
+        "qqq-middleware-javalin/README.md",
+        "docs/misc/Javalin.adoc"
+      ],
+      "owning_module": "qqq-middleware-javalin",
+      "acceptance_cases": [
+        "Start/stop, port config, Dashboard 0.40.0 assets, SPA deep link and process/static route registration"
+      ],
+      "negative_cases": [
+        "Invalid configuration, port conflict, missing asset, unknown path and resource cleanup"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleJavalinServer.java",
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/IsolatedSpaServer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
+        ],
+        "evidence": "Starts a real random-port server, checks root status 200 and HTML, then stops; dashboard JS and application behavior are not asserted."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "http.metadata.tables",
+      "feature": "Versioned metadata/table query/count HTTP specifications",
+      "source_paths": [
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/TableMetaDataSpecV1.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/TableQuerySpecV1.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/TableCountSpecV1.java"
+      ],
+      "owning_module": "qqq-middleware-javalin",
+      "acceptance_cases": [
+        "V1 instance/table/process metadata, query/count, filter/order/join payload and response shape"
+      ],
+      "negative_cases": [
+        "Unknown table, malformed body/filter, unauthenticated/forbidden request and default query limit enforcement"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleJavalinServer.java"
+        ],
+        "test_paths": [],
+        "evidence": "Sample exposes the middleware; only HTML shell response is asserted."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "http.process.lifecycle",
+      "feature": "Versioned process init, step and status HTTP specifications",
+      "source_paths": [
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/ProcessInitSpecV1.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/ProcessStepSpecV1.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/ProcessStatusSpecV1.java"
+      ],
+      "owning_module": "qqq-middleware-javalin",
+      "acceptance_cases": [
+        "Run complete interactive process over HTTP, observe progress/status/results and uploaded/downloaded files"
+      ],
+      "negative_cases": [
+        "Invalid/out-of-order step, unknown process/run, exception and cross-session access"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "Interactive processes exist; no HTTP process contract assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "http.authentication",
+      "feature": "Authentication metadata, manage session, logout and back-channel logout",
+      "source_paths": [
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/AuthenticationMetaDataSpecV1.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/ManageSessionSpecV1.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/LogoutSpecV1.java",
+        "qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/BackChannelLogoutSpecV1.java"
+      ],
+      "owning_module": "qqq-middleware-javalin",
+      "acceptance_cases": [
+        "QRun-owned OAuth/table-based fixture login, refresh, logout and valid back-channel logout"
+      ],
+      "negative_cases": [
+        "Expired/replayed token, bad callback/state, invalid logout token and unauthorized session reuse"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/OAuth2MetaDataProvider.java"
+        ],
+        "test_paths": [],
+        "evidence": "OAuth2 metadata exists; mock selection is tested but provider/session HTTP contracts are not."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "http.custom-routes",
+      "feature": "Static, authenticated static and process-backed dynamic routes",
+      "source_paths": [
+        "docs/misc/Javalin.adoc"
+      ],
+      "owning_module": "qqq-middleware-javalin",
+      "acceptance_cases": [
+        "Public file, private authorized file, process route with path/query/body and custom status/headers"
+      ],
+      "negative_cases": [
+        "Unauthorized private/dynamic path, traversal, unknown route and process failure"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleJavalinMetaDataProducer.java",
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/DynamicSiteProcessMetaDataProducer.java"
+        ],
+        "test_paths": [],
+        "evidence": "Public/private/dynamic site routes are defined without sample HTTP authorization/output assertions."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "http.uploads",
+      "feature": "Uploaded file handling/archive and download contracts",
+      "source_paths": [
+        "docs/misc/Javalin.adoc"
+      ],
+      "owning_module": "qqq-middleware-javalin",
+      "acceptance_cases": [
+        "Upload local fixture, archive to configured table, use in process, download exact result bytes"
+      ],
+      "negative_cases": [
+        "Missing/malformed upload, oversized/config-invalid request, denied archive access and cleanup"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "application-api.versioning",
+      "feature": "Opt-in versioned application API metadata and field mappings",
+      "source_paths": [
+        "qqq-middleware-api/README.md",
+        "qqq-middleware-api/src/main/java/com/kingsrook/qqq/api/model/metadata/ApiInstanceMetaData.java",
+        "qqq-middleware-api/src/main/java/com/kingsrook/qqq/api/actions/GetTableApiFieldsAction.java"
+      ],
+      "owning_module": "qqq-middleware-api",
+      "acceptance_cases": [
+        "Opt-in tables/fields/processes, version include/exclude, renamed/custom-mapped fields and nested records"
+      ],
+      "negative_cases": [
+        "Unexposed table/field/version stays unavailable, invalid mapping and denied data"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "application-api.http",
+      "feature": "Application API HTTP data/process contracts",
+      "source_paths": [
+        "qqq-middleware-api/README.md",
+        "qqq-middleware-api/src/main/java/com/kingsrook/qqq/api/javalin/QJavalinApiHandler.java"
+      ],
+      "owning_module": "qqq-middleware-api",
+      "acceptance_cases": [
+        "Configured API get/query/insert/patch/delete and bulk insert/update/delete; custom process methods, async status, response/status/header transformation"
+      ],
+      "negative_cases": [
+        "Invalid JSON/type/filter, missing/unknown record, unauthenticated/forbidden request and server error mapping",
+        "Wrong HTTP method returns configured 405; no assumed standalone count route unless registered by the application"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "application-api.openapi",
+      "feature": "Metadata-driven OpenAPI generation",
+      "source_paths": [
+        "qqq-middleware-api/README.md",
+        "qqq-middleware-api/src/main/java/com/kingsrook/qqq/api/actions/GenerateOpenApiSpecAction.java"
+      ],
+      "owning_module": "qqq-middleware-api",
+      "acceptance_cases": [
+        "Generate/parse spec for configured version, fields, routes, examples and security; compare with served API"
+      ],
+      "negative_cases": [
+        "Missing required metadata, excluded endpoints must remain absent and dangling schema references"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "openapi.models",
+      "feature": "Legacy OpenAPI model serialization and enum contracts",
+      "source_paths": [
+        "qqq-openapi/README.md",
+        "qqq-openapi/src/main/java/com/kingsrook/qqq/openapi/model/OpenAPI.java",
+        "qqq-openapi/src/main/java/com/kingsrook/qqq/openapi/model/Parameter.java",
+        "qqq-openapi/src/main/java/com/kingsrook/qqq/openapi/model/Schema.java"
+      ],
+      "owning_module": "qqq-openapi",
+      "acceptance_cases": [
+        "Construct/serialize legacy OpenAPI document with paths/components/security and typed In/Type enums"
+      ],
+      "negative_cases": [
+        "Invalid/missing required shape; removed String overloads must not be used"
+      ],
+      "gap": "Add sample consumer serialization/compatibility scenario. README claim that only Server remains is inaccurate; correction handed to parent.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "health.endpoint",
+      "feature": "Automatic health route and aggregate HTTP status",
+      "source_paths": [
+        "qqq-middleware-health/README.md"
+      ],
+      "owning_module": "qqq-middleware-health",
+      "acceptance_cases": [
+        "Autoload metadata producer; UP/DEGRADED -> 200, DOWN -> 503; configured path/enabled flag; concurrent checks"
+      ],
+      "negative_cases": [
+        "Disabled route, failing/throwing/timed-out indicator and no thread leak"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "health.indicators",
+      "feature": "Database, heap, disk and custom health indicators",
+      "source_paths": [
+        "qqq-middleware-health/README.md",
+        "qqq-middleware-health/src/main/java/com/kingsrook/qqq/middleware/health/indicators/DatabaseHealthIndicator.java",
+        "qqq-middleware-health/src/main/java/com/kingsrook/qqq/middleware/health/indicators/MemoryHealthIndicator.java",
+        "qqq-middleware-health/src/main/java/com/kingsrook/qqq/middleware/health/indicators/DiskSpaceHealthIndicator.java"
+      ],
+      "owning_module": "qqq-middleware-health",
+      "acceptance_cases": [
+        "Healthy disposable database, controlled memory/disk thresholds and custom indicator details/duration"
+      ],
+      "negative_cases": [
+        "Unreachable database, exceeded thresholds, invalid path/configuration and timeout"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "cli.help-errors",
+      "feature": "CLI metadata/help and exit codes",
+      "source_paths": [
+        "qqq-middleware-picocli/README.md",
+        "qqq-middleware-picocli/src/main/java/com/kingsrook/qqq/middleware/picocli/QCommandBuilder.java"
+      ],
+      "owning_module": "qqq-middleware-picocli",
+      "acceptance_cases": [
+        "Help/metadata output accurately lists available tables/processes"
+      ],
+      "negative_cases": [
+        "Unknown command/option and malformed argument produce nonzero exit plus useful error"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleCli.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleCliTest.java#testExitSuccess",
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleCliTest.java#testNotExitSuccess",
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleCliTest.java#testHelpWithExplicitMockAuthentication"
+        ],
+        "evidence": "Tests assert metadata success, unknown-command failure, and help with explicit mock auth; output content is not checked."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "cli.actions",
+      "feature": "CLI data, export and process commands",
+      "source_paths": [
+        "qqq-middleware-picocli/README.md",
+        "qqq-middleware-picocli/src/main/java/com/kingsrook/qqq/middleware/picocli/QCommandBuilder.java"
+      ],
+      "owning_module": "qqq-middleware-picocli",
+      "acceptance_cases": [
+        "get/query/count/insert/update/delete/export/process with supported typed field arguments; verify output and persistence"
+      ],
+      "negative_cases": [
+        "Bad typed argument, missing required option, denied action, process exception and nonzero exit"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "scenario_only",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleCli.java"
+        ],
+        "test_paths": [],
+        "evidence": "CLI entry point exists but no sample action/persistence/output assertion."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "lambda.dispatch",
+      "feature": "Lambda stream/custom handlers and implemented standard process-init dispatch",
+      "source_paths": [
+        "qqq-middleware-lambda/README.md",
+        "qqq-middleware-lambda/src/main/java/com/kingsrook/qqq/lambda/QAbstractLambdaHandler.java",
+        "qqq-middleware-lambda/src/main/java/com/kingsrook/qqq/lambda/QStandardLambdaHandler.java",
+        "qqq-middleware-lambda/src/main/java/com/kingsrook/qqq/lambda/QBaseCustomLambdaHandler.java"
+      ],
+      "owning_module": "qqq-middleware-lambda",
+      "acceptance_cases": [
+        "Invoke stream handler locally with synthetic event; custom handler request/response; implemented /processes/{name}/init route with application-configured context/session"
+      ],
+      "negative_cases": [
+        "Malformed request, unknown path, missing/invalid session, process exception and clean context after request",
+        "Standard metadata/query/count/export/get/update/delete/widget branches are TODO stubs; verify/document unavailable routes rather than treating them as supported CRUD"
+      ],
+      "gap": "Add first-party stream/process/custom-handler acceptance and explicit support boundary. QStandardLambdaHandler.setupSession is empty; application must supply valid context/session. README standard-dispatch wording needs qualification; handed to parent.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "slack.routes",
+      "feature": "Slack request routes, session mapping and error handling",
+      "source_paths": [
+        "qqq-middleware-slack/README.md",
+        "qqq-middleware-slack/src/main/java/com/kingsrook/qqq/slack/QSlackImplementation.java"
+      ],
+      "owning_module": "qqq-middleware-slack",
+      "acceptance_cases": [
+        "Synthetic Slack form requests on local route with QRun-owned fixture identity; inspect supported query/process response"
+      ],
+      "negative_cases": [
+        "Missing/invalid identity/token, denied operation and malformed command; no live outreach"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "slack.messages",
+      "feature": "Slack widget conversion and outbound message adapter",
+      "source_paths": [
+        "qqq-middleware-slack/README.md",
+        "qqq-middleware-slack/src/main/java/com/kingsrook/qqq/slack/QSlackImplementation.java"
+      ],
+      "owning_module": "qqq-middleware-slack",
+      "acceptance_cases": [
+        "Convert supported widget data, capture outbound payload in local fixture"
+      ],
+      "negative_cases": [
+        "Unsupported/empty widget, service rejection and absent configuration; no real recipient required"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "utility-lambda.sqs",
+      "feature": "QPostToSQSLambda body-to-queue forwarding",
+      "source_paths": [
+        "qqq-utility-lambdas/README.md",
+        "qqq-utility-lambdas/src/main/java/com/kingsrook/qqq/utilitylambdas/QPostToSQSLambda.java"
+      ],
+      "owning_module": "qqq-utility-lambdas",
+      "acceptance_cases": [
+        "Invoke locally with synthetic request and QRun-controlled SQS protocol fixture; assert exact queue/body"
+      ],
+      "negative_cases": [
+        "Missing QUEUE_URL, service/credential error, empty/malformed input and sensitive-payload logging policy"
+      ],
+      "gap": "Handler currently uses default AWS credentials and logs incoming body; add first-party capture/fixture and failure assertions without unrelated accounts or data.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "sample.bootstrap",
+      "feature": "Clean sample build, seeded startup and reproducibility",
+      "source_paths": [
+        "qqq-sample-project/README.md",
+        "qqq-sample-project/pom.xml"
+      ],
+      "owning_module": "qqq-sample-project",
+      "acceptance_cases": [
+        "Root framework install then separate sample verify; fresh fixture; exact immutable candidate dependencies; repeat clean startup"
+      ],
+      "negative_cases": [
+        "Missing dependency/configuration, fixture collision, stale artifact resolution and persistent writes outside owned fixtures"
+      ],
+      "gap": "Add candidate-resolved acceptance profile covering all 16 published libraries; keep source/reactor tests distinct from published-artifact consumption.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/SampleJavalinServer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
+        ],
+        "evidence": "H2 seed/bootstrap and real HTTP shell work; current pom explicitly consumes only core, RDBMS, filesystem, Javalin and PicoCLI plus dashboard."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "dashboard.acceptance",
+      "feature": "Dashboard 0.40.0 end-to-end feature/use-case acceptance",
+      "source_paths": [
+        "qqq-sample-project/README.md",
+        "docs/metaData/Tables.adoc",
+        "docs/metaData/Processes.adoc",
+        "qqq-sample-project/pom.xml"
+      ],
+      "owning_module": "qqq-frontend-material-dashboard",
+      "acceptance_cases": [
+        "Navigate apps, query/filter/sort/page, view/create/edit/delete records, associations/PVS, bulk operations, process forms/results/downloads, widgets and responsive layouts"
+      ],
+      "negative_cases": [
+        "Auth/permission denial, validation errors, empty/loading/error states, expired session, broken deep links/assets and client console errors"
+      ],
+      "gap": "Create runnable browser acceptance against the first-party sample; assert real records and output. Map each supported UI contract to the inventory; HTML 200 is insufficient.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/selenium/BulkLoadSeleniumTest.java#testSimple",
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleJavalinServerTest.java#testStartStop"
+        ],
+        "evidence": "Dashboard dependency is pinned 0.40.0; browser bulk-load test is disabled and server test only checks the HTML shell."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "train.bom",
+      "feature": "Public BOM/version convergence and all artifact consumption",
+      "source_paths": [
+        "qqq-bom/README.md",
+        "pom.xml",
+        "../qbit-bom/README.md"
+      ],
+      "owning_module": "qqq-bom",
+      "acceptance_cases": [
+        "Resolve 16 libraries via qqq-bom-pom at exact published candidate; inspect dependency tree/provenance; final parent imports public final BOM"
+      ],
+      "negative_cases": [
+        "Missing/mismatched coordinate, local-cache-only artifact and unintended snapshot/version drift"
+      ],
+      "gap": "Use a clean isolated Maven repository and candidate consumer build; local reactor installation alone does not prove registry consumption.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "published"
+    },
+    {
+      "id": "train.starter",
+      "feature": "Standalone first-party starter application",
+      "source_paths": [
+        "../qqq-app-starter/README.md"
+      ],
+      "owning_module": "qqq-app-starter",
+      "acceptance_cases": [
+        "Documented Java21/database setup, package/start, live metadata/data operations and configured auth"
+      ],
+      "negative_cases": [
+        "Database unavailable/missing schema, missing environment variables and denied operation"
+      ],
+      "gap": "Run starter acceptance with QRun-owned disposable fixtures and exact candidate dependency evidence; do not count its tests as sample coverage.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "Separate starter exists; it is not a scenario in qqq-sample-project and its own tests must be recorded separately."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "train.application",
+      "feature": "Generated application QBit",
+      "source_paths": [
+        "../qbit-template-application/README.md",
+        "../qbit-template-application/docs/00-getting-started.md",
+        "../qbit-template-application/docs/01-tables-and-relationships.md",
+        "../qbit-template-application/docs/02-processes.md",
+        "../qbit-template-application/docs/03-widgets-and-ui.md"
+      ],
+      "owning_module": "qbit-template-application",
+      "acceptance_cases": [
+        "Rename/generate, register producer in host, tables/relationships/processes/widgets/navigation"
+      ],
+      "negative_cases": [
+        "Duplicate metadata names, missing host dependency and invalid configuration"
+      ],
+      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "Separate template source/generated checks exist outside the sample; no template scenario found in qqq-sample-project."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "train.data",
+      "feature": "Generated reference-data QBit",
+      "source_paths": [
+        "../qbit-template-data/README.md",
+        "../qbit-template-data/docs/00-getting-started.md",
+        "../qbit-template-data/docs/01-data-qbit-architecture.md",
+        "../qbit-template-data/docs/02-sync-process.md",
+        "../qbit-template-data/docs/03-liquibase-generation.md"
+      ],
+      "owning_module": "qbit-template-data",
+      "acceptance_cases": [
+        "Natural-key sync, insert/update/unchanged/deactivation where implemented, prefix isolation, PVS and Liquibase generation"
+      ],
+      "negative_cases": [
+        "Duplicate/bad source key, failed sync, invalid prefix and repeat-run idempotence"
+      ],
+      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "Separate template source/generated checks exist outside the sample; no template scenario found in qqq-sample-project."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "train.extension",
+      "feature": "Generated infrastructure extension QBit",
+      "source_paths": [
+        "../qbit-template-extension/README.md",
+        "../qbit-template-extension/docs/00-getting-started.md",
+        "../qbit-template-extension/docs/01-extension-patterns.md"
+      ],
+      "owning_module": "qbit-template-extension",
+      "acceptance_cases": [
+        "Register configured extension, required metadata/dependency checks and actual host customization"
+      ],
+      "negative_cases": [
+        "Missing host prerequisite, disabled configuration and unrelated metadata must stay unchanged"
+      ],
+      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "Separate template source/generated checks exist outside the sample; no template scenario found in qqq-sample-project."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "train.migration",
+      "feature": "4.0 migration and documented example consumption",
+      "source_paths": [
+        "docs/migration/4.0.adoc",
+        "README.md"
+      ],
+      "owning_module": "qqq-sample-project",
+      "acceptance_cases": [
+        "Java21, renamed Javalin/PicoCLI imports, QContext-based inputs and replacement APIs; compile documented examples"
+      ],
+      "negative_cases": [
+        "Removed APIs must not remain in sample/generated source; mismatched module versions"
+      ],
+      "gap": "Keep compile checks for migration examples and exact candidate sample; compilation alone does not satisfy behavioral coverage.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "core.widget.no-code",
+      "feature": "No-code widget value sources, calculations and HTML output",
+      "source_paths": [
+        "qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/dashboard/widgets/NoCodeWidgetRenderer.java",
+        "docs/metaData/Widgets.adoc"
+      ],
+      "owning_module": "qqq-backend-core",
+      "acceptance_cases": [
+        "Configured query/count/aggregate/ad-hoc values, calculations and generated HTML"
+      ],
+      "negative_cases": [
+        "Invalid source/calculation, empty data, denied records and escaped user text"
+      ],
+      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "partial",
+        "scenario_paths": [
+          "qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/widgetsdashboard/SampleHTMLWidgetMetaDataProducer.java"
+        ],
+        "test_paths": [
+          "qqq-sample-project/src/test/java/com/kingsrook/sampleapp/dashboard/widgets/RenderAllWidgetsTest.java#test"
+        ],
+        "evidence": "HTML sample uses QNoCodeWidgetMetaData; smoke loop does not assert values or calculations."
+      },
+      "acceptance_stage": "source"
+    },
+    {
+      "id": "dashboard.widget-controls",
+      "feature": "Shared widget dropdowns, reload/export and collapse state",
+      "source_paths": [
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/Widget.tsx",
+        "../qqq-frontend-material-dashboard/src/qqq/components/widgets/WidgetBlock.tsx",
+        "docs/misc/RenderingWidgets.adoc"
+      ],
+      "owning_module": "qqq-frontend-material-dashboard",
+      "acceptance_cases": [
+        "Dropdown/date picker and saved selection, reload, CSV export contents, collapse persistence, labels/tooltips and block callbacks"
+      ],
+      "negative_cases": [
+        "Invalid saved selection, empty export, load failure, denied widget and malformed block type"
+      ],
+      "gap": "Add sample browser assertions for supported shared controls and all 12 WidgetBlock dispatch types; rendering a card shell is not interaction acceptance.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "baseline_sample": {
+        "status": "absent",
+        "scenario_paths": [],
+        "test_paths": [],
+        "evidence": "No sample scenario or assertion found."
+      },
+      "acceptance_stage": "source"
+    }
+  ],
+  "baseline_note": "baseline_sample records the initial source audit at inventory_source_sha, before acceptance expansion; verified_tests records current executable evidence."
+}

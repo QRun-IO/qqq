@@ -22,8 +22,6 @@
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -195,10 +193,11 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
             throw new RuntimeException(message);
          }
 
-         staticFileConfig.directory = resource.getFile();
+         boolean packagedResource = "jar".equals(resource.getProtocol());
+         staticFileConfig.directory = packagedResource ? fileSystemPath : resource.getFile();
          staticFileConfig.hostedPath = hostedPath;
-         staticFileConfig.location = Location.EXTERNAL;
-         LOG.info("Static File Config : hostedPath [" + hostedPath + "] : directory [" + staticFileConfig.directory + "] : location [EXTERNAL]");
+         staticFileConfig.location = packagedResource ? Location.CLASSPATH : Location.EXTERNAL;
+         LOG.info("Static File Config : hostedPath [" + hostedPath + "] : directory [" + staticFileConfig.directory + "] : location [" + staticFileConfig.location + "]");
       }
 
    }
@@ -450,55 +449,24 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
     ***************************************************************************/
    private InputStream loadSpaIndex()
    {
-      try
+      String resourcePath = spaRootFile;
+      if(!loadStaticFilesFromJar)
       {
-         if(loadStaticFilesFromJar)
-         {
-            ///////////////////////////////////
-            // Load from classpath (in JAR) //
-            ///////////////////////////////////
-            LOG.debug("Loading SPA index from classpath", logPair("spaRootFile", spaRootFile));
-            return getClass().getClassLoader().getResourceAsStream(spaRootFile);
-         }
-         else
-         {
-            ////////////////////////////////////
-            // Load from filesystem (for dev) //
-            ////////////////////////////////////
-            URL resource = getClass().getClassLoader().getResource(fileSystemPath);
-            if(resource != null)
-            {
-               /////////////////////////////////////////////////////////////////////////////////////
-               // Extract just the filename from spaRootFile (remove directory prefix if present) //
-               /////////////////////////////////////////////////////////////////////////////////////
-               String fileName = spaRootFile;
-               if(spaRootFile.contains("/"))
-               {
-                  fileName = spaRootFile.substring(spaRootFile.lastIndexOf('/') + 1);
-               }
-
-               File indexFile = new File(resource.getFile(), fileName);
-               LOG.debug("Loading SPA index from filesystem",
-                  logPair("indexFile", indexFile.getAbsolutePath()),
-                  logPair("exists", indexFile.exists()));
-
-               if(indexFile.exists())
-               {
-                  return new FileInputStream(indexFile);
-               }
-            }
-            else
-            {
-               LOG.warn("Could not find fileSystemPath resource", logPair("fileSystemPath", fileSystemPath));
-            }
-         }
-      }
-      catch(IOException e)
-      {
-         LOG.error("Error loading SPA index", e, logPair("spaRootFile", spaRootFile));
+         ///////////////////////////////////////////////////////////////////////////////////////
+         // Preserve the development path convention while letting the classloader open either //
+         // a file or a JAR entry. URL file paths cannot be used as Files for packaged resources. //
+         ///////////////////////////////////////////////////////////////////////////////////////
+         String fileName = spaRootFile.substring(spaRootFile.lastIndexOf('/') + 1);
+         resourcePath = fileSystemPath.replaceAll("/$", "") + "/" + fileName;
       }
 
-      return null;
+      LOG.debug("Loading SPA index from classpath", logPair("resourcePath", resourcePath));
+      InputStream inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath);
+      if(inputStream == null)
+      {
+         LOG.warn("Could not find SPA index resource", logPair("resourcePath", resourcePath));
+      }
+      return inputStream;
    }
 
 

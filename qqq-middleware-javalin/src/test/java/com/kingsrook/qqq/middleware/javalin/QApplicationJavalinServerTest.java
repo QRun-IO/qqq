@@ -776,6 +776,11 @@ class QApplicationJavalinServerTest
          .as("/metaData/table/person should NOT return HTML")
          .doesNotContain("<!doctype html")
          .doesNotContain("<!DOCTYPE html");
+
+      HttpResponse<String> missingTableResponse = Unirest.get("http://localhost:" + PORT + "/metaData/table/noSuchTable").asString();
+      assertEquals(404, missingTableResponse.getStatus());
+      assertThat(missingTableResponse.getBody()).contains("\"error\"").contains("not found");
+      assertThat(missingTableResponse.getBody()).doesNotContainIgnoringCase("<!doctype html");
    }
 
 

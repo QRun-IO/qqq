@@ -28,8 +28,10 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import io.javalin.http.HandlerType;
 import io.javalin.http.HttpStatus;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -181,6 +183,15 @@ public class SpaNotFoundHandlerRegistry
     *******************************************************************************/
    private void handleNotFound(Context ctx)
    {
+      /////////////////////////////////////////////////////////////////////
+      // A matched endpoint owns its response, including an explicit 404. //
+      // SPA fallback applies only when no endpoint handled the request.  //
+      /////////////////////////////////////////////////////////////////////
+      if(!HandlerType.BEFORE.equals(ctx.handlerType()) && StringUtils.hasContent(ctx.endpointHandlerPath()))
+      {
+         return;
+      }
+
       String requestPath = ctx.path();
 
       LOG.debug("Global 404 handler invoked", logPair("path", requestPath), logPair("registeredHandlers", handlers.size()));

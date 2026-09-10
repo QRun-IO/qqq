@@ -77,6 +77,25 @@
          <version>2.2.220</version>
       </dependency>
 
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-postgres</artifactId>
+         <version>${revision}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.testcontainers</groupId>
+         <artifactId>testcontainers-mysql</artifactId>
+         <version>2.0.3</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.testcontainers</groupId>
+         <artifactId>testcontainers-postgresql</artifactId>
+         <version>2.0.3</version>
+         <scope>test</scope>
+      </dependency>
+
       <!-- 3rd party deps specifically for this module -->
 
       <!-- slf4j, to allow logging for javalin -->
@@ -195,5 +214,31 @@
          </plugin>
       </plugins>
    </build>
+
+   <profiles>
+      <profile>
+         <id>acceptance-tests</id>
+         <build>
+            <plugins>
+               <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-failsafe-plugin</artifactId>
+                  <version>3.5.4</version>
+                  <configuration>
+                     <argLine>@{jaCoCoArgLine}</argLine>
+                  </configuration>
+                  <executions>
+                     <execution>
+                        <goals>
+                           <goal>integration-test</goal>
+                           <goal>verify</goal>
+                        </goals>
+                     </execution>
+                  </executions>
+               </plugin>
+            </plugins>
+         </build>
+      </profile>
+   </profiles>
 
 </project>

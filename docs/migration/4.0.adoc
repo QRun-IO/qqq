@@ -5,8 +5,7 @@
 :icons: font
 
 This guide covers every breaking change in QQQ 4.0.0 and provides step-by-step instructions for
-migrating existing applications. Changes are grouped into four categories; each category includes
-at least one concrete before/after example.
+migrating existing applications. The sections below describe source updates and changed runtime contracts.
 
 == Javalin import updates (BREAK-01) [[javalin-imports]]
 
@@ -710,3 +709,9 @@ addressed in a future 4.x release:
 * *BREAK-04-05*: AWS SDK v1 and v2 consolidation — mixed SDK usage (`software.amazon.awssdk` and
   `com.amazonaws`) remains in the RDBMS and S3 filesystem modules. No action required for 4.0
   migration; consolidation tracked for a future release.
+
+== SQL date and time values
+
+RDBMS `DATE` values now use JDBC 4.2 `LocalDate` reads instead of returning `java.sql.Date` from the generic strategy. Prefer `record.getValueLocalDate("fieldName")` over casting raw `record.getValue(...)`; the typed accessor also works with older records. `DATE` and `TIME` writes preserve their calendar date and wall-clock time independently of the JVM timezone.
+
+QQQ's zone-less `DATE_TIME` storage convention is UTC. The generic RDBMS strategy now binds `Instant` as a UTC `LocalDateTime`, avoiding MySQL driver conversion through the host timezone. Configure database sessions for UTC when using timestamp columns that apply a connection timezone. Existing timestamp rows are not rewritten by this change; applications that previously stored local times need an explicit data correction before treating those rows as UTC. The sample acceptance profile checks independent stored-value readback across host timezones.

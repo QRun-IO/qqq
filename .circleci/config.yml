@@ -15,10 +15,57 @@ commands:
             sudo install -d /etc/needrestart/conf.d
             printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-qqq-ci.conf >/dev/null
 
+jobs:
+  sample_acceptance:
+    executor: qqq-orb/java
+    parameters:
+      require_complete_coverage:
+        type: boolean
+        default: false
+    steps:
+      - configure-package-install
+      - qqq-orb/install_java
+      - checkout
+      - qqq-orb/mvn_build
+      - run:
+          name: Build framework dependencies for the sample
+          command: mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -DskipTests clean install
+      - run:
+          name: Run sample data, HTTP and browser acceptance
+          command: |
+            python3 qqq-sample-project/test_feature_coverage.py
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
+      - run:
+          name: Report sample feature coverage
+          when: always
+          command: python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+      - when:
+          condition: << parameters.require_complete_coverage >>
+          steps:
+            - run:
+                name: Require complete supported-feature coverage before publication
+                command: python3 qqq-sample-project/verify-feature-coverage.py --stage source
+      - store_test_results:
+          path: qqq-sample-project/target/surefire-reports
+      - store_test_results:
+          path: qqq-sample-project/target/failsafe-reports
+      - store_artifacts:
+          path: qqq-sample-project/target/browser-acceptance
+      - store_artifacts:
+          path: qqq-sample-project/target/feature-coverage-result.json
+
 workflows:
 
   test_only:
     jobs:
+      - sample_acceptance:
+          name: sample_acceptance
+          require_complete_coverage: false
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
       - qqq-orb/mvn_test_only:
           pre-steps:
             - configure-package-install
@@ -41,7 +88,15 @@ workflows:
 
   publish_snapshot:
     jobs:
+      - sample_acceptance:
+          name: snapshot_sample_acceptance
+          require_complete_coverage: false
+          filters:
+            branches:
+              only:
+                - develop
       - qqq-orb/mvn_publish:
+          requires: [snapshot_sample_acceptance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
@@ -61,7 +116,17 @@ workflows:
 
   publish_feature:
     jobs:
+      - sample_acceptance:
+          name: feature_sample_acceptance
+          require_complete_coverage: false
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
       - qqq-orb/mvn_publish:
+          requires: [feature_sample_acceptance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials]
@@ -75,6 +140,13 @@ workflows:
 
   publish_release_candidate:
     jobs:
+      - sample_acceptance:
+          name: candidate_sample_acceptance
+          require_complete_coverage: true
+          filters:
+            branches:
+              only:
+                - /release\/.*/
       - qqq-orb/static_analysis:
           pre-steps:
             - configure-package-install
@@ -89,7 +161,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release_candidate
-          requires: [candidate_static_analysis]
+          requires: [candidate_static_analysis, candidate_sample_acceptance]
           filters:
             branches:
               only:
@@ -97,6 +169,14 @@ workflows:
 
   publish_release:
     jobs:
+      - sample_acceptance:
+          name: release_sample_acceptance
+          require_complete_coverage: true
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
       - qqq-orb/static_analysis:
           pre-steps:
             - configure-package-install
@@ -112,7 +192,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release
-          requires: [release_static_analysis]
+          requires: [release_static_analysis, release_sample_acceptance]
           filters:
             branches:
               ignore: /.*/
@@ -121,7 +201,15 @@ workflows:
 
   publish_hotfix_release:
     jobs:
+      - sample_acceptance:
+          name: hotfix_sample_acceptance
+          require_complete_coverage: true
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
       - qqq-orb/mvn_publish:
+          requires: [hotfix_sample_acceptance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]

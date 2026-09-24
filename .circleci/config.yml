@@ -36,7 +36,7 @@ jobs:
           command: |
             git clone https://github.com/QRun-IO/qqq-frontend-material-dashboard.git /tmp/sample-material-dashboard
             cd /tmp/sample-material-dashboard
-            git checkout --detach 2fdd3a5395fbcca5e3d6a6ae5cdf4f49ec432c03
+            git checkout --detach 8ec1be7ad0e1836801e33c503f4417e47f332066
             # Consumers read this installed POM without the build's command-line properties.
             python3 -c '
             from pathlib import Path

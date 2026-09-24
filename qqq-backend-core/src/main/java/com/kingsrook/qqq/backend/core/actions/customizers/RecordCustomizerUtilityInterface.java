@@ -164,28 +164,6 @@ public interface RecordCustomizerUtilityInterface
 
 
    /***************************************************************************
-    **
-    ***************************************************************************/
-   @SuppressWarnings("unchecked")
-   @Deprecated(since = "Preferred to use getValueFromRecordElseFromOldRecord, wrapping with a ValueUtils.getValueAsXyz wrapper, instead of this method's internal cast.")
-   static <T extends Serializable> T getValueFromRecordOrOldRecord(String fieldName, QRecord record, Serializable primaryKey, Optional<Map<Serializable, QRecord>> oldRecordMap)
-   {
-      if(record.getValues().containsKey(fieldName))
-      {
-         return (T) record.getValue(fieldName);
-      }
-
-      if(primaryKey != null && oldRecordMap.isPresent() && oldRecordMap.get().containsKey(primaryKey))
-      {
-         return (T) oldRecordMap.get().get(primaryKey).getValue(fieldName);
-      }
-
-      return null;
-   }
-
-
-
-   /***************************************************************************
     * For an update customizer, in the case the record being updated is sparse
     * (e.g., don't have all fields), but if you need a value from a field,
     * you might want it from the old record if it's available.  This method

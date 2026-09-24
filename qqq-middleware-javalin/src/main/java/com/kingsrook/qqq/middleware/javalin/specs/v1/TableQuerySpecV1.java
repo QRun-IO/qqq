@@ -170,8 +170,8 @@ public class TableQuerySpecV1 extends AbstractEndpointSpec<TableQueryInput, Tabl
          // special case here, where we want an empty list to be returned for the case     //
          // with no records found by default our serialization doesn't include empty lists //
          ////////////////////////////////////////////////////////////////////////////////////
-         context.result(JsonUtils.toJson(tableQueryResponseV1, objectMapper -> objectMapper
-            .setSerializationInclusion(JsonInclude.Include.ALWAYS)));
+         context.result(JsonUtils.toJsonCustomized(tableQueryResponseV1, builder -> builder
+            .serializationInclusion(JsonInclude.Include.ALWAYS)));
       }
       else
       {

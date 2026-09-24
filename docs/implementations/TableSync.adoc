@@ -46,7 +46,7 @@ Of particular interest are these two parameters to that method:
 *** `QRecord destinationRecord` - as determined by the insert/update logic above, this will either be a
 new empty record (e.g., for inserting), or a fully populated record from the destination table (for updating).
 *** `QRecord sourceRecord` - this is the record being processed, from the source table.
-** This method is responsible for setting values in the `destinationRecord`, and returning that record
+** This method is responsible for setting values in the `destinationRecord`, including the matching foreign-key value for new records, and returning that record
 (unless it has decided that for some reason the record should _not_ be stored, in which case it may return `null`).
 * Storing the records (done by QQQ):
 ** This is typically done with the `LoadViaInsertOrUpdateStep`, though it is customizable if additional work is needed (e.g., via a
@@ -76,7 +76,7 @@ And to be good programmers, we'll actually create a 3rd thing:
 [start=3]
 . A unit test for our Transform step.
 
-Here are examples of these pieces of code:
+Here are examples of these pieces of code. They require the named source and destination tables, an initialized QContext and an authenticated session. The test fixture must provide an isolated backend and a generated integer `id` on `order`.
 
 [source,java]
 .Example of building process using the TableSyncProcess builder:
@@ -112,11 +112,12 @@ public class PartnerOrderToOrderTransformStep extends AbstractTableSyncTransform
    @Override
    public QRecord populateRecordToStore(RunBackendStepInput runBackendStepInput, QRecord destinationRecord, QRecord sourceRecord) throws QException
    {
-      // map simple values from source table to destination table
-      destinationRecord.setValue("orderDate", sourceRecord.get("date"));
-      destinationRecord.setValue("shipToAddressCity", sourceRecord.get("city"));
-      destinationRecord.setValue("shipToAddressState", sourceRecord.get("state"));
-      destinationRecord.setValue("shipToAddressZipCode", sourceRecord.get("postal"));
+      // map the matching key as well as the other values for new records
+      destinationRecord.setValue("partnerOrderNo", sourceRecord.getValue("orderNo"));
+      destinationRecord.setValue("orderDate", sourceRecord.getValue("date"));
+      destinationRecord.setValue("shipToCity", sourceRecord.getValue("city"));
+      destinationRecord.setValue("shipToState", sourceRecord.getValue("state"));
+      destinationRecord.setValue("shipToZipCode", sourceRecord.getValue("postal"));
       return (destinationRecord);
    }
 
@@ -127,7 +128,7 @@ public class PartnerOrderToOrderTransformStep extends AbstractTableSyncTransform
 .Example Unit Test for a transform step
 ----
    @Test
-   void testTransformStep()
+   void testTransformStep() throws QException
    {
       // insert 1 test order, that will be updated by the transform step
       Integer existingId = new InsertAction().execute(new InsertInput("order").withRecords(List.of(
@@ -143,7 +144,7 @@ public class PartnerOrderToOrderTransformStep extends AbstractTableSyncTransform
       RunBackendStepOutput output = new RunBackendStepOutput();
 
       // run the code under test - our transform step
-      new PartnerOrderToOrderTransformStep().run(input, output);
+      new PartnerOrderToOrderTransformStep().runOnePage(input, output);
 
       // Note that by just running the transform step, no records have been stored.
       // We can assert against the output of this step.
@@ -157,11 +158,6 @@ public class PartnerOrderToOrderTransformStep extends AbstractTableSyncTransform
       assertEquals("CA", output.getRecords().get(1).getValue("shipToState"));
    }
 
-   @Test
-   void testFullProcess()
-   {
-      // todo! :)
-   }
 ----
 
 === Pseudocode process flow
@@ -175,7 +171,7 @@ by looking at its 3 "ETL" steps in pseudocode:
 
 ==== TransformStep (Consumer Thread)
 
-* Receives pages of records from `ExtractStep` in the `run` method.
+* Receives pages of records from `ExtractStep` in the `runOnePage` method.
 * Makes `sourceKeyList` by getting `sourceTableKeyField` values from the records.
 * Calls `initializeRecordLookupHelper(runBackendStepInput, sourceRecordList)`
 ** Calls `getLookupsToPreLoad` to control which lookups are performed.
@@ -205,7 +201,7 @@ to manually run it in a UI.
 [source,java]
 .Making our process available for a UI
 ----
-QProcessMetaData processMetaData = TableSyncProcess.processMetaDataBuilder(true)
+QProcessMetaData processMetaData = TableSyncProcess.processMetaDataBuilder(false)
     .withName("partnerOrderToLocalOrderProcess")
     .withSyncTransformStepClass(PartnerOrderToOrderTransformStep.class)
 
@@ -230,7 +226,7 @@ However, a second common pattern is to use `Basepull` (e.g., if polling for upda
 ----
 // the true argument below tells the build we ARE a basepull-style process
 // this changes the default extract-step.
-QProcessMetaData processMetaData = TableSyncProcess.processMetaDataBuilder(false)
+QProcessMetaData processMetaData = TableSyncProcess.processMetaDataBuilder(true)
     .withName("partnerOrderToLocalOrderProcess")
     .withSyncTransformStepClass(PartnerOrderToOrderTransformStep.class)
 
@@ -343,12 +339,14 @@ If we have preloaded some lookups, we can then use them in our `populateRecordTo
 .Using the recordLookupHelper in populateRecordToStore
 ----
    // lookup warehouse with partnerWarehouseNo=whseNo from partner, and use our id in destination record
-   String partnerWarehouseNo = sourceRecord.getValue("whseNo");
-   Integer warehouseId = recordLookupHelper.getRecordId("warehouse", "partnerWarehouseNo", whseNo, Integer.class);
+   String partnerWarehouseNo = sourceRecord.getValueString("whseNo");
+   Integer warehouseId = recordLookupHelper.getRecordId("warehouse", "partnerWarehouseNo", partnerWarehouseNo, Integer.class);
    destinationRecord.setValue("warehouseId", warehouseId);
 ----
 
 ==== Additional override points
+
+The following declarations list override signatures, not complete method implementations; provide method bodies when subclassing.
 
 There are more methods which can be overridden in your `AbstractTableSyncTransformStep` subclass,
 to provide further customizations of behaviors, specifically in the area of dealing with existing
@@ -386,7 +384,7 @@ records (e.g., the insert/update use-case).
    (
       String destinationTableForeignKeyField,
       List<QRecord> existingRecordList
-   );
+   ) throws QException;
 
    /*******************************************************************************
     ** Given the map of existingRecordsByForeignKey (as built by

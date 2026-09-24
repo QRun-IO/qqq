@@ -82,14 +82,11 @@ public class MongoDBCountAction extends AbstractMongoDBAction implements CountIn
          actionTimeoutHelper = new ActionTimeoutHelper(countInput.getTimeoutSeconds(), TimeUnit.SECONDS, new TimeoutCanceller(mongoClientContainer));
          actionTimeoutHelper.start();
 
-         QQueryFilter filter      = countInput.getFilter();
-         Bson         searchQuery = makeSearchQueryDocument(table, filter);
-         queryToLog.add(searchQuery);
-         setQueryInQueryStat(searchQuery);
-
-         List<Bson> bsonList = List.of(
-            Aggregates.match(searchQuery),
-            Aggregates.group("_id", Accumulators.sum("count", 1)));
+         QQueryFilter filter = countInput.getFilter();
+         List<Bson> bsonList = makeFilterPipeline(table, backend, filter);
+         bsonList.add(Aggregates.group("_id", Accumulators.sum("count", 1)));
+         queryToLog = bsonList;
+         setQueryInQueryStat(new Document("pipeline", bsonList));
 
          AggregateIterable<Document> aggregate = collection.aggregate(mongoClientContainer.getMongoSession(), bsonList);
 

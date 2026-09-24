@@ -13,29 +13,46 @@ input.setTableName("orders");
 input.setFilter(new QQueryFilter()
    .withCriteria(new QFilterCriteria("total", GREATER_THAN, new BigDecimal("3.50")))
    .withOrderBy(new QFilterOrderBy("orderDate", false)));
-QueryOutput output = new QueryAction.execute(input);
+QueryOutput output = new QueryAction().execute(input);
 List<QRecord> records = output.getRecords();
 ----
 
 === Details
 `QueryAction`, in general, can be called in two different modes:
 
-. The most common use-case case, and default, fetches all records synchronously, does any post-processing (as requested in the <<QueryInput>>), and returns all records as a list in the <<QueryOutput>>).
+. The default fetches records synchronously, performs the post-processing requested in the <<QueryInput>>, and returns them as a list in the <<QueryOutput>>.
 . The alternative use-case is meant for larger operations, where one wouldn't want all records matching a query in-memory.
 For this scenario, a `RecordPipe` object can be passed in to the <<QueryInput>>.
 This causes `QueryAction` to run its post-processing action on records as they are placed into the pipe, and to potentially block (per the pipe's settings).
 This method of usage needs to be done on a separate thread from another thread which would be consuming records from the pipe.
 QQQ's `AsyncRecordPipeLoop` class provides an implementation of doing such a dual-threaded job.
 
-If the {link-table} has a `POST_QUERY_CUSTOMIZER` defined, then after records are fetched from the backend, that code is executed on the records before they leave the `QueryAction` (either through its `QueryOutput` or `RecordPipe`).
+If the {link-table} has a `TableCustomizers.POST_QUERY_RECORD` customizer (role `postQueryRecord`), it runs after records are fetched and before they leave the `QueryAction` through its `QueryOutput` or `RecordPipe`.
+The customizer's returned list is used for subsequent formatting, association expansion and privacy processing; returning `null` fails the query. Direct and buffered delivery support changed list sizes. A plain single-record `RecordPipe` retains an existing limitation: removing the current record can fail, and expanding it can lose results (https://github.com/QRun-IO/qqq/issues/491[#491]). Pipe termination and accepted-record accounting corrections are deferred in https://github.com/QRun-IO/qqq/issues/492[#492]. A consumer already in progress can return records read before termination. A later error does not retract records already consumed; no new parent-cancellation guarantee is introduced.
+
+When this customizer also serves Update/Delete old-record prefetch, its replacements must preserve valid native row identity; unrelated, unkeyed or retargeted captured records reject that write prefetch. Copy private snapshots with `new QRecord(record)`; see <<QRecords>>. Ordinary public Query/Get replacement and privacy behavior is unchanged.
+
+RDBMS and Memory queries use the active table metadata and the input source when applying READ rules to base and joined rows. A USER-specific personalizer can restrict either table. Unavailable personalized tables reject the request. For a LEFT join, child READ rules determine permitted matches before the parent receives an unmatched null child. Fields needed internally for joins or security do not become public selections merely because execution needs them.
+
+MongoDB retains its existing BSON wrapper and civil-date/time conversion behavior. Declared-field Decimal128/Binary normalization and UTC civil-type conversion are deferred in https://github.com/QRun-IO/qqq/issues/530[#530]. DATE_TIME still uses the existing Instant conversion; BSON datetime precision remains milliseconds.
+
+[#NativeWriteLookups]
+=== Native write lookups
+
+Backend `QueryInterface.executeForDml(QueryInput)` is the entry point for native lookups whose identities drive writes. Its default implementation delegates to `execute`. Common write prefetch, destructive-filter selection, stored-owner validation and Replace matching use this entry point; MongoDB also uses it for structural association discovery. Ordinary Query and uniqueness-conflict reads retain their existing path.
+
+MongoDB materializes these lookups and requires each selected row to have a native BSON `ObjectId`, represented in QQQ by its hexadecimal String. Native BSON String keys are unsupported for these write lookups. A virtual projection that replaces `_id`, or decoding that changes the declared primary key from the selected ObjectId, rejects the lookup before its records reach common write callbacks or cascade processing. This check does not undo earlier writes or resolve concurrent changes and does not provide complete native String-key CRUD.
 
 === QueryInput
-* `table` - *String, Required* - Name of the table being queried against.
+* `tableName` - *String, Required* - Name of the table being queried against.
 * `filter` - *<<QQueryFilter>> object* - Specification for what records should be returned, based on *<<QFilterCriteria>>* objects, and how they should be sorted, based on *<<QFilterOrderBy>>* objects.
 If a `filter` is not given, then all rows in the table will be returned by the query.
 * `transaction` - *QBackendTransaction object* - Optional transaction object.
 ** Behavior for this object is backend-dependant.
 In an RDBMS backend, this object is generally needed if you want your query to see data that may have been modified within the same transaction.
+The caller retains ownership of the transaction and decides when to commit, roll back and close it.
+* `queryHints` - *EnumSet of QueryHint* - Optional backend hints. `MAY_USE_READ_ONLY_BACKEND` permits configured replica routing; a supplied RDBMS transaction takes precedence. `POTENTIALLY_LARGE_NUMBER_OF_RESULTS` requests the available MySQL streaming optimization.
+* `timeoutSeconds` - *Integer* - Optional backend execution timeout. In RDBMS, null, zero and negative values disable the timeout; a positive value bounds the wait until result processing starts, not the time spent consuming a pipe. `QueryAction.cancel()` can cancel an assigned backend query; it does not latch cancellation requested before the backend delegate is assigned.
 * `recordPipe` - *RecordPipe object* - Optional pipe object that records are placed into, for asynchronous processing.
 ** If a *recordPipe* is used, then records cannot be retrieved from the *QueryOutput*.
 Rather, such records must be read from the pipe's `consumeAvailableRecords()` method.
@@ -44,25 +61,33 @@ Rather, such records must be read from the pipe's `consumeAvailableRecords()` me
 (e.g., to provide text translations in the generated records' `displayValues` map).
 ** For example, if running a query to present results to a user, this would generally need to be *true*.
 But if running a query to provide data as part of a process, then this can generally be left as *false*.
+* `fieldsToTranslatePossibleValues` - *Set of String* - When `shouldTranslatePossibleValues` is true, null translates all possible-value fields, a non-null set selects only those fields, and an empty set translates none. Selected joined fields use their qualified table or alias names.
 * `shouldGenerateDisplayValues` - *boolean, default: false* - Controls whether field level *displayFormats* should be used to populate the generated records' `displayValues` map.
 ** For example, if running a query to present results to a user, this would generally need to be *true*.
 But if running a query to provide data as part of a process, then this can generally be left as *false*.
-* `shouldFetchHeavyFields` - *boolean, default: true* - Controls whether or not fields marked as `isHeavy` should be fetched & returned or not.
+* `shouldFetchHeavyFields` - *boolean, default: false* - Controls whether or not fields marked as `isHeavy` should be fetched & returned or not.
+** RDBMS and Memory omit unfetched heavy values and record their available lengths in `backendDetails.heavyFieldLengths`. Set this option to true to request the values; hidden-field and password options still apply.
 * `shouldOmitHiddenFields` - *boolean, default: true* - Controls whether or not fields marked as `isHidden` should be included in the result or not.
-* `shouldMaskPassword` - *boolean, default: true* - Controls whether or not fields with `type` = `PASSWORD` should be masked, or if their actual values should be returned.
+* `shouldMaskPasswords` - *boolean, default: true* - Controls whether or not fields with `type` = `PASSWORD` should be masked, or if their actual values should be returned.
+** Hidden-field omission and password masking apply to selected joined fields under their qualified table or alias names, including display values. The `REVEAL` adornment retains its explicit password-unmasking behavior. Masking does not add a field that was absent from the returned projection.
 * `queryJoins` - *List of <<QueryJoin>> objects* - Optional list of tables to be joined with the main table being queried.
 See QueryJoin below for further details.
+* `selectDistinct` - *boolean, default: false* - Requests distinct selected rows. In RDBMS this applies to the entire selected projection, so different selected child values remain separate rows even when their parent is the same.
+* `includeAssociations` - *boolean, default: false* - Expands declared associated records. Piped association reads are buffered in batches, including the final partial batch.
+* `associationNamesToInclude` - *Collection of String* - When associations are enabled, null selects all declared groups and an empty collection selects none. Name descendant paths explicitly, such as `pets` and `pets.notes`. Descendants inherit read and privacy options; root field projections and query joins do not apply to their different tables.
 * `fieldNamesToInclude` - *Set of String* - Optional set of field names to be included in the records.
 ** Fields from a queryJoin must be prefixed by the join table's name or alias, and a period.
-Field names from the table being queried should not have any sort of prefix.
+Use unqualified names for fields from the table being queried, including virtual fields.
 ** A `null` set here (default) means to include all fields from the table and any queryJoins set as select=true.
 ** An empty set will cause an error, as well any unrecognized field names.
 ** `QueryAction` will validate the set of field names, and throw an exception if any unrecognized names are given.
-** _Note that this is an optional feature, which some backend modules may not implement.
-Meaning, they would always return all fields._
+** RDBMS and Memory apply this set to the backend projection. Read options may further omit or mask fields; a post-query customizer can change the returned records. Other backend modules may not implement field projection and can return all fields.
+** In Memory, a supported selectable virtual field such as `animal.nameLength` can be the only requested field when `animal` is a selected join. It does not require selecting a root or physical child field, and does not add its source fields to the returned projection.
 
 ==== QQueryFilter
 A key component of *<<QueryInput>>*, a *QQueryFilter* defines both what records should be included in a query's results (e.g., an SQL `WHERE`), as well as how those results should be sorted (SQL `ORDER BY`).
+
+Memory retains active join context through Boolean subfilters. Supported virtual predicates and sorting read fields from their referenced table or alias, including local field arguments, while retaining each function's null and sorting behavior. Evaluating an unselected virtual does not add it to Query output.
 
 * `criteria` - *List of <<QFilterCriteria>>* - Individual conditions or clauses to filter records.
 They are combined using the *booleanOperator* specified in the *QQueryFilter*.  See below for further details.
@@ -73,9 +98,9 @@ In general, multiple *orderBys* can be given (depending on backend implementatio
 ** Each *subFilter* can include its own additional *subFilters*.
 ** Each *subFilter* can specify a different *booleanOperator*.
 ** For example, consider the following *QQueryFilter*, that uses two *subFilters*, and a mix of *booleanOperators*
-* `skip` - *Integer* - Optional number of records to be skipped at the beginning of the result set.
-e.g., for implementing pagination.
-* `limit` - *Integer* - Optional maximum number of records to be returned by the query.
+* `skip` - *Integer* - Optional number of records to skip. RDBMS applies it only when a limit is supplied; skip-only correction is deferred in https://github.com/QRun-IO/qqq/issues/529[#529]. Use deterministic ordering for repeatable pages.
+* `limit` - *Integer* - Optional maximum number of records. In RDBMS, zero returns no rows and null leaves the upper bound unrestricted. Negative-window behavior remains provider-specific; do not supply negative values.
+* `subFilterSetOperator` - *Enum of UNION, UNION_ALL, INTERSECT, EXCEPT* - Optional RDBMS set operation combining the subfilter result sets. `UNION_ALL` preserves duplicates; the other operations use SQL set semantics. Outer ordering and pagination apply to the combined result. Support depends on the native backend.
 
 [source,java]
 ----
@@ -94,12 +119,15 @@ e.g., for implementing pagination.
 // WHERE (first_name='James' AND last_name='Maes') OR (first_name='Darin' AND last_name='Kelkhoff')
 ----
 
+MongoDB Query, Count and Aggregate evaluate native-supported virtual predicates and inline functions on physical fields with their own arguments through flat or nested AND/OR filters. Inline filter functions do not replace physical values in Query results or Aggregate operands. READ locks continue to evaluate stored physical values independently of filter computation. An inline function applied to a virtual field is unsupported and rejected. Required filter computations need a native adapter; values supplied only by a Query customizer cannot filter native rows.
+
 ===== QFilterCriteria
 * `fieldName` - *String, required* - Reference to a field on the table being queried.
 ** Or, in the case of a query with *queryJoins*, a qualified name of a field from a join-table (where the qualifier would be the joined table's name or alias, followed by a dot)
 *** For example:  `orderLine.sku` or `orderBillToCustomer.firstName`
 * `operator` - *Enum of QCriteriaOperator, required* - Comparison operation to be applied to the field specified as *fieldName* and the *values* or *otherFieldName*.
 ** e.g., `EQUALS`, `NOT_IN`, `GREATER_THAN`, `BETWEEN`, `IS_BLANK`, etc.
+* `fieldFunction` - *FieldFunction, optional* - Applies a supported function to this criterion's field before comparison, using its own arguments. Function support depends on the backend.
 * `values` - *List of values, conditional* - Provides the value(s) that the field is compared against.
 The number of values (0, 1, 2, or more) required are based on the *operator* being used.
 If an *otherFieldName* is given, and the *operator* expects 1 value, then *values* is ignored, and *otherFieldName* is used.
@@ -110,27 +138,27 @@ Only used for *operators* that expect 1 value (e.g., `EQUALS` or `LESS_THAN_OR_E
 .QFilterCriteria definition examples:
 ----
 // in-line, via constructors that take (List<Serializable> values) or (Serializable... values) as 3rd arg
-new QFilterCriteria("id", IN, 1, 2, 3)
-new QFilterCriteria("name", IS_BLANK)
-new QFilterCriteria("orderNo", IN, orderNoList)
-new QFilterCriteria("state", EQUALS, "MO")
+new QFilterCriteria("id", IN, 1, 2, 3);
+new QFilterCriteria("name", IS_BLANK);
+new QFilterCriteria("orderNo", IN, orderNoList);
+new QFilterCriteria("state", EQUALS, "MO");
 
 // long-form, with fluent setters
 new QFilterCriteria()
    .withFieldName("quantity")
-   .withOpeartor(QCriteriaOperator.GREATER_THAN)
+   .withOperator(QCriteriaOperator.GREATER_THAN)
    .withValues(List.of(47));
 
 // to use otherFieldName, long-form must be used
 new QFilterCriteria()
    .withFieldName("firstName")
-   .withOpeartor(QCriteriaOperator.EQUALS)
+   .withOperator(QCriteriaOperator.EQUALS)
    .withOtherFieldName("lastName");
 
 // using otherFieldName to build a criterion that looks at two fields from two different join tables
 new QFilterCriteria()
    .withFieldName("billToCustomer.lastName")
-   .withOpeartor(QCriteriaOperator.NOT_EQUALS)
+   .withOperator(QCriteriaOperator.NOT_EQUALS)
    .withOtherFieldName("shipToCustomer.lastName");
 
 ----
@@ -145,8 +173,8 @@ new QFilterCriteria()
 .QFilterOrderBy definition examples:
 ----
 // short-form, via constructors
-new QFilterOrderBy("id") // isAscending defaults to true.
-new QFilterOrderBy("name", false)
+new QFilterOrderBy("id"); // isAscending defaults to true.
+new QFilterOrderBy("name", false);
 
 // long-form, with fluent setters
 new QFilterOrderBy()
@@ -165,8 +193,9 @@ If not set, will be looked up at runtime based on *baseTableOrAlias* and *joinTa
 * `alias` - *String* - Optional (unless multiple instances of the same table are being joined together, when it becomes required).
 Behavior based on SQL `FROM` clause aliases.
 If given, must be used as the part before the dot in field name specifications throughout the rest of the query input.
+The effective join name (the alias, or `joinTable` when no alias is supplied) must be unique among joins and must not equal the main table name. A self-join therefore needs a distinct alias.
 * `select` - *boolean, default: false* - Specify whether fields from the *joinTable* should be selected by the query.
-If *true*, then the `QRecord` objects returned by this query will have values with corresponding to the (table-or-alias `.` field-name) form.
+If *true*, selected values use the `table-or-alias.field-name` form. If *false*, the join can still affect row membership, filtering and ordering, but its fields are not part of the backend output projection.
 * `type` - *Enum of INNER, LEFT, RIGHT, FULL, default: INNER* - specifies the SQL-style type of join being performed.
 
 [source,java]
@@ -175,19 +204,19 @@ If *true*, then the `QRecord` objects returned by this query will have values wi
 // selecting from an "orderLine" table, joined to its corresponding (parent) "order" table
 queryInput.withTableName("orderLine");
 queryInput.withQueryJoin(new QueryJoin("order").withSelect(true));
-...
+QueryOutput queryOutput = new QueryAction().execute(queryInput);
 queryOutput.getRecords().get(0).getValueBigDecimal("order.grandTotal");
 ----
 
 [source,java]
 ."V" shaped query - selecting from one parent table, and two children joined to it:
 ----
-// TODO this needs verified for accuracy, though is a reasonable starting point as-is
+// Requires the named tables and joins to be registered in the QInstance.
 // selecting from an "order" table, and two children of it, orderLine and customer
 queryInput.withTableName("order");
 queryInput.withQueryJoin(new QueryJoin("orderLine").withSelect(true));
 queryInput.withQueryJoin(new QueryJoin("customer").withSelect(true));
-...
+QueryOutput queryOutput = new QueryAction().execute(queryInput);
 QRecord joinedRecord = queryOutput.getRecords().get(0);
 joinedRecord.getValueString("orderNo");
 joinedRecord.getValueString("orderLine.sku");
@@ -197,12 +226,12 @@ joinedRecord.getValueString("customer.firstName");
 [source,java]
 ."Chain" shaped query - selecting from one parent table, a child table, and a grandchild:
 ----
-// TODO this needs verified for accuracy, though is a reasonable starting point as-is
+// Requires the named tables and joins to be registered in the QInstance.
 // selecting from an "order" table, with a "customer" child table, and an "address" sub-table
 queryInput.withTableName("order");
 queryInput.withQueryJoin(new QueryJoin("customer").withSelect(true));
-queryInput.withQueryJoin(new QueryJoin("address").withSelect(true));
-...
+queryInput.withQueryJoin(new QueryJoin("address").withBaseTableOrAlias("customer").withSelect(true));
+QueryOutput queryOutput = new QueryAction().execute(queryInput);
 QRecord joinedRecord = queryOutput.getRecords().get(0);
 joinedRecord.getValueString("orderNo");
 joinedRecord.getValueString("customer.firstName");
@@ -212,7 +241,7 @@ joinedRecord.getValueString("address.street1");
 [source,java]
 .QueryJoin usage example where two tables have two different joins between them:
 ----
-// TODO this needs verified for accuracy, though is a reasonable starting point as-is
+// Requires the named tables and joins to be registered in the QInstance.
 // here there's a "fulfillmentPlan" table, which points at the order table (many-to-one,
 // as an order's plan can change over time, and we keep old plans around).
 // This join is named:  fulfillmentPlanJoinOrder
@@ -221,14 +250,16 @@ joinedRecord.getValueString("address.street1");
 // This join is named:  orderJoinCurrentFulfillmentPlan
 
 // to select an order along with its current fulfillment plan:
-queryInput.withTableName("order");
-queryInput.withQueryJoin(new QueryJoin(instance.getJoin("orderJoinCurrentFulfillmentPlan"))
-   .withSelect(true));
+QueryInput currentPlanQuery = new QueryInput("order")
+   .withQueryJoin(new QueryJoin(instance.getJoin("orderJoinCurrentFulfillmentPlan"))
+      .withSelect(true));
 
-// to select an order, and all fulfillment plans for an order (1 or more records):
-queryInput.withTableName("order");
-queryInput.withQueryJoin(new QueryJoin(instance.getJoin("fulfillmentPlanJoinOrder"))
-   .withSelect(true));
+// alternatively, select an order and all its fulfillment plans:
+QueryInput allPlansQuery = new QueryInput("order")
+   .withQueryJoin(new QueryJoin(instance.getJoin("fulfillmentPlanJoinOrder"))
+      .withBaseTableOrAlias("order")
+      .withJoinTable("fulfillmentPlan")
+      .withSelect(true));
 ----
 
 [source,java]
@@ -239,26 +270,26 @@ queryInput.withQueryJoin(new QueryJoin(instance.getJoin("fulfillmentPlanJoinOrde
 // we must also define an alias for each of the QueryJoins
 queryInput.withTableName("order");
 queryInput.withQueryJoins(List.of(
-   new QueryJoin(instance.getJoin("orderJoinShipToCustomer")
+   new QueryJoin(instance.getJoin("orderJoinShipToCustomer"))
        .withAlias("shipToCustomer")
-       .withSelect(true)),
-   new QueryJoin(instance.getJoin("orderJoinBillToCustomer")
+       .withSelect(true),
+   new QueryJoin(instance.getJoin("orderJoinBillToCustomer"))
        .withAlias("billToCustomer")
-       .withSelect(true))));
-...
-record.getValueString("billToCustomer.firstName")
+       .withSelect(true)));
+QueryOutput queryOutput = new QueryAction().execute(queryInput);
+QRecord record = queryOutput.getRecords().get(0);
+String description = record.getValueString("billToCustomer.firstName")
    + " paid for an order, to be sent to "
-   + record.getValueString("shipToCustomer.firstName")
+   + record.getValueString("shipToCustomer.firstName");
 
 ----
 
-[source,java]
-.Implicit QueryJoin, where unambiguous and required by QQueryFilter
-----
-// TODO finish and verify
-queryInput.withTableName("order");
-----
+Implicit joins depend on an unambiguous metadata path. Prefer an explicit `QueryJoin` when selecting fields or choosing between multiple relationships. The examples above require an initialized QContext, the named tables/joins, and a caller that handles QException. Check that records exist before accessing element zero.
 
 === QueryOutput
+
+Physical and virtual fields follow the same privacy rules. Labels that use private fields are rebuilt from sanitized values, including on associated records. Explicit visibility options and `REVEAL` remain effective; masking does not add a field omitted by the backend's projection.
 * `records` - *List of QRecord* - List of 0 or more records that match the query filter.
 ** _Note:  If a *recordPipe* was supplied to the QueryInput, then calling `queryOutput.getRecords()` will result in an `IllegalStateException` being thrown - as the records were placed into the pipe as they were fetched, and cannot all be accessed as a single list._
+
+RDBMS qualified virtual-only projections retain their existing omission limitation (https://github.com/QRun-IO/qqq/issues/531[#531]). This does not change the active metadata and private-field checks on returned values.

@@ -27,7 +27,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -80,7 +79,6 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
-import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSFieldFunctionAdapterInterface;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
@@ -113,11 +111,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public abstract class AbstractRDBMSAction
 {
    private static final QLogger LOG = QLogger.getLogger(AbstractRDBMSAction.class);
-   private static Memoization<String, Boolean> doesSelectClauseRequireDistinctMemoization = new Memoization<String, Boolean>()
-      .withTimeout(Duration.ofDays(365));
    protected QueryStat queryStat;
-   protected PreparedStatement statement;
-   protected boolean           isCancelled = false;
+   protected volatile PreparedStatement statement;
+   protected volatile boolean           isCancelled = false;
 
    protected RDBMSBackendMetaData         backendMetaData;
    protected RDBMSActionStrategyInterface actionStrategy;
@@ -367,7 +363,7 @@ public abstract class AbstractRDBMSAction
       //////////////////////////////////////////////////////////////////////
       // start with the main table - un-aliased (well, aliased as itself) //
       //////////////////////////////////////////////////////////////////////
-      StringBuilder rs = new StringBuilder(escapeIdentifier(getTableName(instance.getTable(tableName))) + " AS " + escapeIdentifier(tableName));
+      StringBuilder rs = new StringBuilder(escapeIdentifier(getTableName(joinsContext.getTable(tableName))) + " AS " + escapeIdentifier(tableName));
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////
       // sort the query joins from the main table "outward"...                                              //
@@ -380,7 +376,7 @@ public abstract class AbstractRDBMSAction
       ////////////////////////////////////////////////////////
       for(QueryJoin queryJoin : queryJoins)
       {
-         QTableMetaData joinTable            = instance.getTable(queryJoin.getJoinTable());
+         QTableMetaData joinTable            = joinsContext.getTable(queryJoin.getJoinTable());
          String         joinTableNameOrAlias = queryJoin.getJoinTableOrItsAlias();
 
          ////////////////////////////////////////////////////////
@@ -406,8 +402,8 @@ public abstract class AbstractRDBMSAction
             ////////////////////////////////////////////////////////////////////////////////////////////////////////
             // figure out if the join needs flipped.  We want its left table to equal the queryJoin's base table. //
             ////////////////////////////////////////////////////////////////////////////////////////////////////////
-            QTableMetaData leftTable  = instance.getTable(joinMetaData.getLeftTable());
-            QTableMetaData rightTable = instance.getTable(joinMetaData.getRightTable());
+            QTableMetaData leftTable  = joinsContext.getTable(joinMetaData.getLeftTable());
+            QTableMetaData rightTable = joinsContext.getTable(joinMetaData.getRightTable());
 
             if(!joinMetaData.getLeftTable().equals(baseTableName))
             {
@@ -623,7 +619,7 @@ public abstract class AbstractRDBMSAction
             virtualField = v;
             String fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
             String realFieldName  = virtualField.getFieldFunction().getFieldName();
-            field = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+            field = joinsContext.getTable(fieldTableName).getField(realFieldName);
          }
 
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -671,7 +667,7 @@ public abstract class AbstractRDBMSAction
          {
             String         tableNameOrAlias = fieldAndTableNameOrAlias.tableNameOrAlias();
             String         fieldTableName   = joinsContext.resolveTableNameOrAliasToTableName(tableNameOrAlias);
-            QTableMetaData fieldTable       = QContext.getQInstance().getTable(fieldTableName);
+            QTableMetaData fieldTable       = joinsContext.getTable(fieldTableName);
             column = fieldFunctionAdapter.wrapColumnName(column, fieldFunction, makeFieldNameToColumnReferenceFunction(tableNameOrAlias, fieldTable));
          }
 
@@ -957,10 +953,10 @@ public abstract class AbstractRDBMSAction
             {
                String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
                String         realFieldName  = virtualField.getFieldFunction().getFieldName();
-               QFieldMetaData realField      = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+               QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
                tableDotColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
 
-               QTableMetaData                     fieldTable           = QContext.getQInstance().getTable(fieldTableName);
+               QTableMetaData                     fieldTable           = joinsContext.getTable(fieldTableName);
                FieldFunction                      fieldFunction        = virtualField.getFieldFunction();
                RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
                requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
@@ -1002,12 +998,12 @@ public abstract class AbstractRDBMSAction
       {
          String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
          String         realFieldName  = virtualField.getFieldFunction().getFieldName();
-         QFieldMetaData realField      = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+         QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
          String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
 
          FieldFunction                      fieldFunction              = virtualField.getFieldFunction();
          RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter       = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
-         QTableMetaData                     fieldTable                 = QContext.getQInstance().getTable(fieldTableName);
+         QTableMetaData                     fieldTable                 = joinsContext.getTable(fieldTableName);
          Function<String, String>           fieldNameToColumnReference = makeFieldNameToColumnReferenceFunction(fieldAndTableNameOrAlias.tableNameOrAlias(), fieldTable);
          requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
 
@@ -1108,10 +1104,10 @@ public abstract class AbstractRDBMSAction
     **
     ** Analyzes the table's RecordSecurityLocks to detect one-to-many joins where
     ** the base table is on the "left" side. Such joins can produce duplicate rows
-    ** that must be eliminated with SELECT DISTINCT. 
+    ** that must be eliminated with SELECT DISTINCT.
     **
-    ** Memoized because the analysis is complex and the result never changes for a
-    ** given table during server runtime. Cache expires after 365 days.
+    ** Use the current metadata because different instances and personalized tables
+    ** can have different security policies despite sharing the same table name.
     **
     ** @param table the table metadata to analyze for DISTINCT requirement
     ** @return true if SELECT DISTINCT is required, false otherwise
@@ -1123,11 +1119,8 @@ public abstract class AbstractRDBMSAction
          return (false);
       }
 
-      return doesSelectClauseRequireDistinctMemoization.getResult(table.getName(), (name) ->
-      {
-         MultiRecordSecurityLock multiRecordSecurityLock = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(table.getRecordSecurityLocks()));
-         return doesMultiLockRequireDistinct(multiRecordSecurityLock, table);
-      }).orElse(false);
+      MultiRecordSecurityLock multiRecordSecurityLock = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(table.getRecordSecurityLocks()));
+      return doesMultiLockRequireDistinct(multiRecordSecurityLock, table);
    }
 
 

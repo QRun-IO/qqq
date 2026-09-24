@@ -116,29 +116,6 @@ public class Parameter
    /*******************************************************************************
     ** Setter for in
     *******************************************************************************/
-   @Deprecated(since = "Use version that takes enum")
-   public void setIn(String in)
-   {
-      this.in = In.valueOf(in.toUpperCase()).toString().toLowerCase();
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for in
-    *******************************************************************************/
-   @Deprecated(since = "Use version that takes enum")
-   public Parameter withIn(String in)
-   {
-      setIn(in);
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for in
-    *******************************************************************************/
    public void setIn(In in)
    {
       this.in = in.toString().toLowerCase();

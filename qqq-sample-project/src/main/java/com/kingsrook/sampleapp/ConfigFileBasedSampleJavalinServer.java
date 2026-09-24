@@ -22,42 +22,34 @@
 package com.kingsrook.sampleapp;
 
 
-import com.kingsrook.qqq.backend.core.instances.ConfigFilesBasedQQQApplication;
-import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 
 
 /*******************************************************************************
- **
+ ** Runs the canonical sample with its bundled YAML and optional metadata additions.
  *******************************************************************************/
-public class ConfigFileBasedSampleJavalinServer
+public class ConfigFileBasedSampleJavalinServer extends SampleJavalinServer
 {
-   private static final QLogger LOG = QLogger.getLogger(ConfigFileBasedSampleJavalinServer.class);
+   /*******************************************************************************
+    ** An optional directory adds metadata using QQQ's existing registration rules.
+    *******************************************************************************/
+   public ConfigFileBasedSampleJavalinServer(String directory)
+   {
+      super(new SampleMetaDataProvider(directory));
+   }
 
 
 
    /*******************************************************************************
-    **
+    ** Startup exceptions propagate so a failed launch cannot report success.
     *******************************************************************************/
-   public static void main(String[] args)
+   public static void main(String[] args) throws QException
    {
-      try
+      if(args.length > 1)
       {
-         String path = "src/main/resources/metadata";
-         if(args.length > 0)
-         {
-            path = args[0];
-            System.out.println("Using path from args [" + path + "]");
-         }
-
-         ConfigFilesBasedQQQApplication application   = new ConfigFilesBasedQQQApplication(path);
-         QApplicationJavalinServer      javalinServer = new QApplicationJavalinServer(application);
-         javalinServer.start();
+         throw new IllegalArgumentException("Usage: ConfigFileBasedSampleJavalinServer [metadata-directory]");
       }
-      catch(Exception e)
-      {
-         LOG.error("Failed to start javalin server.  See stack trace for details.", e);
-      }
+      new ConfigFileBasedSampleJavalinServer(args.length == 0 ? null : args[0]).start();
    }
-
 }

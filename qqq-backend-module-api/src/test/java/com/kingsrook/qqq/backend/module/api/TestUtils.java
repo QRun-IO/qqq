@@ -22,10 +22,10 @@
 package com.kingsrook.qqq.backend.module.api;
 
 
-import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -56,7 +56,7 @@ public class TestUtils
    public static QInstance defineInstance()
    {
       QInstance qInstance = new QInstance();
-      qInstance.setAuthentication(defineAuthentication());
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), defineAuthentication());
 
       qInstance.addBackend(defineMemoryBackend());
 
@@ -137,13 +137,12 @@ public class TestUtils
     *******************************************************************************/
    public static QBackendMetaData defineEasypostBackend()
    {
-      String apiKey = new QMetaDataVariableInterpreter().interpret("${env.EASYPOST_API_KEY}");
-
       return (new APIBackendMetaData()
          .withName("easypost")
-         .withApiKey(apiKey)
-         .withAuthorizationType(AuthorizationType.BASIC_AUTH_API_KEY)
-         .withBaseUrl("https://api.easypost.com/v2/")
+         .withUsername("local-protocol-fixture-key")
+         .withPassword("")
+         .withAuthorizationType(AuthorizationType.BASIC_AUTH_USERNAME_PASSWORD)
+         .withBaseUrl("http://127.0.0.1:0/v2/")
          .withContentType("application/json")
          .withActionUtil(new QCodeReference(EasyPostUtils.class)));
    }

@@ -94,6 +94,7 @@ import com.kingsrook.qqq.backend.core.utils.aggregates.IntegerAggregates;
 import com.kingsrook.qqq.backend.core.utils.aggregates.LocalDateAggregates;
 import com.kingsrook.qqq.backend.core.utils.aggregates.LongAggregates;
 import com.kingsrook.qqq.backend.core.utils.aggregates.StringAggregates;
+import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -618,7 +619,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
          filterUseCase = new ReportNotFromMetaDataFilterUseCase();
       }
 
-      queryFilter.interpretValues(filterUseCase, reportInput.getInputValues());
+      queryFilter.interpretValues(MapBuilder.of("input", reportInput.getInputValues()), filterUseCase);
    }
 
 

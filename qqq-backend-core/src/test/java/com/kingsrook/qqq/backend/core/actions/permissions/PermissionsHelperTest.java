@@ -39,6 +39,7 @@ import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
@@ -595,7 +596,7 @@ class PermissionsHelperTest extends BaseTest
    {
       QInstance qInstance = new QInstance();
 
-      qInstance.setAuthentication(new QAuthenticationMetaData()
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData()
          .withType(QAuthenticationType.FULLY_ANONYMOUS)
          .withName("anonymous"));
 

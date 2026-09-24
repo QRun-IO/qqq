@@ -29,6 +29,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -64,7 +65,7 @@ class PostgreSQLFieldFunctionAdapterTest
    void beforeEach()
    {
       QInstance qInstance = new QInstance();
-      qInstance.setAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
       qInstance.addBackend(new QBackendMetaData().withName("memory").withBackendType(MemoryBackendModule.class));
       qInstance.addTable(new QTableMetaData().withName("test").withBackendName("memory")
          .withPrimaryKeyField("id").withField(new QFieldMetaData("id", QFieldType.INTEGER)));

@@ -56,6 +56,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -647,4 +648,81 @@ public class StreamedETLWithFrontendProcessTest extends BaseTest
          return (10_000);
       }
    }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testResetValidationFields_clearsFieldsAndRestoresStepOrder()
+   {
+      RunBackendStepInput  input  = new RunBackendStepInput();
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      output.seedFromRequest(input);
+
+      /////////////////////////////////////////////////////////////////////
+      // prime the fields that resetValidationFields should clear         //
+      /////////////////////////////////////////////////////////////////////
+      input.addValue(StreamedETLWithFrontendProcess.FIELD_DO_FULL_VALIDATION, true);
+      input.addValue(StreamedETLWithFrontendProcess.FIELD_VALIDATION_SUMMARY, "some summary");
+      input.addValue(StreamedETLWithFrontendProcess.FIELD_PROCESS_SUMMARY, "some process summary");
+
+      ////////////////////////////////////////////////////////////////////////
+      // simulate the post-validate step list (review follows validate)     //
+      ////////////////////////////////////////////////////////////////////////
+      output.getProcessState().setStepList(new ArrayList<>(List.of(
+         StreamedETLWithFrontendProcess.STEP_NAME_PREVIEW,
+         StreamedETLWithFrontendProcess.STEP_NAME_VALIDATE,
+         StreamedETLWithFrontendProcess.STEP_NAME_REVIEW,
+         "execute",
+         "result"
+      )));
+
+      StreamedETLWithFrontendProcess.resetValidationFields(input, output);
+
+      ///////////////////////////////////////////////////////
+      // all three fields should be cleared                //
+      ///////////////////////////////////////////////////////
+      assertNull(input.getValue(StreamedETLWithFrontendProcess.FIELD_DO_FULL_VALIDATION));
+      assertNull(input.getValue(StreamedETLWithFrontendProcess.FIELD_VALIDATION_SUMMARY));
+      assertNull(input.getValue(StreamedETLWithFrontendProcess.FIELD_PROCESS_SUMMARY));
+
+      ///////////////////////////////////////////////////////
+      // review should be back right after preview         //
+      ///////////////////////////////////////////////////////
+      List<String> stepList = output.getProcessState().getStepList();
+      int          previewIndex = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_PREVIEW);
+      int          reviewIndex  = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_REVIEW);
+      assertEquals(previewIndex + 1, reviewIndex, "review step should immediately follow preview after reset");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testResetValidationFields_alreadyInInitialOrder_noopOnStepList()
+   {
+      RunBackendStepInput  input  = new RunBackendStepInput();
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      output.seedFromRequest(input);
+
+      output.getProcessState().setStepList(new ArrayList<>(List.of(
+         StreamedETLWithFrontendProcess.STEP_NAME_PREVIEW,
+         StreamedETLWithFrontendProcess.STEP_NAME_REVIEW,
+         StreamedETLWithFrontendProcess.STEP_NAME_VALIDATE,
+         "execute",
+         "result"
+      )));
+
+      StreamedETLWithFrontendProcess.resetValidationFields(input, output);
+
+      List<String> stepList   = output.getProcessState().getStepList();
+      int          previewIdx = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_PREVIEW);
+      int          reviewIdx  = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_REVIEW);
+      assertEquals(previewIdx + 1, reviewIdx, "review step should still immediately follow preview");
+   }
+
 }

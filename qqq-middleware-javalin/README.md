@@ -1,35 +1,17 @@
 # QQQ Middleware - Javalin
 
-HTTP server middleware using [Javalin](https://javalin.io). Provides REST APIs and serves the QQQ dashboard.
+HTTP middleware and application server for QQQ. `QApplicationJavalinServer` starts an `AbstractQQQApplication`, configures middleware routes and can serve the Material Dashboard. Its `withPort(...)` method sets the port before `start()`. See the [sample application](../qqq-sample-project/README.md) for a complete server, metadata and authentication setup. The versioned specifications define the actual endpoint paths and payloads.
 
-## Features
+QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md) and [4.0 migration guide](../docs/migration/4.0.adoc).
 
-- REST API endpoints for all QQQ tables and processes
-- Static file serving for dashboard
-- Authentication and session management
-- WebSocket support
+## Source and examples
 
-## Usage
-
-```java
-QInstance instance = new QInstance();
-// ... configure instance ...
-
-QJavalinImplementation javalin = new QJavalinImplementation(instance);
-javalin.startJavalin(8080);
-```
-
-## Endpoints
-
-| Path | Description |
-|------|-------------|
-| `/api/` | REST API root |
-| `/api/{table}/query` | Query table records |
-| `/api/{table}/insert` | Insert records |
-| `/api/{table}/update` | Update records |
-| `/api/{table}/delete` | Delete records |
-| `/api/process/{name}/run` | Run a process |
+- [QApplicationJavalinServer](src/main/java/com/kingsrook/qqq/middleware/javalin/QApplicationJavalinServer.java)
+- [QJavalinMetaData](src/main/java/com/kingsrook/qqq/middleware/javalin/QJavalinMetaData.java)
+- [TableMetaDataSpecV1](src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/TableMetaDataSpecV1.java)
+- [ProcessMetaDataSpecV1](src/main/java/com/kingsrook/qqq/middleware/javalin/specs/v1/ProcessMetaDataSpecV1.java)
+- [Module tests](src/test/java/)
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

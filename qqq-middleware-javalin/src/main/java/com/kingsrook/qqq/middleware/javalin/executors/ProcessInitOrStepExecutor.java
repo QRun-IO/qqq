@@ -42,11 +42,12 @@ import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
-import com.kingsrook.qqq.backend.javalin.QJavalinAccessLogger;
+import com.kingsrook.qqq.middleware.javalin.QJavalinAccessLogger;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.executors.utils.ProcessExecutorUtils;
@@ -89,6 +90,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          RunProcessInput runProcessInput = new RunProcessInput();
          QContext.pushAction(runProcessInput);
 
+         runProcessInput.setInputSource(QInputSource.USER);
          runProcessInput.setProcessName(processName);
          runProcessInput.setFrontendStepBehavior(input.getFrontendStepBehavior());
          runProcessInput.setProcessUUID(processUUID);
@@ -135,7 +137,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          ////////////////////////////////////////
          // run the process as an async action //
          ////////////////////////////////////////
-         RunProcessOutput runProcessOutput = new AsyncJobManager().startJob(processName, input.getStepTimeoutMillis(), TimeUnit.MILLISECONDS, (callback) ->
+         RunProcessOutput runProcessOutput = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, input.getStepTimeoutMillis(), TimeUnit.MILLISECONDS, (callback) ->
          {
             runProcessInput.setAsyncJobCallback(callback);
             return (new RunProcessAction().execute(runProcessInput));

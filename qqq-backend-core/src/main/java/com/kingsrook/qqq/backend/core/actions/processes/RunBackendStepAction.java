@@ -29,6 +29,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -36,6 +38,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -194,6 +197,7 @@ public class RunBackendStepAction
             QTableMetaData table      = QContext.getQInstance().getTable(inputMetaData.getRecordListMetaData().getTableName());
             QueryInput     queryInput = new QueryInput();
             queryInput.setTableName(table.getName());
+            queryInput.setInputSource(runBackendStepInput.getInputSource());
 
             //////////////////////////////////////////////////
             // look for record ids in the input data values //
@@ -246,6 +250,12 @@ public class RunBackendStepAction
             if(runBackendStepInput.getCallback() != null)
             {
                runBackendStepInput.getCallback().customizeInputPreQuery(runBackendStepInput, queryInput);
+            }
+
+            if(runBackendStepInput.getInputSource() == QInputSource.USER)
+            {
+               PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
+               PermissionsHelper.checkJoinedTableReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
             }
 
             QueryOutput queryOutput = new QueryAction().execute(queryInput);

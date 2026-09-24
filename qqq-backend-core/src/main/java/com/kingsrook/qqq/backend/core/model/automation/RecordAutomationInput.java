@@ -29,7 +29,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.TableAuto
 
 
 /*******************************************************************************
- ** Input data for the RecordAutomationHandler interface.
+ ** Input data for the RecordAutomationHandlerInterface.
  *******************************************************************************/
 public class RecordAutomationInput extends AbstractTableActionInput
 {

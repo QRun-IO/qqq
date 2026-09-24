@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -167,7 +168,7 @@ public class RecordListWidgetRenderer extends AbstractWidgetRenderer
          }
 
          QQueryFilter filter = ((QQueryFilter) input.getWidgetMetaData().getDefaultValues().get("filter")).clone();
-         filter.interpretValues(FilterUseCase.DEFAULT, new HashMap<>(input.getQueryParams()));
+         filter.interpretValues(MapBuilder.of("input", new HashMap<>(input.getQueryParams())), FilterUseCase.DEFAULT);
          filter.setLimit(maxRows);
 
          String         tableName = ValueUtils.getValueAsString(input.getWidgetMetaData().getDefaultValues().get("tableName"));

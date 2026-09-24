@@ -128,13 +128,4 @@ public class QRecordListMetaData
 
 
 
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   @Deprecated
-   public QRecordListMetaData addField(QFieldMetaData field)
-   {
-      return (withField(field));
-   }
-
 }

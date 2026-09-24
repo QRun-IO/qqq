@@ -2,12 +2,12 @@
 == Icons
 include::../variables.adoc[]
 
-#TODO#
+A QIcon supplies an icon name or image path to metadata such as apps, tables, fields and widgets.
 
 === QIcon
 Icons are defined in a QQQ Instance in a `*QIcon*` object.
 
-#TODO#
+For example, `new QIcon().withName("table_bar")` selects a named icon. Rendering and available icon names depend on the frontend.
 
 *QIcon Properties:*
 

@@ -87,8 +87,8 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
-import com.kingsrook.qqq.backend.javalin.QJavalinAccessLogger;
-import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinAccessLogger;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
 import io.javalin.apibuilder.ApiBuilder;
 import io.javalin.apibuilder.EndpointGroup;
@@ -99,7 +99,7 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.eclipse.jetty.http.HttpStatus;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
-import static com.kingsrook.qqq.backend.javalin.QJavalinImplementation.SLOW_LOG_THRESHOLD_MS;
+import static com.kingsrook.qqq.middleware.javalin.QJavalinImplementation.SLOW_LOG_THRESHOLD_MS;
 
 
 /*******************************************************************************
@@ -631,9 +631,9 @@ public class QJavalinApiHandler
     *******************************************************************************/
    private static String toJson(Object object)
    {
-      return JsonUtils.toJson(object, mapper ->
+      return JsonUtils.toJsonCustomized(object, builder ->
       {
-         mapper.setSerializationInclusion(JsonInclude.Include.ALWAYS);
+         builder.serializationInclusion(JsonInclude.Include.ALWAYS);
       });
    }
 
@@ -1073,11 +1073,21 @@ public class QJavalinApiHandler
    @SuppressWarnings("UnnecessaryReturnStatement")
    public static void handleException(HttpStatus.Code statusCode, Context context, Exception e, APILog apiLog)
    {
-      QBadRequestException badRequestException = ExceptionUtils.findClassInRootChain(e, QBadRequestException.class);
+      QException badRequestException = ExceptionUtils.findClassInRootChain(e, QBadRequestException.class);
+      if(badRequestException == null)
+      {
+         badRequestException = ExceptionUtils.findClassInRootChain(e, com.kingsrook.qqq.backend.core.exceptions.QBadRequestException.class);
+      }
       if(badRequestException != null)
       {
          statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.BAD_REQUEST); // 400
          respondWithError(context, statusCode, badRequestException.getMessage(), apiLog);
+         return;
+      }
+
+      if(ExceptionUtils.findClassInRootChain(e, QPermissionDeniedException.class) != null)
+      {
+         respondWithError(context, HttpStatus.Code.FORBIDDEN, "You do not have permission to access the requested resource.", apiLog);
          return;
       }
 
@@ -1103,12 +1113,6 @@ public class QJavalinApiHandler
          if(e instanceof QAuthenticationException)
          {
             respondWithError(context, HttpStatus.Code.UNAUTHORIZED, "The required authentication credentials were missing or invalid.", apiLog); // 401
-            return;
-         }
-
-         if(e instanceof QPermissionDeniedException)
-         {
-            respondWithError(context, HttpStatus.Code.FORBIDDEN, "You do not have permission to access the requested resource.", apiLog); // 403
             return;
          }
 

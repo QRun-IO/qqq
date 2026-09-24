@@ -27,7 +27,6 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.templates.RenderTemplateInput;
 import com.kingsrook.qqq.backend.core.model.actions.templates.RenderTemplateOutput;
 import com.kingsrook.qqq.backend.core.model.templates.TemplateType;
@@ -100,17 +99,6 @@ public class RenderTemplateAction extends AbstractQActionFunction<RenderTemplate
          return (null);
       });
       eventCartridge.attachToContext(context);
-   }
-
-
-
-   /*******************************************************************************
-    ** Static wrapper to render a Velocity template.
-    *******************************************************************************/
-   @Deprecated(since = "Call the version that doesn't take an ActionInput")
-   public static String renderVelocity(AbstractActionInput parentActionInput, Map<String, Object> context, String code) throws QException
-   {
-      return (renderVelocity(context, code));
    }
 
 

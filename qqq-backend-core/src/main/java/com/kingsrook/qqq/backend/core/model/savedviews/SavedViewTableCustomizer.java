@@ -44,7 +44,7 @@ public class SavedViewTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preUpdate(UpdateInput updateInput, List<QRecord> records, boolean isPreview, Optional<List<QRecord>> oldRecordList) throws QException
    {
-      SavedReportTableCustomizer.validateOwner(records, SavedView.TABLE_NAME, "edit");
+      SavedReportTableCustomizer.validateStoredOwner(records, updateInput.getTable(), updateInput.getTransaction(), "edit", true);
       return (records);
    }
 
@@ -56,7 +56,7 @@ public class SavedViewTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preDelete(DeleteInput deleteInput, List<QRecord> records, boolean isPreview) throws QException
    {
-      SavedReportTableCustomizer.validateOwner(records, SavedView.TABLE_NAME, "delete");
+      SavedReportTableCustomizer.validateStoredOwner(records, deleteInput.getTable(), deleteInput.getTransaction(), "delete", false);
       return (records);
    }
 

@@ -195,7 +195,7 @@ public class QAuthenticationMetaData implements TopLevelMetaDataInterface
    @Override
    public void addSelfToInstance(QInstance qInstance)
    {
-      qInstance.setAuthentication(this);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), this);
    }
 
 

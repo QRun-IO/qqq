@@ -22,7 +22,10 @@
 package com.kingsrook.qqq.backend.core.utils;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -95,6 +98,111 @@ class ObjectUtilsTest
       assertFalse(ObjectUtils.ifCan(() -> 1 == 2));
       assertFalse(ObjectUtils.ifCan(() -> nullObject.equals("a")));
       assertFalse(ObjectUtils.ifCan(() -> null));
+   }
+
+
+
+   /*******************************************************************************
+    ** ifNotNull must invoke the consumer only when the object is non-null.
+    *******************************************************************************/
+   @Test
+   void testIfNotNull_nullObject_consumerNotInvoked()
+   {
+      List<String> invocations = new ArrayList<>();
+      ObjectUtils.ifNotNull(null, o -> invocations.add("called"));
+      assertThat(invocations).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testIfNotNull_nonNullObject_consumerInvoked()
+   {
+      List<String> invocations = new ArrayList<>();
+      ObjectUtils.ifNotNull("hello", o -> invocations.add(o));
+      assertThat(invocations).containsExactly("hello");
+   }
+
+
+
+   /*******************************************************************************
+    ** ifNotNullUnsafe must invoke the unsafe consumer only when the object is
+    ** non-null, and must propagate thrown exceptions.
+    *******************************************************************************/
+   @Test
+   void testIfNotNullUnsafe_nullObject_consumerNotInvoked() throws Exception
+   {
+      List<String> invocations = new ArrayList<>();
+      ObjectUtils.ifNotNullUnsafe(null, o -> invocations.add("called"));
+      assertThat(invocations).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testIfNotNullUnsafe_nonNullObject_consumerInvoked() throws Exception
+   {
+      List<String> invocations = new ArrayList<>();
+      ObjectUtils.ifNotNullUnsafe("world", o -> invocations.add(o));
+      assertThat(invocations).containsExactly("world");
+   }
+
+
+
+   /*******************************************************************************
+    ** ifNotNullUnsafe must propagate exceptions thrown by the consumer.
+    *******************************************************************************/
+   @Test
+   void testIfNotNullUnsafe_consumerThrows_exceptionPropagated()
+   {
+      assertThatThrownBy(() -> ObjectUtils.ifNotNullUnsafe("value", o ->
+      {
+         throw new Exception("boom");
+      })).hasMessage("boom");
+   }
+
+
+
+   /*******************************************************************************
+    ** requireConditionElse must return a when the predicate is satisfied and
+    ** b otherwise.
+    *******************************************************************************/
+   @Test
+   void testRequireConditionElse_conditionTrue_returnsA()
+   {
+      String result = ObjectUtils.requireConditionElse("hello", s -> s.length() > 3, "default");
+      assertThat(result).isEqualTo("hello");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testRequireConditionElse_conditionFalse_returnsB()
+   {
+      String result = ObjectUtils.requireConditionElse("hi", s -> s.length() > 3, "default");
+      assertThat(result).isEqualTo("default");
+   }
+
+
+
+   /*******************************************************************************
+    ** requireConditionElse with a null a value and a failing predicate returns b.
+    *******************************************************************************/
+   @Test
+   @SuppressWarnings("DataFlowIssue")
+   void testRequireConditionElse_nullA_conditionFalse_returnsB()
+   {
+      String result = ObjectUtils.requireConditionElse(null, s -> s != null, "fallback");
+      assertThat(result).isEqualTo("fallback");
    }
 
 }

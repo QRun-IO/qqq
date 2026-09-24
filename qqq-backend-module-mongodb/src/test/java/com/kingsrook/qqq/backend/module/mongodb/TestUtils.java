@@ -25,6 +25,7 @@ package com.kingsrook.qqq.backend.module.mongodb;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -82,7 +83,7 @@ public class TestUtils
       qInstance.addTable(defineTablePerson());
       qInstance.addPossibleValueSource(definePvsPerson());
       addOmsTablesAndJoins(qInstance);
-      qInstance.setAuthentication(defineAuthentication());
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), defineAuthentication());
       return (qInstance);
    }
 

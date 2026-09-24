@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidatorTest;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -51,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
@@ -61,6 +63,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -160,6 +163,12 @@ class ChildRecordListRendererTest extends BaseTest
       // order id, being the join field, should implicitly be omitted - and we asked to omit lineNumber //
       ////////////////////////////////////////////////////////////////////////////////////////////////////
       assertTrue(childRecordListData.getOmitFieldNames().contains("orderId"));
+
+      RenderWidgetInput userInput = new RenderWidgetInput().withWidgetMetaData(widget).withInputSource(QInputSource.USER);
+      userInput.setQueryParams(new HashMap<>(Map.of("id", "1")));
+      ChildRecordListData userData = (ChildRecordListData) new RenderWidgetAction().execute(userInput).getWidgetData();
+      assertEquals(2, userData.getTotalRows());
+      assertEquals("BCD", userData.getQueryOutput().getRecords().getFirst().getValueString("sku"));
    }
 
 
@@ -623,6 +632,30 @@ class ChildRecordListRendererTest extends BaseTest
             .withBaseFilter(new QQueryFilter(new QFilterCriteria("order.storeId", QCriteriaOperator.EQUALS, 1)))
             .withOrderBys(List.of(new QFilterOrderBy("order.id"), new QFilterOrderBy("sku")))
             .getWidgetMetaData()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Regression test for issue #357: child record list widgets must have
+    ** NOT_PROTECTED permission rules by default so they are not filtered out
+    ** when the instance default permission rules are restrictive.
+    *******************************************************************************/
+   @Test
+   void testWidgetMetaDataBuilder_hasNotProtectedPermissionRules()
+   {
+      QJoinMetaData join = new QJoinMetaData()
+         .withName("testJoin")
+         .withLeftTable("order")
+         .withRightTable("lineItem")
+         .withJoinOn(new JoinOn("id", "orderId"));
+
+      QWidgetMetaData widgetMetaData = ChildRecordListRenderer.widgetMetaDataBuilder(join).getWidgetMetaData();
+
+      assertNotNull(widgetMetaData.getPermissionRules(),
+         "widgetMetaDataBuilder must set permissionRules (not null) so restrictive instance defaults do not filter out the widget");
+      assertEquals(PermissionLevel.NOT_PROTECTED, widgetMetaData.getPermissionRules().getLevel(),
+         "widgetMetaDataBuilder must set PermissionLevel.NOT_PROTECTED as the default");
    }
 
 }

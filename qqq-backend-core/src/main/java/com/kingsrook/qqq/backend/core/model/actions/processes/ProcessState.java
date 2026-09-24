@@ -28,6 +28,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
@@ -36,6 +38,8 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
  *******************************************************************************/
 public class ProcessState implements Serializable
 {
+   private transient ProcessStateAccess stateAccess;
+
    private List<QRecord>             records      = new ArrayList<>();
    private Map<String, Serializable> values       = new HashMap<>();
    private List<String>              stepList     = new ArrayList<>();
@@ -239,6 +243,26 @@ public class ProcessState implements Serializable
    {
       this.isStepBack = isStepBack;
       return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Server-owned authorization, never part of an HTTP state response.
+    *******************************************************************************/
+   @JsonIgnore
+   public ProcessStateAccess getStateAccess()
+   {
+      return stateAccess;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void setStateAccess(ProcessStateAccess stateAccess)
+   {
+      this.stateAccess = stateAccess;
    }
 
 

@@ -25,6 +25,8 @@ package com.kingsrook.qqq.backend.core.model.actions.widgets;
 import java.util.HashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 
@@ -35,6 +37,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
  *******************************************************************************/
 public class RenderWidgetInput extends AbstractActionInput
 {
+   private InputSource              inputSource = QInputSource.SYSTEM;
    private QSession                 session;
    private QWidgetMetaDataInterface widgetMetaData;
    private Map<String, String>      queryParams = new HashMap<>();
@@ -57,6 +60,37 @@ public class RenderWidgetInput extends AbstractActionInput
    public String getActionIdentity()
    {
       return (getClass().getSimpleName() + ":" + widgetMetaData.getName());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for inputSource
+    *******************************************************************************/
+   public InputSource getInputSource()
+   {
+      return (this.inputSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for inputSource
+    *******************************************************************************/
+   public void setInputSource(InputSource inputSource)
+   {
+      this.inputSource = inputSource;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for inputSource
+    *******************************************************************************/
+   public RenderWidgetInput withInputSource(InputSource inputSource)
+   {
+      setInputSource(inputSource);
+      return (this);
    }
 
 

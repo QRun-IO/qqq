@@ -31,10 +31,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
-import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
@@ -74,10 +77,20 @@ public class Aggregate2DTableWidgetRenderer extends AbstractWidgetRenderer
       String         valueField  = ValueUtils.getValueAsString(values.get("valueField"));
       String         rowField    = ValueUtils.getValueAsString(values.get("rowField"));
       String         columnField = ValueUtils.getValueAsString(values.get("columnField"));
-      QTableMetaData table       = QContext.getQInstance().getTable(tableName);
 
       AggregateInput aggregateInput = new AggregateInput();
       aggregateInput.setTableName(tableName);
+      aggregateInput.setInputSource(input.getInputSource());
+      if(input.getInputSource() == QInputSource.USER)
+      {
+         PermissionsHelper.checkTablePermissionThrowing(aggregateInput, TablePermissionSubType.READ);
+      }
+      QTableMetaData table = TableMetaDataPersonalizerAction.execute(aggregateInput);
+      if(table == null || !table.getFields().containsKey(rowField) || !table.getFields().containsKey(columnField))
+      {
+         throw (new QException("Aggregate widget grouping fields are not available"));
+      }
+      aggregateInput.setTableMetaData(table);
 
       // todo - allow input of "list of columns" (e.g., in case some miss sometimes, or as a version of filter)
       // todo - max rows, max cols?

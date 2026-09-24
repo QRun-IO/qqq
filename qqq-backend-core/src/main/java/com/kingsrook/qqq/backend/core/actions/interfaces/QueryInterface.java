@@ -22,9 +22,14 @@
 package com.kingsrook.qqq.backend.core.actions.interfaces;
 
 
+import java.io.Serializable;
+import java.util.List;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
 /*******************************************************************************
@@ -37,5 +42,46 @@ public interface QueryInterface extends BaseQueryInterface
     **
     *******************************************************************************/
    QueryOutput execute(QueryInput queryInput) throws QException;
+
+
+
+   /*******************************************************************************
+    ** Native lookup whose returned identities will drive writes. Backends may
+    ** reject identities that cannot be preserved through their public record form.
+    *******************************************************************************/
+   default QueryOutput executeForDml(QueryInput queryInput) throws QException
+   {
+      return execute(queryInput);
+   }
+
+
+
+   /*******************************************************************************
+    ** Native structural lookup for associated-write permission preflight.
+    *******************************************************************************/
+   default List<Serializable> findAssociatedPrimaryKeys(AssociatedRecordDiscovery.Input input) throws QException
+   {
+      throw new QException("Backend does not implement structural association discovery");
+   }
+
+
+
+   /*******************************************************************************
+    ** Native, exact-key projection of declared parent association values.
+    *******************************************************************************/
+   default List<QRecord> readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput input) throws QException
+   {
+      throw new QException("Backend does not implement stored association-value lookup");
+   }
+
+
+
+   /*******************************************************************************
+    ** Native, schema-constrained unique-key validation, independent of read visibility.
+    *******************************************************************************/
+   default List<QRecord> lookupUniqueKey(UniqueKeyLookup.Input input) throws QException
+   {
+      throw new QException("Backend does not implement native unique-key validation");
+   }
 
 }

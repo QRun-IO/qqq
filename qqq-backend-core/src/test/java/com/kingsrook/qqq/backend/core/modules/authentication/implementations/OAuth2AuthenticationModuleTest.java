@@ -29,6 +29,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -58,7 +59,7 @@ class OAuth2AuthenticationModuleTest extends BaseTest
       authMetaData.setClientId("test-client");
       authMetaData.setClientSecret("test-secret");
       authMetaData.setCustomizer(new QCodeReference(TestCustomizer.class));
-      qInstance.setAuthentication(authMetaData);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData);
 
       //////////////////////////////////////////////////////////////////////////
       // Create a test JWT token with claims                                  //
@@ -118,7 +119,7 @@ class OAuth2AuthenticationModuleTest extends BaseTest
       authMetaData.setClientId("test-client");
       authMetaData.setClientSecret("test-secret");
       authMetaData.setCustomizer(new QCodeReference(TokenCapturingCustomizer.class));
-      qInstance.setAuthentication(authMetaData);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData);
 
       //////////////////////////////////////////////////////////////////////////
       // Create a test JWT token                                              //
@@ -195,7 +196,7 @@ class OAuth2AuthenticationModuleTest extends BaseTest
       authMetaData.setClientId("test-client");
       authMetaData.setClientSecret("test-secret");
       authMetaData.setCustomizer(new QCodeReference(TokenCapturingCustomizer.class));
-      qInstance.setAuthentication(authMetaData);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData);
 
       //////////////////////////////////////////////////////////////////////////
       // Create a test JWT token                                              //

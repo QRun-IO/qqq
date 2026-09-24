@@ -74,10 +74,6 @@
 
       <!-- Common deps for all qqq modules -->
       <dependency>
-         <groupId>org.apache.maven.plugins</groupId>
-         <artifactId>maven-checkstyle-plugin</artifactId>
-      </dependency>
-      <dependency>
          <groupId>org.apache.logging.log4j</groupId>
          <artifactId>log4j-api</artifactId>
       </dependency>

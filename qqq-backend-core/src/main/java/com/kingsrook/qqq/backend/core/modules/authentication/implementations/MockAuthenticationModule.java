@@ -22,14 +22,19 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 
+import java.io.Serializable;
 import java.util.Map;
-import java.util.UUID;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -39,6 +44,12 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
 {
    private static final QLogger logger         = QLogger.getLogger(MockAuthenticationModule.class);
    private static final int     USER_ID_MODULO = 10_000;
+
+   //////////////////////////////////////////////////////////////////////////////////
+   // do not use this var directly - rather - always call the getCustomizer method //
+   //////////////////////////////////////////////////////////////////////////////////
+   private QAuthenticationModuleCustomizerInterface _customizer                = null;
+   private boolean                                  customizerHasBeenRequested = false;
 
 
 
@@ -58,10 +69,46 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
       qUser.setFullName("John Smith");
 
       QSession qSession = new QSession();
-      qSession.setIdReference("Session:" + UUID.randomUUID());
+      if(StringUtils.hasContent(context.get("sessionId")))
+      {
+         qSession.setUuid(context.get("sessionId"));
+      }
+      qSession.setIdReference(qSession.getUuid());
       qSession.setUser(qUser);
 
+      if(getCustomizer() != null)
+      {
+         getCustomizer().customizeSession(qInstance, qSession, Map.of());
+      }
+
       return (qSession);
+   }
+
+
+
+   /*******************************************************************************
+    ** Establish automation grants through the owner's configured session customizer.
+    *******************************************************************************/
+   @Override
+   public QSession createAutomatedSessionForUser(QInstance qInstance, Serializable userId) throws QAuthenticationException
+   {
+      QSession session = QAuthenticationModuleInterface.super.createAutomatedSessionForUser(qInstance, userId);
+      if(getCustomizer() != null)
+      {
+         getCustomizer().customizeAutomatedSessionForUser(qInstance, session, userId);
+      }
+      return session;
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep development sessions stable across browser requests.
+    *******************************************************************************/
+   @Override
+   public boolean usesSessionIdCookie()
+   {
+      return true;
    }
 
 
@@ -96,6 +143,36 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
    public String getLoginRedirectUrl(String originalUrl)
    {
       return originalUrl + "?createMockSession=true";
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private QAuthenticationModuleCustomizerInterface getCustomizer()
+   {
+      try
+      {
+         if(!customizerHasBeenRequested)
+         {
+            customizerHasBeenRequested = true;
+
+            QAuthenticationMetaData metaData = QContext.getQInstance().getAuthentication();
+
+            if(metaData.getCustomizer() != null)
+            {
+               _customizer = QCodeLoader.getAdHoc(QAuthenticationModuleCustomizerInterface.class, metaData.getCustomizer());
+            }
+         }
+
+         return (_customizer);
+      }
+      catch(Exception e)
+      {
+         logger.warn("Error getting customizer.", e);
+         return (null);
+      }
    }
 
 }

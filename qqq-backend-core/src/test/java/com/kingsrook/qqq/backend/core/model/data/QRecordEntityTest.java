@@ -162,7 +162,7 @@ class QRecordEntityTest extends BaseTest
          .withValue("price", new BigDecimal("3.50"))
          .withValue("isFeatured", true));
 
-      QRecord qRecordOnlyChangedFields = item.toQRecordOnlyChangedFields();
+      QRecord qRecordOnlyChangedFields = item.toQRecordOnlyChangedFields(false);
       assertTrue(qRecordOnlyChangedFields.getValues().isEmpty());
 
       QRecord qRecordOnlyChangedFieldsIncludePKey = item.toQRecordOnlyChangedFields(true);
@@ -180,7 +180,7 @@ class QRecordEntityTest extends BaseTest
       assertEquals(1701, qRecordOnlyChangedFieldsIncludePKey.getValue("id"));
 
       item.setPrice(null);
-      qRecordOnlyChangedFields = item.toQRecordOnlyChangedFields();
+      qRecordOnlyChangedFields = item.toQRecordOnlyChangedFields(false);
       assertEquals(2, qRecordOnlyChangedFields.getValues().size());
       assertNull(qRecordOnlyChangedFields.getValueString("price"));
    }
@@ -198,7 +198,7 @@ class QRecordEntityTest extends BaseTest
          .withId(1701)
          .withSku("ABC-123");
 
-      QRecord qRecordOnlyChangedFields = item.toQRecordOnlyChangedFields();
+      QRecord qRecordOnlyChangedFields = item.toQRecordOnlyChangedFields(false);
       assertEquals(2, qRecordOnlyChangedFields.getValues().size());
       assertEquals(1701, qRecordOnlyChangedFields.getValue("id"));
       assertEquals("ABC-123", qRecordOnlyChangedFields.getValue("sku"));

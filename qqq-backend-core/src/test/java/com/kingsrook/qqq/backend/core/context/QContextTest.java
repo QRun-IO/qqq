@@ -27,6 +27,7 @@ import java.util.UUID;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -104,7 +105,7 @@ class QContextTest
    private static QInstance newQInstance()
    {
       QInstance qInstance = new QInstance();
-      qInstance.setAuthentication(new QAuthenticationMetaData().withType(QAuthenticationType.FULLY_ANONYMOUS).withName("anonymous"));
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData().withType(QAuthenticationType.FULLY_ANONYMOUS).withName("anonymous"));
       qInstance.addBackend(new QBackendMetaData().withName("backend"));
       qInstance.addTable(new QTableMetaData().withName("table").withBackendName("backend").withPrimaryKeyField("id").withField(new QFieldMetaData("id", QFieldType.INTEGER)));
       return qInstance;

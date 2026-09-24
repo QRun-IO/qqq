@@ -530,20 +530,6 @@ public class MetaDataAction
 
          if(actionCustomizer == null)
          {
-            /////////////////////////////////////////////////////////////////////////////////////
-            // check if QInstance is still using the now-deprecated getMetaDataFilter approach //
-            /////////////////////////////////////////////////////////////////////////////////////
-            @SuppressWarnings("deprecation")
-            QCodeReference metaDataFilterReference = QContext.getQInstance().getMetaDataFilter();
-            if(metaDataFilterReference != null)
-            {
-               LOG.warn("QInstance.metaDataFilter is deprecated in favor of metaDataActionCustomizer.");
-               actionCustomizer = QCodeLoader.getAdHoc(MetaDataActionCustomizerInterface.class, metaDataFilterReference);
-            }
-         }
-
-         if(actionCustomizer == null)
-         {
             actionCustomizer = new DefaultNoopMetaDataActionCustomizer();
          }
 

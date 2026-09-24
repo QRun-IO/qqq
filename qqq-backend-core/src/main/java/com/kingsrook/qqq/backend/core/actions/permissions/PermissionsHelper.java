@@ -26,14 +26,21 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.ImplicitQueryJoinForSecurityLock;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
@@ -68,6 +75,42 @@ public class PermissionsHelper
    public static void checkTablePermissionThrowing(AbstractTableActionInput tableActionInput, TablePermissionSubType permissionSubType) throws QPermissionDeniedException
    {
       checkTablePermissionThrowing(tableActionInput, tableActionInput.getTableName(), permissionSubType);
+   }
+
+
+
+   /*******************************************************************************
+    ** Call after the base table's READ check. Resolve a copy because JoinsContext
+    ** expands joins and security filters. Framework-only security joins enforce
+    ** the base table's access policy and do not grant the client joined reads.
+    *******************************************************************************/
+   public static void checkJoinedTableReadPermissions(AbstractTableActionInput input, List<QueryJoin> queryJoins, QQueryFilter filter) throws QException
+   {
+      QQueryFilter resolvedFilter = filter == null ? new QQueryFilter() : filter.clone();
+      JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), input.getTableName(), queryJoins, resolvedFilter);
+      Set<String> tableNames = new LinkedHashSet<>();
+      for(QueryJoin queryJoin : joinsContext.getQueryJoins())
+      {
+         if(queryJoin instanceof ImplicitQueryJoinForSecurityLock)
+         {
+            continue;
+         }
+
+         tableNames.add(queryJoin.getJoinTable());
+         if(queryJoin.getBaseTableOrAlias() != null)
+         {
+            tableNames.add(joinsContext.resolveTableNameOrAliasToTableName(queryJoin.getBaseTableOrAlias()));
+         }
+      }
+
+      tableNames.remove(input.getTableName());
+      for(String tableName : tableNames)
+      {
+         if(!PermissionsHelper.hasTablePermission(input, tableName, TablePermissionSubType.READ))
+         {
+            throw new QPermissionDeniedException("Permission denied.");
+         }
+      }
    }
 
 

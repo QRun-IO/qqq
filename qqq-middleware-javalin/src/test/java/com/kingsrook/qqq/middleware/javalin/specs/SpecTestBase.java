@@ -31,7 +31,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
-import com.kingsrook.qqq.backend.javalin.TestUtils;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.Javalin;
 import org.junit.jupiter.api.AfterAll;
@@ -139,12 +139,12 @@ public abstract class SpecTestBase
                spec.setQInstance(serverQInstance);
 
                String versionBasePath = middlewareVersion.getVersionBasePath();
-               config.router.apiBuilder(() -> spec.defineRoute(middlewareVersion, versionBasePath));
+               config.routes.apiBuilder(() -> spec.defineRoute(middlewareVersion, versionBasePath));
 
                for(AbstractEndpointSpec<?, ?, ?> additionalSpec : getAdditionalSpecs())
                {
                   additionalSpec.setQInstance(serverQInstance);
-                  config.router.apiBuilder(() -> additionalSpec.defineRoute(middlewareVersion, versionBasePath));
+                  config.routes.apiBuilder(() -> additionalSpec.defineRoute(middlewareVersion, versionBasePath));
                }
             }
          ).start(PORT);

@@ -1,0 +1,43 @@
+== CountAction
+include::../variables.adoc[]
+
+`CountAction` returns the size of a table's selected population. Initialize `QContext` with the application and a valid session before constructing table inputs. A null filter selects all accessible records; an empty result returns zero. RDBMS and enumeration counts ignore `skip` and `limit` without changing the caller's filter. Field names, including nested criteria and joined aliases, are validated against the effective metadata; filter value behaviors also apply.
+
+[source,java]
+----
+CountOutput output = new CountAction().execute(new CountInput("person")
+   .withFilter(new QQueryFilter(new QFilterCriteria("isEmployed", QCriteriaOperator.EQUALS, true))));
+Integer employed = output.getCount();
+----
+
+=== RDBMS counts
+
+An ordinary count returns matching SQL rows. Explicit joins can repeat the base record: the sample's Person-to-Pet inner join has six rows and three distinct people. Set `includeDistinctCount` to `true` to return both `count` (matching rows) and `distinctCount` (distinct base primary keys, using their backend column mapping). Without that option, `distinctCount` is null. A security join that requires distinctness automatically deduplicates the default count; requesting both results still returns raw joined rows in `count` and unique base records in `distinctCount`.
+
+Record security restricts the selected population, including multiple session keys, null-value policies and joined locks. User-sourced inputs use personalized metadata, so a field removed from personalized metadata cannot be used in a count filter. RDBMS execution retains active base/join mappings and READ locks, including USER-added locks; unavailable personalized tables reject explicitly. Removed physical keys remain private execution details when required for joins, READ policy or distinct counts, and remain unavailable in public filters. Core `CountAction` is also used by trusted application code: it validates the session and applies record security but does not itself require the middleware's table READ permission.
+
+Pass the caller's `RDBMSTransaction` to see its pending changes. Count closes its own statement while leaving the caller responsible for commit, rollback and connection closure:
+
+[source,java]
+----
+CountOutput pending = new CountAction().execute(new CountInput("person")
+   .withTransaction(transaction));
+----
+
+`QueryHint.MAY_USE_READ_ONLY_BACKEND` permits the configured read-only backend, falling back to the primary when none is configured. An explicit RDBMS transaction takes precedence over this hint. Use a transaction belonging to the counted table's backend.
+
+`timeoutSeconds` is disabled for null, zero or negative values. A positive timeout applies after acquiring the connection and preparing the statement; it does not bound connection acquisition. An interrupted SQL count throws `QUserFacingException` with `Count timed out.`. To cancel an in-flight count from another thread, retain that invocation's `CountAction` and call `cancel()`; a cancelled SQL operation reports `Count was cancelled.`. Cancellation before an active statement exists is best-effort. Use a separate action and thread-local `QContext` for each concurrent invocation.
+
+=== MongoDB computed filters
+
+MongoDB counts the population selected by native-supported virtual predicates or inline functions on physical fields, including nested AND/OR filters. Each criterion retains its own arguments. A required function without a native adapter is rejected; values supplied only by Query customizers cannot filter Count. These filters do not establish the RDBMS distinct-count, transaction or cancellation options for MongoDB.
+
+=== Enumeration and HTTP
+
+The enumeration backend counts all or filtered enum records, ignoring pagination. It does not implement the RDBMS distinct-count, transaction, timeout or cancellation options. Backend-specific options are not universal promises made by `CountInput`.
+
+The sample's legacy HTTP route accepts GET or POST `/data/person/count`. Supply a serialized `QQueryFilter` as the `filter` query or form parameter. `queryJoins` and `includeDistinct=true` are query parameters. The response contains `count` and, when requested and supported, `distinctCount`. The V1 route accepts POST `/qqq/v1/table/person/count` with JSON `filter` and `joins` properties.
+
+Both HTTP versions require READ permission on the base table and on tables requested through explicit joins or implicitly through filters and ordering. A write grant alone does not authorize a count or a joined read. Denial returns HTTP 403 and an error without count values. Joins added only by the framework to enforce record-security locks do not require a separate public read grant; explicitly requesting those tables still does. Core trusted application actions retain their existing permission boundary.
+
+The sample verifies these contracts in `SampleCountContractTest`, `SampleQueryContractTest`, `SampleEnumerationContractTest` and `SampleJavalinServerTest`. `SampleDatabaseIT` observes real blocked PostgreSQL counts for timeout/cancellation, verifies lock cleanup and performs a successful fresh count afterward. Other backend and middleware contracts remain separately tracked in the sample feature inventory.

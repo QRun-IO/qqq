@@ -35,10 +35,14 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QErrorMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
@@ -82,6 +86,12 @@ public class QRecord implements Serializable
    private List<QWarningMessage> warnings = new ArrayList<>();
 
    private Map<String, List<QRecord>> associatedRecords = new HashMap<>();
+
+   @JsonIgnore
+   private transient PrimaryKeyIdentity primaryKeyIdentity;
+
+   @JsonIgnore
+   private transient Object copyIdentity;
 
    ////////////////////////////////////////////////
    // well-known keys for the backendDetails map //
@@ -128,6 +138,158 @@ public class QRecord implements Serializable
       this.warnings = record.warnings == null ? null : new ArrayList<>(record.warnings);
 
       this.associatedRecords = deepCopyAssociatedRecords(record.associatedRecords);
+      this.primaryKeyIdentity = record.primaryKeyIdentity;
+      this.copyIdentity = record.copyIdentity;
+   }
+
+
+
+   /*******************************************************************************
+    ** Begin private, in-process copy tracking before passing a record to callbacks.
+    ** Subsequent QRecord copies share this opaque identity; serialization does not.
+    *******************************************************************************/
+   @JsonIgnore
+   public Object trackCopies()
+   {
+      if(copyIdentity == null)
+      {
+         copyIdentity = new Object();
+      }
+      return copyIdentity;
+   }
+
+
+
+   /*******************************************************************************
+    ** Treat this input as an independent root for a new operation, even if it was
+    ** copied from a record participating in an earlier operation.
+    *******************************************************************************/
+   @JsonIgnore
+   public Object startCopyTracking()
+   {
+      copyIdentity = new Object();
+      return copyIdentity;
+   }
+
+
+
+   /*******************************************************************************
+    ** Preserve an internal identity separately from its current presentation.
+    ** Framework privacy cleanup may recapture the same identity after sanitizing.
+    *******************************************************************************/
+   public void capturePrimaryKey(QTableMetaData table, Serializable primaryKey) throws QException
+   {
+      QFieldMetaData field = identityField(table);
+      validateIdentityTable(table, field);
+      try
+      {
+         Serializable typedKey = ValueUtils.getValueAsFieldType(field.getType(), primaryKey);
+         if(typedKey == null || (primaryKeyIdentity != null && !identityValuesEqual(primaryKeyIdentity.primaryKey(), typedKey)))
+         {
+            throw new QException("Invalid primary key identity");
+         }
+         boolean present = values != null && values.containsKey(table.getPrimaryKeyField());
+         Serializable presentationValue = present ? ValueUtils.getValueAsFieldType(field.getType(), values.get(table.getPrimaryKeyField())) : null;
+         primaryKeyIdentity = new PrimaryKeyIdentity(table.getName(), table.getPrimaryKeyField(), field.getType(),
+            snapshotIdentityValue(typedKey), present, snapshotIdentityValue(presentationValue));
+      }
+      catch(RuntimeException e)
+      {
+         throw new QException("Invalid primary key identity");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve an operational key without restoring it to values or displayValues.
+    ** Public map edits must not silently retarget a captured record.
+    *******************************************************************************/
+   public Serializable resolvePrimaryKey(QTableMetaData table) throws QException
+   {
+      QFieldMetaData field = identityField(table);
+      validateIdentityTable(table, field);
+      try
+      {
+         boolean present = values != null && values.containsKey(table.getPrimaryKeyField());
+         Serializable value = present ? ValueUtils.getValueAsFieldType(field.getType(), values.get(table.getPrimaryKeyField())) : null;
+         if(primaryKeyIdentity == null)
+         {
+            return snapshotIdentityValue(value);
+         }
+         if(present != primaryKeyIdentity.present() || !identityValuesEqual(value, primaryKeyIdentity.presentationValue()))
+         {
+            throw new QException("Primary key presentation changed after identity capture");
+         }
+         return snapshotIdentityValue(primaryKeyIdentity.primaryKey());
+      }
+      catch(RuntimeException e)
+      {
+         throw new QException("Invalid primary key identity");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private QFieldMetaData identityField(QTableMetaData table) throws QException
+   {
+      if(table == null || !StringUtils.hasContent(table.getName()) || !StringUtils.hasContent(table.getPrimaryKeyField()) || table.getFields() == null)
+      {
+         throw new QException("Invalid primary key metadata");
+      }
+      QFieldMetaData field = table.getFields().get(table.getPrimaryKeyField());
+      if(field == null || field.getType() == null)
+      {
+         throw new QException("Invalid primary key metadata");
+      }
+      return field;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void validateIdentityTable(QTableMetaData table, QFieldMetaData field) throws QException
+   {
+      if(primaryKeyIdentity != null && (!primaryKeyIdentity.tableName().equals(table.getName())
+         || !primaryKeyIdentity.fieldName().equals(table.getPrimaryKeyField()) || primaryKeyIdentity.type() != field.getType()))
+      {
+         throw new QException("Primary key identity does not match table metadata");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Typed keys are immutable scalars except for BLOB byte arrays.
+    *******************************************************************************/
+   private static Serializable snapshotIdentityValue(Serializable value)
+   {
+      return value instanceof byte[] bytes ? bytes.clone() : value;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static boolean identityValuesEqual(Serializable left, Serializable right)
+   {
+      return left instanceof BigDecimal leftDecimal && right instanceof BigDecimal rightDecimal
+         ? leftDecimal.compareTo(rightDecimal) == 0 : Objects.deepEquals(left, right);
+   }
+
+
+
+   /*******************************************************************************
+    ** Owned snapshots are never exposed directly; immutable copies may share them.
+    *******************************************************************************/
+   private record PrimaryKeyIdentity(String tableName, String fieldName, QFieldType type, Serializable primaryKey, boolean present, Serializable presentationValue)
+   {
    }
 
 
@@ -400,6 +562,7 @@ public class QRecord implements Serializable
     ** Getter for values
     **
     *******************************************************************************/
+   @JsonInclude(value = JsonInclude.Include.NON_NULL, content = JsonInclude.Include.ALWAYS)
    public Map<String, Serializable> getValues()
    {
       return values;
@@ -559,6 +722,7 @@ public class QRecord implements Serializable
     ** Getter for backendDetails
     **
     *******************************************************************************/
+   @JsonIgnoreProperties(value = BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT, allowSetters = true)
    public Map<String, Serializable> getBackendDetails()
    {
       return backendDetails;
@@ -701,6 +865,7 @@ public class QRecord implements Serializable
    /*******************************************************************************
     ** Getter for associatedRecords
     *******************************************************************************/
+   @JsonInclude(value = JsonInclude.Include.NON_EMPTY, content = JsonInclude.Include.NON_NULL)
    public Map<String, List<QRecord>> getAssociatedRecords()
    {
       return (this.associatedRecords);

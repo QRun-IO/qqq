@@ -73,27 +73,31 @@ public class JsonUtils
     *******************************************************************************/
    public static String toJson(Object object)
    {
-      return (toJson(object, null));
+      return (toJsonCustomized(object, (Consumer<JsonMapper.Builder>) null));
    }
 
 
 
    /*******************************************************************************
-    ** Serialize any object into a JSON String - with customizations on the Jackson
-    ** ObjectMapper.
+    ** Serialize any object into a JSON String - with post-build customizations on
+    ** the Jackson JsonMapper (for cases requiring access to the built mapper, such
+    ** as configuring the SerializerProvider's null-key serializer).
+    **
+    ** Prefer toJsonCustomized(Object, Consumer&lt;JsonMapper.Builder&gt;) for builder-level
+    ** customizations (e.g., serializationInclusion). Use this variant only when a
+    ** post-build mapper instance is required.
     **
     ** Internally using jackson - so jackson annotations apply!
     **
     *******************************************************************************/
-   @Deprecated(since = "since toJsonCustomized was added, which uses jackson's newer builder object for customization")
-   public static String toJson(Object object, Consumer<ObjectMapper> objectMapperCustomizer)
+   public static String toJsonWithMapper(Object object, Consumer<JsonMapper> jsonMapperCustomizer)
    {
       try
       {
-         ObjectMapper mapper = newObjectMapper();
-         if(objectMapperCustomizer != null)
+         JsonMapper mapper = newJsonMapperBuilder().build();
+         if(jsonMapperCustomizer != null)
          {
-            objectMapperCustomizer.accept(mapper);
+            jsonMapperCustomizer.accept(mapper);
          }
          String jsonResult = mapper.writeValueAsString(object);
          return (jsonResult);
@@ -108,8 +112,8 @@ public class JsonUtils
 
 
    /*******************************************************************************
-    ** Serialize any object into a JSON String - with customizations on the Jackson
-    ** ObjectMapper.
+    ** Serialize any object into a JSON String - with builder-level customizations on
+    ** the Jackson JsonMapper.
     **
     ** Internally using jackson - so jackson annotations apply!
     **

@@ -36,10 +36,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
-import com.kingsrook.qqq.backend.javalin.TestUtils;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
-import com.kingsrook.qqq.middleware.javalin.routeproviders.SpaNotFoundHandlerRegistry;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.http.HttpStatus;
 import kong.unirest.HttpResponse;
@@ -48,6 +47,7 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -87,12 +87,7 @@ class QApplicationJavalinServerTest
       System.clearProperty("qqq.javalin.enableStaticFilesFromJar");
       Unirest.config().reset();
 
-      //////////////////////////////////////////////////////////////////////////
-      // Clear the SPA 404 handler registry to prevent test pollution.        //
-      // The registry is a singleton, so handlers from one test can leak into //
-      // subsequent tests if not cleared.                                     //
-      //////////////////////////////////////////////////////////////////////////
-      SpaNotFoundHandlerRegistry.getInstance().clear();
+
    }
 
 
@@ -260,7 +255,7 @@ class QApplicationJavalinServerTest
       javalinServer = new QApplicationJavalinServer(new QApplicationJavalinServerTest.TestApplication())
          .withServeFrontendMaterialDashboard(false)
          .withPort(PORT)
-         .withAdditionalRouteProvider(new SimpleFileSystemDirectoryRouter("/statically-served-from-jar", "static-site-from-jar/"));
+         .withAdditionalRouteProviders(List.of(new SimpleFileSystemDirectoryRouter("/statically-served-from-jar", "static-site-from-jar/")));
 
       javalinServer.start();
 
@@ -414,14 +409,13 @@ class QApplicationJavalinServerTest
          .withPort(PORT)
          .withServeFrontendMaterialDashboard(false)
          .withServeLegacyUnversionedMiddlewareAPI(false)
-         .withAdditionalRouteProvider(
+         .withAdditionalRouteProviders(List.of(
             new SimpleFileSystemDirectoryRouter("/app", "test-spa-app/")
                .withSpaRootPath("/app")
-               .withSpaRootFile("test-spa-app/index.html"))
-         .withAdditionalRouteProvider(
+               .withSpaRootFile("test-spa-app/index.html"),
             new SimpleFileSystemDirectoryRouter("/admin", "test-spa-admin/")
                .withSpaRootPath("/admin")
-               .withSpaRootFile("test-spa-admin/index.html"));
+               .withSpaRootFile("test-spa-admin/index.html")));
       javalinServer.start();
 
       Unirest.config().setDefaultResponseEncoding("UTF-8");
@@ -515,10 +509,10 @@ class QApplicationJavalinServerTest
          .withPort(PORT)
          .withServeFrontendMaterialDashboard(false)
          .withServeLegacyUnversionedMiddlewareAPI(false)
-         .withAdditionalRouteProvider(
+         .withAdditionalRouteProviders(List.of(
             new SimpleFileSystemDirectoryRouter("/app", "test-spa-app/")
                .withSpaRootPath("/app")
-               .withSpaRootFile("test-spa-app/index.html"));
+               .withSpaRootFile("test-spa-app/index.html")));
       javalinServer.start();
 
       Unirest.config().setDefaultResponseEncoding("UTF-8");
@@ -582,8 +576,8 @@ class QApplicationJavalinServerTest
          .withPort(PORT)
          .withServeFrontendMaterialDashboard(false)
          .withServeLegacyUnversionedMiddlewareAPI(false)
-         .withAdditionalRouteProvider(
-            new SimpleFileSystemDirectoryRouter("/static", "static-site/"));
+         .withAdditionalRouteProviders(List.of(
+            new SimpleFileSystemDirectoryRouter("/static", "static-site/")));
       javalinServer.start();
 
       Unirest.config().setDefaultResponseEncoding("UTF-8");
@@ -619,10 +613,10 @@ class QApplicationJavalinServerTest
          .withPort(PORT)
          .withServeFrontendMaterialDashboard(false)
          .withServeLegacyUnversionedMiddlewareAPI(true)  // Enable legacy API routes
-         .withAdditionalRouteProvider(
+         .withAdditionalRouteProviders(List.of(
             new SimpleFileSystemDirectoryRouter("/app", "test-spa-app/")
                .withSpaRootPath("/app")
-               .withSpaRootFile("test-spa-app/index.html"));
+               .withSpaRootFile("test-spa-app/index.html")));
       javalinServer.start();
 
       Unirest.config().setDefaultResponseEncoding("UTF-8");
@@ -777,6 +771,11 @@ class QApplicationJavalinServerTest
          .as("/metaData/table/person should NOT return HTML")
          .doesNotContain("<!doctype html")
          .doesNotContain("<!DOCTYPE html");
+
+      HttpResponse<String> missingTableResponse = Unirest.get("http://localhost:" + PORT + "/metaData/table/noSuchTable").asString();
+      assertEquals(404, missingTableResponse.getStatus());
+      assertThat(missingTableResponse.getBody()).contains("\"error\"").contains("not found");
+      assertThat(missingTableResponse.getBody()).doesNotContainIgnoringCase("<!doctype html");
    }
 
 
@@ -856,7 +855,7 @@ class QApplicationJavalinServerTest
       ////////////////////////////////////////
       // Test javalinMetaData getter/setter //
       ////////////////////////////////////////
-      com.kingsrook.qqq.backend.javalin.QJavalinMetaData metaData = new com.kingsrook.qqq.backend.javalin.QJavalinMetaData();
+      com.kingsrook.qqq.middleware.javalin.QJavalinMetaData metaData = new com.kingsrook.qqq.middleware.javalin.QJavalinMetaData();
       javalinServer.setJavalinMetaData(metaData);
       assertEquals(metaData, javalinServer.getJavalinMetaData());
    }
@@ -998,6 +997,64 @@ class QApplicationJavalinServerTest
 
 
    /*******************************************************************************
+    ** Configuration registers handlers before service observation and requests.
+    *******************************************************************************/
+   @Test
+   void testConfigCustomizerRegistersRoutesBeforeServiceObservation() throws QException
+   {
+      List<String> startupOrder = new java.util.ArrayList<>();
+      javalinServer = new QApplicationJavalinServer(createMinimalApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)
+         .withServeLegacyUnversionedMiddlewareAPI(false)
+         .withMiddlewareVersionList(List.of())
+         .withJavalinConfigCustomizer(config ->
+         {
+            startupOrder.add("configuration");
+            config.routes.before("/config-probe", context -> context.attribute("phase", "before"));
+            config.routes.get("/config-probe", context -> context.result(context.attribute("phase") + ":handler"));
+            config.routes.after("/config-probe", context -> context.header("X-Handler-Order", context.result() + ":after"));
+         })
+         .withJavalinConfigurationCustomizer(service ->
+         {
+            assertEquals(List.of("configuration"), startupOrder);
+            startupOrder.add("service");
+         });
+      javalinServer.start();
+      assertEquals(List.of("configuration", "service"), startupOrder);
+      HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + "/config-probe").asString();
+      assertAll(
+         () -> assertEquals(200, response.getStatus()),
+         () -> assertEquals("before:handler", response.getBody()),
+         () -> assertEquals("before:handler:after", response.getHeaders().getFirst("X-Handler-Order")));
+   }
+
+
+
+   /*******************************************************************************
+    ** A dashboard-relative path is distinct from the server's middleware namespace.
+    *******************************************************************************/
+   @Test
+   void testBuiltInDashboardNamespaceAtNonRootPath() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(createMinimalApplication())
+         .withPort(PORT)
+         .withFrontendMaterialDashboardHostedPath("/portal");
+      javalinServer.start();
+
+      assertEquals(404, Unirest.get("http://localhost:" + PORT + "/qqq/v1/missing").asString().getStatus());
+      for(String path : List.of("/portal/people/person/1", "/portal/qqq/v1/help"))
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + path).asString();
+         assertEquals(200, response.getStatus(), path);
+         assertThat(response.getBody()).containsIgnoringCase("<base href=\"/portal/\"");
+      }
+      assertEquals(404, Unirest.get("http://localhost:" + PORT + "/portal-other/person/1").asString().getStatus());
+   }
+
+
+
+   /*******************************************************************************
     * Serve material-dashboard as an isolated SPA, at a non-root path.
     *
     * This shows the <base href> tag being inserted in the index.html file when
@@ -1017,11 +1074,11 @@ class QApplicationJavalinServerTest
       javalinServer.setPort(PORT);
       javalinServer.setServeFrontendMaterialDashboard(false);
 
-      javalinServer.withAdditionalRouteProvider(
+      javalinServer.withAdditionalRouteProviders(List.of(
          new IsolatedSpaRouteProvider("/mdb", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
-            .withLoadFromJar(true));
+            .withLoadFromJar(true)));
 
       javalinServer.start();
 
@@ -1061,11 +1118,11 @@ class QApplicationJavalinServerTest
       javalinServer.setPort(PORT);
       javalinServer.setServeFrontendMaterialDashboard(false);
 
-      javalinServer.withAdditionalRouteProvider(
+      javalinServer.withAdditionalRouteProviders(List.of(
          new IsolatedSpaRouteProvider("/", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
-            .withLoadFromJar(true));
+            .withLoadFromJar(true)));
 
       javalinServer.start();
 
@@ -1078,7 +1135,7 @@ class QApplicationJavalinServerTest
             <base""");
       }
 
-      List<String> pathsThatShouldIncludeBase = List.of("/someApp", "/someApp/someTable");
+      List<String> pathsThatShouldIncludeBase = List.of("/someApp", "/someApp/someTable", "/qqq/v2/custom-spa-path");
       for(String requestPath : pathsThatShouldIncludeBase)
       {
          HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();
@@ -1141,11 +1198,11 @@ class QApplicationJavalinServerTest
       javalinServer.setPort(PORT);
       javalinServer.setServeFrontendMaterialDashboard(false);
 
-      javalinServer.withAdditionalRouteProvider(
+      javalinServer.withAdditionalRouteProviders(List.of(
          new IsolatedSpaRouteProvider("/mdb", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
-            .withLoadFromJar(true));
+            .withLoadFromJar(true)));
 
       javalinServer.start();
 
@@ -1454,13 +1511,13 @@ class QApplicationJavalinServerTest
       ////////////////////////////////////////////////////////////////
       // Custom SPA (using material-dashboard files for testing) at //
       ////////////////////////////////////////////////////////////////
-      javalinServer.withAdditionalRouteProvider(
+      javalinServer.withAdditionalRouteProviders(List.of(
          new IsolatedSpaRouteProvider("/", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
             .withLoadFromJar(true)
             .withExcludedPaths(List.of("/dashboard"))  // Exclude the dashboard path
-      );
+      ));
 
       javalinServer.start();
 
@@ -1551,12 +1608,12 @@ class QApplicationJavalinServerTest
       ////////////////////////////////////////////////////////////////////////
       // Custom SPA at /custom (using material-dashboard files for testing) //
       ////////////////////////////////////////////////////////////////////////
-      javalinServer.withAdditionalRouteProvider(
+      javalinServer.withAdditionalRouteProviders(List.of(
          new IsolatedSpaRouteProvider("/custom", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
             .withLoadFromJar(true)
-      );
+      ));
 
       javalinServer.start();
 
@@ -1646,25 +1703,23 @@ class QApplicationJavalinServerTest
       javalinServer.setPort(PORT);
       javalinServer.setServeFrontendMaterialDashboard(false);
 
-      /////////////////
-      // SPA at /app //
-      /////////////////
-      javalinServer.withAdditionalRouteProvider(
+      javalinServer.withAdditionalRouteProviders(List.of(
+         /////////////////
+         // SPA at /app //
+         /////////////////
          new IsolatedSpaRouteProvider("/app", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
-            .withLoadFromJar(true)
-      );
+            .withLoadFromJar(true),
 
-      ///////////////////
-      // SPA at /admin //
-      ///////////////////
-      javalinServer.withAdditionalRouteProvider(
+         ///////////////////
+         // SPA at /admin //
+         ///////////////////
          new IsolatedSpaRouteProvider("/admin", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
             .withLoadFromJar(true)
-      );
+      ));
 
       javalinServer.start();
 
@@ -2112,27 +2167,25 @@ class QApplicationJavalinServerTest
       javalinServer.setPort(PORT);
       javalinServer.setServeFrontendMaterialDashboard(false);
 
-      //////////////////////////////
-      // Root SPA with exclusions //
-      //////////////////////////////
-      javalinServer.withAdditionalRouteProvider(
+      javalinServer.withAdditionalRouteProviders(List.of(
+         //////////////////////////////
+         // Root SPA with exclusions //
+         //////////////////////////////
          new IsolatedSpaRouteProvider("/", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
             .withLoadFromJar(true)
-            .withExcludedPaths(List.of("/api", "/portal"))  // Exclude /portal for the other SPA
-      );
+            .withExcludedPaths(List.of("/api", "/portal")),  // Exclude /portal for the other SPA
 
-      /////////////////////////////////////////////////////
-      // Non-root SPA at /portal with its own exclusions //
-      /////////////////////////////////////////////////////
-      javalinServer.withAdditionalRouteProvider(
+         /////////////////////////////////////////////////////
+         // Non-root SPA at /portal with its own exclusions //
+         /////////////////////////////////////////////////////
          new IsolatedSpaRouteProvider("/portal", "material-dashboard")
             .withSpaIndexFile("material-dashboard/index.html")
             .withDeepLinking(true)
             .withLoadFromJar(true)
             .withExcludedPaths(List.of("/portal/api", "/portal/webhook"))
-      );
+      ));
 
       javalinServer.start();
 

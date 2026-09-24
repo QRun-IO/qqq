@@ -40,17 +40,18 @@ class QInstanceScopedAuthTest extends BaseTest
 {
 
    /*******************************************************************************
-    ** Test that setAuthentication() automatically registers instance default
+    ** Test that registerAuthenticationProvider(instanceDefault) automatically
+    ** registers instance default and updates the legacy getAuthentication() field.
     *******************************************************************************/
    @Test
-   void testSetAuthenticationAutoRegisters()
+   void testRegisterAuthenticationProviderAutoRegisters()
    {
       QInstance qInstance = new QInstance();
       QAuthenticationMetaData auth = new QAuthenticationMetaData()
          .withName("test-auth")
          .withType(QAuthenticationType.MOCK);
 
-      qInstance.setAuthentication(auth);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), auth);
 
       // Should be registered under instance default
       Optional<QAuthenticationMetaData> found =

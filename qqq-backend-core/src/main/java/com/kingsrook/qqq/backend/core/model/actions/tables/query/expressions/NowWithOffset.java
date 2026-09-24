@@ -29,7 +29,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -82,33 +81,9 @@ public class NowWithOffset extends AbstractFilterExpression<Serializable>
     ** Factory
     **
     *******************************************************************************/
-   @Deprecated
-   public static NowWithOffset minus(int amount, TimeUnit timeUnit)
-   {
-      return (minus(amount, timeUnit.toChronoUnit()));
-   }
-
-
-
-   /*******************************************************************************
-    ** Factory
-    **
-    *******************************************************************************/
    public static NowWithOffset minus(int amount, ChronoUnit timeUnit)
    {
       return (new NowWithOffset(Operator.MINUS, amount, timeUnit));
-   }
-
-
-
-   /*******************************************************************************
-    ** Factory
-    **
-    *******************************************************************************/
-   @Deprecated
-   public static NowWithOffset plus(int amount, TimeUnit timeUnit)
-   {
-      return (plus(amount, timeUnit.toChronoUnit()));
    }
 
 

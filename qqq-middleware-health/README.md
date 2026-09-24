@@ -17,9 +17,14 @@ Extend `HealthMetaDataProducer` to configure health checks:
 ```java
 package com.myapp.metadata.autoload.health;
 
-import com.kingsrook.qqq.middleware.health.HealthMetaDataProducer;
+import java.util.List;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.middleware.health.indicators.DatabaseHealthIndicator;
+import com.kingsrook.qqq.middleware.health.indicators.MemoryHealthIndicator;
+import com.kingsrook.qqq.middleware.health.indicators.DiskSpaceHealthIndicator;
+import com.kingsrook.qqq.middleware.health.model.metadata.HealthCheckMetaData;
 
-public class HealthMetaDataProducer extends com.kingsrook.qqq.middleware.health.HealthMetaDataProducer
+public class ApplicationHealthMetaDataProducer extends com.kingsrook.qqq.middleware.health.HealthMetaDataProducer
 {
    @Override
    protected HealthCheckMetaData buildHealthCheckMetaData(QInstance qInstance)
@@ -81,6 +86,12 @@ HTTP status: 200 (UP/DEGRADED), 503 (DOWN)
 Implement `HealthIndicator` interface:
 
 ```java
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.middleware.health.HealthIndicator;
+import com.kingsrook.qqq.middleware.health.model.metadata.HealthCheckResult;
+import com.kingsrook.qqq.middleware.health.model.metadata.HealthStatus;
+
 public class CustomHealthIndicator implements HealthIndicator
 {
    @Override
@@ -92,10 +103,10 @@ public class CustomHealthIndicator implements HealthIndicator
    @Override
    public HealthCheckResult check(QInstance qInstance) throws QException
    {
-      // Your check logic here
+      // Replace this constant result with the application check.
       return new HealthCheckResult()
          .withStatus(HealthStatus.UP)
-         .withDurationMs(duration)
+         .withDurationMs(0L)
          .withDetail("key", "value");
    }
 }
@@ -103,16 +114,9 @@ public class CustomHealthIndicator implements HealthIndicator
 
 ## Migration from Manual Registration
 
-Replace deprecated manual registration:
-
-```java
-// OLD (deprecated):
-.withAdditionalRouteProvider(new JavalinHealthRouteProvider())
-```
-
-With metadata-driven approach shown in Usage section above.
+Use the metadata producer shown above in place of explicitly adding a `JavalinHealthRouteProvider` to the server's route providers. Ensure the application loads the producer's package.
 
 ## License
 
-AGPL 3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.
 

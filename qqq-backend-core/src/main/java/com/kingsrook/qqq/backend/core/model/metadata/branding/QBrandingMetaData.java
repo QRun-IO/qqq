@@ -44,12 +44,6 @@ public class QBrandingMetaData implements TopLevelMetaDataInterface, Cloneable, 
    private String accentColorLight;
    private String gravatarDefault;
 
-   @Deprecated(since = "migrate to use banners map instead")
-   private String environmentBannerText;
-
-   @Deprecated(since = "migrate to use banners map instead")
-   private String environmentBannerColor;
-
    private Map<BannerSlot, Banner> banners;
 
 
@@ -300,74 +294,6 @@ public class QBrandingMetaData implements TopLevelMetaDataInterface, Cloneable, 
    public QBrandingMetaData withAccentColor(String accentColor)
    {
       this.accentColor = accentColor;
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for environmentBannerText
-    *******************************************************************************/
-   @Deprecated(since = "migrate to use banners map instead")
-   public String getEnvironmentBannerText()
-   {
-      return (this.environmentBannerText);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for environmentBannerText
-    *******************************************************************************/
-   @Deprecated(since = "migrate to use banners map instead")
-   public void setEnvironmentBannerText(String environmentBannerText)
-   {
-      this.environmentBannerText = environmentBannerText;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for environmentBannerText
-    *******************************************************************************/
-   @Deprecated(since = "migrate to use banners map instead")
-   public QBrandingMetaData withEnvironmentBannerText(String environmentBannerText)
-   {
-      this.environmentBannerText = environmentBannerText;
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for environmentBannerColor
-    *******************************************************************************/
-   @Deprecated(since = "migrate to use banners map instead")
-   public String getEnvironmentBannerColor()
-   {
-      return (this.environmentBannerColor);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for environmentBannerColor
-    *******************************************************************************/
-   @Deprecated(since = "migrate to use banners map instead")
-   public void setEnvironmentBannerColor(String environmentBannerColor)
-   {
-      this.environmentBannerColor = environmentBannerColor;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for environmentBannerColor
-    *******************************************************************************/
-   @Deprecated(since = "migrate to use banners map instead")
-   public QBrandingMetaData withEnvironmentBannerColor(String environmentBannerColor)
-   {
-      this.environmentBannerColor = environmentBannerColor;
       return (this);
    }
 

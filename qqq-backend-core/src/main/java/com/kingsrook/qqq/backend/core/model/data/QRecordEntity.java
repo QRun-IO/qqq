@@ -267,18 +267,6 @@ public abstract class QRecordEntity
 
 
    /*******************************************************************************
-    ** Overload of toQRecordOnlyChangedFields that preserves original behavior of
-    ** that method, which is, to NOT includePrimaryKey
-    *******************************************************************************/
-   @Deprecated(since = "includePrimaryKey param was added")
-   public QRecord toQRecordOnlyChangedFields()
-   {
-      return toQRecordOnlyChangedFields(false);
-   }
-
-
-
-   /*******************************************************************************
     ** Useful for the use-case of:
     ** - fetch a QRecord (e.g., QueryAction or GetAction)
     ** - build a QRecordEntity out of it

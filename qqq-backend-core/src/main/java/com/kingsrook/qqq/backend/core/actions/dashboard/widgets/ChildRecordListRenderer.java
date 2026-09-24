@@ -33,6 +33,8 @@ import java.util.Map;
 import java.util.Set;
 import com.google.gson.reflect.TypeToken;
 import com.kingsrook.qqq.backend.core.actions.dashboard.AbstractHTMLWidgetRenderer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -66,6 +68,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -126,6 +130,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
          .withType(WidgetType.CHILD_RECORD_LIST.getType())
          .withDefaultValue(KEY_JOIN_NAME, join.getName())
          .withValidatorPlugin(new ChildRecordListWidgetValidator())
+         .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
       ));
    }
 
@@ -443,6 +448,11 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
             GetInput getInput = new GetInput();
             getInput.setTableName(join.getLeftTable());
             getInput.setPrimaryKey(id);
+            getInput.setInputSource(input.getInputSource());
+            if(input.getInputSource() == QInputSource.USER)
+            {
+               PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
+            }
             getInput.withShouldOmitHiddenFields(false);
             GetOutput getOutput = new GetAction().execute(getInput);
             primaryRecord = getOutput.getRecord();
@@ -516,6 +526,11 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
                }
             }
 
+            if(input.getInputSource() == QInputSource.USER)
+            {
+               PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
+               PermissionsHelper.checkJoinedTableReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
+            }
             queryOutput = executeQuery(queryInput);
 
             QValueFormatter.setBlobValuesToDownloadUrls(rightTable, queryOutput.getRecords());
@@ -529,6 +544,7 @@ public class ChildRecordListRenderer extends AbstractWidgetRenderer
                /////////////////////////////////////////////////////////////////////////////////////
                CountInput countInput = new CountInput();
                countInput.setTableName(join.getRightTable());
+               countInput.setInputSource(queryInput.getInputSource());
                countInput.setFilter(filter);
                totalRows = new CountAction().execute(countInput).getCount();
             }

@@ -26,9 +26,9 @@ import java.util.List;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
-import com.kingsrook.qqq.backend.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.health.indicators.MemoryHealthIndicator;
 import com.kingsrook.qqq.middleware.health.model.metadata.HealthCheckMetaData;
+import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 

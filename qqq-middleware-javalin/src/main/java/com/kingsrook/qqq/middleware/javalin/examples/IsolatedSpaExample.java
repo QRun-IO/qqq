@@ -60,31 +60,28 @@ public class IsolatedSpaExample
       QApplicationJavalinServer server = new QApplicationJavalinServer(application)
          .withPort(8080)
          .withServeFrontendMaterialDashboard(false)  // Disable default dashboard
-         .withServeLegacyUnversionedMiddlewareAPI(true)  // Keep APIs enabled
+         .withServeLegacyUnversionedMiddlewareAPI(true);  // Keep APIs enabled
 
-         // Root SPA - serves the main public website
-         .withAdditionalRouteProvider(
-            new IsolatedSpaRouteProvider("/", "public-site/")
-               .withSpaIndexFile("public-site/index.html")
-               .withExcludedPaths(List.of("/admin", "/customer", "/api", "/qqq-api",
-                  "/metaData", "/data", "/processes", "/reports", "/download"))
-               .withDeepLinking(true)
-               .withLoadFromJar(false))  // Load from filesystem for development
-
-         // Admin SPA - requires authentication
-         .withAdditionalRouteProvider(
-            new IsolatedSpaRouteProvider("/admin", "admin-spa/dist/")
-               .withSpaIndexFile("admin-spa/dist/index.html")
-               .withAuthenticator(new QCodeReference(AdminAuthenticator.class))
-               .withDeepLinking(true)
-               .withLoadFromJar(true))  // Load from JAR for production
-
-         // Customer SPA - no authentication required
-         .withAdditionalRouteProvider(
-            new IsolatedSpaRouteProvider("/customer", "customer-spa/build/")
-               .withSpaIndexFile("customer-spa/build/index.html")
-               .withDeepLinking(true)
-               .withLoadFromJar(false));
+      // Root SPA - serves the main public website
+      // Admin SPA - requires authentication
+      // Customer SPA - no authentication required
+      server.withAdditionalRouteProviders(List.of(
+         new IsolatedSpaRouteProvider("/", "public-site/")
+            .withSpaIndexFile("public-site/index.html")
+            .withExcludedPaths(List.of("/admin", "/customer", "/api", "/qqq-api",
+               "/metaData", "/data", "/processes", "/reports", "/download"))
+            .withDeepLinking(true)
+            .withLoadFromJar(false),   // Load from filesystem for development
+         new IsolatedSpaRouteProvider("/admin", "admin-spa/dist/")
+            .withSpaIndexFile("admin-spa/dist/index.html")
+            .withAuthenticator(new QCodeReference(AdminAuthenticator.class))
+            .withDeepLinking(true)
+            .withLoadFromJar(true),    // Load from JAR for production
+         new IsolatedSpaRouteProvider("/customer", "customer-spa/build/")
+            .withSpaIndexFile("customer-spa/build/index.html")
+            .withDeepLinking(true)
+            .withLoadFromJar(false)    // Load from filesystem for development
+      ));
 
       // Start the server
       server.start();

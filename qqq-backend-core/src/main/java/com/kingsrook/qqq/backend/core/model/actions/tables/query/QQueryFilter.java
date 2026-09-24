@@ -558,24 +558,7 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
     ******************************************************************************/
    public void interpretValues(Map<String, Serializable> inputValues) throws QException
    {
-      interpretValues(FilterUseCase.DEFAULT, inputValues);
-   }
-
-
-
-   /*******************************************************************************
-    ** Replace any criteria values that look like ${input.XXX} with the value of XXX
-    ** from the supplied inputValues map.
-    **
-    ** Note - it may be very important that you call this method on a clone of a
-    ** QQueryFilter - e.g., if it's one that defined in metaData, and that we don't
-    ** want to be (permanently) changed!!
-    **
-    ******************************************************************************/
-   @Deprecated(since = "0.27 when overload that takes multiple value maps was introduced")
-   public void interpretValues(FilterUseCase useCase, Map<String, Serializable> inputValues) throws QException
-   {
-      interpretValues(MapBuilder.of("input", inputValues), useCase);
+      interpretValues(MapBuilder.of("input", inputValues), FilterUseCase.DEFAULT);
    }
 
 
@@ -696,7 +679,7 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
       {
          try
          {
-            subFilter.interpretValues(useCase, inputValues);
+            subFilter.interpretValues(valueMap, useCase);
          }
          catch(Exception e)
          {

@@ -2,40 +2,80 @@
 class: QTableMetaData
 version: 1.0
 name: person
+label: Person
 backendName: rdbms
 primaryKeyField: id
 recordLabelFormat: "%s %s"
-recordLabelFields:
-  - firstName
-  - lastName
+recordLabelFields: [firstName, lastName]
 fields:
   id:
+    name: id
     type: INTEGER
     isEditable: false
+  createDate:
+    name: createDate
+    type: DATE_TIME
+    isEditable: false
+    backendName: create_date
+  modifyDate:
+    name: modifyDate
+    type: DATE_TIME
+    isEditable: false
+    backendName: modify_date
   firstName:
+    name: firstName
     type: STRING
+    isRequired: true
+    backendName: first_name
   lastName:
+    name: lastName
     type: STRING
-## Field(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
-## Field(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withBackendName("create_date").withIsEditable(false))
-## Field(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withBackendName("modify_date").withIsEditable(false))
-## Field(new QFieldMetaData("firstName", QFieldType.STRING).withBackendName("first_name").withIsRequired(true))
-## Field(new QFieldMetaData("lastName", QFieldType.STRING).withBackendName("last_name").withIsRequired(true))
-## Field(new QFieldMetaData("birthDate", QFieldType.DATE).withBackendName("birth_date"))
-## Field(new QFieldMetaData("email", QFieldType.STRING))
-## Field(new QFieldMetaData("isEmployed", QFieldType.BOOLEAN).withBackendName("is_employed"))
-## Field(new QFieldMetaData("annualSalary", QFieldType.DECIMAL).withBackendName("annual_salary").withDisplayFormat(DisplayFormat.CURRENCY))
-## Field(new QFieldMetaData("daysWorked", QFieldType.INTEGER).withBackendName("days_worked").withDisplayFormat(DisplayFormat.COMMAS))
+    isRequired: true
+    backendName: last_name
+  birthDate:
+    name: birthDate
+    type: DATE
+    backendName: birth_date
+  email:
+    name: email
+    type: STRING
+    isRequired: true
+  isEmployed:
+    name: isEmployed
+    type: BOOLEAN
+    backendName: is_employed
+  annualSalary:
+    name: annualSalary
+    type: DECIMAL
+    backendName: annual_salary
+    displayFormat: "$%,.2f"
+  daysWorked:
+    name: daysWorked
+    type: INTEGER
+    backendName: days_worked
+    displayFormat: "%,d"
 sections:
-- name: identity
-  label: Identity
-  icon:
-    name: badge
-  tier: T1
-  fieldNames:
-  - id
-  - firstName
-  - lastName
-## Section(new QFieldSection("basicInfo", "Basic Info", new QIcon("dataset"), Tier.T2, List.of("email", "birthDate")))
-## Section(new QFieldSection("employmentInfo", "Employment Info", new QIcon("work"), Tier.T2, List.of("isEmployed", "annualSalary", "daysWorked")))
-## Section(new QFieldSection("dates", "Dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
+  - name: identity
+    label: Identity
+    icon: {name: badge}
+    tier: T1
+    fieldNames: [id, firstName, lastName]
+  - name: basicInfo
+    label: Basic Info
+    icon: {name: dataset}
+    tier: T2
+    fieldNames: [email, birthDate]
+  - name: employmentInfo
+    label: Employment Info
+    icon: {name: work}
+    tier: T2
+    fieldNames: [isEmployed, annualSalary, daysWorked]
+  - name: dates
+    label: Dates
+    icon: {name: calendar_month}
+    tier: T3
+    fieldNames: [createDate, modifyDate]
+associations:
+  - name: pets
+    associatedTableName: pet
+    joinName: personJoinPet

@@ -23,18 +23,20 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.processes.implementations.mock.MockBackendStep;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.SleepUtils;
-import com.kingsrook.qqq.backend.javalin.TestUtils;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -48,6 +50,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class ProcessStatusSpecV1Test extends SpecTestBase
 {
+   /*******************************************************************************
+    ** A process continuation must use the same explicit test session.
+    *******************************************************************************/
+   @BeforeEach
+   void setProcessClientSession()
+   {
+      Unirest.config().reset().setDefaultHeader("Cookie", "sessionId=" + UUID.randomUUID());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void clearProcessClientSession()
+   {
+      Unirest.config().reset().getDefaultHeaders().remove("Cookie");
+   }
+
+
+
    private static final int MORE_THAN_TIMEOUT = 500;
    private static final int TIMEOUT           = 300;
    private static final int LESS_THAN_TIMEOUT = 50;

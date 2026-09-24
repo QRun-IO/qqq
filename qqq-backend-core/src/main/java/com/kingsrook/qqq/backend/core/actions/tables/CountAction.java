@@ -50,7 +50,7 @@ public class CountAction
 {
    private static final QLogger LOG = QLogger.getLogger(CountAction.class);
 
-   private CountInterface countInterface;
+   private volatile CountInterface countInterface;
 
 
 
@@ -73,6 +73,10 @@ public class CountAction
       }
 
       table = TableMetaDataPersonalizerAction.execute(countInput);
+      if(table == null)
+      {
+         throw (new QException("Count table is not available"));
+      }
       countInput.setTableMetaData(table);
 
       FilterValidationHelper.validateFieldNamesInFilter(countInput);

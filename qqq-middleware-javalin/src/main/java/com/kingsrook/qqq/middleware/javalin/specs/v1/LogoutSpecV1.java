@@ -24,7 +24,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.executors.LogoutExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;

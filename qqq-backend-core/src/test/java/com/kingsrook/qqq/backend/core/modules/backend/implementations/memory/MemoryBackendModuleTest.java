@@ -24,11 +24,16 @@ package com.kingsrook.qqq.backend.core.modules.backend.implementations.memory;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Month;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.customizers.AbstractPostQueryCustomizer;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -73,14 +78,19 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaDat
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.SubStringFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateFunction;
+import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
+import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -102,6 +112,91 @@ class MemoryBackendModuleTest extends BaseTest
    {
       MemoryRecordStore.getInstance().reset();
       MemoryRecordStore.resetStatistics();
+   }
+
+
+
+   /*******************************************************************************
+    ** A child alias equal to the root name must not authorize its NULL owner from
+    ** the root's nonnull decoy. Namespace refusal is also safe for that alias.
+    *******************************************************************************/
+   @Test
+   void testRootNamedJoinAliasCannotBorrowRootReadGrant() throws Exception
+   {
+      QInstance instance = QContext.getQInstance();
+      Map<String, QTableMetaData> originalTables = instance.getTables();
+      QTableMetaData root = instance.getTable(TestUtils.TABLE_NAME_ORDER).clone();
+      root.setRecordSecurityLocks(List.of());
+      QTableMetaData child = instance.getTable(TestUtils.TABLE_NAME_LINE_ITEM).clone();
+      String grant = "rootAliasTimestamp";
+      child.setRecordSecurityLocks(List.of(new RecordSecurityLock().withFieldName("timestamp").withSecurityKeyType(grant)
+         .withLockScope(RecordSecurityLock.LockScope.READ).withNullValueBehavior(RecordSecurityLock.NullValueBehavior.DENY)));
+      Map<String, QTableMetaData> tables = new LinkedHashMap<>(originalTables);
+      tables.put(root.getName(), root);
+      tables.put(child.getName(), child);
+      instance.setTables(tables);
+      instance.addSecurityKeyType(new QSecurityKeyType().withName(grant));
+      Instant allowed = Instant.parse("2025-01-01T00:00:00Z");
+      QContext.getQSession().withSecurityKeyValue(grant, allowed);
+      try
+      {
+         List<QRecord> roots = List.of(new QRecord().withValue("id", 1).withValue("timestamp", allowed),
+            new QRecord().withValue("id", 10).withValue("timestamp", allowed));
+         List<QRecord> children = List.of(new QRecord().withValue("id", 2).withValue("orderId", 1).withValue("timestamp", null),
+            new QRecord().withValue("id", 3).withValue("orderId", 1).withValue("timestamp", allowed),
+            new QRecord().withValue("id", 20).withValue("orderId", 10).withValue("timestamp", null));
+         assertEquals(2, MemoryRecordStore.getInstance().insert(new InsertInput(root.getName()).withRecords(roots), true).size());
+         assertEquals(3, MemoryRecordStore.getInstance().insert(new InsertInput(child.getName()).withRecords(children), true).size());
+         String storedInputs = JsonUtils.toJson(List.of(roots, children));
+         String metadata = JsonUtils.toJson(instance.getTables());
+         String session = JsonUtils.toJson(QContext.getQSession());
+         List<Executable> checks = new ArrayList<>();
+         for(String alias : List.of("peer", root.getName()))
+         {
+            for(QueryJoin.Type type : List.of(QueryJoin.Type.INNER, QueryJoin.Type.LEFT))
+            {
+               QueryJoin join = new QueryJoin(child.getName()).withAlias(alias).withType(type).withSelect(true)
+                  .withJoinMetaData(instance.getJoin("orderLineItem"));
+               QueryInput input = new QueryInput(root.getName()).withQueryJoin(join).withFieldNamesToInclude(Set.of("id", alias + ".id"))
+                  .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderBy("id")).withOrderBy(new QFilterOrderBy(alias + ".id")));
+               String inputBefore = JsonUtils.toJson(input);
+               checks.add(() -> assertAll("alias " + alias + " / " + type,
+                  () ->
+                  {
+                     List<QRecord> rows;
+                     try
+                     {
+                        rows = new QueryAction().execute(input).getRecords();
+                     }
+                     catch(QException refusal)
+                     {
+                        assertEquals(root.getName(), alias, "An ordinary distinct alias must work");
+                        Boolean identified = false;
+                        for(Throwable cause = refusal; cause != null; cause = cause.getCause())
+                        {
+                           assertFalse(cause instanceof NullPointerException || cause instanceof IllegalArgumentException);
+                           identified |= cause.getMessage() != null && cause.getMessage().toLowerCase().contains("alias");
+                        }
+                        assertTrue(identified, "Root-name collision refusal must identify its alias boundary");
+                        return;
+                     }
+                     List<List<Integer>> expected = type == QueryJoin.Type.INNER ? List.of(List.of(1, 3))
+                        : List.of(List.of(1, 3), Arrays.asList(10, null));
+                     assertEquals(expected, rows.stream().map(row -> Arrays.asList(row.getValueInteger("id"), row.getValueInteger(alias + ".id"))).toList());
+                     assertTrue(rows.stream().allMatch(row -> row.getValues().keySet().equals(Set.of("id", alias + ".id"))));
+                  },
+                  () -> assertTrue(inputBefore.equals(JsonUtils.toJson(input)), "Caller query must remain unchanged"),
+                  () -> assertTrue(metadata.equals(JsonUtils.toJson(instance.getTables())), "Metadata must remain unchanged"),
+                  () -> assertEquals(storedInputs, JsonUtils.toJson(List.of(roots, children))),
+                  () -> assertTrue(session.equals(JsonUtils.toJson(QContext.getQSession())), "Session must remain unchanged")));
+            }
+         }
+         assertAll(checks);
+      }
+      finally
+      {
+         instance.setTables(originalTables);
+      }
    }
 
 

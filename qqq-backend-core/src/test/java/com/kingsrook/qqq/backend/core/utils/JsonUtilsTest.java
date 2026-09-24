@@ -67,7 +67,7 @@ class JsonUtilsTest extends BaseTest
       QRecord qRecord = getQRecord();
       String  json    = JsonUtils.toJson(qRecord);
       assertEquals("""
-         {"tableName":"foo","values":{"foo":"Foo","bar":3.14159}}""", json);
+         {"tableName":"foo","values":{"foo":"Foo","bar":3.14159,"baz":null}}""", json);
    }
 
 
@@ -79,9 +79,9 @@ class JsonUtilsTest extends BaseTest
    public void test_toJsonQRecordInputWithNullValues()
    {
       QRecord qRecord = getQRecord();
-      String json = JsonUtils.toJson(qRecord, objectMapper ->
+      String json = JsonUtils.toJsonCustomized(qRecord, builder ->
       {
-         objectMapper.setSerializationInclusion(JsonInclude.Include.ALWAYS);
+         builder.serializationInclusion(JsonInclude.Include.ALWAYS);
       });
 
       assertThat(json).contains("""
@@ -340,7 +340,7 @@ class JsonUtilsTest extends BaseTest
       // assert that the nullKeyToEmptyStringSerializer does what we expect //
       ////////////////////////////////////////////////////////////////////////
       assertEquals("""
-         {"":"foo"}""", JsonUtils.toJson(mapWithNullKey, mapper -> mapper.getSerializerProvider().setNullKeySerializer(JsonUtils.nullKeyToEmptyStringSerializer)));
+         {"":"foo"}""", JsonUtils.toJsonWithMapper(mapWithNullKey, mapper -> mapper.getSerializerProvider().setNullKeySerializer(JsonUtils.nullKeyToEmptyStringSerializer)));
    }
 
 }

@@ -57,7 +57,7 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.SleepUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeConsumer;
-import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import io.javalin.apibuilder.EndpointGroup;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
@@ -87,6 +87,28 @@ import static org.junit.jupiter.api.Assertions.fail;
  *******************************************************************************/
 class QJavalinApiHandlerTest extends BaseTest
 {
+   /*******************************************************************************
+    ** A process continuation must use the same explicit test session.
+    *******************************************************************************/
+   @BeforeEach
+   void setProcessClientSession()
+   {
+      Unirest.config().reset().setDefaultHeader("Cookie", "sessionId=" + UUID.randomUUID());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void clearProcessClientSession()
+   {
+      Unirest.config().reset();
+   }
+
+
+
    private static final   int    PORT     = 6263;
    protected static final String BASE_URL = "http://localhost:" + PORT;
 

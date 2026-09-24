@@ -71,24 +71,11 @@ public abstract class ApiFieldCustomValueMapper
    /*******************************************************************************
     **
     *******************************************************************************/
-   @Deprecated(since = "0.26.0 changed QueryInput to QueryOrCountInputInterface")
-   public void customizeFilterCriteria(QueryInput queryInput, QQueryFilter filter, QFilterCriteria criteria, String apiFieldName, ApiFieldMetaData apiFieldMetaData)
+   public void customizeFilterCriteriaForQueryOrCount(QueryOrCountInputInterface input, QQueryFilter filter, QFilterCriteria criteria, String apiFieldName, ApiFieldMetaData apiFieldMetaData)
    {
       /////////////////////
       // noop by default //
       /////////////////////
-   }
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public void customizeFilterCriteriaForQueryOrCount(QueryOrCountInputInterface input, QQueryFilter filter, QFilterCriteria criteria, String apiFieldName, ApiFieldMetaData apiFieldMetaData)
-   {
-      if(input instanceof QueryInput queryInput)
-      {
-         customizeFilterCriteria(queryInput, filter, criteria, apiFieldName, apiFieldMetaData);
-      }
    }
 
 

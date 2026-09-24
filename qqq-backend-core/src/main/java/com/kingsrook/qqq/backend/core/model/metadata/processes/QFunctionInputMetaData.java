@@ -166,16 +166,4 @@ public class QFunctionInputMetaData
    }
 
 
-
-   /*******************************************************************************
-    ** Use withField instead, please.
-    **
-    ** @deprecated
-    *******************************************************************************/
-   @Deprecated
-   public QFunctionInputMetaData addField(QFieldMetaData field)
-   {
-      return (withField(field));
-   }
-
 }

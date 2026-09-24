@@ -31,6 +31,7 @@ import com.kingsrook.qqq.api.BaseTest;
 import com.kingsrook.qqq.api.TestUtils;
 import com.kingsrook.qqq.api.actions.io.QRecordApiAdapterToApiInput;
 import com.kingsrook.qqq.api.javalin.QBadRequestException;
+import com.kingsrook.qqq.api.model.actions.GetTableApiFieldsInput;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -304,7 +305,7 @@ class QRecordApiAdapterTest extends BaseTest
    void testSetValueFromApiFieldInQRecord() throws QException
    {
       QRecord                     record       = new QRecord();
-      Map<String, QFieldMetaData> apiFieldsMap = GetTableApiFieldsAction.getTableApiFieldMap(new GetTableApiFieldsAction.ApiNameVersionAndTableName(TestUtils.API_NAME, TestUtils.V2022_Q4, TestUtils.TABLE_NAME_PERSON));
+      Map<String, QFieldMetaData> apiFieldsMap = GetTableApiFieldsAction.getTableApiFieldMap(new GetTableApiFieldsInput().withApiName(TestUtils.API_NAME).withVersion(TestUtils.V2022_Q4).withTableName(TestUtils.TABLE_NAME_PERSON));
       JSONObject                  apiObject    = new JSONObject(Map.of("shoeCount", 2, "firstName", "Tim"));
       QRecordApiAdapter.setValueFromApiFieldInQRecord(apiObject, "firstName", TestUtils.API_NAME, apiFieldsMap, record, false);
       QRecordApiAdapter.setValueFromApiFieldInQRecord(apiObject, "shoeCount", TestUtils.API_NAME, apiFieldsMap, record, false);

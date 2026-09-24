@@ -37,6 +37,7 @@ import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -480,7 +481,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
          .withName("auth0");
 
       QInstance qInstance = QContext.getQInstance();
-      qInstance.setAuthentication(authenticationMetaData);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), authenticationMetaData);
       return (qInstance);
    }
 
@@ -527,7 +528,7 @@ public class Auth0AuthenticationModuleTest extends BaseTest
    void testCustomizer()
    {
       QInstance qInstance = QContext.getQInstance();
-      qInstance.setAuthentication(new Auth0AuthenticationMetaData()
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new Auth0AuthenticationMetaData()
          .withCustomizer(new QCodeReference(Customizer.class)));
 
       {

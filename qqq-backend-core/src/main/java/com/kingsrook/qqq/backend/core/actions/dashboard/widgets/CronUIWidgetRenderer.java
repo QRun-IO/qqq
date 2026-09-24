@@ -24,11 +24,16 @@ package com.kingsrook.qqq.backend.core.actions.dashboard.widgets;
 
 import java.io.Serializable;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.instances.validation.plugins.QInstanceValidatorPluginInterface;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.CronUISetupData;
@@ -94,7 +99,17 @@ public class CronUIWidgetRenderer extends AbstractWidgetRenderer
       String recordId = input.getQueryParams().get("id");
       if(StringUtils.hasContent(recordId))
       {
-         QRecord record = GetAction.execute(tableName, recordId);
+         GetInput getInput = new GetInput(tableName).withPrimaryKey(recordId);
+         getInput.setInputSource(input.getInputSource());
+         if(input.getInputSource() == QInputSource.USER)
+         {
+            PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
+         }
+         QRecord record = new GetAction().executeForRecord(getInput);
+         if(record == null)
+         {
+            throw new QNotFoundException("Could not find record for cron widget.");
+         }
          cronExpression = record.getValueString(cronExpressionFieldName);
       }
       else

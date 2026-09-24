@@ -35,8 +35,9 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
-import com.kingsrook.qqq.backend.javalin.QJavalinMetaData;
-import com.kingsrook.qqq.backend.javalin.QJavalinUtils;
+import com.kingsrook.qqq.middleware.javalin.JoinedTablePermissions;
+import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableQueryInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableQueryOutputInterface;
 
@@ -74,6 +75,8 @@ public class TableQueryExecutor extends AbstractMiddlewareExecutor<TableQueryInp
          queryInput.setShouldTranslatePossibleValues(true);
          queryInput.setTimeoutSeconds(DEFAULT_QUERY_TIMEOUT_SECONDS); // todo param
          queryInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
+
+         JoinedTablePermissions.checkReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
 
          if(queryInput.getFilter() != null)
          {

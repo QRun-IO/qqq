@@ -1,0 +1,83 @@
+[#UpdateAction]
+== UpdateAction
+include::../variables.adoc[]
+
+`UpdateAction` updates existing records in a {link-table} using its configured backend.
+Initialize `QContext` with the intended instance and session before calling it.
+Each input record supplies the table's declared primary key and the fields to change.
+
+=== Example
+
+Replace `1` with the primary key of an existing `person` record in the sample.
+
+[source,java]
+----
+QRecord patch = new QRecord()
+   .withValue("id", 1)
+   .withValue("firstName", "Alex");
+UpdateInput input = new UpdateInput("person").withRecord(patch);
+UpdateOutput output = new UpdateAction().execute(input);
+List<QRecord> results = output.getRecords();
+----
+
+Inspect each result's `errors` and `warnings`; receiving a record does not prove that it was updated.
+`executeForRecord(input)` returns the first result and is intended for a single-record input.
+`UpdateAction.executeForRecords(input)` returns the result list directly.
+`withRecordEntity` and `withRecordEntities` convert `QRecordEntity` inputs to records.
+
+=== Patch values and validation
+
+Omitting an ordinary field retains its stored value; supplying null requests a null value.
+Field behaviors and customizers still apply: an omitted `USER_ID` field receives its dynamic default,
+and `MODIFY_DATE` updates automatically unless `omitModifyDateUpdate` is set. See {link-fields}.
+Required-field validation checks supplied fields after field behaviors have run.
+Null and blank String operands are missing values, including strings supplied for numeric, date or boolean fields.
+Zero, `false` and non-null byte arrays, including empty, NUL and whitespace bytes, satisfy presence validation.
+Backend conversion and storage constraints can still reject an otherwise present value.
+
+The declared primary key selects the row; it is not an ordinary field to replace.
+The native prefetch match uses typed identity, including decimal value and byte-array content equality.
+A separate ordinary field named `id` can be updated when the table declares a different primary key.
+These rules do not establish arbitrary physical primary-key support in every backend.
+MongoDB uses the configured logical primary key for its native ObjectId update selector; its prefetch and stored-owner reads follow the <<NativeWriteLookups,native write lookup>> restrictions.
+Declared unique keys are checked after the pre-update customizer; see {link-table} for sparse-key and repeated-target rules.
+
+=== Authorization and backend boundaries
+
+Table permissions and record-lock scopes are separate; a WRITE-scoped lock does not itself restrict reads.
+Each HTTP operation retains its own table-permission checks; other applicable record locks still apply. See {link-permissionRules}.
+Where the backend supports old-record prefetch, normal read visibility determines the visible targets.
+Old-record snapshots supplied to update customizers use the update input source and active personalized metadata; USER-removed fields stay absent.
+The framework preserves row identity when a snapshot's primary key is hidden, omitted as heavy, or password-masked. This does not remove the requirement for a primary key in the submitted patch. See <<QRecords>> for copying these snapshots.
+Stored and proposed values must satisfy the applicable WRITE/READ_AND_WRITE lock tree.
+Stored-owner checks use private native values, including hidden/heavy/password fields, without merging them into
+public patches/results or the separate audit/customizer snapshot. Nested AND/OR branches retain their Boolean meaning.
+Trusted customizers must preserve validated authorization; the pre-update hook runs after ordinary security validation.
+
+This path trusts the adapter's native record representation; it does not guarantee complete projections from arbitrary providers.
+The API update adapter opts out of generic prefetch. Its provider contract and filesystem security require separate validation.
+
+=== UpdateInput
+
+* `tableName` - *String, Required* - Name of the table to update.
+* `records` - *List of QRecord* - Patches with primary keys; use `withRecord` or `withRecords`. If records remains null or empty after validation and pre-update customizers, the backend update is skipped.
+* `inputSource` - *InputSource, default: QInputSource.SYSTEM* - Drives personalization and custom logic. Both standard SYSTEM and USER sources validate required fields; a custom source controls this through `shouldValidateRequiredFields()`.
+* `transaction` - *QBackendTransaction, default: null* - Optional caller-owned transaction supported by the selected backend. Pass an `RDBMSTransaction` from the table's backend for RDBMS operations; Update does not commit, roll back or close it.
+* `omitModifyDateUpdate` - *boolean, default: false* - Suppresses the automatic MODIFY_DATE field behavior.
+* `omitTriggeringAutomations` - *boolean, default: false* - Suppresses Update's automation-status assignment; intended for specialized status-management operations.
+* `omitDmlAudit` - *boolean, default: false* - Suppresses the action's DML audit.
+* `auditContext` - *String, default: null* - Optional context included in DML audit messages.
+* `areAllValuesBeingUpdatedTheSame` - *Boolean, default: null* - Trusted optimization hint for backends using the shared grouping helper. Null compares values automatically; an incorrect true value can produce an incorrect update.
+* `flags` - *Set of ActionFlag, default: null* - Optional flags interpreted by supporting action/customizer code.
+
+=== Associations, results and transactions
+
+Omitted association groups remain untouched; an explicit empty list requests removal of stored members.
+Replacement deletes omitted children before the parent update, then writes retained/new children after a successful parent update.
+Child operations retain their own validation and permissions. See {link-table} and <<QRecords>> for association and HTTP form details.
+
+`UpdateOutput.records` contains backend results, including per-record errors/warnings and applicable generated/default values.
+It is not a guaranteed complete reread of every stored field. Inspect nested errors as well as parent errors.
+Valid records may persist while other records fail validation; native failures can throw `QException` after earlier writes succeed.
+Update does not promise automatic batch or recursive rollback, distributed atomicity or concurrency isolation.
+Use a supported encompassing caller transaction and explicitly roll it back when all-or-nothing behavior is required.

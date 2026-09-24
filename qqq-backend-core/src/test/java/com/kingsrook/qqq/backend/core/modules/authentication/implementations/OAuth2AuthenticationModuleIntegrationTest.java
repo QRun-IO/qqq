@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -363,7 +364,7 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
       authMetaData.setUserSessionTableName(UserSession.TABLE_NAME);
       authMetaData.setRedirectStateTableName(REDIRECT_STATE_TABLE);
       authMetaData.setCustomizer(new QCodeReference(TestOAuth2Customizer.class));
-      instance.setAuthentication(authMetaData);
+      instance.registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData);
 
       return instance;
    }

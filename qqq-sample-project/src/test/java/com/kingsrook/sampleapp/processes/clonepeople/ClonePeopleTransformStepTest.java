@@ -35,7 +35,6 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
-import com.kingsrook.sampleapp.SampleMetaDataProviderTest;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -48,19 +47,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  *******************************************************************************/
 class ClonePeopleTransformStepTest
 {
-   private static boolean originalUseMysqlValue = false;
-
-
-
    /*******************************************************************************
     **
     *******************************************************************************/
    @BeforeAll
    static void beforeAll() throws Exception
    {
-      originalUseMysqlValue = SampleMetaDataProvider.USE_MYSQL;
-      SampleMetaDataProvider.USE_MYSQL = false;
-      SampleMetaDataProviderTest.primeTestDatabase("prime-test-database.sql");
+      SampleMetaDataProvider.primeTestDatabase("prime-test-database.sql");
    }
 
 
@@ -71,7 +64,7 @@ class ClonePeopleTransformStepTest
    @AfterAll
    static void afterAll()
    {
-      SampleMetaDataProvider.USE_MYSQL = originalUseMysqlValue;
+      QContext.clear();
    }
 
 

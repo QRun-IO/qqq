@@ -285,7 +285,7 @@ public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
          case INTEGER -> (QueryManager.getInteger(resultSet, i));
          case LONG -> (QueryManager.getLong(resultSet, i));
          case DECIMAL -> (QueryManager.getBigDecimal(resultSet, i));
-         case DATE -> (QueryManager.getDate(resultSet, i));// todo - queryManager.getLocalDate?
+         case DATE -> (resultSet.getObject(i, LocalDate.class));
          case TIME -> (QueryManager.getLocalTime(resultSet, i));
          case DATE_TIME -> (QueryManager.getInstant(resultSet, i));
          case BOOLEAN -> (QueryManager.getBoolean(resultSet, i));
@@ -545,21 +545,21 @@ public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
       }
       else if(value instanceof Instant i)
       {
-         statement.setObject(index, i);
+         ///////////////////////////////////////////////////////////////////////
+         // QQQ stores zone-less SQL timestamps in UTC. Some JDBC drivers bind //
+         // Instant using the host timezone, so provide the UTC wall clock.    //
+         ///////////////////////////////////////////////////////////////////////
+         statement.setObject(index, LocalDateTime.ofInstant(i, ZoneOffset.UTC));
          return (1);
       }
       else if(value instanceof LocalDate ld)
       {
-         @SuppressWarnings("deprecation")
-         Date date = new Date(ld.getYear() - 1900, ld.getMonthValue() - 1, ld.getDayOfMonth());
-         statement.setDate(index, date);
+         statement.setObject(index, ld);
          return (1);
       }
       else if(value instanceof LocalTime lt)
       {
-         @SuppressWarnings("deprecation")
-         Time time = new Time(lt.getHour(), lt.getMinute(), lt.getSecond());
-         statement.setTime(index, time);
+         statement.setObject(index, lt);
          return (1);
       }
       else if(value instanceof OffsetDateTime odt)

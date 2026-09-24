@@ -55,17 +55,6 @@ public class ApiQueryFilterUtils
    /***************************************************************************
     **
     ***************************************************************************/
-   @Deprecated(since = "version was added that took apiVersion")
-   public static void manageCriteriaFields(QQueryFilter filter, Map<String, QFieldMetaData> tableApiFields, List<String> badRequestMessages, String apiName, QueryOrCountInputInterface input) throws QException
-   {
-      manageCriteriaFields(filter, tableApiFields, badRequestMessages, apiName, null, input);
-   }
-
-
-
-   /***************************************************************************
-    **
-    ***************************************************************************/
    public static void manageCriteriaFields(QQueryFilter filter, Map<String, QFieldMetaData> tableApiFields, List<String> badRequestMessages, String apiName, String apiVersion, QueryOrCountInputInterface input) throws QException
    {
       for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))

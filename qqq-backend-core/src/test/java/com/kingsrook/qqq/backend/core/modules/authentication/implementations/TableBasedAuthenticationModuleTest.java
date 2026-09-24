@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -336,12 +337,12 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
    private static void insertTestUser(QInstance qInstance, String username, String password, String fullName) throws Exception
    {
       QAuthenticationMetaData tableBasedAuthentication = qInstance.getAuthentication();
-      qInstance.setAuthentication(new Auth0AuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new Auth0AuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
       TestUtils.insertRecords(qInstance.getTable("user"), List.of(new QRecord()
          .withValue("username", username)
          .withValue("fullName", fullName)
          .withValue("passwordHash", TableBasedAuthenticationModule.PasswordHasher.createHashedPassword(password))));
-      qInstance.setAuthentication(tableBasedAuthentication);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), tableBasedAuthentication);
    }
 
 
@@ -352,7 +353,7 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
    private static String insertTestSession(QInstance qInstance, String username, Instant accessTimestamp) throws Exception
    {
       QAuthenticationMetaData tableBasedAuthentication = qInstance.getAuthentication();
-      qInstance.setAuthentication(new Auth0AuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new Auth0AuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
 
       String uuid = UUID.randomUUID().toString();
 
@@ -367,7 +368,7 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
          .withValue("accessTimestamp", accessTimestamp)
          .withValue("passwordHash", TableBasedAuthenticationModule.PasswordHasher.createHashedPassword(PASSWORD))));
 
-      qInstance.setAuthentication(tableBasedAuthentication);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), tableBasedAuthentication);
 
       return (uuid);
    }
@@ -395,7 +396,7 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
       TableBasedAuthenticationMetaData authenticationMetaData = new TableBasedAuthenticationMetaData();
 
       QInstance qInstance = TestUtils.defineInstance();
-      qInstance.setAuthentication(authenticationMetaData);
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), authenticationMetaData);
       qInstance.addTable(authenticationMetaData.defineStandardUserTable(TestUtils.MEMORY_BACKEND_NAME));
       qInstance.addTable(authenticationMetaData.defineStandardSessionTable(TestUtils.MEMORY_BACKEND_NAME));
 

@@ -242,18 +242,6 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
 
 
    /*******************************************************************************
-    ** add a step to the stepList and map
-    **
-    *******************************************************************************/
-   @Deprecated(since = "withStep was added")
-   public QProcessMetaData addStep(QStepMetaData step)
-   {
-      return (withStep(step));
-   }
-
-
-
-   /*******************************************************************************
     ** add a step to the stepList (at the specified index) and the step map
     **
     *******************************************************************************/
@@ -283,18 +271,6 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
 
 
    /*******************************************************************************
-    ** add a step to the stepList (at the specified index) and the step map
-    **
-    *******************************************************************************/
-   @Deprecated(since = "withStep was added")
-   public QProcessMetaData addStep(int index, QStepMetaData step)
-   {
-      return (withStep(index, step));
-   }
-
-
-
-   /*******************************************************************************
     ** add a step ONLY to the step map - NOT the list w/ default execution order.
     **
     *******************************************************************************/
@@ -313,18 +289,6 @@ public class QProcessMetaData implements QAppChildMetaData, MetaDataWithPermissi
       this.steps.put(step.getName(), step);
 
       return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** add a step ONLY to the step map - NOT the list w/ default execution order.
-    **
-    *******************************************************************************/
-   @Deprecated(since = "withOptionalStep was added")
-   public QProcessMetaData addOptionalStep(QStepMetaData step)
-   {
-      return (withOptionalStep(step));
    }
 
 

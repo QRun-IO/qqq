@@ -67,29 +67,6 @@ public class Schema
    /*******************************************************************************
     ** Setter for type
     *******************************************************************************/
-   @Deprecated(since = "Use version that takes enum")
-   public void setType(String type)
-   {
-      this.type = Type.valueOf(type.toUpperCase()).toString().toLowerCase();
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for type
-    *******************************************************************************/
-   @Deprecated(since = "Use version that takes enum")
-   public Schema withType(String type)
-   {
-      setType(type);
-      return (this);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for type
-    *******************************************************************************/
    public void setType(Type type)
    {
       this.type = type == null ? null : type.toString().toLowerCase();

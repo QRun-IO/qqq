@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.instances.validation.plugins.QInstanceVali
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -77,7 +78,7 @@ public class MetaDataSpecUtils
    private static QInstance defineExampleInstance()
    {
       QInstance exampleInstance = new QInstance();
-      exampleInstance.setAuthentication(new QAuthenticationMetaData().withName("anonymous").withType(QAuthenticationType.FULLY_ANONYMOUS));
+      exampleInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData().withName("anonymous").withType(QAuthenticationType.FULLY_ANONYMOUS));
 
       QBackendMetaData exampleBackend = new QBackendMetaData()
          .withName("example")

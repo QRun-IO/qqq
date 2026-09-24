@@ -60,7 +60,7 @@ class QMiddlewareApiSpecHandlerTest
       service = Javalin.create(config ->
          {
             List<AbstractMiddlewareVersion> middlewareVersionList = List.of(new MiddlewareVersionV1());
-            config.router.apiBuilder(new QMiddlewareApiSpecHandler(middlewareVersionList).defineJavalinEndpointGroup());
+            config.routes.apiBuilder(new QMiddlewareApiSpecHandler(middlewareVersionList).defineJavalinEndpointGroup());
          }
       ).start(PORT);
    }

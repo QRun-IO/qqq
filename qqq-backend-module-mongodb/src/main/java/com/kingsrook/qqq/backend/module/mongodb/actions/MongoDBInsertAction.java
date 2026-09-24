@@ -120,8 +120,10 @@ public class MongoDBInsertAction extends AbstractMongoDBAction implements Insert
                if(CollectionUtils.nullSafeIsEmpty(record.getErrors()))
                {
                   BsonValue insertedId = insertManyResult.getInsertedIds().get(index++);
-                  String    idString   = insertedId.asObjectId().getValue().toString();
-                  outputRecord.setValue(table.getPrimaryKeyField(), idString);
+                  if(record.getValue(table.getPrimaryKeyField()) == null)
+                  {
+                     outputRecord.setValue(table.getPrimaryKeyField(), insertedId.asObjectId().getValue().toHexString());
+                  }
                }
             }
          }

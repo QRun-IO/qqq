@@ -25,8 +25,11 @@ package com.kingsrook.qqq.backend.core.model.metadata.dashboard.nocode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -59,7 +62,13 @@ public class WidgetCount extends AbstractWidgetValueSourceWithFilter
    {
       CountInput countInput = new CountInput();
       countInput.setTableName(tableName);
+      countInput.setInputSource(input.getInputSource());
       countInput.setFilter(getEffectiveFilter(input));
+      if(input.getInputSource() == QInputSource.USER)
+      {
+         PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
+         PermissionsHelper.checkJoinedTableReadPermissions(countInput, countInput.getQueryJoins(), countInput.getFilter());
+      }
 
       CountOutput countOutput = new CountAction().execute(countInput);
       return (countOutput.getCount());

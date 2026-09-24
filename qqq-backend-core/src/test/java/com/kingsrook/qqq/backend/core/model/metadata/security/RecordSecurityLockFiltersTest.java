@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.security;
 
 import java.util.List;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock.BooleanOperator.AND;
 import static com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock.BooleanOperator.OR;
@@ -93,10 +94,9 @@ class RecordSecurityLockFiltersTest extends BaseTest
             new RecordSecurityLock().withFieldName("D").withLockScope(RecordSecurityLock.LockScope.WRITE)
          ))
       ));
-      assertEquals(2, treeWithOneBranchReadsOneBranchWrites.getLocks().size());
+      assertEquals(1, treeWithOneBranchReadsOneBranchWrites.getLocks().size());
       assertEquals(AND, treeWithOneBranchReadsOneBranchWrites.getOperator());
       assertMultiRecordSecurityLock((MultiRecordSecurityLock) treeWithOneBranchReadsOneBranchWrites.getLocks().get(0), OR, "A", "B");
-      assertMultiRecordSecurityLock((MultiRecordSecurityLock) treeWithOneBranchReadsOneBranchWrites.getLocks().get(1), OR);
 
       MultiRecordSecurityLock deepSparseTree = RecordSecurityLockFilters.filterForReadLockTree(List.of(
          new MultiRecordSecurityLock().withOperator(OR).withLocks(List.of(
@@ -131,14 +131,84 @@ class RecordSecurityLockFiltersTest extends BaseTest
       assertEquals("C", deepChild0.getLocks().get(1).getFieldName());
 
       MultiRecordSecurityLock deepChild1 = (MultiRecordSecurityLock) deepSparseTree.getLocks().get(1);
-      assertEquals(2, deepChild1.getLocks().size());
+      assertEquals(1, deepChild1.getLocks().size());
       assertEquals(OR, deepChild1.getOperator());
       MultiRecordSecurityLock deepGrandChild1 = (MultiRecordSecurityLock) deepChild1.getLocks().get(0);
-      assertMultiRecordSecurityLock(deepGrandChild1, AND);
-      MultiRecordSecurityLock deepGrandChild2 = (MultiRecordSecurityLock) deepChild1.getLocks().get(1);
-      assertMultiRecordSecurityLock(deepGrandChild2, AND, "G", "H");
+      assertMultiRecordSecurityLock(deepGrandChild1, AND, "G", "H");
 
       assertEquals("I", deepSparseTree.getLocks().get(2).getFieldName());
+   }
+
+
+
+   /*******************************************************************************
+    ** An inapplicable empty AND branch must not become a successful alternative
+    ** inside OR. Retained scopes keep their nested operators and source tree.
+    *******************************************************************************/
+   @Test
+   void testReadAndWriteScopePruningPreservesNestedOperators() throws Exception
+   {
+      MultiRecordSecurityLock readBranch = new MultiRecordSecurityLock().withOperator(AND).withLocks(List.of(
+         new MultiRecordSecurityLock().withOperator(OR).withLocks(List.of(
+            new RecordSecurityLock().withFieldName("readOnlyA").withLockScope(RecordSecurityLock.LockScope.READ)
+         ))
+      ));
+      MultiRecordSecurityLock mixedBranch = new MultiRecordSecurityLock().withOperator(AND).withLocks(List.of(
+         new RecordSecurityLock().withFieldName("writeOnlyB").withLockScope(RecordSecurityLock.LockScope.WRITE),
+         new MultiRecordSecurityLock().withOperator(OR).withLocks(List.of(
+            new RecordSecurityLock().withFieldName("readOnlyC").withLockScope(RecordSecurityLock.LockScope.READ),
+            new RecordSecurityLock().withFieldName("sharedD").withLockScope(RecordSecurityLock.LockScope.READ_AND_WRITE)
+         ))
+      ));
+      MultiRecordSecurityLock original = new MultiRecordSecurityLock().withOperator(OR).withLocks(List.of(readBranch, mixedBranch));
+      String originalJson = JsonUtils.toJson(original);
+
+      MultiRecordSecurityLock writes = RecordSecurityLockFilters.filterForWriteLockTree(List.of(original));
+      assertEquals(AND, writes.getOperator());
+      assertEquals(1, writes.getLocks().size());
+      MultiRecordSecurityLock writeAlternatives = (MultiRecordSecurityLock) writes.getLocks().get(0);
+      assertEquals(OR, writeAlternatives.getOperator());
+      assertEquals(1, writeAlternatives.getLocks().size());
+      MultiRecordSecurityLock writeConjunction = (MultiRecordSecurityLock) writeAlternatives.getLocks().get(0);
+      assertEquals(AND, writeConjunction.getOperator());
+      assertEquals(2, writeConjunction.getLocks().size());
+      assertEquals("writeOnlyB", writeConjunction.getLocks().get(0).getFieldName());
+      assertMultiRecordSecurityLock((MultiRecordSecurityLock) writeConjunction.getLocks().get(1), OR, "sharedD");
+
+      MultiRecordSecurityLock reads = RecordSecurityLockFilters.filterForReadLockTree(List.of(original));
+      assertEquals(AND, reads.getOperator());
+      assertEquals(1, reads.getLocks().size());
+      MultiRecordSecurityLock readAlternatives = (MultiRecordSecurityLock) reads.getLocks().get(0);
+      assertEquals(OR, readAlternatives.getOperator());
+      assertEquals(2, readAlternatives.getLocks().size());
+      MultiRecordSecurityLock readConjunction = (MultiRecordSecurityLock) readAlternatives.getLocks().get(0);
+      assertEquals(AND, readConjunction.getOperator());
+      assertEquals(1, readConjunction.getLocks().size());
+      assertMultiRecordSecurityLock((MultiRecordSecurityLock) readConjunction.getLocks().get(0), OR, "readOnlyA");
+      MultiRecordSecurityLock mixedReadConjunction = (MultiRecordSecurityLock) readAlternatives.getLocks().get(1);
+      assertEquals(AND, mixedReadConjunction.getOperator());
+      assertEquals(1, mixedReadConjunction.getLocks().size());
+      assertMultiRecordSecurityLock((MultiRecordSecurityLock) mixedReadConjunction.getLocks().get(0), OR, "readOnlyC", "sharedD");
+      assertEquals(originalJson, JsonUtils.toJson(original));
+   }
+
+
+
+   /*******************************************************************************
+    ** Removal of the final applicable leaf must prune every empty ancestor.
+    *******************************************************************************/
+   @Test
+   void testWriteScopePrunesEntireReadOnlySubtree()
+   {
+      MultiRecordSecurityLock readBranch = new MultiRecordSecurityLock().withOperator(OR).withLocks(List.of(
+         new MultiRecordSecurityLock().withOperator(AND).withLocks(List.of(
+            new MultiRecordSecurityLock().withOperator(OR).withLocks(List.of(
+               new RecordSecurityLock().withFieldName("readOnly").withLockScope(RecordSecurityLock.LockScope.READ)
+            ))
+         ))
+      ));
+      assertMultiRecordSecurityLock(RecordSecurityLockFilters.filterForWriteLockTree(List.of(readBranch)), AND);
+      assertEquals(1, readBranch.getLocks().size());
    }
 
 

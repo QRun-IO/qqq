@@ -37,6 +37,8 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -63,8 +65,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantSetting;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsUtil;
-import com.kingsrook.qqq.backend.core.model.metadata.variants.LegacyBackendVariantSetting;
-import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.statusmessages.SystemErrorStatusMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -120,6 +120,27 @@ public class BaseAPIActionUtil
 
    protected APIBackendMetaData       backendMetaData;
    protected AbstractTableActionInput actionInput;
+
+
+
+   /*******************************************************************************
+    ** Override only when the provider can read every stored declared-key conflict.
+    ** Ordinary paginated queries may be visibility-filtered and are insufficient.
+    *******************************************************************************/
+   public List<QRecord> lookupUniqueKey(UniqueKeyLookup.Input input) throws QException
+   {
+      throw new QException("API provider does not implement complete unique-key lookup");
+   }
+
+
+
+   /*******************************************************************************
+    ** Ordinary upstream reads cannot promise complete physical relationship values.
+    *******************************************************************************/
+   public List<QRecord> readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput input) throws QException
+   {
+      throw new QException("API provider does not implement complete association-value lookup");
+   }
 
 
 
@@ -790,7 +811,7 @@ public class BaseAPIActionUtil
       if(backendMetaData.getUsesVariants())
       {
          QRecord record = BackendVariantsUtil.getVariantRecord(backendMetaData);
-         return (record.getValueString(getVariantSettingSourceFieldName(backendMetaData, LegacyBackendVariantSetting.API_KEY, APIBackendVariantSetting.API_KEY)));
+         return (record.getValueString(getVariantSettingSourceFieldName(backendMetaData, APIBackendVariantSetting.API_KEY)));
       }
 
       return (backendMetaData.getApiKey());
@@ -799,13 +820,12 @@ public class BaseAPIActionUtil
 
 
    /***************************************************************************
-    ** todo - once deprecated variant methods are removed from QBackendMetaData,
-    ** then we can remove the LegacyBackendVariantSetting enum, and this param.
+    **
     ***************************************************************************/
-   private String getVariantSettingSourceFieldName(APIBackendMetaData backendMetaData, LegacyBackendVariantSetting legacyBackendVariantSetting, APIBackendVariantSetting apiBackendVariantSetting)
+   private String getVariantSettingSourceFieldName(APIBackendMetaData backendMetaData, APIBackendVariantSetting apiBackendVariantSetting)
    {
       Map<BackendVariantSetting, String> map = CollectionUtils.nonNullMap(backendMetaData.getBackendVariantsConfig().getBackendSettingSourceFieldNameMap());
-      return map.getOrDefault(legacyBackendVariantSetting, map.get(apiBackendVariantSetting));
+      return map.get(apiBackendVariantSetting);
    }
 
 
@@ -819,8 +839,8 @@ public class BaseAPIActionUtil
       {
          QRecord record = BackendVariantsUtil.getVariantRecord(backendMetaData);
          return (Pair.of(
-            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, LegacyBackendVariantSetting.USERNAME, APIBackendVariantSetting.USERNAME)),
-            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, LegacyBackendVariantSetting.PASSWORD, APIBackendVariantSetting.PASSWORD))
+            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, APIBackendVariantSetting.USERNAME)),
+            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, APIBackendVariantSetting.PASSWORD))
          ));
       }
 
@@ -944,8 +964,8 @@ public class BaseAPIActionUtil
       {
          QRecord record = BackendVariantsUtil.getVariantRecord(backendMetaData);
          return (Pair.of(
-            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, LegacyBackendVariantSetting.CLIENT_ID, APIBackendVariantSetting.CLIENT_ID)),
-            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, LegacyBackendVariantSetting.CLIENT_SECRET, APIBackendVariantSetting.CLIENT_SECRET))
+            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, APIBackendVariantSetting.CLIENT_ID)),
+            record.getValueString(getVariantSettingSourceFieldName(backendMetaData, APIBackendVariantSetting.CLIENT_SECRET))
          ));
       }
 
@@ -968,18 +988,6 @@ public class BaseAPIActionUtil
     ** one-line method, factored out so mock/tests can override
     *******************************************************************************/
    protected CloseableHttpResponse executeOAuthTokenRequest(CloseableHttpClient client, HttpRequestBase request) throws IOException
-   {
-      return client.execute(request);
-   }
-
-
-
-   /*******************************************************************************
-    ** one-line method, factored out so mock/tests can override
-    ** Deprecated, in favor of more generic overload that takes HttpRequestBase
-    *******************************************************************************/
-   @Deprecated
-   protected CloseableHttpResponse executeOAuthTokenRequest(CloseableHttpClient client, HttpPost request) throws IOException
    {
       return client.execute(request);
    }
@@ -1484,17 +1492,6 @@ public class BaseAPIActionUtil
    public void setActionInput(AbstractTableActionInput actionInput)
    {
       this.actionInput = actionInput;
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for session
-    **
-    *******************************************************************************/
-   @Deprecated(since = "wasn't used.")
-   public void setSession(QSession session)
-   {
    }
 
 

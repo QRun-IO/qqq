@@ -82,6 +82,25 @@ class EnumerationCountActionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Count evaluates all matching enum records without changing a reusable page.
+    *******************************************************************************/
+   @Test
+   void testCountIgnoresPaginationAndPreservesFilter() throws QException
+   {
+      defineQInstance();
+      QQueryFilter filter = new QQueryFilter()
+         .withCriteria(new QFilterCriteria("population", QCriteriaOperator.GREATER_THAN, 20_000_000))
+         .withSkip(5).withLimit(0);
+      assertEquals(1, CountAction.execute("statesEnum", filter));
+      assertEquals(5, filter.getSkip());
+      assertEquals(0, filter.getLimit());
+      assertEquals(List.of(20_000_000), filter.getCriteria().get(0).getValues());
+      assertEquals(2, CountAction.execute("statesEnum", new QQueryFilter().withLimit(1)));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private QInstance defineQInstance()

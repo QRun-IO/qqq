@@ -139,6 +139,23 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("Named record associations and their joins, without child record access")
+   @OpenAPIListItems(value = Association.class, useRef = true)
+   public List<Association> getAssociations()
+   {
+      if(wrapped.getAssociations() == null)
+      {
+         return (null);
+      }
+
+      return (wrapped.getAssociations().stream().map(Association::new).toList());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @OpenAPIDescription("Additional meta data about the table, not necessarily known to QQQ.")
    public Map<String, QSupplementalTableMetaData> getSupplementalMetaData()
    {

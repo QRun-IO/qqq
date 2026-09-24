@@ -45,7 +45,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendComponen
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
-import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.ProcessInitOrStepOrStatusResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.WidgetBlock;
@@ -243,7 +243,7 @@ public class ProcessSpecUtilsV1
                String valueAsJsonString;
                try
                {
-                  valueAsJsonString = JsonUtils.toJson(valueToMakeIntoJson, mapper ->
+                  valueAsJsonString = JsonUtils.toJsonWithMapper(valueToMakeIntoJson, mapper ->
                   {
                      mapper.setSerializationInclusion(JsonInclude.Include.ALWAYS);
 

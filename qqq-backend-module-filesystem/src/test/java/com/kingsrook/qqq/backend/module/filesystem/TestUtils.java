@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -153,7 +154,7 @@ public class TestUtils
    public static QInstance defineInstance() throws QException
    {
       QInstance qInstance = new QInstance();
-      qInstance.setAuthentication(defineAuthentication());
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), defineAuthentication());
       qInstance.addBackend(defineLocalFilesystemBackend());
       qInstance.addTable(defineLocalFilesystemJSONPersonTable());
       qInstance.addTable(defineLocalFilesystemCSVPersonTable());

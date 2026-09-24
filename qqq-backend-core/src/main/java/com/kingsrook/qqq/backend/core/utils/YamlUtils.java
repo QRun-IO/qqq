@@ -72,35 +72,6 @@ public class YamlUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   @Deprecated(since = "since toYamlCustomized was added, which uses jackson's newer builder object for customization")
-   public static String toYaml(Object object, Consumer<ObjectMapper> objectMapperCustomizer)
-   {
-      try
-      {
-         YAMLFactory yamlFactory = new YAMLFactory()
-            .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER);
-
-         ObjectMapper objectMapper = new ObjectMapper(yamlFactory);
-         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
-
-         if(objectMapperCustomizer != null)
-         {
-            objectMapperCustomizer.accept(objectMapper);
-         }
-
-         objectMapper.findAndRegisterModules();
-         return (objectMapper.writeValueAsString(object));
-      }
-      catch(Exception e)
-      {
-         LOG.error("Error serializing object of type [" + object.getClass().getSimpleName() + "] to yaml", e);
-         throw new IllegalArgumentException("Error in YAML Serialization", e);
-      }
-   }
-
-
-
    /*******************************************************************************
     **
     *******************************************************************************/

@@ -77,28 +77,6 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
 
 
    /*******************************************************************************
-    * With the introduction of TablePersonalization in 0.27, if an instance has a
-    * table personalizer, it is expected that such personalization may or may not
-    * need to apply based on the InputSource of the action (e.g., USER vs SYSTEM).
-    * As such, that property needs to be known in this method chain, so, the former
-    * input here is no longer adequate - hence, deprecated.
-    *
-    * If this method is used, the default input source of SYSTEM will be used, so
-    * a table-personalizer that only applies for inputSource=USER would not be applied.
-    *******************************************************************************/
-   @Deprecated(since = "0.27.0 - call the overload that takes Input object")
-   public static Map<String, QFieldMetaData> getTableApiFieldMap(ApiNameVersionAndTableName apiNameVersionAndTableName) throws QException
-   {
-      return getTableApiFieldMap(new GetTableApiFieldsInput()
-         .withTableName(apiNameVersionAndTableName.tableName())
-         .withApiName(apiNameVersionAndTableName.apiName())
-         .withVersion(apiNameVersionAndTableName.apiVersion())
-      );
-   }
-
-
-
-   /*******************************************************************************
     ** convenience (and caching) wrapper
     *******************************************************************************/
    public static Map<String, QFieldMetaData> getTableApiFieldMap(GetTableApiFieldsInput input) throws QException
@@ -136,22 +114,6 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
 
 
    /*******************************************************************************
-    * @see #getTableApiFieldMap(GetTableApiFieldsInput) for comment on deprecation
-    * here re: table personalization and input source.
-    *******************************************************************************/
-   @Deprecated(since = "0.27.0 - call the overload that takes Input object")
-   public static List<QFieldMetaData> getTableApiFieldList(ApiNameVersionAndTableName apiNameVersionAndTableName) throws QException
-   {
-      return getTableApiFieldList(new GetTableApiFieldsInput()
-         .withTableName(apiNameVersionAndTableName.tableName())
-         .withApiName(apiNameVersionAndTableName.apiName())
-         .withVersion(apiNameVersionAndTableName.apiVersion())
-      );
-   }
-
-
-
-   /*******************************************************************************
     ** convenience (and caching) wrapper
     *******************************************************************************/
    public static List<QFieldMetaData> getTableApiFieldList(GetTableApiFieldsInput input) throws QException
@@ -160,16 +122,6 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
       MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource());
 
       return fieldListMemoization.getResultThrowing(key, k -> (new GetTableApiFieldsAction().execute(input).getFields())).orElse(null);
-   }
-
-
-
-   /*******************************************************************************
-    ** Input-record for convenience methods
-    *******************************************************************************/
-   public record ApiNameVersionAndTableName(String apiName, String apiVersion, String tableName)
-   {
-
    }
 
 

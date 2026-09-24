@@ -27,6 +27,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -37,6 +38,17 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
  *******************************************************************************/
 class SampleCliTest
 {
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void clearContext()
+   {
+      QContext.clear();
+   }
+
+
+
 
    /*******************************************************************************
     **
@@ -63,5 +75,36 @@ class SampleCliTest
       int exitCode = new SampleCli().run(qInstance, new String[] { "asdfasdf" });
       assertNotEquals(0, exitCode);
    }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testHelpWithExplicitMockAuthentication()
+   {
+      String originalProperty = System.getProperty("qqq.sample.mockAuthentication");
+      try
+      {
+         System.setProperty("qqq.sample.mockAuthentication", "true");
+         QContext.clear();
+         assertEquals(0, new SampleCli().run(new String[] { "--help" }));
+      }
+      finally
+      {
+         QContext.clear();
+         if(originalProperty == null)
+         {
+            System.clearProperty("qqq.sample.mockAuthentication");
+         }
+         else
+         {
+            System.setProperty("qqq.sample.mockAuthentication", originalProperty);
+         }
+      }
+   }
+
+
 
 }

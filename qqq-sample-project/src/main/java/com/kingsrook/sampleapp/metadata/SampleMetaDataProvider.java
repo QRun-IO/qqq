@@ -22,6 +22,7 @@
 package com.kingsrook.sampleapp.metadata;
 
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
@@ -37,12 +38,15 @@ import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.instances.loaders.MetaDataLoaderHelper;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecordEnum;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerHelper;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -74,6 +78,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.RedirectStateMetaDataProducer;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionMetaDataProducer;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.enumeration.EnumerationBackendModule;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.enumeration.EnumerationTableBackendDetails;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.LoadViaInsertStep;
@@ -98,11 +104,10 @@ import org.apache.commons.io.IOUtils;
  *******************************************************************************/
 public class SampleMetaDataProvider extends AbstractQQQApplication
 {
-   public static boolean USE_MYSQL = false;
-
-   public static final String RDBMS_BACKEND_NAME      = "rdbms";
-   public static final String FILESYSTEM_BACKEND_NAME = "filesystem";
-   public static final String MEMORY_BACKEND_NAME     = "memory";
+   public static final String RDBMS_BACKEND_NAME       = "rdbms";
+   public static final String FILESYSTEM_BACKEND_NAME  = "filesystem";
+   public static final String MEMORY_BACKEND_NAME      = "memory";
+   public static final String ENUMERATION_BACKEND_NAME = "enumeration";
 
    public static final String APP_NAME_GREETINGS     = "greetingsApp";
    public static final String APP_NAME_PEOPLE        = "peopleApp";
@@ -115,10 +120,11 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    public static final String PROCESS_NAME_SIMPLE_THROW      = "simpleThrow";
    public static final String PROCESS_NAME_SLEEP_INTERACTIVE = "sleepInteractive";
 
-   public static final String TABLE_NAME_PERSON  = "person";
-   public static final String TABLE_NAME_PET     = "pet";
-   public static final String TABLE_NAME_CARRIER = "carrier";
-   public static final String TABLE_NAME_CITY    = "city";
+   public static final String TABLE_NAME_PERSON   = "person";
+   public static final String TABLE_NAME_PET      = "pet";
+   public static final String TABLE_NAME_PET_NOTE = "petNote";
+   public static final String TABLE_NAME_CARRIER  = "carrier";
+   public static final String TABLE_NAME_CITY     = "city";
 
    public static final String STEP_NAME_SLEEPER = "sleeper";
    public static final String STEP_NAME_THROWER = "thrower";
@@ -128,13 +134,51 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
 
 
+   private final String metadataDirectory;
+
+
+
+   /*******************************************************************************
+    ** Use the metadata bundled with the sample.
+    *******************************************************************************/
+   public SampleMetaDataProvider()
+   {
+      this(null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Optionally apply external metadata definitions after the bundled sample.
+    *******************************************************************************/
+   public SampleMetaDataProvider(String metadataDirectory)
+   {
+      this.metadataDirectory = metadataDirectory;
+   }
+
+
+
    /***************************************************************************
     **
     ***************************************************************************/
    @Override
    public QInstance defineQInstance() throws QException
    {
-      return (defineInstance());
+      boolean sharingDemo = Boolean.getBoolean("qqq.sample.sharing");
+      if(sharingDemo && !Boolean.getBoolean("qqq.sample.mockAuthentication"))
+      {
+         throw new QException("The sharing demo requires qqq.sample.mockAuthentication=true.");
+      }
+      QInstance instance = Boolean.getBoolean("qqq.sample.mockAuthentication") ? defineTestInstance() : defineInstance();
+      if(sharingDemo)
+      {
+         new SampleSharingMetaDataProvider().defineAll(instance);
+      }
+      if(metadataDirectory != null)
+      {
+         MetaDataLoaderHelper.processAllMetaDataFilesInDirectory(instance, metadataDirectory);
+      }
+      return instance;
    }
 
 
@@ -148,13 +192,23 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
       qInstance.addBackend(defineRdbmsBackend());
       qInstance.addBackend(defineMemoryBackend());
+      qInstance.addBackend(new QBackendMetaData().withName(ENUMERATION_BACKEND_NAME).withBackendType(EnumerationBackendModule.class));
       qInstance.addBackend(defineFilesystemBackend());
       qInstance.addTable(defineTableCarrier());
       qInstance.addTable(defineTablePerson());
       qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PERSON));
       qInstance.addPossibleValueSource(QPossibleValueSource.newForEnum(PetSpecies.NAME, PetSpecies.values()));
       qInstance.addTable(defineTablePet());
+      qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PET));
+      qInstance.addTable(defineTablePetNote());
+      qInstance.addTable(new QTableMetaData().withName(PetSpecies.NAME).withLabel("Pet Species")
+         .withBackendName(ENUMERATION_BACKEND_NAME).withBackendDetails(new EnumerationTableBackendDetails().withEnumClass(PetSpecies.class))
+         .withPrimaryKeyField("possibleValueId").withRecordLabelFormat("%s").withRecordLabelFields("possibleValueLabel")
+         .withField(new QFieldMetaData("possibleValueId", QFieldType.INTEGER).withLabel("ID"))
+         .withField(new QFieldMetaData("possibleValueLabel", QFieldType.STRING).withLabel("Species")));
       qInstance.addJoin(defineTablePersonJoinPet());
+      qInstance.addJoin(new QJoinMetaData().withName("petJoinNote").withLeftTable(TABLE_NAME_PET).withRightTable(TABLE_NAME_PET_NOTE)
+         .withType(JoinType.ONE_TO_MANY).withJoinOn(new JoinOn("id", "petId")));
       qInstance.addTable(defineTableCityFile());
       qInstance.addProcess(defineProcessGreetPeople());
       qInstance.addProcess(defineProcessGreetPeopleInteractive());
@@ -198,7 +252,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    public static QInstance defineTestInstance() throws QException
    {
       QInstance qInstance = defineInstance();
-      qInstance.setAuthentication(defineAuthentication());
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), defineAuthentication());
       return qInstance;
    }
 
@@ -221,9 +275,21 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
     *******************************************************************************/
    public static void primeTestDatabase(String sqlFileName) throws Exception
    {
-      try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend()))
+      try(Connection connection = ConnectionManager.getConnection(defineRdbmsBackend());
+         InputStream primeTestDatabaseSqlStream = SampleMetaDataProvider.class.getResourceAsStream("/" + sqlFileName))
       {
-         InputStream  primeTestDatabaseSqlStream = SampleMetaDataProvider.class.getResourceAsStream("/" + sqlFileName);
+         //////////////////////////////////////////////////////////////////////////////////////
+         // Connection providers are cached by backend name; refuse a reused external provider //
+         // before any fixture SQL can reset data outside the sample's in-memory database.     //
+         //////////////////////////////////////////////////////////////////////////////////////
+         if(!"jdbc:h2:mem:test_database".equals(connection.getMetaData().getURL()))
+         {
+            throw new IllegalStateException("Sample reset requires the owned in-memory H2 database.");
+         }
+         if(primeTestDatabaseSqlStream == null)
+         {
+            throw new IllegalArgumentException("Missing sample database resource: " + sqlFileName);
+         }
          List<String> lines                      = IOUtils.readLines(primeTestDatabaseSqlStream, StandardCharsets.UTF_8);
          lines = lines.stream().filter(line -> !line.startsWith("-- ")).toList();
          String joinedSQL = String.join("\n", lines);
@@ -242,6 +308,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    private static void defineBranding(QInstance qInstance)
    {
       qInstance.setBranding(new QBrandingMetaData()
+         .withAppName("QQQ Sample")
          .withLogo("/samples-logo.png")
          .withIcon("/kr-icon.png"));
    }
@@ -290,6 +357,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withChild(qInstance.getProcess(PROCESS_NAME_GREET).withIcon(new QIcon().withName("emoji_people")))
          .withChild(qInstance.getTable(TABLE_NAME_PERSON).withIcon(new QIcon().withName("person")))
          .withChild(qInstance.getTable(TABLE_NAME_PET).withIcon(new QIcon().withName("pets")))
+         .withChild(qInstance.getTable(TABLE_NAME_PET_NOTE).withIcon(new QIcon().withName("notes")))
          .withChild(qInstance.getTable(TABLE_NAME_CITY).withIcon(new QIcon().withName("location_city")))
          .withChild(qInstance.getProcess(PROCESS_NAME_GREET_INTERACTIVE).withIcon(new QIcon().withName("waving_hand")))
          .withWidgets(List.of(PersonsByCreateDateBarChart.class.getSimpleName(), QuickSightChartRenderer.class.getSimpleName()))
@@ -306,6 +374,8 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withName(APP_NAME_MISCELLANEOUS)
          .withIcon(new QIcon().withName("stars"))
          .withChild(qInstance.getTable(TABLE_NAME_CARRIER).withIcon(new QIcon("local_shipping")))
+         .withChild(qInstance.getTable(FieldLabTableMetaDataProducer.NAME).withIcon(new QIcon("science")))
+         .withChild(qInstance.getTable(PetSpecies.NAME).withIcon(new QIcon("pets")))
          .withChild(qInstance.getProcess(PROCESS_NAME_SIMPLE_SLEEP))
          .withChild(qInstance.getProcess(PROCESS_NAME_SLEEP_INTERACTIVE))
          .withChild(qInstance.getProcess(PROCESS_NAME_SIMPLE_THROW)));
@@ -330,34 +400,13 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
     *******************************************************************************/
    public static RDBMSBackendMetaData defineRdbmsBackend()
    {
-      if(USE_MYSQL)
-      {
-         QMetaDataVariableInterpreter interpreter  = new QMetaDataVariableInterpreter();
-         String                       vendor       = interpreter.interpret("${env.RDBMS_VENDOR}");
-         String                       hostname     = interpreter.interpret("${env.RDBMS_HOSTNAME}");
-         Integer                      port         = Integer.valueOf(interpreter.interpret("${env.RDBMS_PORT}"));
-         String                       databaseName = interpreter.interpret("${env.RDBMS_DATABASE_NAME}");
-         String                       username     = interpreter.interpret("${env.RDBMS_USERNAME}");
-         String                       password     = interpreter.interpret("${env.RDBMS_PASSWORD}");
-
-         return new RDBMSBackendMetaData()
-            .withName(RDBMS_BACKEND_NAME)
-            .withVendor(vendor)
-            .withHostName(hostname)
-            .withPort(port)
-            .withDatabaseName(databaseName)
-            .withUsername(username)
-            .withPassword(password);
-      }
-      else
-      {
-         return (new RDBMSBackendMetaData()
-            .withName(RDBMS_BACKEND_NAME)
-            .withVendor("h2")
-            .withHostName("mem")
-            .withDatabaseName("test_database")
-            .withUsername("sa"));
-      }
+      return new RDBMSBackendMetaData()
+         .withName(RDBMS_BACKEND_NAME)
+         .withVendor("h2")
+         .withHostName("mem")
+         .withDatabaseName("test_database")
+         .withQueriesForNewConnections(List.of("SET TIME ZONE 'UTC'"))
+         .withUsername("sa");
    }
 
 
@@ -411,39 +460,19 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QTableMetaData defineTablePerson()
+   public static QTableMetaData defineTablePerson() throws QException
    {
-      QTableMetaData qTableMetaData = new QTableMetaData()
-         .withName(TABLE_NAME_PERSON)
-         .withLabel("Person")
-         .withBackendName(RDBMS_BACKEND_NAME)
-         .withPrimaryKeyField("id")
-         .withRecordLabelFormat("%s %s")
-         .withRecordLabelFields("firstName", "lastName")
-         .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
-         .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withBackendName("create_date").withIsEditable(false))
-         .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withBackendName("modify_date").withIsEditable(false))
-         .withField(new QFieldMetaData("firstName", QFieldType.STRING).withBackendName("first_name").withIsRequired(true))
-         .withField(new QFieldMetaData("lastName", QFieldType.STRING).withBackendName("last_name").withIsRequired(true))
-         .withField(new QFieldMetaData("birthDate", QFieldType.DATE).withBackendName("birth_date"))
-         .withField(new QFieldMetaData("email", QFieldType.STRING).withIsRequired(true))
-         .withField(new QFieldMetaData("isEmployed", QFieldType.BOOLEAN).withBackendName("is_employed"))
-         .withField(new QFieldMetaData("annualSalary", QFieldType.DECIMAL).withBackendName("annual_salary").withDisplayFormat(DisplayFormat.CURRENCY))
-         .withField(new QFieldMetaData("daysWorked", QFieldType.INTEGER).withBackendName("days_worked").withDisplayFormat(DisplayFormat.COMMAS))
-
-         .withSection(new QFieldSection("identity", "Identity", new QIcon("badge"), Tier.T1, List.of("id", "firstName", "lastName")))
-         .withSection(new QFieldSection("basicInfo", "Basic Info", new QIcon("dataset"), Tier.T2, List.of("email", "birthDate")))
-         .withSection(new QFieldSection("employmentInfo", "Employment Info", new QIcon("work"), Tier.T2, List.of("isEmployed", "annualSalary", "daysWorked")))
-         .withSection(new QFieldSection("dates", "Dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
-
-      QInstanceEnricher.setInferredFieldBackendNames(qTableMetaData);
-
-      qTableMetaData.withAssociation(new Association()
-         .withAssociatedTableName(TABLE_NAME_PET)
-         .withName("pets")
-         .withJoinName(QJoinMetaData.makeInferredJoinName(TABLE_NAME_PERSON, TABLE_NAME_PET)));
-
-      return (qTableMetaData);
+      String resource = "/metadata/personTable.yaml";
+      try(InputStream input = SampleMetaDataProvider.class.getResourceAsStream(resource))
+      {
+         QTableMetaData table = (QTableMetaData) MetaDataLoaderHelper.readMetaDataFile(new QInstance(), input, resource);
+         QInstanceEnricher.setInferredFieldBackendNames(table);
+         return table;
+      }
+      catch(IOException e)
+      {
+         throw new QException("Unable to read the bundled Person metadata.", e);
+      }
    }
 
 
@@ -458,7 +487,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withLabel("Pet")
          .withBackendName(RDBMS_BACKEND_NAME)
          .withPrimaryKeyField("id")
-         .withRecordLabelFormat("%s %s")
+         .withRecordLabelFormat("%s")
          .withRecordLabelFields("name")
          .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
          .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withBackendName("create_date").withIsEditable(false))
@@ -467,6 +496,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withField(new QFieldMetaData("personId", QFieldType.INTEGER).withBackendName("person_id").withIsRequired(true).withPossibleValueSourceName(TABLE_NAME_PERSON))
          .withField(new QFieldMetaData("speciesId", QFieldType.INTEGER).withBackendName("species_id").withIsRequired(true).withPossibleValueSourceName(PetSpecies.NAME))
          .withField(new QFieldMetaData("birthDate", QFieldType.DATE).withBackendName("birth_date"))
+         .withAssociation(new Association().withName("notes").withAssociatedTableName(TABLE_NAME_PET_NOTE).withJoinName("petJoinNote"))
 
          .withSection(new QFieldSection("identity", "Identity", new QIcon("badge"), Tier.T1, List.of("id", "name")))
          .withSection(new QFieldSection("basicInfo", "Basic Info", new QIcon("dataset"), Tier.T2, List.of("personId", "speciesId", "birthDate")))
@@ -475,6 +505,28 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       QInstanceEnricher.setInferredFieldBackendNames(qTableMetaData);
 
       return (qTableMetaData);
+   }
+
+
+
+   /*******************************************************************************
+    ** Pet notes make Person/pets/notes a runnable three-level association graph.
+    *******************************************************************************/
+   public static QTableMetaData defineTablePetNote()
+   {
+      QTableMetaData table = new QTableMetaData().withName(TABLE_NAME_PET_NOTE).withLabel("Pet Note")
+         .withBackendName(RDBMS_BACKEND_NAME).withBackendDetails(new RDBMSTableBackendDetails().withTableName("pet_note"))
+         .withPrimaryKeyField("id").withRecordLabelFormat("%s").withRecordLabelFields("note")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
+         .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withIsEditable(false))
+         .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withIsEditable(false))
+         .withField(new QFieldMetaData("petId", QFieldType.INTEGER).withIsRequired(true).withPossibleValueSourceName(TABLE_NAME_PET))
+         .withField(new QFieldMetaData("note", QFieldType.STRING).withIsRequired(true).withMaxLength(80))
+         .withSection(new QFieldSection("identity", "Identity", new QIcon("notes"), Tier.T1, List.of("id", "note")))
+         .withSection(new QFieldSection("pet", "Pet", new QIcon("pets"), Tier.T2, List.of("petId")))
+         .withSection(new QFieldSection("dates", "Dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
+      QInstanceEnricher.setInferredFieldBackendNames(table);
+      return table;
    }
 
 
@@ -779,7 +831,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    /***************************************************************************
     **
     ***************************************************************************/
-   public enum PetSpecies implements PossibleValueEnum<Integer>
+   public enum PetSpecies implements PossibleValueEnum<Integer>, QRecordEnum
    {
       DOG(1, "Dog"),
       CAT(2, "Cat");

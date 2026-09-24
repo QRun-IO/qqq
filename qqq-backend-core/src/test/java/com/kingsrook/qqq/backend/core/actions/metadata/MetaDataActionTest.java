@@ -361,53 +361,6 @@ class MetaDataActionTest extends BaseTest
 
 
 
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   @Test
-   @Deprecated(since = "migrated to metaDataCustomizer")
-   void testFilter() throws QException
-   {
-      //////////////////////////////////////////////////////
-      // run default version, and assert tables are found //
-      //////////////////////////////////////////////////////
-      MetaDataOutput result = new MetaDataAction().execute(new MetaDataInput());
-      assertFalse(result.getTables().isEmpty(), "should be some tables");
-
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // run again (with the same instance as before) to assert about memoization of the filter based on the QInstance //
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      new MetaDataAction().execute(new MetaDataInput());
-
-      /////////////////////////////////////////////////////////////
-      // set up new instance to use a custom filter, to deny all //
-      /////////////////////////////////////////////////////////////
-      QInstance instance = TestUtils.defineInstance();
-      instance.setMetaDataFilter(new QCodeReference(DenyAllFilter.class));
-      reInitInstanceInContext(instance);
-
-      /////////////////////////////////////////////////////
-      // re-run, and assert all tables are filtered away //
-      /////////////////////////////////////////////////////
-      result = new MetaDataAction().execute(new MetaDataInput());
-      assertTrue(result.getTables().isEmpty(), "should be no tables");
-
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // run again (with the same instance as before) to assert about memoization of the filter based on the QInstance //
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      new MetaDataAction().execute(new MetaDataInput());
-
-      ////////////////////////////////////////////////////////////
-      // run now with the AllowAllFilter, confirm we get tables //
-      ////////////////////////////////////////////////////////////
-      instance = TestUtils.defineInstance();
-      instance.setMetaDataFilter(new QCodeReference(AllowAllMetaDataFilter.class));
-      reInitInstanceInContext(instance);
-      result = new MetaDataAction().execute(new MetaDataInput());
-      assertFalse(result.getTables().isEmpty(), "should be some tables");
-   }
-
-
 
    /*******************************************************************************
     **
@@ -901,68 +854,6 @@ class MetaDataActionTest extends BaseTest
       AppTreeNode peopleAppTreeNode      = metaDataOutput.getAppTree().stream().filter(a -> a.getName().equals("peopleApp")).findFirst().get();
       AppTreeNode personTableInPeopleApp = peopleAppTreeNode.getChildren().stream().filter(c -> c.getName().equals(TestUtils.TABLE_NAME_PERSON)).findFirst().get();
       assertEquals(4, personTableInPeopleApp.getAppAffinity());
-   }
-
-
-
-   /***************************************************************************
-    **
-    ***************************************************************************/
-   @SuppressWarnings("deprecation") // the point of this test is to use the deprecated thing.
-   public static class DenyAllFilter implements MetaDataFilterInterface
-   {
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Override
-      public boolean allowTable(MetaDataInput input, QTableMetaData table)
-      {
-         return false;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Override
-      public boolean allowProcess(MetaDataInput input, QProcessMetaData process)
-      {
-         return false;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Override
-      public boolean allowReport(MetaDataInput input, QReportMetaData report)
-      {
-         return false;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Override
-      public boolean allowApp(MetaDataInput input, QAppMetaData app)
-      {
-         return false;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Override
-      public boolean allowWidget(MetaDataInput input, QWidgetMetaDataInterface widget)
-      {
-         return false;
-      }
    }
 
 

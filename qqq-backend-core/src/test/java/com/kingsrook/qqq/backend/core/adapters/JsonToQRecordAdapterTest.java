@@ -196,4 +196,6 @@ class JsonToQRecordAdapterTest extends BaseTest
       testExpectedToThrow("[ 1701 ]");
    }
 
+
+
 }

@@ -48,6 +48,17 @@ import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
 public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
 {
 
+   /*******************************************************************************
+    ** PostgreSQL requires DEFAULT VALUES when no columns are supplied.
+    *******************************************************************************/
+   @Override
+   public String getInsertDefaultValuesClause()
+   {
+      return "DEFAULT VALUES";
+   }
+
+
+
    /***************************************************************************
     ** PostgreSQL uses RETURNING clause for getting generated IDs.
     ** This is more efficient than the default JDBC approach.

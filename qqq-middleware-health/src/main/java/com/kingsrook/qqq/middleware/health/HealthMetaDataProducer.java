@@ -27,8 +27,8 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
-import com.kingsrook.qqq.backend.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.health.model.metadata.HealthCheckMetaData;
+import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 

@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 
 /*******************************************************************************
@@ -67,17 +68,6 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
 
       try
       {
-         List<QFieldMetaData> insertableFields = table.getFields().values().stream()
-            .filter(field -> !field.getName().equals("id")) // todo - intent here is to avoid non-insertable fields.
-            .toList();
-
-         String columns = insertableFields.stream()
-            .map(f -> escapeIdentifier(getColumnName(f)))
-            .collect(Collectors.joining(", "));
-         String questionMarks = insertableFields.stream()
-            .map(x -> "?")
-            .collect(Collectors.joining(", "));
-
          List<QRecord> outputRecords = new ArrayList<>();
          rs.setRecords(outputRecords);
 
@@ -91,10 +81,25 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             needToCloseConnection = true;
          }
 
-         for(List<QRecord> page : CollectionUtils.getPages(insertInput.getRecords(), getActionStrategy().getPageSize(insertInput)))
+         QFieldMetaData primaryKeyField = table.getField(table.getPrimaryKeyField());
+         for(List<QRecord> page : insertPages(insertInput, primaryKeyField))
          {
+            boolean suppliedKeys = page.stream().filter(record -> CollectionUtils.nullSafeIsEmpty(record.getErrors()))
+               .anyMatch(record -> scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName())) != null);
+            boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(primaryKeyField, page.get(0).getValue(primaryKeyField.getName())));
+            List<QFieldMetaData> insertableFields = table.getFields().values().stream()
+               .filter(field -> suppliedKeys || !field.getName().equals(table.getPrimaryKeyField())).toList();
+            String columns = insertableFields.stream().map(field -> escapeIdentifier(getColumnName(field))).collect(Collectors.joining(", "));
             String backendTableName = escapeIdentifier(getTableName(table));
-            sql = new StringBuilder("INSERT INTO ").append(backendTableName).append("(").append(columns).append(") VALUES");
+            sql = new StringBuilder("INSERT INTO ").append(backendTableName);
+            if(insertableFields.isEmpty())
+            {
+               sql.append(" ").append(getActionStrategy().getInsertDefaultValuesClause());
+            }
+            else
+            {
+               sql.append("(").append(columns).append(") VALUES");
+            }
             params = new ArrayList<>();
             int recordIndex = 0;
 
@@ -110,19 +115,28 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
                {
                   continue;
                }
+               if(insertableFields.isEmpty())
+               {
+                  recordIndex++;
+                  continue;
+               }
 
                if(recordIndex++ > 0)
                {
                   sql.append(",");
                }
-               sql.append("(").append(questionMarks).append(")");
-
-               for(QFieldMetaData field : insertableFields)
+               sql.append("(");
+               for(int fieldIndex = 0; fieldIndex < insertableFields.size(); fieldIndex++)
                {
-                  Serializable value = record.getValue(field.getName());
-                  value = scrubValue(field, value);
-                  params.add(value);
+                  QFieldMetaData field = insertableFields.get(fieldIndex);
+                  if(fieldIndex > 0)
+                  {
+                     sql.append(",");
+                  }
+                  sql.append("?");
+                  params.add(scrubValue(field, record.getValue(field.getName())));
                }
+               sql.append(")");
             }
 
             ////////////////////////////////////////////////////////////////////////////////////////
@@ -149,10 +163,29 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             // add it to the output, and set its generated id too.   //
             ///////////////////////////////////////////////////////////
             // todo sql customization - can edit sql and/or param list
-            // todo - non-serial-id style tables
             // todo - other generated values, e.g., createDate...  maybe need to re-select?
-            List<Serializable> idList = getActionStrategy().executeInsertForGeneratedIds(connection, sql.toString(), params, table.getField(table.getPrimaryKeyField()));
-            int                index  = 0;
+            List<Serializable> idList = List.of();
+            if(suppliedKeys && !zeroKey)
+            {
+               getActionStrategy().executeUpdateForRowCount(connection, sql.toString(), params.toArray());
+            }
+            else if(insertableFields.isEmpty())
+            {
+               idList = new ArrayList<>();
+               for(int record = 0; record < recordIndex; record++)
+               {
+                  idList.addAll(getActionStrategy().executeInsertForGeneratedIds(connection, sql.toString(), params, table.getField(table.getPrimaryKeyField())));
+               }
+            }
+            else
+            {
+               idList = getActionStrategy().executeInsertForGeneratedIds(connection, sql.toString(), params, table.getField(table.getPrimaryKeyField()));
+            }
+            if(zeroKey && (idList.size() > 1 || (idList.size() == 1 && idList.get(0) == null)))
+            {
+               throw new QException("Backend returned an invalid generated-key result for one zero-key insert");
+            }
+            int index = 0;
             for(QRecord record : page)
             {
                QRecord outputRecord = new QRecord(record);
@@ -197,6 +230,67 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
          }
       }
 
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep supplied and generated keys in separate statements, in input order.
+    ** Drivers need not return supplied keys alongside generated keys in a batch.
+    *******************************************************************************/
+   private List<List<QRecord>> insertPages(InsertInput input, QFieldMetaData primaryKeyField)
+   {
+      List<List<QRecord>> result = new ArrayList<>();
+      for(List<QRecord> page : CollectionUtils.getPages(input.getRecords(), getActionStrategy().getPageSize(input)))
+      {
+         int start = 0;
+         Boolean suppliedKeys = null;
+         for(int index = 0; index < page.size(); index++)
+         {
+            QRecord record = page.get(index);
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+            {
+               continue;
+            }
+            Serializable keyValue = scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName()));
+            if(isZeroPrimaryKey(primaryKeyField, keyValue))
+            {
+               //////////////////////////////////////////////////////////////////////////////////////////////////////
+               // Some identity columns generate a new key from zero. Isolate it so returned keys cannot misalign. //
+               //////////////////////////////////////////////////////////////////////////////////////////////////////
+               if(index > start)
+               {
+                  result.add(page.subList(start, index));
+               }
+               result.add(page.subList(index, index + 1));
+               start = index + 1;
+               suppliedKeys = null;
+               continue;
+            }
+            boolean supplied = keyValue != null;
+            if(suppliedKeys != null && suppliedKeys != supplied)
+            {
+               result.add(page.subList(start, index));
+               start = index;
+            }
+            suppliedKeys = supplied;
+         }
+         if(start < page.size())
+         {
+            result.add(page.subList(start, page.size()));
+         }
+      }
+      return result;
+   }
+
+
+
+   /*******************************************************************************
+    ** String natural keys keep their literal value, including "0" and empty text.
+    *******************************************************************************/
+   private boolean isZeroPrimaryKey(QFieldMetaData field, Serializable value)
+   {
+      return field.getType().isNumeric() && value != null && ValueUtils.getValueAsBigDecimal(value).signum() == 0;
    }
 
 }

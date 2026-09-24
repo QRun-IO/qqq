@@ -143,9 +143,6 @@ public class QInstance
 
    private ListingHash<String, QCodeReference> tableCustomizers;
 
-   @Deprecated(since = "migrated to metaDataCustomizer")
-   private QCodeReference metaDataFilter = null;
-
    private QCodeReference metaDataActionCustomizer = null;
 
    //////////////////////////////////////////////////////////////////////////////////////
@@ -1108,26 +1105,6 @@ public class QInstance
 
 
    /*******************************************************************************
-    ** Setter for authentication
-    **
-    ** @deprecated Use {@link #registerAuthenticationProvider(AuthScope, QAuthenticationMetaData)}
-    **             with {@link AuthScope#instanceDefault()} instead, or use
-    **             {@link #withInstanceDefaultAuthentication(QAuthenticationMetaData)} for fluent chaining.
-    **             This method automatically registers the provider under the instance default scope.
-    *******************************************************************************/
-   @Deprecated(since = "Use registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData) instead")
-   public QInstance setAuthentication(QAuthenticationMetaData authentication)
-   {
-      this.authentication = authentication;
-      if(authentication != null)
-      {
-         registerAuthenticationProvider(AuthScope.instanceDefault(), authentication);
-      }
-      return this; // Enable chaining
-   }
-
-
-   /*******************************************************************************
     ** Fluent setter for instance default authentication.
     **
     ** <p>This is a convenience method that registers the authentication provider
@@ -1139,7 +1116,8 @@ public class QInstance
     *******************************************************************************/
    public QInstance withInstanceDefaultAuthentication(QAuthenticationMetaData authMetaData)
    {
-      return setAuthentication(authMetaData);
+      registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData);
+      return (this);
    }
 
 
@@ -1800,40 +1778,6 @@ public class QInstance
       }
 
       QInstanceHelpContentManager.removeHelpContentByRoleSetFromList(roles, listForSlot);
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for metaDataFilter
-    *******************************************************************************/
-   @Deprecated(since = "migrated to metaDataCustomizer")
-   public QCodeReference getMetaDataFilter()
-   {
-      return (this.metaDataFilter);
-   }
-
-
-
-   /*******************************************************************************
-    ** Setter for metaDataFilter
-    *******************************************************************************/
-   @Deprecated(since = "migrated to metaDataCustomizer")
-   public void setMetaDataFilter(QCodeReference metaDataFilter)
-   {
-      this.metaDataFilter = metaDataFilter;
-   }
-
-
-
-   /*******************************************************************************
-    ** Fluent setter for metaDataFilter
-    *******************************************************************************/
-   @Deprecated(since = "migrated to metaDataCustomizer")
-   public QInstance withMetaDataFilter(QCodeReference metaDataFilter)
-   {
-      this.metaDataFilter = metaDataFilter;
-      return (this);
    }
 
 

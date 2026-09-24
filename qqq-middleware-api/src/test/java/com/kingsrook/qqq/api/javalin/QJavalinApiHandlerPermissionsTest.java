@@ -30,7 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
-import com.kingsrook.qqq.backend.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import io.javalin.apibuilder.EndpointGroup;
 import kong.unirest.Unirest;
 import org.eclipse.jetty.http.HttpStatus;

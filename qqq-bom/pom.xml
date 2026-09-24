@@ -91,6 +91,31 @@
             <artifactId>qqq-language-support-javascript</artifactId>
             <version>${revision}</version>
          </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-backend-module-sqlite</artifactId>
+            <version>${revision}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-backend-module-postgres</artifactId>
+            <version>${revision}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-middleware-lambda</artifactId>
+            <version>${revision}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-middleware-health</artifactId>
+            <version>${revision}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-utility-lambdas</artifactId>
+            <version>${revision}</version>
+         </dependency>
       </dependencies>
    </dependencyManagement>
 

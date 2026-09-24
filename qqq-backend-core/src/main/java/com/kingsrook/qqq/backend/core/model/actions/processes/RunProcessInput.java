@@ -33,6 +33,8 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
@@ -44,6 +46,8 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
  *******************************************************************************/
 public class RunProcessInput extends AbstractActionInput
 {
+   private InputSource inputSource = QInputSource.SYSTEM;
+
    private String               processName;
    private QProcessCallback     callback;
    private ProcessState         processState;
@@ -540,4 +544,35 @@ public class RunProcessInput extends AbstractActionInput
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Source of caller values and automatic record loading. Backend code continues
+    ** to choose the source for its own actions independently.
+    *******************************************************************************/
+   public InputSource getInputSource()
+   {
+      return (inputSource);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void setInputSource(InputSource inputSource)
+   {
+      this.inputSource = inputSource;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public RunProcessInput withInputSource(InputSource inputSource)
+   {
+      setInputSource(inputSource);
+      return (this);
+   }
 }

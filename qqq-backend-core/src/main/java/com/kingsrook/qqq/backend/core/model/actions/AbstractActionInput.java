@@ -32,7 +32,6 @@ import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.session.QSession;
 
 
 /*******************************************************************************
@@ -88,34 +87,6 @@ public class AbstractActionInput
             throw (new IllegalArgumentException("QInstance failed validation" + e.getMessage(), e));
          }
       }
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for instance
-    **
-    ** Deprecated.  Please use QContext.getInstance() instead
-    *******************************************************************************/
-   @JsonIgnore
-   @Deprecated
-   public QInstance getInstance()
-   {
-      return (QContext.getQInstance());
-   }
-
-
-
-   /*******************************************************************************
-    ** Getter for session
-    **
-    ** Deprecated.  Please use QContext.getSession() instead
-    *******************************************************************************/
-   @JsonIgnore
-   @Deprecated
-   public QSession getSession()
-   {
-      return (QContext.getQSession());
    }
 
 

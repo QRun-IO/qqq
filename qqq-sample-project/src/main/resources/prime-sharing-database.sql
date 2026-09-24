@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS shared_saved_view;
+DROP TABLE IF EXISTS quick_saved_view;
+DROP TABLE IF EXISTS saved_view;
+DROP TABLE IF EXISTS shared_saved_report;
+DROP TABLE IF EXISTS saved_report;
+DROP TABLE IF EXISTS sample_sharing_user;
+CREATE TABLE sample_sharing_user (id VARCHAR(250) PRIMARY KEY, audience_id VARCHAR(260) UNIQUE, name VARCHAR(100));
+INSERT INTO sample_sharing_user VALUES ('sample:alice', 'user:sample:alice', 'Alice'), ('sample:bob', 'user:sample:bob', 'Bob'), ('sample:casey', 'user:sample:casey', 'Casey');
+CREATE TABLE saved_view (id INTEGER AUTO_INCREMENT PRIMARY KEY, create_date TIMESTAMP, modify_date TIMESTAMP, label VARCHAR(250), table_name VARCHAR(250), user_id VARCHAR(250), view_json TEXT);
+CREATE TABLE shared_saved_view (id INTEGER AUTO_INCREMENT PRIMARY KEY, create_date TIMESTAMP, modify_date TIMESTAMP, saved_view_id INTEGER, user_id VARCHAR(250), scope VARCHAR(30), UNIQUE(saved_view_id, user_id));
+CREATE TABLE quick_saved_view (id INTEGER AUTO_INCREMENT PRIMARY KEY, create_date TIMESTAMP, modify_date TIMESTAMP, saved_view_id INTEGER, user_id VARCHAR(250), label VARCHAR(250), sort_order INTEGER, do_count BOOLEAN, UNIQUE(saved_view_id, user_id));
+CREATE TABLE saved_report (id INTEGER AUTO_INCREMENT PRIMARY KEY, create_date TIMESTAMP, modify_date TIMESTAMP, label VARCHAR(250), table_name VARCHAR(250), user_id VARCHAR(250), query_filter_json TEXT, columns_json TEXT, input_fields_json TEXT, pivot_table_json TEXT);
+CREATE TABLE shared_saved_report (id INTEGER AUTO_INCREMENT PRIMARY KEY, create_date TIMESTAMP, modify_date TIMESTAMP, saved_report_id INTEGER, user_id VARCHAR(250), scope VARCHAR(30), UNIQUE(saved_report_id, user_id));
+INSERT INTO saved_view (label, table_name, user_id, view_json) VALUES ('Alice People View', 'person', 'sample:alice', '{"queryFilter":{"criteria":[{"fieldName":"firstName","operator":"EQUALS","values":["Avery"]}]},"rowsPerPage":25,"quickFilterFieldNames":[]}');
+INSERT INTO saved_report (label, table_name, user_id, query_filter_json, columns_json) VALUES ('Pet Species Report', 'petSpecies', 'sample:alice', '{}', '{"columns":[{"name":"possibleValueId","isVisible":true,"width":140},{"name":"possibleValueLabel","isVisible":true,"width":220}]}');

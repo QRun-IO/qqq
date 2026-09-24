@@ -77,7 +77,7 @@
   </modules>
 
   <properties>
-    <revision>4.0.0-RC.2</revision>
+    <revision>4.0.0-RC.3</revision>
 
     <!-- Keep Javalin and its Jetty modules on a consistent version. -->
     <jetty.version>12.1.13</jetty.version>

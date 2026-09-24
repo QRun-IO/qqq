@@ -2,6 +2,8 @@
 
 Bill of Materials for QQQ dependencies. Import this to manage QQQ module versions.
 
+Set `qqq.version` to the published QQQ release you consume. See the [current release status](../README.md) before selecting a 4.0 version. The BOM manages QQQ libraries; it does not add them to your application.
+
 ## Usage
 
 ```xml
@@ -9,7 +11,7 @@ Bill of Materials for QQQ dependencies. Import this to manage QQQ module version
    <dependencies>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
-         <artifactId>qqq-bom</artifactId>
+         <artifactId>qqq-bom-pom</artifactId>
          <version>${qqq.version}</version>
          <type>pom</type>
          <scope>import</scope>
@@ -28,4 +30,4 @@ Bill of Materials for QQQ dependencies. Import this to manage QQQ module version
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

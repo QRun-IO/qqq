@@ -231,12 +231,16 @@ public abstract class AbstractEndpointSpec<
       BasicOperation basicOperation = defineBasicOperation();
 
       Method method = new Method()
-         .withTag(basicOperation.getTag().getText())
          .withSummary(basicOperation.getShortSummary())
          .withDescription(basicOperation.getLongDescription())
          .withParameters(defineRequestParameters())
          .withRequestBody(defineRequestBody())
          .withResponses(defineResponses());
+
+      if(basicOperation.getTag() != null)
+      {
+         method.withTag(basicOperation.getTag().getText());
+      }
 
       customizeMethod(method);
 

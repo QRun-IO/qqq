@@ -27,13 +27,18 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.GregorianCalendar;
+import java.util.TimeZone;
 import com.kingsrook.qqq.backend.core.actions.automation.AutomationStatus;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.module.rdbms.BaseTest;
 import com.kingsrook.qqq.backend.module.rdbms.TestUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
@@ -41,7 +46,9 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -158,4 +165,48 @@ class BaseRDBMSActionStrategyTest extends BaseTest
       }
    }
 
+
+
+   /*******************************************************************************
+    ** DATE and TIME are wall-clock values, independent of the JVM/connection zones.
+    *******************************************************************************/
+   @Test
+   void testDateAndTimeAcrossConnectionAndHostTimeZones() throws Exception
+   {
+      TimeZone original = TimeZone.getDefault();
+      BaseRDBMSActionStrategy strategy = new BaseRDBMSActionStrategy();
+      LocalDate date = LocalDate.of(2024, 2, 29);
+      LocalTime time = LocalTime.of(23, 59, 58);
+      try
+      {
+         for(String zone : new String[] { "America/Chicago", "Asia/Tokyo" })
+         {
+            TimeZone.setDefault(TimeZone.getTimeZone(zone));
+            try(Connection connection = getConnection())
+            {
+               QueryManager.executeUpdate(connection, "SET TIME ZONE 'UTC'");
+               QueryManager.executeUpdate(connection, "DELETE FROM test_table");
+               try(PreparedStatement statement = connection.prepareStatement("INSERT INTO test_table (date_col, time_col) VALUES (?, ?)"))
+               {
+                  strategy.bindParamObject(statement, 1, date);
+                  strategy.bindParamObject(statement, 2, time);
+                  statement.executeUpdate();
+               }
+               try(PreparedStatement statement = connection.prepareStatement("SELECT date_col, time_col FROM test_table");
+                  ResultSet result = statement.executeQuery())
+               {
+                  assertTrue(result.next());
+                  assertEquals(date.toString(), result.getString(1), zone);
+                  assertEquals(time.toString(), result.getString(2), zone);
+                  assertEquals(date, ValueUtils.getValueAsLocalDate(strategy.getFieldValueFromResultSet(QFieldType.DATE, result, 1)), zone);
+                  assertEquals(time, strategy.getFieldValueFromResultSet(QFieldType.TIME, result, 2), zone);
+               }
+            }
+         }
+      }
+      finally
+      {
+         TimeZone.setDefault(original);
+      }
+   }
 }

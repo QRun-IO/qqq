@@ -22,13 +22,23 @@
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 import io.javalin.Javalin;
+import io.javalin.config.JavalinConfig;
+import io.javalin.router.Endpoints;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -38,51 +48,58 @@ import static org.mockito.Mockito.when;
  ** Unit tests for SpaNotFoundHandlerRegistry.
  **
  ** Tests cover:
- ** - Singleton instance behavior
+ ** - Configuration-owned instance behavior
  ** - Handler registration and clearing
- ** - Global handler registration with Javalin
+ ** - One error handler registration per configuration
  ** - Path matching with SpaPathUtils integration
  ** - Handler delegation based on longest path prefix
  *******************************************************************************/
 class SpaNotFoundHandlerRegistryTest
 {
+   private Javalin       service;
+   private JavalinConfig config;
+
 
    /*******************************************************************************
     ** Set up test fixtures before each test.
     **
-    ** Clears the registry to ensure test isolation.
+    ** Creates a fresh configuration and its own registry.
     *******************************************************************************/
    @BeforeEach
    void setUp()
    {
-      SpaNotFoundHandlerRegistry.getInstance().clear();
+      service = Javalin.create(configuration ->
+      {
+         config = configuration;
+         SpaNotFoundHandlerRegistry.getInstance(config);
+      });
    }
 
 
    /*******************************************************************************
     ** Clean up after each test.
     **
-    ** Clears the registry to prevent test pollution.
+    ** Stops the owned service; no global registry cleanup is needed.
     *******************************************************************************/
    @AfterEach
    void tearDown()
    {
-      SpaNotFoundHandlerRegistry.getInstance().clear();
+      service.stop();
    }
 
 
    /*******************************************************************************
-    ** Test singleton instance
+    ** Repeated lookup retains the same configuration-owned instance
     *******************************************************************************/
    @Test
    void testGetInstance()
    {
-      SpaNotFoundHandlerRegistry instance1 = SpaNotFoundHandlerRegistry.getInstance();
-      SpaNotFoundHandlerRegistry instance2 = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry instance1 = SpaNotFoundHandlerRegistry.getInstance(config);
+      SpaNotFoundHandlerRegistry instance2 = SpaNotFoundHandlerRegistry.getInstance(config);
 
       assertNotNull(instance1);
       assertNotNull(instance2);
-      assertEquals(instance1, instance2);
+      assertSame(instance1, instance2);
    }
 
 
@@ -92,7 +109,7 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testClear()
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       registry.registerSpaHandler("/admin", ctx ->
       {
@@ -115,7 +132,7 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testRegisterMultipleHandlers()
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       boolean[] handler1Called = {false};
       boolean[] handler2Called = {false};
@@ -131,31 +148,72 @@ class SpaNotFoundHandlerRegistryTest
 
 
    /*******************************************************************************
-    ** Test registering global handler
+    ** Repeated lookup must not install duplicate native error handlers.
     *******************************************************************************/
    @Test
-   void testRegisterGlobalHandler()
+   void testRegisterErrorHandlerOnce() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
-      Javalin service = Javalin.create();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
+      assertSame(registry, SpaNotFoundHandlerRegistry.getInstance(config));
+      AtomicInteger invocations = new AtomicInteger();
+      registry.registerSpaHandler("/admin", ctx ->
+      {
+         invocations.incrementAndGet();
+         ctx.result("still not found");
+      });
+      service.start(0);
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         for(int i = 1; i <= 2; i++)
+         {
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + service.port() + "/admin/missing"))
+               .timeout(Duration.ofSeconds(5)).build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(404, response.statusCode());
+            assertEquals("still not found", response.body());
+            assertEquals(i, invocations.get());
+         }
+      }
+   }
 
+
+
+   /*******************************************************************************
+    ** Clearing one configuration cannot clear another configuration's handlers.
+    *******************************************************************************/
+   @Test
+   void testSeparateConfigurations() throws Exception
+   {
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
+      AtomicInteger invocations = new AtomicInteger();
+      Javalin other = Javalin.create(otherConfig ->
+      {
+         SpaNotFoundHandlerRegistry otherRegistry = SpaNotFoundHandlerRegistry.getInstance(otherConfig);
+         assertNotSame(registry, otherRegistry);
+         otherRegistry.registerSpaHandler("/admin", ctx -> invocations.incrementAndGet());
+         registry.clear();
+         io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+         when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
+         when(ctx.path()).thenReturn("/admin/deep/link");
+         try
+         {
+            callHandleNotFound(otherRegistry, ctx);
+         }
+         catch(Exception e)
+         {
+            throw new AssertionError(e);
+         }
+      });
       try
       {
-         registry.registerGlobalHandler(service);
-         ////////////////////////////////////
-         // Should not throw on first call //
-         ////////////////////////////////////
-
-         registry.registerGlobalHandler(service);
-         //////////////////////////////////////////////////
-         // Should not throw on second call (idempotent) //
-         //////////////////////////////////////////////////
+         assertEquals(1, invocations.get());
       }
       finally
       {
-         service.stop();
+         other.stop();
       }
    }
+
 
 
    ////////////////////////////////////////////////////////////////
@@ -364,7 +422,7 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testNormalizePath() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       assertEquals("/", callNormalizePath(registry, null));
       assertEquals("/", callNormalizePath(registry, ""));
@@ -401,12 +459,13 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testHandleNotFound_DelegatesToMatchingHandler() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       boolean[] handlerCalled = {false};
       registry.registerSpaHandler("/admin", ctx -> handlerCalled[0] = true);
 
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
       when(ctx.path()).thenReturn("/admin/users/123");
 
       callHandleNotFound(registry, ctx);
@@ -421,12 +480,13 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testHandleNotFound_NoMatchingHandler() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       boolean[] handlerCalled = {false};
       registry.registerSpaHandler("/admin", ctx -> handlerCalled[0] = true);
 
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
       when(ctx.path()).thenReturn("/customer/dashboard");
 
       callHandleNotFound(registry, ctx);
@@ -441,7 +501,7 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testHandleNotFound_LongestPrefixWins() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       boolean[] rootHandlerCalled = {false};
       boolean[] adminHandlerCalled = {false};
@@ -455,6 +515,7 @@ class SpaNotFoundHandlerRegistryTest
       registry.registerSpaHandler("/admin", ctx -> adminHandlerCalled[0] = true);
 
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
       when(ctx.path()).thenReturn("/admin/api/users");
 
       callHandleNotFound(registry, ctx);
@@ -474,7 +535,7 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testHandleNotFound_RootHandlerAsFallback() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       boolean[] rootHandlerCalled = {false};
       boolean[] adminHandlerCalled = {false};
@@ -483,6 +544,7 @@ class SpaNotFoundHandlerRegistryTest
       registry.registerSpaHandler("/", ctx -> rootHandlerCalled[0] = true);
 
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
       when(ctx.path()).thenReturn("/customer/dashboard");
 
       callHandleNotFound(registry, ctx);
@@ -501,12 +563,13 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testHandleNotFound_ExactPathMatch() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       boolean[] handlerCalled = {false};
       registry.registerSpaHandler("/admin", ctx -> handlerCalled[0] = true);
 
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
       when(ctx.path()).thenReturn("/admin");
 
       callHandleNotFound(registry, ctx);
@@ -521,12 +584,13 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testHandleNotFound_NoPrefixCollision() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       boolean[] adminHandlerCalled = {false};
       registry.registerSpaHandler("/admin", ctx -> adminHandlerCalled[0] = true);
 
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
       when(ctx.path()).thenReturn("/administrator");
 
       callHandleNotFound(registry, ctx);
@@ -562,7 +626,7 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testPathMatches() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       assertTrue(callPathMatches(registry, "/admin/users", "/admin"));
       assertTrue(callPathMatches(registry, "/admin", "/admin"));
@@ -577,7 +641,7 @@ class SpaNotFoundHandlerRegistryTest
    @Test
    void testHandlerSortingByPathLength() throws Exception
    {
-      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance();
+      SpaNotFoundHandlerRegistry registry = SpaNotFoundHandlerRegistry.getInstance(config);
 
       ///////////////////////////////////////////////////////////
       // Register in order: short, long, medium                //
@@ -600,6 +664,7 @@ class SpaNotFoundHandlerRegistryTest
       registry.registerSpaHandler("/admin", ctx -> mediumHandlerCalled[0] = true);
 
       io.javalin.http.Context ctx = mock(io.javalin.http.Context.class);
+      when(ctx.endpoints()).thenReturn(mock(Endpoints.class));
       when(ctx.path()).thenReturn("/admin/api/v1/users");
 
       callHandleNotFound(registry, ctx);

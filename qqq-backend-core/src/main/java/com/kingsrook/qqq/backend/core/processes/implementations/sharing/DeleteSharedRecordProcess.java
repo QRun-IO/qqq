@@ -31,7 +31,6 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
-import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -100,9 +99,9 @@ public class DeleteSharedRecordProcess implements BackendStep, MetaDataProducerI
          SharedRecordProcessUtils.AssetTableAndRecord assetTableAndRecord = SharedRecordProcessUtils.getAssetTableAndRecord(tableName, recordIdString);
 
          ShareableTableMetaData shareableTableMetaData = assetTableAndRecord.shareableTableMetaData();
-         QRecord                assetRecord            = assetTableAndRecord.record();
 
-         SharedRecordProcessUtils.assertRecordOwnership(shareableTableMetaData, assetRecord, "delete shares of");
+         SharedRecordProcessUtils.assertRecordOwnership(assetTableAndRecord, "delete shares of");
+         SharedRecordProcessUtils.assertShareBelongsToAsset(assetTableAndRecord, shareId, "delete");
 
          ///////////////////
          // do the delete //

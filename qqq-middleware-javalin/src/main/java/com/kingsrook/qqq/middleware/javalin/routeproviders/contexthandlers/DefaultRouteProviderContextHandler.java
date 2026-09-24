@@ -73,7 +73,7 @@ public class DefaultRouteProviderContextHandler implements RouteProviderContextH
    public void handleRequest(Context context, RunProcessInput input)
    {
       input.addValue("path", context.path());
-      input.addValue("method", context.method());
+      input.addValue("method", context.method().name());
       input.addValue("pathParams", new HashMap<>(context.pathParamMap()));
       input.addValue("queryParams", new HashMap<>(context.queryParamMap()));
       input.addValue("cookies", new HashMap<>(context.cookieMap()));

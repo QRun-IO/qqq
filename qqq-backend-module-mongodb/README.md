@@ -1,34 +1,16 @@
 # QQQ Backend Module - MongoDB
 
-Backend module for MongoDB document databases.
+MongoDB storage backend for QQQ tables, including query, count, aggregate, insert, update and delete actions. Configure the connection and database with `MongoDBBackendMetaData`; map a table to a collection with `MongoDBTableBackendDetails.withTableName`. Database behavior and supported operations are covered by the module tests.
 
-## Features
+QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md) and [4.0 migration guide](../docs/migration/4.0.adoc).
 
-- Native MongoDB driver integration
-- Document-to-record mapping
-- Aggregation pipeline support
-- Index management
+## Source and examples
 
-## Usage
-
-```java
-MongoDBBackendMetaData backend = new MongoDBBackendMetaData()
-   .withName("mongo-main")
-   .withConnectionString("mongodb://localhost:27017")
-   .withDatabaseName("myapp");
-
-QTableMetaData table = new QTableMetaData()
-   .withName("users")
-   .withBackendName("mongo-main")
-   .withBackendDetails(new MongoDBTableBackendDetails()
-      .withCollectionName("users"));
-```
-
-## Requirements
-
-- MongoDB 4.4+
-- Java 17+
+- [MongoDBBackendMetaData](src/main/java/com/kingsrook/qqq/backend/module/mongodb/model/metadata/MongoDBBackendMetaData.java)
+- [MongoDBTableBackendDetails](src/main/java/com/kingsrook/qqq/backend/module/mongodb/model/metadata/MongoDBTableBackendDetails.java)
+- [MongoDBBackendModule](src/main/java/com/kingsrook/qqq/backend/module/mongodb/MongoDBBackendModule.java)
+- [Module tests](src/test/java/)
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

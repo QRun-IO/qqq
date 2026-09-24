@@ -128,6 +128,12 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
     *******************************************************************************/
    private void updateRecordsWithMatchingListOfFields(UpdateInput updateInput, Connection connection, QTableMetaData table, List<QRecord> recordList, List<String> fieldsBeingUpdated) throws SQLException
    {
+      if(fieldsBeingUpdated.isEmpty())
+      {
+         incrementStatus(updateInput, recordList.size());
+         return;
+      }
+
       ////////////////////////////////////////////////////////////////////////////////
       // check for an optimization - if all of the records have the same values for //
       // all fields being updated, just do 1 update, with an IN list on the ids.    //

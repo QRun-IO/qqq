@@ -22,25 +22,43 @@
 package com.kingsrook.sampleapp;
 
 
-import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import static com.kingsrook.sampleapp.metadata.SampleMetaDataProvider.primeTestDatabase;
 
 
 /*******************************************************************************
- **
+ ** Runs the sample application with a freshly populated sample database.
  *******************************************************************************/
-public class SampleJavalinServer
+public class SampleJavalinServer extends QApplicationJavalinServer
 {
-   private static final QLogger LOG = QLogger.getLogger(SampleJavalinServer.class);
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public SampleJavalinServer()
+   {
+      this(new SampleMetaDataProvider());
+   }
+
+
+
+   /*******************************************************************************
+    ** Sample modes share the same owned database and startup lifecycle.
+    *******************************************************************************/
+   public SampleJavalinServer(AbstractQQQApplication application)
+   {
+      super(application);
+      setPort(Integer.getInteger("qqq.sample.port", 8000));
+   }
 
 
 
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static void main(String[] args)
+   public static void main(String[] args) throws QException
    {
       new SampleJavalinServer().start();
    }
@@ -50,20 +68,22 @@ public class SampleJavalinServer
    /*******************************************************************************
     **
     *******************************************************************************/
-   public void start()
+   @Override
+   public void start() throws QException
    {
       try
       {
          primeTestDatabase("prime-test-database.sql");
-
-         QApplicationJavalinServer javalinServer = new QApplicationJavalinServer(new SampleMetaDataProvider());
-
-         javalinServer.start();
+         if(Boolean.getBoolean("qqq.sample.sharing"))
+         {
+            primeTestDatabase("prime-sharing-database.sql");
+         }
       }
       catch(Exception e)
       {
-         LOG.error("Failed to start javalin server.  See stack trace for details.", e);
+         throw new QException("Failed to initialize the sample database.", e);
       }
-   }
 
+      super.start();
+   }
 }

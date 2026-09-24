@@ -26,8 +26,10 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,7 +42,11 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -63,16 +69,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
-import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
-import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLockFilters;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.NotFoundStatusMessage;
+import com.kingsrook.qqq.backend.core.model.statusmessages.PermissionDeniedMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QErrorMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
@@ -121,6 +124,34 @@ public class UpdateAction
     *******************************************************************************/
    public UpdateOutput execute(UpdateInput updateInput) throws QException
    {
+      return execute(updateInput, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Replacement trees retain failed write outcomes before POST presentation.
+    *******************************************************************************/
+   UpdateOutput execute(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
+   {
+      QContext.pushAction(updateInput);
+      try
+      {
+         return executeInternal(updateInput, failOnRecordErrors);
+      }
+      finally
+      {
+         QContext.popAction();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep the owning action visible to nested DML callbacks until it completes.
+    *******************************************************************************/
+   private UpdateOutput executeInternal(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
+   {
       ActionHelper.validateSession(updateInput);
 
       if(!StringUtils.hasContent(updateInput.getTableName()))
@@ -160,6 +191,8 @@ public class UpdateAction
       }
 
       performValidations(updateInput, oldRecordList, false);
+      Map<QRecord, AssociatedRecordUpdate.Values> associationValues = AssociatedRecordUpdate.prepare(table, updateInput.getRecords(), updateInput.getTransaction());
+      deleteOmittedAssociations(updateInput, associationValues);
 
       ////////////////////////////////////
       // have the backend do the update //
@@ -182,6 +215,11 @@ public class UpdateAction
          updateOutput.setRecords(new ArrayList<>());
       }
 
+      if(failOnRecordErrors)
+      {
+         ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
+      }
+
       //////////////////////////////
       // log if there were errors //
       //////////////////////////////
@@ -194,7 +232,7 @@ public class UpdateAction
       /////////////////////////////////////////////////////////////////////////////////////
       // update (inserting and deleting as needed) any associations in the input records //
       /////////////////////////////////////////////////////////////////////////////////////
-      manageAssociations(updateInput);
+      manageAssociations(updateInput, updateOutput, associationValues, failOnRecordErrors);
 
       //////////////////
       // do the audit //
@@ -217,7 +255,15 @@ public class UpdateAction
       //////////////////////////////////////////////////////////////
       // finally, run the post-update customizer, if there is one //
       //////////////////////////////////////////////////////////////
+      if(failOnRecordErrors)
+      {
+         ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
+      }
       runPostUpdateCustomizers(updateInput, table, updateOutput, oldRecordList);
+      if(failOnRecordErrors)
+      {
+         ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
+      }
 
       return updateOutput;
    }
@@ -351,6 +397,7 @@ public class UpdateAction
       // after all validations, run the pre-update customizer, if there is one //
       ///////////////////////////////////////////////////////////////////////////
       runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+      UniqueKeyHelper.validateUpdateUniqueKeys(updateInput);
    }
 
 
@@ -368,9 +415,11 @@ public class UpdateAction
          QueryInput queryInput = new QueryInput();
          queryInput.setTransaction(updateInput.getTransaction());
          queryInput.setTableName(updateInput.getTableName());
+         queryInput.setTableMetaData(updateInput.getTable());
+         queryInput.setInputSource(updateInput.getInputSource());
          queryInput.setFilter(new QQueryFilter(new QFilterCriteria(primaryKeyField, QCriteriaOperator.IN, pkeysBeingUpdated)));
          // todo - need a limit?  what if too many??
-         QueryOutput queryOutput = new QueryAction().execute(queryInput);
+         QueryOutput queryOutput = new QueryAction().executeForDml(queryInput);
 
          return (Optional.of(queryOutput.getRecords()));
       }
@@ -410,75 +459,54 @@ public class UpdateAction
       QTableMetaData table           = updateInput.getTable();
       QFieldMetaData primaryKeyField = table.getField(table.getPrimaryKeyField());
 
-      /////////////////////////////////////////////////////////////
-      // todo - evolve to use lock tree (e.g., from multi-locks) //
-      /////////////////////////////////////////////////////////////
-      List<RecordSecurityLock> onlyWriteLocks = RecordSecurityLockFilters.filterForOnlyWriteLocks(CollectionUtils.nonNullList(table.getRecordSecurityLocks()));
-
-      for(List<QRecord> page : CollectionUtils.getPages(updateInput.getRecords(), 1000))
+      List<QRecord> records = CollectionUtils.nonNullList(updateInput.getRecords());
+      if(records.isEmpty())
       {
-         List<Serializable> primaryKeysToLookup = new ArrayList<>();
-         for(QRecord record : page)
+         return;
+      }
+
+      Map<Object, QRecord> lookedUpRecords = new HashMap<>();
+      List<QRecord> recordsToCheck = oldRecordList;
+      if(CollectionUtils.nullSafeIsEmpty(recordsToCheck))
+      {
+         List<Serializable> primaryKeys = records.stream()
+            .map(record -> record.getValue(table.getPrimaryKeyField())).filter(Objects::nonNull).toList();
+         if(!primaryKeys.isEmpty())
          {
-            Serializable primaryKeyValue = record.getValue(table.getPrimaryKeyField());
-            if(primaryKeyValue != null)
-            {
-               primaryKeysToLookup.add(primaryKeyValue);
-            }
+            QueryInput queryInput = new QueryInput(table.getName()).withTransaction(updateInput.getTransaction())
+               .withFilter(new QQueryFilter(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, primaryKeys)));
+            queryInput.setTableMetaData(table);
+            queryInput.setInputSource(updateInput.getInputSource());
+            recordsToCheck = new QueryAction().executeForDml(queryInput).getRecords();
+         }
+      }
+      for(QRecord record : CollectionUtils.nonNullList(recordsToCheck))
+      {
+         lookedUpRecords.put(AssociatedRecordUpdate.primaryKey(table, record), record);
+      }
+
+      ValidateRecordSecurityLockHelper.validateSecurityFields(table, records, ValidateRecordSecurityLockHelper.Action.UPDATE, updateInput.getTransaction());
+      Map<Object, QRecord> authorizedOldRecords = ValidateRecordSecurityLockHelper.validateStoredWriteLocks(table, lookedUpRecords, ValidateRecordSecurityLockHelper.Action.UPDATE, updateInput.getTransaction());
+
+      for(QRecord record : records)
+      {
+         Serializable value = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(table.getPrimaryKeyField()));
+         if(value == null)
+         {
+            continue;
          }
 
-         Map<Serializable, QRecord> lookedUpRecords = new HashMap<>();
-         if(CollectionUtils.nullSafeHasContents(oldRecordList))
+         Object key = AssociatedRecordUpdate.primaryKey(table, record);
+         if(!lookedUpRecords.containsKey(key))
          {
-            for(QRecord record : oldRecordList)
-            {
-               lookedUpRecords.put(record.getValue(table.getPrimaryKeyField()), record);
-            }
+            record.addError(new NotFoundStatusMessage("No record was found to update for " + primaryKeyField.getLabel() + " = " + value));
          }
-         else if(!primaryKeysToLookup.isEmpty())
+         else if(authorizedOldRecords != null)
          {
-            QueryInput queryInput = new QueryInput();
-            queryInput.setTransaction(updateInput.getTransaction());
-            queryInput.setTableName(table.getName());
-            queryInput.setFilter(new QQueryFilter(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, primaryKeysToLookup)));
-            QueryOutput queryOutput = new QueryAction().execute(queryInput);
-            for(QRecord record : queryOutput.getRecords())
+            QRecord oldRecord = authorizedOldRecords.get(key);
+            if(oldRecord == null || CollectionUtils.nullSafeHasContents(oldRecord.getErrors()))
             {
-               lookedUpRecords.put(record.getValue(table.getPrimaryKeyField()), record);
-            }
-         }
-
-         ValidateRecordSecurityLockHelper.validateSecurityFields(table, updateInput.getRecords(), ValidateRecordSecurityLockHelper.Action.UPDATE, updateInput.getTransaction());
-
-         for(QRecord record : page)
-         {
-            Serializable value = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(table.getPrimaryKeyField()));
-            if(value == null)
-            {
-               continue;
-            }
-
-            if(!lookedUpRecords.containsKey(value))
-            {
-               record.addError(new NotFoundStatusMessage("No record was found to update for " + primaryKeyField.getLabel() + " = " + value));
-            }
-            else
-            {
-               ///////////////////////////////////////////////////////////////////////////////////////////
-               // if the table has any write-only locks, validate their values here, on the old-records //
-               ///////////////////////////////////////////////////////////////////////////////////////////
-               for(RecordSecurityLock lock : onlyWriteLocks)
-               {
-                  QRecord      oldRecord = lookedUpRecords.get(value);
-                  QFieldType   fieldType = table.getField(lock.getFieldName()).getType();
-                  Serializable lockValue = ValueUtils.getValueAsFieldType(fieldType, oldRecord.getValue(lock.getFieldName()));
-
-                  List<QErrorMessage> errors = ValidateRecordSecurityLockHelper.validateRecordSecurityValue(table, lock, lockValue, fieldType, ValidateRecordSecurityLockHelper.Action.UPDATE, Collections.emptyMap(), QContext.getQSession());
-                  if(CollectionUtils.nullSafeHasContents(errors))
-                  {
-                     errors.forEach(e -> record.addError(e));
-                  }
-               }
+               record.addError(new PermissionDeniedMessage("You do not have permission to update this record."));
             }
          }
       }
@@ -507,7 +535,7 @@ public class UpdateAction
                /////////////////////////////////////////////////////////////////////////////////////////////
                if(record.getValues().containsKey(requiredField.getName()))
                {
-                  if(record.getValue(requiredField.getName()) == null || record.getValueString(requiredField.getName()).trim().equals(""))
+                  if(record.getValue(requiredField.getName()) == null || ((requiredField.getType().isStringLike() || record.getValue(requiredField.getName()) instanceof String) && record.getValueString(requiredField.getName()).trim().equals("")))
                   {
                      record.addError(new BadInputStatusMessage("Missing value in required field: " + requiredField.getLabel()));
                   }
@@ -522,135 +550,226 @@ public class UpdateAction
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void manageAssociations(UpdateInput updateInput) throws QException
+   private void deleteOmittedAssociations(UpdateInput input, Map<QRecord, AssociatedRecordUpdate.Values> associationValues) throws QException
    {
-      QTableMetaData table = updateInput.getTable();
+      if(associationValues.isEmpty())
+      {
+         return;
+      }
+      QTableMetaData table = AssociatedRecordDiscovery.physicalParentTable(input.getTable());
+      for(QRecord record : input.getRecords())
+      {
+         AssociatedRecordUpdate.Values values = associationValues.get(record);
+         if(values == null || CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            continue;
+         }
+         for(Association association : table.getAssociations())
+         {
+            if(!record.getAssociatedRecords().containsKey(association.getName())
+               || AssociationJoin.resolve(table, association).parentValues(values.before()).contains(null))
+            {
+               continue;
+            }
+            QTableMetaData childTable = QContext.getQInstance().getTable(association.getAssociatedTableName());
+            List<Serializable> retainedKeys = new ArrayList<>();
+            for(QRecord child : CollectionUtils.nonNullList(record.getAssociatedRecords().get(association.getName())))
+            {
+               Serializable key = child.getValue(childTable.getPrimaryKeyField());
+               if(key != null)
+               {
+                  retainedKeys.add(key);
+               }
+            }
+            List<Serializable> omittedKeys = AssociatedRecordDiscovery.findPrimaryKeys(table, association,
+               List.of(new AssociatedRecordDiscovery.Parent(values.before().getValues(), retainedKeys)), input.getTransaction());
+            if(omittedKeys.isEmpty())
+            {
+               continue;
+            }
+            DeleteInput childInput = new DeleteInput(childTable.getName()).withPrimaryKeys(omittedKeys)
+               .withInputSource(input.getInputSource()).withFlags(input.getFlags()).withTransaction(input.getTransaction())
+               .withOmitDmlAudit(input.getOmitDmlAudit()).withAuditContext(input.getAuditContext());
+            DeleteOutput childOutput = new DeleteAction().executeForAssociation(childInput, table, record);
+            if(CollectionUtils.nullSafeHasContents(childOutput.getRecordsWithErrors()) || childOutput.getDeletedRecordCount() != omittedKeys.size())
+            {
+               record.addError(DeleteAction.associationFailure(childOutput, association.getName()));
+               break;
+            }
+            if(CollectionUtils.nullSafeHasContents(childOutput.getRecordsWithWarnings()))
+            {
+               record.addWarning(new QWarningMessage("Warnings occurred deleting omitted records for association [" + association.getName() + "]"));
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Apply retained/new child writes only after a successful parent update.
+    *******************************************************************************/
+   private void manageAssociations(UpdateInput updateInput, UpdateOutput updateOutput, Map<QRecord, AssociatedRecordUpdate.Values> associationValues, boolean failOnRecordErrors) throws QException
+   {
+      if(associationValues.isEmpty())
+      {
+         return;
+      }
+      QTableMetaData table = AssociatedRecordDiscovery.physicalParentTable(updateInput.getTable());
+      Map<Object, QRecord> outputsByKey = new HashMap<>();
+      for(QRecord output : updateOutput.getRecords())
+      {
+         outputsByKey.put(AssociatedRecordUpdate.primaryKey(table, output), output);
+      }
       for(Association association : CollectionUtils.nonNullList(table.getAssociations()))
       {
-         // e.g., order -> orderLine
          QTableMetaData associatedTable = QContext.getQInstance().getTable(association.getAssociatedTableName());
-         QJoinMetaData  join            = QContext.getQInstance().getJoin(association.getJoinName()); // todo ... ever need to flip?
-         // just assume this, at least for now... if(BooleanUtils.isTrue(association.getDoInserts()))
-
+         AssociationJoin join = AssociationJoin.resolve(table, association);
          for(List<QRecord> page : CollectionUtils.getPages(updateInput.getRecords(), 500))
          {
-            List<QRecord> nextLevelUpdates  = new ArrayList<>();
-            List<QRecord> nextLevelInserts  = new ArrayList<>();
-            QQueryFilter  findDeletesFilter = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR);
-            boolean       lookForDeletes    = false;
-
-            //////////////////////////////////////////////////////
-            // for each updated record, look at as associations //
-            //////////////////////////////////////////////////////
+            List<QRecord> nextLevelUpdates = new ArrayList<>();
+            List<QRecord> nextLevelInserts = new ArrayList<>();
+            List<QRecord> originalUpdates = new ArrayList<>();
+            List<QRecord> originalInserts = new ArrayList<>();
+            List<Set<String>> privateUpdateFields = new ArrayList<>();
+            List<Set<String>> privateInsertFields = new ArrayList<>();
             for(QRecord record : page)
             {
-               if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+               AssociatedRecordUpdate.Values values = associationValues.get(record);
+               QRecord output = outputsByKey.get(AssociatedRecordUpdate.primaryKey(table, record));
+               if(values == null || output == null || CollectionUtils.nullSafeHasContents(record.getErrors())
+                  || CollectionUtils.nullSafeHasContents(output.getErrors()) || record.getAssociatedRecords() == null
+                  || !record.getAssociatedRecords().containsKey(association.getName()))
                {
                   continue;
                }
 
-               if(record.getAssociatedRecords() != null && record.getAssociatedRecords().containsKey(association.getName()))
+               Set<String> privateFields = new HashSet<>();
+               for(JoinOn joinOn : join.getJoinOns())
                {
-                  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                  // build a sub-query to find the children of this record - and we'll exclude (below) any whose ids are given //
-                  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                  QQueryFilter subFilter = new QQueryFilter();
-                  findDeletesFilter.addSubFilter(subFilter);
-                  lookForDeletes = true;
-                  List<Serializable> idsBeingUpdated = new ArrayList<>();
-                  for(JoinOn joinOn : join.getJoinOns())
+                  if(values.storedFields().contains(joinOn.getLeftField()))
                   {
-                     subFilter.addCriteria(new QFilterCriteria(joinOn.getRightField(), QCriteriaOperator.EQUALS, record.getValue(joinOn.getLeftField())));
-                  }
-
-                  //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                  // for any associated records present here, figure out if they're being inserted (no primaryKey) or updated //
-                  //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                  for(QRecord associatedRecord : CollectionUtils.nonNullList(record.getAssociatedRecords().get(association.getName())))
-                  {
-                     Serializable associatedId = associatedRecord.getValue(associatedTable.getPrimaryKeyField());
-                     if(associatedId == null)
-                     {
-                        //////////////////////////////////////////////////////////////////////////////////////////////////////////
-                        // if inserting, add to the inserts list, and propagate values from the header record down to the child //
-                        //////////////////////////////////////////////////////////////////////////////////////////////////////////
-                        for(JoinOn joinOn : join.getJoinOns())
-                        {
-                           QFieldType type = table.getField(joinOn.getLeftField()).getType();
-                           associatedRecord.setValue(joinOn.getRightField(), ValueUtils.getValueAsFieldType(type, record.getValue(joinOn.getLeftField())));
-                        }
-                        nextLevelInserts.add(associatedRecord);
-                     }
-                     else
-                     {
-                        ///////////////////////////////////////////////////////////////////////////////
-                        // if updating, add to the updates list, and add the id as one to not delete //
-                        ///////////////////////////////////////////////////////////////////////////////
-                        idsBeingUpdated.add(associatedId);
-                        nextLevelUpdates.add(associatedRecord);
-
-                        /////////////////////////////////////////////////////////////////////////////////////////////////
-                        // make sure the child record being updated has its join fields populated (same as an insert). //
-                        // this will make the next update action much happier                                          //
-                        /////////////////////////////////////////////////////////////////////////////////////////////////
-                        for(JoinOn joinOn : join.getJoinOns())
-                        {
-                           QFieldType type = table.getField(joinOn.getLeftField()).getType();
-                           associatedRecord.setValue(joinOn.getRightField(), ValueUtils.getValueAsFieldType(type, record.getValue(joinOn.getLeftField())));
-                        }
-                     }
-                  }
-
-                  if(!idsBeingUpdated.isEmpty())
-                  {
-                     ///////////////////////////////////////////////////////////////////////////////
-                     // if any records are being updated, add them to the query to NOT be deleted //
-                     ///////////////////////////////////////////////////////////////////////////////
-                     subFilter.addCriteria(new QFilterCriteria(associatedTable.getPrimaryKeyField(), QCriteriaOperator.NOT_IN, idsBeingUpdated));
+                     privateFields.add(joinOn.getRightField());
                   }
                }
+               for(QRecord original : CollectionUtils.nonNullList(record.getAssociatedRecords().get(association.getName())))
+               {
+                  Serializable associatedId = original.getValue(associatedTable.getPrimaryKeyField());
+                  QRecord working = new QRecord(original);
+                  join.assignParentValues(values.after(), working);
+                  if(associatedId == null)
+                  {
+                     nextLevelInserts.add(working);
+                     originalInserts.add(original);
+                     privateInsertFields.add(privateFields);
+                  }
+                  else
+                  {
+                     nextLevelUpdates.add(working);
+                     originalUpdates.add(original);
+                     privateUpdateFields.add(privateFields);
+                  }
+               }
+
+               output.withAssociatedRecords(association.getName(), record.getAssociatedRecords().get(association.getName()));
             }
 
-            if(lookForDeletes)
+            if(!nextLevelUpdates.isEmpty())
             {
-               QueryInput queryInput = new QueryInput();
-               queryInput.setTransaction(updateInput.getTransaction());
-               queryInput.setTableName(associatedTable.getName());
-               queryInput.setFilter(findDeletesFilter);
-               QueryOutput queryOutput = new QueryAction().execute(queryInput);
-               if(!queryOutput.getRecords().isEmpty())
+               UpdateInput childInput = new UpdateInput();
+               childInput.setInputSource(updateInput.getInputSource());
+               childInput.setTransaction(updateInput.getTransaction());
+               childInput.setFlags(updateInput.getFlags());
+               childInput.setTableName(association.getAssociatedTableName());
+               childInput.setRecords(nextLevelUpdates);
+               UpdateOutput childOutput = new UpdateAction().execute(childInput, failOnRecordErrors);
+               copyAssociatedResults(associatedTable, childOutput.getRecords(), nextLevelUpdates, originalUpdates, privateUpdateFields);
+            }
+            if(!nextLevelInserts.isEmpty())
+            {
+               InsertInput childInput = new InsertInput();
+               childInput.setInputSource(updateInput.getInputSource());
+               childInput.setTransaction(updateInput.getTransaction());
+               childInput.setFlags(updateInput.getFlags());
+               childInput.setTableName(association.getAssociatedTableName());
+               childInput.setRecords(nextLevelInserts);
+               InsertOutput childOutput = new InsertAction().execute(childInput, failOnRecordErrors);
+               copyAssociatedResults(associatedTable, childOutput.getRecords(), nextLevelInserts, originalInserts, privateInsertFields);
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish normalized input values, generated keys and statuses without private
+    ** values. Track those fields through descendants, including shared keys.
+    *******************************************************************************/
+   private void copyAssociatedResults(QTableMetaData table, List<QRecord> outputs, List<QRecord> workingRecords, List<QRecord> originals, List<Set<String>> privateFields) throws QException
+   {
+      if(outputs == null || outputs.size() != originals.size())
+      {
+         throw new QException("Incomplete associated write results for table [" + table.getName() + "]");
+      }
+      for(int i = 0; i < originals.size(); i++)
+      {
+         QRecord original = originals.get(i);
+         QRecord output = outputs.get(i);
+         QRecord working = workingRecords.get(i);
+         Map<String, Serializable> publicValues = new HashMap<>(working.getValues());
+         for(String field : privateFields.get(i))
+         {
+            if(original.getValues().containsKey(field))
+            {
+               publicValues.put(field, original.getValue(field));
+            }
+            else
+            {
+               publicValues.remove(field);
+            }
+         }
+         original.setValues(publicValues);
+         String primaryKey = table.getPrimaryKeyField();
+         if(original.getValue(primaryKey) == null && !privateFields.get(i).contains(primaryKey))
+         {
+            original.setValue(primaryKey, output.getValue(primaryKey));
+         }
+         for(QErrorMessage error : CollectionUtils.nonNullList(output.getErrors()))
+         {
+            if(!original.getErrors().contains(error))
+            {
+               original.addError(error);
+            }
+         }
+         for(QWarningMessage warning : CollectionUtils.nonNullList(output.getWarnings()))
+         {
+            if(!original.getWarnings().contains(warning))
+            {
+               original.addWarning(warning);
+            }
+         }
+         for(Association association : CollectionUtils.nonNullList(table.getAssociations()))
+         {
+            if(original.getAssociatedRecords() == null || output.getAssociatedRecords() == null
+               || !original.getAssociatedRecords().containsKey(association.getName())
+               || !output.getAssociatedRecords().containsKey(association.getName()))
+            {
+               continue;
+            }
+            Set<String> childPrivateFields = new HashSet<>();
+            for(JoinOn joinOn : AssociationJoin.resolve(table, association).getJoinOns())
+            {
+               if(privateFields.get(i).contains(joinOn.getLeftField()))
                {
-                  LOG.debug("Deleting associatedRecords", logPair("associatedTable", associatedTable.getName()), logPair("noOfRecords", queryOutput.getRecords().size()));
-                  DeleteInput deleteInput = new DeleteInput();
-                  deleteInput.setFlags(updateInput.getFlags());
-                  deleteInput.setTransaction(updateInput.getTransaction());
-                  deleteInput.setTableName(association.getAssociatedTableName());
-                  deleteInput.setPrimaryKeys(queryOutput.getRecords().stream().map(r -> r.getValue(associatedTable.getPrimaryKeyField())).collect(Collectors.toList()));
-                  DeleteOutput deleteOutput = new DeleteAction().execute(deleteInput);
+                  childPrivateFields.add(joinOn.getRightField());
                }
             }
-
-            if(CollectionUtils.nullSafeHasContents(nextLevelUpdates))
-            {
-               LOG.debug("Updating associatedRecords", logPair("associatedTable", associatedTable.getName()), logPair("noOfRecords", nextLevelUpdates.size()));
-               UpdateInput nextLevelUpdateInput = new UpdateInput();
-               nextLevelUpdateInput.setTransaction(updateInput.getTransaction());
-               nextLevelUpdateInput.setFlags(updateInput.getFlags());
-               nextLevelUpdateInput.setTableName(association.getAssociatedTableName());
-               nextLevelUpdateInput.setRecords(nextLevelUpdates);
-               UpdateOutput nextLevelUpdateOutput = new UpdateAction().execute(nextLevelUpdateInput);
-            }
-
-            if(CollectionUtils.nullSafeHasContents(nextLevelInserts))
-            {
-               LOG.debug("Inserting associatedRecords", logPair("associatedTable", associatedTable.getName()), logPair("noOfRecords", nextLevelUpdates.size()));
-               InsertInput nextLevelInsertInput = new InsertInput();
-               nextLevelInsertInput.setTransaction(updateInput.getTransaction());
-               nextLevelInsertInput.setFlags(updateInput.getFlags());
-               nextLevelInsertInput.setTableName(association.getAssociatedTableName());
-               nextLevelInsertInput.setRecords(nextLevelInserts);
-               InsertOutput nextLevelInsertOutput = new InsertAction().execute(nextLevelInsertInput);
-            }
+            List<QRecord> originalChildren = CollectionUtils.nonNullList(original.getAssociatedRecords().get(association.getName()));
+            copyAssociatedResults(QContext.getQInstance().getTable(association.getAssociatedTableName()),
+               CollectionUtils.nonNullList(output.getAssociatedRecords().get(association.getName())),
+               CollectionUtils.nonNullList(working.getAssociatedRecords().get(association.getName())), originalChildren,
+               Collections.nCopies(originalChildren.size(), childPrivateFields));
          }
       }
    }

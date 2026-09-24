@@ -194,71 +194,74 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
     *******************************************************************************/
    private void handleRequest(Context context)
    {
-      RunProcessInput input = new RunProcessInput();
-      input.setProcessName(processName);
-
-      QContext.init(qInstance, new QSystemUserSession());
-
-      boolean isAuthenticated = false;
-      if(routeAuthenticator == null)
-      {
-         isAuthenticated = true;
-      }
-      else
-      {
-         try
-         {
-            RouteAuthenticatorInterface routeAuthenticator = QCodeLoader.getAdHoc(RouteAuthenticatorInterface.class, this.routeAuthenticator);
-            isAuthenticated = routeAuthenticator.authenticateRequest(context);
-         }
-         catch(Exception e)
-         {
-            context.skipRemainingHandlers();
-            QJavalinImplementation.handleException(context, e);
-         }
-      }
-
-      if(!isAuthenticated)
-      {
-         LOG.info("Request is not authenticated, so returning before running process", logPair("processName", processName), logPair("path", context.path()));
-         return;
-      }
-
       try
       {
-         LOG.info("Running process to serve route", logPair("processName", processName), logPair("path", context.path()));
+         RunProcessInput input = new RunProcessInput();
+         input.setProcessName(processName);
 
-         //////////////////////////////////////////////////////////////////////////////////////
-         // handle request (either using route's specific context handler, or a default one) //
-         //////////////////////////////////////////////////////////////////////////////////////
-         RouteProviderContextHandlerInterface contextHandler = createContextHandler();
-         contextHandler.handleRequest(context, input);
+         QContext.init(qInstance, new QSystemUserSession());
 
-         ////////////////////////////////////////////////////////////////////////////////////
-         // todo - make the inputStream available to the process to stream results?        //
-         // maybe via the callback object??? input.setCallback(new QProcessCallback() {}); //
-         // context.resultInputStream();                                                   //
-         ////////////////////////////////////////////////////////////////////////////////////
-
-         /////////////////////
-         // run the process //
-         /////////////////////
-         input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
-         RunProcessOutput runProcessOutput = new RunProcessAction().execute(input);
-
-         /////////////////////
-         // handle response //
-         /////////////////////
-         if(contextHandler.handleResponse(context, runProcessOutput))
+         boolean isAuthenticated = false;
+         if(routeAuthenticator == null)
          {
+            isAuthenticated = true;
+         }
+         else
+         {
+            try
+            {
+               RouteAuthenticatorInterface routeAuthenticator = QCodeLoader.getAdHoc(RouteAuthenticatorInterface.class, this.routeAuthenticator);
+               isAuthenticated = routeAuthenticator.authenticateRequest(context);
+            }
+            catch(Exception e)
+            {
+               context.skipRemainingHandlers();
+               QJavalinImplementation.handleException(context, e);
+            }
+         }
+
+         if(!isAuthenticated)
+         {
+            LOG.info("Request is not authenticated, so returning before running process", logPair("processName", processName), logPair("path", context.path()));
             return;
          }
 
-         LOG.debug("No response value was set in the process output state.");
-      }
-      catch(Exception e)
-      {
-         QJavalinUtils.handleException(null, context, e);
+         try
+         {
+            LOG.info("Running process to serve route", logPair("processName", processName), logPair("path", context.path()));
+
+            //////////////////////////////////////////////////////////////////////////////////////
+            // handle request (either using route's specific context handler, or a default one) //
+            //////////////////////////////////////////////////////////////////////////////////////
+            RouteProviderContextHandlerInterface contextHandler = createContextHandler();
+            contextHandler.handleRequest(context, input);
+
+            ////////////////////////////////////////////////////////////////////////////////////
+            // todo - make the inputStream available to the process to stream results?        //
+            // maybe via the callback object??? input.setCallback(new QProcessCallback() {}); //
+            // context.resultInputStream();                                                   //
+            ////////////////////////////////////////////////////////////////////////////////////
+
+            /////////////////////
+            // run the process //
+            /////////////////////
+            input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+            RunProcessOutput runProcessOutput = new RunProcessAction().execute(input);
+
+            /////////////////////
+            // handle response //
+            /////////////////////
+            if(contextHandler.handleResponse(context, runProcessOutput))
+            {
+               return;
+            }
+
+            LOG.debug("No response value was set in the process output state.");
+         }
+         catch(Exception e)
+         {
+            QJavalinUtils.handleException(null, context, e);
+         }
       }
       finally
       {

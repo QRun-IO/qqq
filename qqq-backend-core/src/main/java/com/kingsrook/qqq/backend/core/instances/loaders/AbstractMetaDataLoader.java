@@ -179,6 +179,7 @@ public abstract class AbstractMetaDataLoader<T extends QMetaDataObject>
     ***************************************************************************/
    public Object reflectivelyMapValue(QInstance qInstance, Method method, Class<?> parameterType, Object rawValue, LoadingContext context) throws Exception
    {
+      int initialProblemCount = problems.size();
       if(rawValue instanceof String s && s.matches("^\\$\\{.+\\..+}"))
       {
          rawValue = new QMetaDataVariableInterpreter().interpret(s);
@@ -335,7 +336,9 @@ public abstract class AbstractMetaDataLoader<T extends QMetaDataObject>
             Class<? extends AbstractMetaDataLoader<?>> loaderClass = MetaDataLoaderRegistry.getLoaderForClass(parameterType);
             AbstractMetaDataLoader<?>                  loader      = loaderClass.getConstructor().newInstance();
             //noinspection unchecked
-            return (loader.mapToMetaDataObject(qInstance, valueMap, context));
+            QMetaDataObject metadata = loader.mapToMetaDataObject(qInstance, valueMap, context);
+            problems.addAll(loader.getProblems());
+            return metadata;
          }
       }
       else if(QMetaDataObject.class.isAssignableFrom(parameterType))
@@ -365,6 +368,10 @@ public abstract class AbstractMetaDataLoader<T extends QMetaDataObject>
          addProblem(new LoadingProblem(context, "No case for " + parameterType + " (arg to: " + method + ")"));
       }
 
+      if(rawValue != null && problems.size() == initialProblemCount)
+      {
+         addProblem(new LoadingProblem(context, "Cannot map " + rawValue.getClass().getSimpleName() + " to " + parameterType.getSimpleName()));
+      }
       throw new NoValueException();
    }
 

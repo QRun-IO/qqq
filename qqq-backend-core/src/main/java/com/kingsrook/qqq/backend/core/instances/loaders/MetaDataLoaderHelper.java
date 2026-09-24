@@ -24,95 +24,90 @@ package com.kingsrook.qqq.backend.core.instances.loaders;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Comparator;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
 import com.kingsrook.qqq.backend.core.model.metadata.TopLevelMetaDataInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
-import com.kingsrook.qqq.backend.core.utils.Pair;
 
 
 /*******************************************************************************
- ** class that loads a directory full of meta data files into meta data objects,
- ** and then sets all of them in a QInstance.
+ ** Loads application metadata, rejecting invalid input instead of partial success.
  *******************************************************************************/
 public class MetaDataLoaderHelper
 {
-   private static final QLogger LOG = QLogger.getLogger(MetaDataLoaderHelper.class);
-
-
-
-   /***************************************************************************
-    *
-    ***************************************************************************/
-   public static void processAllMetaDataFilesInDirectory(QInstance qInstance, String path) throws QException
+   /*******************************************************************************
+    ** Read a YAML/JSON stream. The caller owns and closes the stream.
+    *******************************************************************************/
+   public static QMetaDataObject readMetaDataFile(QInstance instance, InputStream input, String fileName) throws QException
    {
-      List<Pair<File, AbstractMetaDataLoader<?>>> loaders = new ArrayList<>();
-
-      File directory = new File(path);
-      processAllMetaDataFilesInDirectory(loaders, directory);
-
-      // todo - some version of sorting the loaders by type or possibly a sort field within the files (or file names)
-
-      for(Pair<File, AbstractMetaDataLoader<?>> pair : loaders)
+      if(input == null)
       {
-         File                      file   = pair.getA();
-         AbstractMetaDataLoader<?> loader = pair.getB();
-         try(FileInputStream fileInputStream = new FileInputStream(file))
+         throw new QException("Metadata input not found: " + fileName);
+      }
+      try
+      {
+         ClassDetectingMetaDataLoader loader = new ClassDetectingMetaDataLoader();
+         QMetaDataObject metadata = loader.fileToMetaDataObject(instance, input, fileName);
+         if(CollectionUtils.nullSafeHasContents(loader.getProblems()))
          {
-            QMetaDataObject qMetaDataObject = loader.fileToMetaDataObject(qInstance, fileInputStream, file.getName());
-
-            if(CollectionUtils.nullSafeHasContents(loader.getProblems()))
-            {
-               loader.getProblems().forEach(System.out::println);
-            }
-
-            if(qMetaDataObject instanceof TopLevelMetaDataInterface topLevelMetaData)
-            {
-               topLevelMetaData.addSelfToInstance(qInstance);
-            }
-            else
-            {
-               LOG.warn("Received a non-topLevelMetaDataObject from file: " + file.getAbsolutePath());
-            }
+            throw new QException("Invalid metadata in " + fileName + ": " + loader.getProblems());
          }
-         catch(Exception e)
-         {
-            LOG.error("Error processing file: " + file.getAbsolutePath(), e);
-         }
+         return metadata;
+      }
+      catch(QException e)
+      {
+         throw e;
+      }
+      catch(Exception e)
+      {
+         throw new QException("Error reading metadata file: " + fileName, e);
       }
    }
 
 
 
-   /***************************************************************************
-    *
-    ***************************************************************************/
-   private static void processAllMetaDataFilesInDirectory(List<Pair<File, AbstractMetaDataLoader<?>>> loaders, File directory) throws QException
+   /*******************************************************************************
+    ** Load top-level metadata in filename order, recursively. Every file must be
+    ** valid YAML/JSON metadata; an unreadable directory or invalid file fails.
+    *******************************************************************************/
+   public static void processAllMetaDataFilesInDirectory(QInstance instance, String path) throws QException
    {
-      for(File file : Objects.requireNonNullElse(directory.listFiles(), new File[0]))
+      File[] files = new File(path).listFiles();
+      if(files == null)
+      {
+         throw new QException("Cannot read metadata directory: " + path);
+      }
+      Arrays.sort(files, Comparator.comparing(File::getName));
+      for(File file : files)
       {
          if(file.isDirectory())
          {
-            processAllMetaDataFilesInDirectory(loaders, file);
+            processAllMetaDataFilesInDirectory(instance, file.getPath());
          }
          else
          {
-            try(FileInputStream fileInputStream = new FileInputStream(file))
+            try(InputStream input = new FileInputStream(file))
             {
-               AbstractMetaDataLoader<?> loader = new ClassDetectingMetaDataLoader().getLoaderForFile(fileInputStream, file.getName());
-               loaders.add(Pair.of(file, loader));
+               QMetaDataObject metadata = readMetaDataFile(instance, input, file.getPath());
+               if(!(metadata instanceof TopLevelMetaDataInterface topLevel))
+               {
+                  throw new QException("Metadata file must define a top-level object: " + file.getPath());
+               }
+               topLevel.addSelfToInstance(instance);
+            }
+            catch(QException e)
+            {
+               throw e;
             }
             catch(Exception e)
             {
-               LOG.error("Error processing file: " + file.getAbsolutePath(), e);
+               throw new QException("Error loading metadata file: " + file.getPath(), e);
             }
          }
       }
    }
-
 }

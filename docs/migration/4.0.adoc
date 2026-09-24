@@ -5,8 +5,7 @@
 :icons: font
 
 This guide covers every breaking change in QQQ 4.0.0 and provides step-by-step instructions for
-migrating existing applications. Changes are grouped into four categories; each category includes
-at least one concrete before/after example.
+migrating existing applications. The sections below describe source updates and changed runtime contracts.
 
 == Javalin import updates (BREAK-01) [[javalin-imports]]
 
@@ -81,6 +80,72 @@ grep -r 'com\.kingsrook\.qqq\.backend\.javalin' . --include='*.java' --exclude-d
 ----
 
 
+== Javalin 7 configuration lifecycle [[javalin7-lifecycle]]
+
+[NOTE]
+====
+QQQ 4.0.0 uses Javalin 7.2.3 with Jetty 12.1.13 on Java 21.
+====
+
+Javalin 7 requires routes, before/after handlers and error/exception handlers to be registered during configuration.
+Move registration from `QJavalinRouteProviderInterface.acceptJavalinService(Javalin)` to its existing `acceptJavalinConfig(JavalinConfig)` hook.
+The following method excerpts belong to a route-provider implementation; its other interface methods remain unchanged.
+
+[source,java]
+.Before (Javalin 6)
+----
+@Override
+public void acceptJavalinService(Javalin service)
+{
+   service.before("/custom/*", ctx -> ctx.header("X-Example", "qqq"));
+   service.get("/custom/status", ctx -> ctx.result("ready"));
+}
+----
+
+[source,java]
+.After (Javalin 7, QQQ 4.0)
+----
+@Override
+public void acceptJavalinConfig(JavalinConfig config)
+{
+   config.routes.before("/custom/*", ctx -> ctx.header("X-Example", "qqq"));
+   config.routes.get("/custom/status", ctx -> ctx.result("ready"));
+}
+----
+
+Use `io.javalin.config.JavalinConfig` for the new callback parameter.
+The `io.javalin.apibuilder.ApiBuilder` and `EndpointGroup` packages and the `EndpointGroup.addEndpoints()` signature remain unchanged.
+Replace direct `config.router.apiBuilder(group)` calls with `config.routes.apiBuilder(group)`.
+Keep existing authentication, path scopes and before/after behavior when moving registration. `acceptJavalinService` remains a service-observation hook.
+
+The server customizer also separates registration from observation:
+
+[source,java]
+.Before (Javalin 6)
+----
+server.withJavalinConfigurationCustomizer(service ->
+   service.get("/custom/status", ctx -> ctx.result("ready")));
+----
+
+[source,java]
+.After (Javalin 7, QQQ 4.0)
+----
+server.withJavalinConfigCustomizer(config ->
+   config.routes.get("/custom/status", ctx -> ctx.result("ready")));
+----
+
+The new property is `Consumer<JavalinConfig> javalinConfigCustomizer`, with `getJavalinConfigCustomizer`, `setJavalinConfigCustomizer` and `withJavalinConfigCustomizer` accessors.
+The existing `Consumer<Javalin> javalinConfigurationCustomizer` still receives the created service before startup; service-reference capture such as `server.withJavalinConfigurationCustomizer(serviceReference::set)` remains an observation use case.
+It cannot install Javalin 7 handlers after creation.
+
+For process-backed routes using `DefaultRouteProviderContextHandler`, the `method` process-input value is now a String such as `"GET"` or `"POST"`, rather than Javalin `HandlerType`. Replace casts or enum comparisons with String access/comparison, for example `input.getValueString("method")`. The typed `ProcessBasedRouterPayload.getMethod()` accessor remains String-valued; custom context handlers retain their own mappings.
+
+Use Java 21 for the QQQ build and runtime; the middleware inherits the project compiler settings instead of overriding source/target to 11.
+The selected Javalin 7.2.3 artifact declares Jetty 12.1.12 upstream; QQQ 4.0 aligns Jetty 12.1.13 through both `org.eclipse.jetty:jetty-bom` and `org.eclipse.jetty.ee10:jetty-ee10-bom` to avoid mixing core and EE10 servlet/WebSocket versions.
+The core BOM alone does not manage the EE10 artifacts. The annotation processor has its own explicit `io.javalin.community.openapi:openapi-annotation-processor:7.2.3` version.
+These choices do not by themselves establish runtime compatibility or advisory closure.
+See the https://javalin.io/migration-guide-javalin-6-to-7[upstream migration guide], https://repo.maven.apache.org/maven2/io/javalin/javalin-parent/7.2.3/javalin-parent-7.2.3.pom[Javalin parent POM] and https://repo.maven.apache.org/maven2/org/eclipse/jetty/ee10/jetty-ee10-bom/12.1.13/jetty-ee10-bom-12.1.13.pom[Jetty EE10 BOM] for the upstream APIs and dependency versions.
+
 == PicoCLI import updates (BREAK-02) [[picocli-imports]]
 
 The `qqq-middleware-picocli` module's root package changed from `com.kingsrook.qqq.frontend.picocli`
@@ -150,7 +215,7 @@ in 4.0.0. The items below are grouped by the module and commit they were removed
 [NOTE]
 ====
 If your code fails to compile with `cannot find symbol` errors after upgrading, check this section
-first. Every removed element has a direct replacement.
+first. The replacement APIs and configuration steps are listed below.
 ====
 
 === BREAK-03-A: QBackendMetaData variantOptionsTable accessors removed
@@ -166,19 +231,34 @@ and the `LegacyBackendVariantSetting` companion enum.
 metaData.setVariantOptionsTableName("myTable");
 metaData.setVariantOptionsTableIdField("id");
 metaData.setVariantOptionsTableTypeField("type");
+metaData.setVariantOptionsTableTypeValue("customer");
+metaData.setVariantOptionsTableApiKeyField("apiKey");
 ----
 
 [source,java]
 .After (4.0) — use the non-deprecated replacement accessors
 ----
-// The non-deprecated getters/setters for variant options remain on QBackendMetaData.
-// Remove any calls to the deprecated variantOptionsTable* overloads.
-// Use APIBackendVariantSetting directly instead of LegacyBackendVariantSetting.
+metaData.withBackendVariantsConfig(new BackendVariantsConfig()
+   .withOptionsTableName("myTable")
+   .withVariantTypeKey("customer")
+   .withOptionsFilter(new QQueryFilter(
+      new QFilterCriteria("type", QCriteriaOperator.EQUALS, "customer")))
+   .withBackendSettingSourceFieldName(APIBackendVariantSetting.API_KEY, "apiKey"));
 ----
+
+The options table's primary key and record label replace `variantOptionsTableIdField` and
+`variantOptionsTableNameField`; configure those on the table itself. The table-name setter moves
+to `BackendVariantsConfig.optionsTableName`. The type-field/value setters become `optionsFilter`
+and `variantTypeKey`. The username, password, API-key, client-ID, and client-secret field setters
+move to `withBackendSettingSourceFieldName` using the corresponding `APIBackendVariantSetting`
+constant for API backends. Other backend modules use their own `BackendVariantSetting` enums.
+
+Import `BackendVariantsConfig` from `com.kingsrook.qqq.backend.core.model.metadata.variants`
+and `APIBackendVariantSetting` from `com.kingsrook.qqq.backend.module.api.model.metadata`.
 
 === BREAK-03-B: Miscellaneous zero-caller deprecated elements removed
 
-Removed from 5 files in `qqq-backend-core` and `qqq-middleware-api`:
+Removed from 5 files in `qqq-backend-core`, `qqq-backend-module-api`, and `qqq-middleware-api`:
 
 [cols="2,1,2", options="header"]
 |===
@@ -188,7 +268,7 @@ Removed from 5 files in `qqq-backend-core` and `qqq-middleware-api`:
 
 |`ExtractViaQueryStep.customizeInputPreQuery(QueryInput)` 1-arg
 |qqq-backend-core
-|Use the 2-arg overload with `Consumer<QueryInput>` callback
+|Override `customizeInputPreQuery(RunBackendStepInput, QueryInput)`; keep the `super` call to preserve callback dispatch
 
 |`QRecordListMetaData.addField(QFieldMetaData)`
 |qqq-backend-core
@@ -199,7 +279,7 @@ Removed from 5 files in `qqq-backend-core` and `qqq-middleware-api`:
 |Use `toQRecordOnlyChangedFields(false)`
 
 |`BaseAPIActionUtil.setSession(QSession)`
-|qqq-middleware-api
+|qqq-backend-module-api
 |Remove call — unused setter
 
 |`ApiFieldCustomValueMapper.customizeFilterCriteria(QueryInput...)` vararg
@@ -223,7 +303,7 @@ entity.toQRecordOnlyChangedFields(false);
 
 `Parameter.setIn(String)` / `withIn(String)` and `Schema.setType(String)` / `withType(String)`
 overloads that accepted free-form `String` arguments were removed.
-Use the `Parameter.In` and `Schema.Type` enum-typed overloads.
+Use the `com.kingsrook.qqq.openapi.model.In` and `Type` enum-typed overloads.
 
 [source,java]
 .Before (0.x)
@@ -235,8 +315,11 @@ schema.setType("string");
 [source,java]
 .After (4.0)
 ----
-parameter.setIn(Parameter.In.QUERY);
-schema.setType(Schema.Type.STRING);
+import com.kingsrook.qqq.openapi.model.In;
+import com.kingsrook.qqq.openapi.model.Type;
+
+parameter.setIn(In.QUERY);
+schema.setType(Type.STRING);
 ----
 
 
@@ -249,7 +332,7 @@ type parameter, or class hierarchy. Each item is identified by its BREAK-04-NN I
 
 *Module:* `qqq-bom`
 
-The following 5 modules were not previously managed by `qqq-bom`. They are now included.
+The following 5 modules were not previously managed by `com.kingsrook.qqq:qqq-bom-pom`. They are now included.
 If you had explicit version pins for these modules in your `pom.xml`, remove them.
 
 [source,xml]
@@ -326,13 +409,13 @@ String json = JsonUtils.toJsonWithMapper(myObject,
 [source,java]
 .Before (0.x)
 ----
-String yaml = YamlUtils.toYaml(myObject, mapper -> mapper.configure(...));
+String yaml = YamlUtils.toYaml(myObject, mapper -> mapper.disable(SerializationFeature.INDENT_OUTPUT));
 ----
 
 [source,java]
 .After (4.0)
 ----
-String yaml = YamlUtils.toYamlCustomized(myObject, mapper -> mapper.configure(...));
+String yaml = YamlUtils.toYamlCustomized(myObject, mapper -> mapper.disable(SerializationFeature.INDENT_OUTPUT));
 ----
 
 === BREAK-04-08: AbstractActionInput.getInstance() and getSession() removed
@@ -360,13 +443,15 @@ QSession session = QContext.getQSession();
 [source,java]
 .Before (0.x)
 ----
-filter.interpretValues(new RemoveFromFilterUseCase(), inputValues);
+FilterUseCase useCase = () -> CriteriaMissingInputValueBehavior.REMOVE_FROM_FILTER;
+filter.interpretValues(useCase, inputValues);
 ----
 
 [source,java]
 .After (4.0)
 ----
-filter.interpretValues(MapBuilder.of("input", inputValues), new RemoveFromFilterUseCase());
+FilterUseCase useCase = () -> CriteriaMissingInputValueBehavior.REMOVE_FROM_FILTER;
+filter.interpretValues(MapBuilder.of("input", inputValues), useCase);
 ----
 
 === BREAK-04-10: NowWithOffset TimeUnit factories removed
@@ -403,7 +488,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData);
 ----
 
-=== BREAK-04-12: QInstance.metaDataFilter removed (use metaDataCustomizer)
+=== BREAK-04-12: QInstance.metaDataFilter removed (use metaDataActionCustomizer)
 
 *Location:* `qqq-backend-core` — `QInstance`
 
@@ -416,7 +501,7 @@ qInstance.setMetaDataFilter(codeRef);
 [source,java]
 .After (4.0)
 ----
-qInstance.setMetaDataCustomizer(codeRef);
+qInstance.setMetaDataActionCustomizer(codeRef);
 ----
 
 === BREAK-04-13: QBrandingMetaData.environmentBannerText/Color removed
@@ -433,8 +518,16 @@ qBrandingMetaData.setEnvironmentBannerColor("#FF0000");
 [source,java]
 .After (4.0)
 ----
-qBrandingMetaData.withBanner(BannerSlot.TOP, new Banner().withText("DEV").withColor("#FF0000"));
+import com.kingsrook.qqq.frontend.materialdashboard.model.metadata.MaterialDashboardBannerSlots;
+
+qBrandingMetaData.withBanner(MaterialDashboardBannerSlots.QFMD_TOP_OF_SITE, new Banner()
+   .withMessageText("DEV")
+   .withBackgroundColor("#FF0000"));
 ----
+
+`BannerSlot` is an interface. This example uses the slot enum from the Material Dashboard
+artifact; another frontend may define its own slot names. Keep the frontend dependency at
+a version that supports banners.
 
 === BREAK-04-14: QProcessMetaData.addStep() removed (use withStep)
 
@@ -483,7 +576,7 @@ inputMetaData.addField(field);
 [source,java]
 .After (4.0)
 ----
-new QFunctionInputMetaData().withField(field);
+inputMetaData.withField(field);
 ----
 
 === BREAK-04-17: AbstractHTMLWidgetRenderer input-param overloads removed
@@ -493,17 +586,17 @@ new QFunctionInputMetaData().withField(field);
 [source,java]
 .Before (0.x)
 ----
-renderer.linkRecordEdit(input, tableName, id);
-renderer.linkRecordView(input, tableName, id);
-renderer.linkTableView(input, tableName);
+AbstractHTMLWidgetRenderer.linkRecordEdit(input, tableName, id);
+AbstractHTMLWidgetRenderer.linkProcessForFilter(input, processName, filter);
+AbstractHTMLWidgetRenderer.linkProcessForRecord(input, processName, id);
 ----
 
 [source,java]
 .After (4.0)
 ----
-renderer.linkRecordEdit(tableName, id);
-renderer.linkRecordView(tableName, id);
-renderer.linkTableView(tableName);
+AbstractHTMLWidgetRenderer.linkRecordEdit(tableName, id);
+AbstractHTMLWidgetRenderer.linkProcessForFilter(processName, filter);
+AbstractHTMLWidgetRenderer.linkProcessForRecord(processName, id);
 ----
 
 === BREAK-04-18: RecordCustomizerUtilityInterface.getValueFromRecordOrOldRecord removed
@@ -519,7 +612,8 @@ Object value = getValueFromRecordOrOldRecord(fieldName, record, pkey, oldRecordM
 [source,java]
 .After (4.0)
 ----
-Object value = getValueFromRecordElseFromOldRecord(fieldName, record, pkey, oldRecordMap);
+Object value = RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord(
+   fieldName, record, pkey, oldRecordMap);
 // Use ValueUtils for type conversion if needed
 ----
 
@@ -561,8 +655,8 @@ qInstance.setMetaDataFilter(new QCodeReference(AllowAllMetaDataFilter.class));
 [source,java]
 .After (4.0)
 ----
-// Use metaDataCustomizer with DefaultNoopMetaDataActionCustomizer or your own impl
-qInstance.setMetaDataCustomizer(new QCodeReference(MyMetaDataCustomizer.class));
+// Use metaDataActionCustomizer with DefaultNoopMetaDataActionCustomizer or your own impl
+qInstance.setMetaDataActionCustomizer(new QCodeReference(MyMetaDataCustomizer.class));
 ----
 
 === BREAK-04-21: RenderTemplateAction input-param overloads removed
@@ -583,7 +677,7 @@ RenderTemplateAction.renderVelocity(context, code);
 
 === BREAK-04-22: BaseAPIActionUtil.executeOAuthTokenRequest overload removed
 
-*Location:* `qqq-middleware-api` — `BaseAPIActionUtil`
+*Location:* `qqq-backend-module-api` — `BaseAPIActionUtil`
 
 [source,java]
 .Before (0.x)
@@ -638,20 +732,19 @@ server.withAdditionalRouteProviders(List.of(routeProvider));
 [source,java]
 .Before (0.x)
 ----
-ApiQueryFilterUtils.manageCriteriaFields(field, value, filter, table, apiVersion);
-// (5-arg form without apiVersion parameter in first position)
+ApiQueryFilterUtils.manageCriteriaFields(filter, tableApiFields, badRequestMessages, apiName, input);
 ----
 
 [source,java]
 .After (4.0)
 ----
-// Use the 6-arg form with apiVersion as the first parameter
-ApiQueryFilterUtils.manageCriteriaFields(apiVersion, field, value, filter, table, context);
+ApiQueryFilterUtils.manageCriteriaFields(
+   filter, tableApiFields, badRequestMessages, apiName, apiVersion, input);
 ----
 
-=== BREAK-04-26: ApiFilterUtils getTableApiFieldMap/getTableApiFieldList overloads removed
+=== BREAK-04-26: GetTableApiFieldsAction getTableApiFieldMap/getTableApiFieldList overloads removed
 
-*Location:* `qqq-middleware-api` — `ApiFilterUtils`
+*Location:* `qqq-middleware-api` — `GetTableApiFieldsAction`
 
 The `ApiNameVersionAndTableName` inner record and its associated
 `getTableApiFieldMap(ApiNameVersionAndTableName)` and `getTableApiFieldList(ApiNameVersionAndTableName)`
@@ -660,8 +753,8 @@ overloads have been removed.
 [source,java]
 .Before (0.x)
 ----
-var key = new ApiFilterUtils.ApiNameVersionAndTableName(apiName, apiVersion, tableName);
-Map<String, QFieldMetaData> fieldMap = ApiFilterUtils.getTableApiFieldMap(key);
+var key = new GetTableApiFieldsAction.ApiNameVersionAndTableName(apiName, apiVersion, tableName);
+Map<String, QFieldMetaData> fieldMap = GetTableApiFieldsAction.getTableApiFieldMap(key);
 ----
 
 [source,java]
@@ -669,9 +762,9 @@ Map<String, QFieldMetaData> fieldMap = ApiFilterUtils.getTableApiFieldMap(key);
 ----
 GetTableApiFieldsInput input = new GetTableApiFieldsInput()
    .withApiName(apiName)
-   .withApiVersion(apiVersion)
+   .withVersion(apiVersion)
    .withTableName(tableName);
-Map<String, QFieldMetaData> fieldMap = ApiFilterUtils.getTableApiFieldMap(input);
+Map<String, QFieldMetaData> fieldMap = GetTableApiFieldsAction.getTableApiFieldMap(input);
 ----
 
 === Deferred items (not in 4.0.0)
@@ -682,3 +775,309 @@ addressed in a future 4.x release:
 * *BREAK-04-05*: AWS SDK v1 and v2 consolidation — mixed SDK usage (`software.amazon.awssdk` and
   `com.amazonaws`) remains in the RDBMS and S3 filesystem modules. No action required for 4.0
   migration; consolidation tracked for a future release.
+
+== Joined HTTP read permissions
+
+Legacy and V1 Query/Count now require READ permission for client-requested joined tables, including implicit joins from filters and ordering. Legacy Get also checks requested joins and associated records, including nested associations. Earlier versions checked only the base table, allowing related values or counts to be disclosed without the related table's READ permission. Those requests now return HTTP 403.
+
+Review saved views, filters, sorts and clients that automatically request exposed joins. Grant related-table READ only when intended, or remove the unauthorized join/filter/sort. Exposing a metadata relationship does not grant access. Unprotected tables and callers with the relevant grants retain their access. Joins used solely to enforce record-security locks remain operational, and trusted core action calls retain their existing permission semantics.
+
+Legacy Query/Count now identify HTTP input as USER, matching V1. Associated-record queries inherit their parent's input source, so USER-specific field personalization also applies to children and grandchildren. Private fields that were previously returned or accepted in legacy filters through the accidental SYSTEM path are now omitted or rejected. Explicit trusted SYSTEM calls preserve their existing behavior.
+
+A joined-table personalizer failure now rejects the filter instead of falling back to unrestricted metadata. This failure handling applies to any input source; successful trusted SYSTEM personalization remains available.
+
+== SQL date and time values
+
+RDBMS `DATE` values now use JDBC 4.2 `LocalDate` reads instead of returning `java.sql.Date` from the generic strategy. Prefer `record.getValueLocalDate("fieldName")` over casting raw `record.getValue(...)`; the typed accessor also works with older records. `DATE` and `TIME` writes preserve their calendar date and wall-clock time independently of the JVM timezone.
+
+QQQ's zone-less `DATE_TIME` storage convention is UTC. The generic RDBMS strategy now binds `Instant` as a UTC `LocalDateTime`, avoiding MySQL driver conversion through the host timezone. Configure database sessions for UTC when using timestamp columns that apply a connection timezone. Existing timestamp rows are not rewritten by this change; applications that previously stored local times need an explicit data correction before treating those rows as UTC. The sample acceptance profile checks independent stored-value readback across host timezones.
+
+== Dynamic user defaults
+
+The `USER_ID` dynamic default now applies only during INSERT and UPDATE. Reads preserve stored blank or null values instead of substituting the reader's user ID. Missing or blank write values still default to the current user, including an omitted field in a sparse UPDATE. Applications that need to display the current user independently of stored data should obtain that value explicitly from the session.
+
+== Metadata file errors
+
+`MetaDataLoaderHelper.processAllMetaDataFilesInDirectory` now throws for unreadable directories, invalid metadata and loading problems instead of logging them and continuing. Every file in the directory tree must contain valid metadata; move README files and other non-metadata resources elsewhere. Configuration failures should prevent startup. Loading uses each type's existing registration rules; it does not provide a generic replacement or transactional rollback mechanism.
+
+
+== Associated HTTP write permissions
+
+Legacy nested INSERT, UPDATE and DELETE now check the child operations before mutating the parent. For an UPDATE replacement association, records with IDs need EDIT, new records need INSERT, and omitted stored members need DELETE. During INSERT, every supplied child needs INSERT even when its record already contains an ID. Omitting the association entirely preserves its records. Cascades check descendant DELETE permissions even when ordinary reads hide those descendants; missing operation grants return 403 before parent writes. Recursive actions also retain their parent's USER or SYSTEM input source. A READ grant is not required merely to perform an otherwise authorized child write.
+
+Custom backend query adapters used for associated-write preflight, cascading DELETE and replacement UPDATE implement `findAssociatedPrimaryKeys(AssociatedRecordDiscovery.Input)`. This internal operation must provide complete declared-relationship membership while ordinary queries keep their existing visibility. The generic API adapter reads its configured native collection and cannot bypass opaque upstream policies, so its completeness depends on that provider contract. Cascading DELETE, expanded Query/Get, nested INSERT and UPDATE orient either registered join direction and use child-declared value types. Non-primary-key and composite DELETE also require the bounded stored parent-value projection described below. A granted leaf DELETE may avoid permission-preflight discovery, but replacement execution still requires complete discovery; ordinary visibility-filtered queries are not a fallback. The default interface method rejects unsupported discovery rather than silently authorizing a partial graph.
+
+For replacement UPDATE, omissions are selected from the stored old relationship; retained and new children receive the prospective tuple after standard normalization and the pre-update customizer. Non-primary-key and composite relationships require `readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput)` on custom query adapters, including complete patches whose relationship changes. API providers explicitly implement the corresponding `BaseAPIActionUtil` method; its default refuses the operation. Unsupported or incomplete native projection fails before parent mutation. Ordinary parent-only edits and primary-key-only replacements require no extra stored-value read. Repeated parent targets are rejected when any occurrence requests association replacement.
+
+Missing patch components retain their stored values privately. Fields removed from active write metadata cannot override them. Explicit null remains null: an old null tuple has no members, while a prospective null tuple rejects nonempty child writes as bad input; an empty replacement still removes old non-null members. Generated IDs, ordinary normalization/defaults and statuses remain available in nested results without injecting private relationship values. Omitted children are deleted before the parent UPDATE, and cascading DELETE removes descendants before their ancestors. Ordinary child access checks therefore evaluate while the stored ancestor still exists. A child error or incomplete deletion prevents that parent mutation; the parent receives a generic error without private descendant details. Cyclic cascades are rejected. Filter-based deletes apply validation and cascades to the selected primary keys, and restore the caller's input selection. Existing caller transactions and audit options propagate to descendants. UPDATE and DELETE remain on the action stack during nested callbacks, preserving any existing outer action and restoring the stack on exit; callbacks can distinguish an association mutation from a direct child edit. These operations do not provide automatic rollback, distributed atomicity or concurrency isolation: an earlier successful descendant or sibling can remain changed after a later failure unless an encompassing supported caller transaction is rolled back. Middleware preflight normalizes private copies; trusted customizers or time-dependent behavior must preserve the authorized relationship between preflight and execution.
+
+== Recursive values and INSERT identities
+
+Legacy forms can opt into `X-QQQ-Association-Format: record-v1` for recursive `{values, associatedRecords}` child envelopes in the existing `associations` parameter. Flat forms remain available without the header. Malformed explicitly declared JSON bodies now return 400 rather than falling back to empty forms. Record JSON preserves explicit null and empty field values, and expanded Query/Get inherits heavy-field and other read-value flags. Expansion is limited to 64 child-record levels and fails on deeper nonempty data rather than truncating it.
+
+RDBMS INSERT now retains supplied primary keys and ordinary fields named `id`. An absent primary key is omitted from the column list; native column defaults, identities and constraints determine the result. For a primary-key-only row, `RDBMSActionStrategyInterface.getInsertDefaultValuesClause()` supplies native syntax: the MySQL/H2 default is `() VALUES ()`, with PostgreSQL and SQLite using `DEFAULT VALUES`. Supplied and generated keys use separate statements in input order, so their returned identities do not depend on a driver's mixed-key reporting. Memory rejects duplicate keys and missing manual keys and avoids occupied generated keys. MongoDB INSERT preserves supplied native identities instead of attempting an ObjectId conversion after the write. These corrections do not establish arbitrary manual-key support in every backend action or automatic rollback across a batch. Copy clients must prepare fresh identities and still apply ordinary INSERT rules.
+
+== Declared unique keys on writes
+
+UPDATE now validates declared unique keys after standard validation and the pre-update customizer. Sparse patches combine omitted stored key components only for validation; the original patch and normal access checks are preserved. Complete keys avoid that extra stored-value lookup. Repeated occurrences of a primary key are rejected when any fragment touches a unique key; submit one combined record instead. An unchanged self key is valid unless another stored record owns it. Null components remain distinct. INSERT checks now find hidden stored conflicts, and invalid records no longer reserve keys against otherwise valid records later in the batch.
+
+Custom query adapters implement `lookupUniqueKey(UniqueKeyLookup.Input)` for complete declared-key reads; API providers use their configured `BaseAPIActionUtil` override. Unsupported lookup fails before the write. Existing INSERT customizer phase order and the trusted skip option are retained; hooks after the persisted-key check must preserve validated keys. Native preflight is not a replacement for matching storage constraints: concurrent writers, database rounding and collation rules can still require storage enforcement.
+
+== HTTP record validation status
+
+Legacy INSERT and UPDATE return HTTP 400 when every error on the returned top-level record is a known `BadInputStatusMessage`, including required-field and duplicate-key errors. Clients previously received 500 for these validation failures. The response's `error` message is unchanged. System errors, unclassified application errors and mixed error lists retain HTTP 500; authentication and permission status handling is unchanged.
+
+
+== Association metadata and empty results
+
+Full legacy and V1 table metadata now includes shallow named association descriptors (`name`, `associatedTableName`, `join`); the light table registry remains unchanged. V1 widget metadata also includes the existing frontend `defaultValues`, preserving explicit section/widget association bindings. V1 full-table metadata follows the legacy metadata visibility policy: hidden denials return 404, while disabled metadata can carry separate READ and INSERT flags. Receiving metadata grants no access to record data.
+
+Successful expanded reads preserve an empty named group as `[]` instead of omitting it during JSON serialization. Base-only and unrequested groups stay absent. Clients must distinguish a known empty group from unavailable data and preserve omitted-versus-empty replacement semantics when writing. Recursive legacy form writes use the opt-in `record-v1` format described above; association execution and transaction limits still apply. Expanded read tuples containing null have no membership, while missing relationship fields fail explicitly. Replacement UPDATE null behavior is described above; these read semantics do not provide automatic transaction rollback.
+
+== Insert validation and numeric identity fidelity
+
+Required INSERT fields reject blank String operands even when the declared field is numeric, date or boolean. Zero, `false` and non-null binary values remain present. INTEGER/LONG conversion through `ValueUtils` now rejects fractional String values such as `1.5`, rather than truncating them; this applies beyond Insert wherever those converters are used. Existing exact forms such as `1,000.00` remain valid. Callers that intentionally rounded values must do so explicitly before supplying an integer.
+
+RDBMS primary-key grouping uses the same typed conversion as parameter binding. Blank numeric generated keys are therefore omitted like absent keys, while literal empty String natural keys retain their native meaning. An explicit numeric zero is passed to the database in its own statement and the returned identity is captured when available. This honors MySQL's configured zero/AUTO_INCREMENT behavior, including `NO_AUTO_VALUE_ON_ZERO`, without changing connection SQL modes. Native conversion or constraint failures may still leave earlier statements successful; callers own transaction rollback.
+
+== Query result ownership and field privacy
+
+Post-query record customizers publish the list they return, and subsequent formatting/privacy processing acts on delivered records. The existing mutable callback/RecordPipe API is retained; returning `null` raises a `QException`. Direct and buffered delivery support filtered or expanded lists. A plain single-record pipe can fail when the current record is removed or lose expanded results; corrections are deferred in https://github.com/QRun-IO/qqq/issues/491[#491]. Direct pipe termination/counting corrections are deferred in https://github.com/QRun-IO/qqq/issues/492[#492]. In-flight consumers may return previously read rows, and later failures do not retract consumed batches. No new parent-cancellation promise is introduced.
+
+Selected joined fields now honor hidden/PASSWORD metadata under their qualified alias names, including display values. Explicit core read options and the `REVEAL` adornment retain their behavior. Password masking no longer inserts a masked field excluded from a backend-supported projection, and removes stale display-only private values. The same shared Query path protects joined Get and middleware reads. Query still defaults `shouldFetchHeavyFields` to `false`; the reference now corrects its previously inaccurate default and names `tableName`, `shouldMaskPasswords` and `POST_QUERY_RECORD` accurately.
+
+Physical and virtual fields follow the same privacy rules. Record labels that depend on private fields are rebuilt after sanitization; a failed label format cannot reuse the original private label. Native API Get applies READ behaviors to the customizer's returned record and masks its display values without copying the original password. Jackson serialization of `QRecord` omits `backendDetails.jsonSourceObject` while preserving other details and the internal provider payload.
+
+== Active query metadata and Memory read selection
+
+The shared join context now reserves the main table name: a join alias, or an unaliased join table name, equal to it rejects with `QException`. Rename conflicting aliases and their field references. Self-joins remain supported with distinct aliases; the root and joined namespaces must stay separate.
+
+RDBMS Query and the shared Memory Query/Count/Aggregate path now apply active personalized READ rules to base and joined rows. USER-added restrictions affect row membership; unavailable personalized tables reject. LEFT joins retain a parent with null child values when no permitted child matches. Explicit trusted SYSTEM calls continue to use their own metadata source.
+
+Memory Query now omits unselected joined values, honors `fieldNamesToInclude`, and omits heavy values by default while retaining available lengths. Request heavy values with `shouldFetchHeavyFields=true`; hidden/password rules still apply. Internal Count and Aggregate retain the values needed for computation without widening public Query output. These corrections do not establish parity across all backend operators, types or join modes.
+
+Memory now evaluates supported joined virtual fields against the child alias's fields and retains join context inside Boolean subfilters. Memory Query accepts a selected joined virtual as the sole requested field; no physical child or root selection is required. Selected base fields and Aggregate operands still use bare names, while joined selections use `tableOrAlias.field`; this does not change filter qualification rules. Source fields remain subject to projection/privacy, and functions retain their own null and sorting behavior.
+
+The public Memory join-switch signatures remain, but setting `buildJoinCrossProductFromJoinContext` to false now causes a checked `QException` on reads. Remove false settings, including a false static default configured before singleton creation. Keep true so the join plan includes security rules; the old mode is not silently accepted.
+
+== MongoDB read-lock scopes and groups
+
+MongoDB Query, Count and Aggregate now apply READ as well as READ_AND_WRITE locks on fields in the queried table, retaining nested AND/OR groups. WRITE-only locks do not restrict these reads. USER-added metadata restrictions apply; SYSTEM still evaluates its active table's locks. A true all-access key satisfies its corresponding lock, including an OR alternative, while other required branches and the caller filter remain effective. Null session-key entries do not grant read access; access to null or missing lock values remains governed by the effective null-value policy and all-access key. These corrections do not add joined-lock support or change provider-specific Aggregate operators or lifecycle guarantees.
+
+== MongoDB computed filters
+
+MongoDB Query, Count and Aggregate now compute native-supported virtual predicates and inline functions on physical fields before matching rows. Repeated functions retain each criterion's arguments through flat or nested AND/OR filters; inline computation no longer replaces mapped physical values or changes which stored physical values satisfy READ grants. Required filter computations reject missing native adapters and customizer-only values instead of reading stored values as a fallback. An inline function applied to a virtual field is unsupported and rejects. Aggregate value/group computations retain their existing provider fallbacks and virtual-definition handling. MongoDB COUNT retains its row-count behavior. MongoDB has no aggregate join implementation; do not submit explicit joins, which the provider can ignore. Existing provider-specific aggregate operators, result types, nulls and lifecycle boundaries remain.
+
+Custom MongoDB action subclasses must move read-filter customization from `makeSearchQueryDocument` to `makeFilterPipeline(QTableMetaData, MongoDBBackendMetaData, QQueryFilter)` for Query, Count and Aggregate. The document-only helper remains available to paths such as Delete, but overriding it alone no longer customizes these reads. Query calls `buildAddFieldsDocument` after filtering for named virtual projection, with a null criteria filter. Review overrides that relied on the previous call order or filter argument.
+
+== MongoDB result types and aggregate ordering
+
+MongoDB Query retains its existing BSON wrapper and civil-date/time conversion limitations; the declared-field normalization refinement is deferred in https://github.com/QRun-IO/qqq/issues/530[#530]. Native ObjectId write-identity checks, nested-path safety and READ-owner filtering remain selected.
+
+MongoDB Aggregate retains its existing result conversion, nullable-list, sorting, result-limit and timeout-cleanup limitations. COUNT counts rows and COUNT_DISTINCT remains unsupported. The shared filter/READ corrections do not establish new Aggregate provider or lifecycle guarantees.
+
+== MongoDB write lookup identity
+
+Common write prefetch, destructive-filter selection, stored WRITE-owner validation and Replace matching now use `QueryInterface.executeForDml(QueryInput)`; MongoDB also uses it for structural association discovery. Other backend implementations default to their existing `execute` method. MongoDB requires native ObjectId identities for these lookups and rejects selected native String keys, virtual replacement of `_id` and changed decoded primary keys before returning those selections for write callbacks or cascades. ObjectId keys remain hexadecimal Strings in QQQ. The native UPDATE selector now uses the configured logical primary key rather than a hard-coded `id` field.
+
+Ordinary Query and uniqueness-conflict reads retain their existing paths; this does not establish full native String-key CRUD or disambiguate ordinary lookups. Custom `MongoDBQueryAction` subclasses overriding only `execute` must review and adapt the new `executeForDml` entry point while preserving its identity checks. These checks do not add automatic rollback, concurrency isolation or cancellation guarantees. See xref:../index.adoc#NativeWriteLookups[native write lookups].
+
+== Update patch validation and stored-owner authorization
+
+Required UPDATE fields retain sparse-patch semantics: omitted fields are not newly required, while supplied null or blank String operands fail presence validation. Non-null byte arrays, including empty, NUL and whitespace bytes, remain data; zero and `false` remain present. Normal defaults and behaviors still apply, including `USER_ID` on omitted fields and automatic `MODIFY_DATE` unless suppressed.
+
+Native old-record matching now uses typed primary-key identity, including decimal values and byte-array contents. UPDATE grouping excludes the configured primary key rather than every field named `id`, so an ordinary `id` field remains writable under a different declared key. This does not certify arbitrary physical key types or every provider.
+
+In the supported native prefetch path, stored WRITE owners are checked using private values rather than hidden/heavy/password presentation results. Private values remain separate from public patches/results and the audit/customizer snapshot. Nested WRITE/READ_AND_WRITE AND/OR checks preserve applicable branches; OR failure depends on failed branches rather than error-message counts. Native adapter representation remains trusted; API no-prefetch and filesystem security need separate validation. These corrections do not add automatic batch/recursive rollback or concurrency isolation. See xref:../index.adoc#UpdateAction[UpdateAction] for input defaults and caller-owned transaction boundaries.
+
+== Delete selection, stored authorization and callback lists
+
+The common destructive-filter selection path now rejects malformed structure, unknown or USER-removed fields and negative skip/limit before DML. Filter value behaviors use a private copy, preserving the caller's selection. An explicitly empty filter still selects all matching readable rows; no keys and no filter request no native deletion. Invalid criteria must not be replaced with an empty filter.
+
+Delete carries the input source and active personalized metadata into filter validation and presentation prefetch. Supported native stored-owner checks use private values rather than hidden/heavy/password or post-query presentation values; those values remain separate from public results and audit/customizer snapshots. Normal READ visibility still applies. Canonical cascade discovery remains independent of presentation metadata and deletes descendants before ancestors; it is not a substitute for ordinary authorization.
+
+PRE_DELETE replacement lists and public validation inputs may be immutable; Delete copies the list container before appending missing-key results. Customizers remain trusted, and preview callbacks must avoid persistent side effects. Post-delete errors cannot undo successful writes. Root counts exclude descendants; partial errors and earlier persisted deletions may coexist. Transactions remain caller-owned, with no automatic batch/recursive rollback. API no-prefetch and filesystem security still require their own provider validation. See xref:../index.adoc#DeleteAction[DeleteAction] for the full selection and result contract.
+
+== Private keys in write snapshots
+
+Update/Delete prefetch now retains native row identity while callback snapshots keep hidden/heavy/password key presentation. Update old-record reads also carry the update input source and active metadata, so USER-removed fields stay absent from old snapshots. Delete filter selection fetches the native key independently of presentation; hidden or masked keys are not repeated in generated not-found or native system-error messages.
+
+Copy callback records with `new QRecord(record)` to retain private identity. Write-prefetch post-query and pre-delete replacements must identify original native/prefetched targets; unkeyed, unrelated or retargeted captured records reject before DML, while valid fresh same-target replacements remain supported. The internal identity is not serialized through QQQ JSON or Java serialization and is not restored by deserialization. Ordinary public Query/Get behavior, caller transaction ownership and provider boundaries remain unchanged.
+
+Invalid identities returned by POST_DELETE are handled after DML: the returned list is not merged, warnings use the original successful snapshots, and the successful deletion count remains unchanged.
+
+== Replace matching, callbacks and phase failures
+
+Replace matches normalized, typed physical key values through native READ-visible rows, without Query presentation/customizer transformations. Invalid inputs, comparable duplicate desired tuples across pages and ambiguous stored owners reject before child writes. Opt-in single-column null matching now includes a null lookup; null-distinct remains the default. Private matching values and newly discovered hidden/heavy/password keys are not disclosed as public values. Input source and active personalized metadata reach matching and child actions; native adapter and ordinary child authorization boundaries remain.
+
+Generated INSERT keys are correlated to original inputs through QRecord copies rather than result positions. With `setPrimaryKeyInInsertedRecords=true`, PRE_INSERT replacements must use `new QRecord(record)` and preserve each original INSERT candidate; fresh replacements remain supported when it is false. POST_INSERT must preserve exactly the native inserted primary-key set, even when reordering or copying results. Internal copy/private identity is not serialized, and generated-key publication retains private presentation. Reusing a masked/private record does not confer READ/WRITE authority or turn its captured identity into an explicit caller-supplied key.
+
+Child INSERT/UPDATE/DELETE errors, including nested association errors, now fail Replace and stop later phases. Recursive INSERT/UPDATE results are checked before POST presentation callbacks can suppress failed validation/PRE or native outcomes; returned POST errors also fail. This strict phase behavior belongs to Replace and does not change the standalone actions' result contracts. Owned transactions commit only on success, roll back on failure and close; supplied transactions are never committed, rolled back or closed, so earlier work may remain pending for the caller. No-op/provider transactions cannot guarantee rollback; database rollback does not undo external customizer effects or restore Java inputs. The Replace filter still limits deletion only, allowing matching and updates outside its predicate. Retained keys are excluded before the original top-level order/skip/limit is applied to the remaining omission candidates. Native-supported root UNION/UNION_ALL/INTERSECT/EXCEPT preserve their operator and window with retained keys excluded from each operand; this does not add nested sets or unselected-field ordering. See xref:../index.adoc#ReplaceAction[ReplaceAction] for options and callback/transaction boundaries.
+
+== Aggregate visibility and native execution
+
+Common selection uses active USER/SYSTEM base and joined metadata. RDBMS carries that metadata into native mappings and READ checks; Memory uses its shared read path, including active joined READ rules and private structural fields. MongoDB filters against original physical READ-owner values before computing filter expressions. These fixes preserve the existing aggregate descriptor and hidden/PASSWORD operand behavior; results do not receive Query masking.
+
+Ordinary result-type, grouping, sorting, numeric-precision, routing and statement-lifecycle refinements are deferred. Existing provider differences remain: Memory source-row windows and empty/all-null results, RDBMS typed sorting and count conversion, and MongoDB BSON conversion, result limits and unsupported joins. See xref:../index.adoc#AggregateAction[AggregateAction] for the actual provider boundaries. Caller-owned transactions remain under caller control; this does not introduce new rollback or cancellation guarantees.
+
+== Statistics and configured widget access
+
+ColumnStats now retains USER source for grouped/scalar aggregates and its row-limit Count. RDBMS Count uses active base/join metadata and rejects unavailable personalized tables. Its thresholds therefore use the accessible population, including USER-added READ locks. Statistics require READ on requested exposed joins and filter-only joins.
+
+Javalin and Slack widget inputs now carry USER source. Built-in no-code aggregates and two-dimensional table widgets propagate it. For USER inputs, these built-ins enforce base-table READ; no-code filter joins also require READ. Active grouping labels and removed fields are respected. Direct Java RenderWidgetInput defaults to SYSTEM; request parameters cannot override its source. Custom widget renderers are responsible for carrying the source and enforcing their table permissions.
+
+Two-dimensional widget column naming retains its existing null/text and reserved-name collision limitations. No-code value-source errors continue to render missing values through their existing template behavior.
+
+== Process download authorization
+
+The legacy GET/POST `/download/{file}` route now rejects unregistered `filePath` and `storageTableName` / `storageReference` values with HTTP 403, even when the caller can read the table. Authentication and table READ alone cannot establish ownership of an arbitrary server file. Built-in basic-report and saved-report generators register their output automatically. Custom process authors must call `ProcessFileDownload.register(generatedFile)` or `ProcessFileDownload.registerStorage(storageInput)` in trusted server code after producing and authorizing the file. Keep the existing download process values and URL parameters; never grant access just because a request value appears in process output. See xref:../index.adoc#ProcessDownloadGrants[generated-file downloads] for examples, session binding and lifecycle limits.
+
+Grants expire after 30 minutes, are bounded to 10,000 outputs per JVM, and are scoped to the application instance, authentication session and backend variants. Restarts, eviction or credential renewal can require regenerating the output. Use the same JVM for generation and download in multi-node deployments. Local filesystem storage now rejects absolute references, directory escape and existing symlink escape for reads, writes and download URLs. Move any intentionally external storage into an explicitly configured backend/table directory. Download responses use attachment disposition with UTF-8 filenames. Mock browser authentication now retains its session cookie; anonymous session references remain stable when restored.
+
+== Process upload validation
+
+The legacy process endpoints now check standard process permission rules before archiving uploads and reject unsafe filenames before writing any files. Custom permission checkers run after input population, as before, so they can inspect report names and other values; their denial does not roll back uploaded files. Send only a nonblank filename, without directory separators, colons or control characters; `.` and `..` are invalid. Unknown processes return HTTP 403 without archive writes. Filename and multipart parser errors now return an HTTP client error instead of HTTP 200, while ordinary backend process errors retain the existing envelope. Configure multipart limits through `config.jetty.multipartConfig.maxFileSize(...)` and `maxTotalRequestSize(...)`; `config.http.maxRequestSize` is not an upload limit. See xref:../index.adoc#ProcessUploads[process file uploads] for configuration and archive lifecycle details.
+
+== Process input source and saved-report access
+
+The legacy Javalin process endpoints and v1 process init/step endpoints now use `QInputSource.USER`. Application API process calls retain the SYSTEM default; changing that contract is deferred in https://github.com/QRun-IO/qqq/issues/451[#451]. A submitted process input declared with `isEditable = false` is rejected before merging saved state; configure its default in backend metadata instead. Automatic loading of a step's input records uses the process input source and requires base-table and joined-table READ permission for USER calls. Custom queries and mutations inside backend steps still choose their own source and permission checks.
+
+The built-in saved-report process retains its existing storage table/reference and email configuration inputs. Adding a non-editable policy for those inputs is deferred in https://github.com/QRun-IO/qqq/issues/453[#453]; applications remain responsible for the configuration and inputs they expose. Rendering uses the selected report records and application-configured record access. The additional rendering-ownership/grant-scope policy and revalidation after a paused step are deferred in https://github.com/QRun-IO/qqq/issues/451[#451] and https://github.com/QRun-IO/qqq/issues/446[#446]; they are not new 4.0 requirements.
+
+Direct Java process calls retain the SYSTEM default for trusted server work. Code forwarding external values must set `RunProcessInput.withInputSource(QInputSource.USER)` and retain appropriate process permission checks. Application API metadata defaults, declared inputs and trusted customizers retain their existing behavior. Core bad-request errors return HTTP400 through the API; wrapped permission denials return HTTP403. Cross-instance API process-cache identity remains a deferred Medium issue, https://github.com/QRun-IO/qqq/issues/449[#449].
+
+Application API job-result ownership is bound independently of its process input source. Named and saved-report generation retain their trusted source defaults; broader explicit USER propagation and source permission policies remain deferred. Automatic saved-source provenance changes are deferred in https://github.com/QRun-IO/qqq/issues/448[#448]. These focused checkpoints do not replace final integrated acceptance.
+
+Application API process custom permission checkers now run once after API input mapping, metadata defaults and `PreRunApiProcessCustomizer`, before synchronous or asynchronous process execution. This lets the built-in `ReportProcessPermissionChecker` authorize the effective `reportName`. Standard process permission checks still reject denied calls before the pre-run customizer. Customizers run before input-dependent authorization; they must authorize any sensitive side effects themselves. See https://github.com/QRun-IO/qqq/issues/455[#455]. This correction does not require raw source-table READ for an authorized named report.
+
+== Process state and asynchronous result ownership
+
+Browser and application API process state is now bound to the originating QInstance, authentication reference (session UUID when no reference exists), backend variants, process name and process UUID. Polling, records, resume, cancellation and process-dependent possible values require that ownership and current process permission. Clients and HTTP tests must preserve their session across requests. Copying a process/job UUID to another session, tenant or application no longer grants access; failed unauthorized resumes leave the owner's saved values unchanged.
+
+Custom public routes must use `RunProcessAction.getStateForUser(processUUID, processName)` and `AsyncJobManager.getJobStatusForUser(jobUUID, processName, processUUID)`. Custom asynchronous process starters associate jobs using `withProcessUUID(processUUID)` before `startJob(...)`. Raw `getState`/`getJobStatus` remain trusted internal Java APIs. Unowned SYSTEM state is not available through the checked public accessors. Ownership is server-only and current-JVM scoped; serialized state requires a separate application storage design and does not retain this grant. Legacy/API permission denials return HTTP403; v1 process routes retain their ERROR response envelope.
+
+== Scheduled-report ownership and execution
+
+Scheduled reports retain stored-user automated execution for both manual and scheduler invocation. The added exclusive-owner CRUD/manual-run restrictions and separate nested USER/process-permission policy are deferred in https://github.com/QRun-IO/qqq/issues/452[#452]. Existing user-ID defaults and application-configured table/process/record permissions continue to govern schedule records.
+
+Nested rendering retains the trusted process default and forwards stored report inputs. No new blanket prohibition on configured output references is introduced through scheduled execution. Review application permission/configuration choices rather than treating a stored owner field as an implicit exclusive-management rule. Caller-session restoration remains deferred in https://github.com/QRun-IO/qqq/issues/450[#450].
+
+== Report source-data access
+
+`ReportInput` defaults to SYSTEM. Developer-defined named reports and built-in saved-report generation retain their trusted source behavior. The direct HTTP route checks the named report permission; processes can use `ReportProcessPermissionChecker` for the selected report. Report permission can expose approved output without granting raw-table READ.
+
+The report input source is not uniformly propagated into nested count/query inputs. Applications can set query policy through `DataSourceQueryInputCustomizer`; the returned input is respected. Automatic source propagation, additional source permissions and forced post-customizer privacy are deferred in https://github.com/QRun-IO/qqq/issues/448[#448]. Custom record sources must authorize their own data; static suppliers remain trusted application code.
+
+== Report counts and progress
+
+The existing preliminary count for each table-backed TABLE view supplies progress totals and checks the selected format's data-row limit. `ReportOutput.totalRecordCount` sums those counts by data-source name. It is not a guaranteed count of emitted rows: query customizers, pagination, view transforms, custom/static sources and summary-only reports can differ. Counts do not include layout rows. Use a fresh `GenerateReportAction` for each report.
+
+The proposed processed-row definition, count-state reset, transformed-row guard and query-preparation changes are deferred in https://github.com/QRun-IO/qqq/issues/464[#464]. Query customizers retain their existing execution after transform setup, inside the asynchronous producer. This release does not require applications to move transform-provided query setup.
+
+== Saved-report publication and failure handling
+
+Saved reports now finish generation and close a local temporary file before opening destination storage. This prevents generation failures from replacing a previous archive. Provision temporary disk for expected report sizes and concurrency. Completed bytes are copied through the existing `StorageAction.createOutputStream` API; custom `QStorageInterface` implementations do not need a new method.
+
+Destination copy/close failures retain the selected backend's streaming behavior and can leave partial output or replace existing bytes. The mandatory atomic-publication API is deferred in https://github.com/QRun-IO/qqq/issues/459[#459]. Archive storage, report history and email remain separate operations.
+
+The existing render-and-deliver lifecycle is retained: a caught delivery failure can mark history FAILED while leaving generated archive bytes available. History validation/error-handling changes and a rendering-only COMPLETE status are deferred in https://github.com/QRun-IO/qqq/issues/460[#460] and https://github.com/QRun-IO/qqq/issues/461[#461]. See xref:../index.adoc#SavedReportStorage[saved-report storage and failures].
+
+== Exporter lifecycle and XLSX bounds
+
+No new `AutoCloseable` contract or `close()` implementation is required for custom `ExportStreamerInterface` implementations in 4.0. The existing `finish()` method can finalize output and close resources. Destination-close behavior remains implementation-specific; discard failed direct output and use the destination backend's cleanup or abort mechanism. The proposed ownership and common cleanup rules are deferred in https://github.com/QRun-IO/qqq/issues/466[#466] and https://github.com/QRun-IO/qqq/issues/467[#467].
+
+XLSX physical row/cell guards are deferred in https://github.com/QRun-IO/qqq/issues/465[#465]. Account for titles, headers and totals within worksheet limits; preflight is not a guarantee against later source changes or expanded output. Header-cause preservation and allocation cleanup are deferred in https://github.com/QRun-IO/qqq/issues/468[#468] and https://github.com/QRun-IO/qqq/issues/469[#469]. See xref:../index.adoc#ReportExporterLifecycle[exporter lifecycle and spreadsheet bounds].
+
+== Export producer failures and cleanup
+
+Producer error propagation and prompt cleanup changes are deferred in https://github.com/QRun-IO/qqq/issues/473[#473] and https://github.com/QRun-IO/qqq/issues/474[#474]. The original table-export loop can finish successfully after query failure, and consumer failure can leave producer cleanup delayed. The existing shared report loop still propagates producer ERROR and consumes its final page. No new shared-loop callback API, status-publication ordering or visibility guarantee is introduced. Applications should verify actual output and discard failed partial destinations.
+
+== Summary sources and total variables
+
+Summary source isolation, per-view total maps and hidden-total formula support are deferred in https://github.com/QRun-IO/qqq/issues/475[#475], https://github.com/QRun-IO/qqq/issues/476[#476] and https://github.com/QRun-IO/qqq/issues/477[#477]. Existing behavior remains: TABLE passes can repeat or transform summary inputs, base/variance totals can combine unrelated views, and hiding the total row can remove values required by `${total.*}` formulas. The proposed changed semantics are not part of this release. See xref:../index.adoc#ReportSummaryScope[summary source and totals].
+
+== JSON report column names
+
+JSON report key behavior is unchanged. Labels are normalized, and missing labels fall back to field names. A later view using the same field name can reuse the earlier label; blank labels can produce empty keys. Those corrections are deferred in https://github.com/QRun-IO/qqq/issues/487[#487]. See xref:../index.adoc#ReportJsonColumns[JSON column names].
+
+== Table export access and row windows
+
+The HTTP table-export route checks base-table READ. USER exports also check READ on selected and filter/order-referenced joined tables before preflight counting and again before query execution; an earlier preflight does not cache this authorization. This closes https://github.com/QRun-IO/qqq/issues/493[#493]. Direct Java callers remain responsible for base-table authorization. Broader core authorization and private-field predicate restrictions are deferred in https://github.com/QRun-IO/qqq/issues/494[#494]. Existing query output privacy and explicit REVEAL remain; hidden header omission is deferred in https://github.com/QRun-IO/qqq/issues/495[#495]. Explicit SYSTEM calls retain trusted behavior.
+
+Exports retain the original limit policy: `ExportInput.limit` replaces the query-filter limit, including null. An existing caller filter is shared and its limit is modified; its offset remains. Filter isolation, query-only limits, generic action-reuse revalidation and effective-window counting are deferred in https://github.com/QRun-IO/qqq/issues/488[#488]. Use a fresh export action for independent requests.
+
+Spreadsheet preflight retains the backend count interface and original maximum-data-count check. It can reject an export by counting rows outside USER personalization; that correction is deferred in https://github.com/QRun-IO/qqq/issues/496[#496]. It does not adjust for the effective skip/limit window or subtract title/header rows. Window corrections remain https://github.com/QRun-IO/qqq/issues/488[#488]; title/header capacity and physical writer guards remain https://github.com/QRun-IO/qqq/issues/465[#465]. Preflight and generation are not a transactional snapshot.
+
+== Direct report downloads and file formats
+
+Direct `/reports/{reportName}` downloads retain named-report permission checks and the trusted default for server-defined sources. Responses stream while the report is generated. A failure after delivery starts can leave partial output; callers should discard incomplete reports. Completed-response buffering is deferred in https://github.com/QRun-IO/qqq/issues/497[#497]. This is separate from saved-report generation before archive storage, which protects existing archive bytes.
+
+`ReportFormat.fromString` retains parsing of all enum values, including `LIST_OF_MAPS`. Null, blank and unknown names remain invalid. Internal-format HTTP errors and the compatibility choice of file-only validation are deferred in https://github.com/QRun-IO/qqq/issues/490[#490]. The static test-only map collector still requires headers; header-free support is deferred in https://github.com/QRun-IO/qqq/issues/489[#489]. Ordinary file formats support header-free output. CSV/TSV title/header escaping improvements remain deferred in https://github.com/QRun-IO/qqq/issues/471[#471]; ordinary data-value escaping is unchanged.
+
+
+== Runtime report views and native pivots
+
+Runtime view behavior is unchanged: customization runs for TABLE views after output preparation, and view clones share column objects. Generalized customization, isolated column clones and early invalid-view diagnostics are deferred in https://github.com/QRun-IO/qqq/issues/482[#482], https://github.com/QRun-IO/qqq/issues/483[#483] and https://github.com/QRun-IO/qqq/issues/485[#485].
+
+Native XLSX pivots remain supported with their existing source-range, XML-label, SUMMARY-source and metadata-validation limitations. Corrections are deferred in https://github.com/QRun-IO/qqq/issues/484[#484]. Spreadsheet refresh calculates native pivot results; use SUMMARY for precomputed results. CSV, TSV and JSON omit native pivots. See xref:../index.adoc#ReportNativePivots[native pivot sources and customization].
+
+The report manual also corrects stale property names to `summaryFields` and `includeSummarySubTotals`; these are documentation corrections, not new API renames.
+
+
+== Summary subtotal ordering
+
+Summary ordering retains its flat sort. With multiple grouping fields, subtotal rows can be detached from their related details; hierarchical placement is deferred in https://github.com/QRun-IO/qqq/issues/486[#486]. The grand total remains last. The observed ordering failures do not establish incorrect aggregate arithmetic. See xref:../index.adoc#ReportSummaryScope[summary source and totals].
+
+
+== Export presentation
+
+CSV/TSV title/header escaping is deferred in https://github.com/QRun-IO/qqq/issues/471[#471]. Dynamic streamed POI numeric styling and explicit TABLE report-column format overrides are deferred in https://github.com/QRun-IO/qqq/issues/472[#472]. Numeric values remain numeric; this release does not promise per-view numeric formats or DEFAULT clearing in that implementation. Existing date/time and template styles remain. See xref:../index.adoc#TableExports[table export presentation].
+
+
+== Process cancellation
+
+Process lifecycle changes are deferred in https://github.com/QRun-IO/qqq/issues/478[#478]. The existing optional cancel-hook contract remains: no hook is a no-op; one-shot/terminal cancellation, completed/repeated rejection, active signalling and concurrent/no-resume protection are not new release guarantees. Existing ownership/current-permission checks still apply. Malformed UUID diagnostics are deferred separately in https://github.com/QRun-IO/qqq/issues/481[#481]. See xref:../index.adoc#ProcessCancellation[cancellation and process lifecycle].
+
+New report/export parent cancellation and pre-publication checks are deferred in https://github.com/QRun-IO/qqq/issues/479[#479]. ETL/bulk callback isolation and new cancellation-before-hook/commit boundaries are deferred in https://github.com/QRun-IO/qqq/issues/480[#480]. Existing cooperative callback polling and transaction exception handling remain; no callback helper API or rollback of completed operations is introduced. See xref:../index.adoc#EtlCancellationTransactions[ETL cancellation and transactions].
+
+== Automated owner sessions and scheduled delivery
+
+`createAutomatedSessionForUser(...)` now creates a fresh ordinary session and copies only the selected backend-variant map. It no longer clones the scheduler's system-session type, permissions, security keys, tokens, identifiers or custom/frontend values. A nonblank owner ID is required. Mock and OAuth2 now invoke the existing automated-owner customizer, as Auth0 does. Applications must establish the owner's current authorization and valid provider-specific authentication through their integration. Supplying permissions alone does not make an Auth0/OAuth2 session valid; unsupported automated sessions are rejected. Scheduled reports reject system-user, mismatched-owner and invalid sessions. Original caller-session restoration is a known deferred issue (#450). Invalid OAuth2 token-state return/exception behavior remains unchanged; its diagnostic correction is deferred in https://github.com/QRun-IO/qqq/issues/505[#505].
+
+Scheduled process execution retains existing log-based failure handling. Quartz exception propagation and serial-variant failure reporting are deferred in https://github.com/QRun-IO/qqq/issues/502[#502]. Ordinary delivery history/archive behavior remains; no retry or immediate refire is introduced. See xref:../index.adoc#ScheduledProcessFailures[scheduler failure behavior].
+
+Local filesystem `getDownloadURL(...)` now returns a URI-encoded file URL. Consumers must parse the URI instead of treating it as a raw filesystem path. Saved-report email HTML now escapes the download URL and filename; names containing spaces, literal entities, `#` and Unicode retain their exact target. Local file links do not create remote file hosting.
+
+== Saved-report schedule synchronization
+
+Configure the scheduled-report synchronization process's explicit `schedulerName` input default; existing linked jobs retain their stored scheduler. Automatic selection and per-record synchronization/scheduler warnings are deferred in https://github.com/QRun-IO/qqq/issues/503[#503]. Inspect logs and linked job state after failures; database and scheduler changes are not atomic.
+
+== Share IDs must belong to the selected asset
+
+`editSharedRecord` and `deleteSharedRecord` now reject a `shareId` that does not belong to the supplied `recordId`, even if the caller owns both records. Missing and mismatched pairs fail visibly before mutation. Pass the selected asset and share IDs together; do not reuse a stale share ID after switching records. Custom share backends must support Count; otherwise the processes fail before mutation. Hidden foreign-key fields and display customizers do not change this relationship check. Existing owner and recipient-access configuration remains applicable. See link:../index.html#SharedRecordAssetBinding[sharing existing records] for the concurrency boundary.
+
+== Saved-asset ownership and partial edits
+
+Saved views and reports now authorize updates/deletes against a private native read of stored ownership. A submitted, omitted, hidden or transformed `userId` cannot stand in for the stored owner. Existing owned records cannot be transferred through these updates, including SYSTEM-source inner actions. Custom backends must return the requested native owner/content fields. The caller's transaction is reused, but no atomic guarantee against concurrent external ownership changes is added.
+
+Partial report edits preserve omitted fields and validate the merged content; explicitly supplied filters retain normalization. Owners can delete reports without revalidating their JSON. Legacy null-owner behavior remains, including the report USER_ID default assigning the caller on update. This does not introduce shared editing based on the generic READ_WRITE label.
+
+Saved-view store/delete processes now enforce table-write permissions and expose record errors or missing targets as process errors. Clients must handle these failures instead of closing a save/delete dialog as if it succeeded. See link:../index.html#SavedAssetOwnership[saved-asset ownership] for policy and limits.
+
+== Configured saved-view sharing
+
+Configure `ShareableTableMetaData` explicitly for saved views when using the generic sharing processes; automatic provider registration is deferred in https://github.com/QRun-IO/qqq/issues/527[#527]. With the standard userId READ_AND_WRITE/DENY lock, share-row authorization follows the parent view's owner instead of comparing the owner to the recipient. Recipients receive read access only; built-in saved-asset writes remain owner-only even when a generic READ_WRITE label is stored. Recheck application overrides of saved-view sharing metadata, user locks and audience directories. A WRITE-only user lock still leaves reads unrestricted. See link:../index.html#ConfiguredSavedViewSharing[configured saved-view sharing] for configuration and limits.
+
+Generic sharing owner checks now use a backend count of the stored owner rather than a returned display value. Joined security checks use private native values, preserve caller transactions and request owner/join fields explicitly. Custom asset backends need Count support; custom query backends must return requested stored fields, including explicit nulls. Hiding fields is supported, while removing owner fields through metadata personalization can still cause denial. Applications should show sharing failures and should not assume provider registration supplies an audience directory or atomic ownership changes.
+
+Dependent saved-view/report share and quick-view cleanup is deferred in https://github.com/QRun-IO/qqq/issues/504[#504]. Provider deletion retains its established behavior; no new scoped privacy-lock exemption or audit-key fallback is introduced. Stored-owner authorization and generic share-to-asset checks remain.
+
+The proposed extra saved-report rendering-ownership and grant-scope guard is deferred (#451/#446). Configure table record-security locks for owner/recipient record visibility. Automatic dependent-share cleanup remains deferred in https://github.com/QRun-IO/qqq/issues/504[#504]. Review custom locks, cleanup hooks and transaction needs. See link:../index.html#ConfiguredSavedReportSharing[configured saved-report sharing] for the existing metadata configuration recipe and limits.
+
+Dashboard recipient-ID truncation (https://github.com/QRun-IO/qqq/issues/444[#444]), missing-column preview failure (https://github.com/QRun-IO/qqq/issues/445[#445]) and mock identity/display issues (https://github.com/QRun-IO/qqq/issues/371[#371], https://github.com/QRun-IO/qqq/issues/332[#332]) are deferred Medium/Low findings. Their local patches are not included in the 4.0 release. See link:../index.html#DashboardSharingDemo[first-party fixture and dashboard limitations].
+
+== Deferred read and JSON compatibility refinements
+
+Typed JSON adapters still reject a present literal null sentinel (#528); an omitted field remains distinct. RDBMS skip-only pagination and common negative-window validation remain deferred (#529), as do qualified virtual-only projection refinements (#531). The retained destructive-action validation and native write identity corrections remain applicable.
+
+The automatic root dashboard retains its existing fallback for unknown middleware paths; it can return successful SPA HTML. The namespace-exclusion refinement is deferred in https://github.com/QRun-IO/qqq/issues/532[#532]. Registered API routes and explicit custom SPA exclusions remain applicable.

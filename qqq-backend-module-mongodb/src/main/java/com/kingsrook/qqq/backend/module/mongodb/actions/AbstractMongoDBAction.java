@@ -26,6 +26,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.ListIterator;
@@ -37,7 +38,6 @@ import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -50,6 +50,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
+import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.security.NullValueBehaviorUtil;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
@@ -68,6 +69,7 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoCredential;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -220,6 +222,112 @@ public class AbstractMongoDBAction
 
 
    /*******************************************************************************
+    ** Keep computed predicates separate from stored fields, including READ locks.
+    ** Restore the complete original document before later query/aggregate stages.
+    *******************************************************************************/
+   protected List<Bson> makeFilterPipeline(QTableMetaData table, MongoDBBackendMetaData backend, QQueryFilter filter) throws QException
+   {
+      QQueryFilter effectiveFilter = new QQueryFilter();
+      if(filter != null && filter.hasAnyCriteria())
+      {
+         effectiveFilter.addSubFilter(filter);
+      }
+      QQueryFilter securityFilter = makeSecurityQueryFilter(table);
+      if(securityFilter.hasAnyCriteria())
+      {
+         effectiveFilter.addSubFilter(securityFilter);
+      }
+
+      Map<QFilterCriteria, String> computedNames = new IdentityHashMap<>();
+      Document wrapper = new Document("source", "$$ROOT");
+      addRequiredFilterFields(wrapper, computedNames, table, backend, effectiveFilter);
+
+      List<Bson> pipeline = new ArrayList<>();
+      Boolean hasComputedFields = !computedNames.isEmpty();
+      if(hasComputedFields)
+      {
+         pipeline.add(new Document("$replaceRoot", new Document("newRoot", wrapper)));
+      }
+      Bson match = makeSearchQueryDocumentWithoutSecurity(table, effectiveFilter, computedNames, hasComputedFields ? "source." : "");
+      if(!match.toBsonDocument().isEmpty())
+      {
+         pipeline.add(Aggregates.match(match));
+      }
+      if(hasComputedFields)
+      {
+         pipeline.add(new Document("$replaceRoot", new Document("newRoot", "$source")));
+      }
+      return pipeline;
+   }
+
+
+
+   /*******************************************************************************
+    ** Evaluate only actual predicate expressions. Each criterion gets its own
+    ** private alias, so different arguments and native field names cannot collide.
+    *******************************************************************************/
+   private void addRequiredFilterFields(Document wrapper, Map<QFilterCriteria, String> computedNames, QTableMetaData table, MongoDBBackendMetaData backend, QQueryFilter filter) throws QException
+   {
+      for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
+      {
+         if(computedNames.containsKey(criteria))
+         {
+            continue;
+         }
+         QFieldMetaData field = table.getFieldOrVirtualField(criteria.getFieldName());
+         FieldFunction fieldFunction = criteria.getFieldFunction();
+         String sourceFieldName;
+         if(field instanceof QVirtualFieldMetaData virtualField)
+         {
+            if(fieldFunction != null)
+            {
+               throw (new QException("Inline field functions on virtual fields are not supported for MongoDB tables"));
+            }
+            fieldFunction = virtualField.getFieldFunction();
+            sourceFieldName = fieldFunction == null ? null : fieldFunction.getFieldName();
+         }
+         else if(fieldFunction != null)
+         {
+            sourceFieldName = criteria.getFieldName();
+         }
+         else
+         {
+            continue;
+         }
+
+         MongoDBFieldFunctionAdapterInterface adapter = requireFieldFunctionAdapter(backend, fieldFunction);
+         String computedName = "f" + computedNames.size();
+         wrapper.append(computedName, adapter.getExpression(getFieldReference(table, sourceFieldName), fieldFunction, fn -> getFieldReference(table, fn)));
+         computedNames.put(criteria, computedName);
+      }
+      for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
+      {
+         addRequiredFilterFields(wrapper, computedNames, table, backend, subFilter);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native computation requires both a function and its MongoDB adapter.
+    *******************************************************************************/
+   protected MongoDBFieldFunctionAdapterInterface requireFieldFunctionAdapter(MongoDBBackendMetaData backend, FieldFunction fieldFunction) throws QException
+   {
+      if(fieldFunction == null || fieldFunction.getFunctionTypeIdentifier() == null)
+      {
+         throw (new QException("Required virtual field has no native field function"));
+      }
+      MongoDBFieldFunctionAdapterInterface adapter = backend.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
+      if(adapter == null)
+      {
+         throw (new QException("Required field function has no MongoDB adapter"));
+      }
+      return adapter;
+   }
+
+
+
+   /*******************************************************************************
     ** Recursively scan a filter for criteria that have a fieldFunction,
     ** and add corresponding computed fields to the addFields document.
     *******************************************************************************/
@@ -301,28 +409,26 @@ public class AbstractMongoDBAction
             Document tmpDocument = document;
             for(int i = 0; i < parts.length - 1; i++)
             {
-               if(!tmpDocument.containsKey(parts[i]))
+               Object nestedValue = tmpDocument.get(parts[i]);
+               if(nestedValue instanceof Document subDocument)
                {
-                  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-                  // if we can't find the sub-document, break, and we won't have a value for this field (do we want null?) //
-                  ///////////////////////////////////////////////////////////////////////////////////////////////////////////
-                  setValue(values, fieldName, null);
-                  break;
+                  tmpDocument = subDocument;
                }
                else
                {
-                  if(tmpDocument.get(parts[i]) instanceof Document subDocument)
-                  {
-                     tmpDocument = subDocument;
-                  }
-                  else
+                  if(nestedValue != null)
                   {
                      LOG.warn("Unexpected - In table [" + table.getName() + "] found a non-document at sub-key [" + parts[i] + "] for field [" + field.getName() + "]");
                   }
+                  ///////////////////////////////////////////////////////////////////////////
+                  // A missing path must not consume a same-named leaf from an ancestor.   //
+                  ///////////////////////////////////////////////////////////////////////////
+                  tmpDocument = null;
+                  break;
                }
             }
 
-            Object value = tmpDocument.remove(parts[parts.length - 1]);
+            Object value = tmpDocument == null ? null : tmpDocument.remove(parts[parts.length - 1]);
             setValue(values, fieldName, value);
          }
          else
@@ -506,67 +612,59 @@ public class AbstractMongoDBAction
 
 
    /*******************************************************************************
-    ** Build a QQueryFilter to apply record-level security to the query.
-    ** Note, it may be empty, if there are no lock fields, or all are all-access.
-    **
-    ** Originally copied from RDBMS module... should this be shared?
-    ** and/or, how big of a re-write did that get in the joins-enhancements branch...
+    ** Build a filter from the READ portion of the table's security-lock tree.
     *******************************************************************************/
    private QQueryFilter makeSecurityQueryFilter(QTableMetaData table) throws QException
    {
-      QQueryFilter securityFilter = new QQueryFilter();
-      securityFilter.setBooleanOperator(QQueryFilter.BooleanOperator.AND);
-
-      ////////////////////////////////////
-      // todo - evolve to use lock tree //
-      ////////////////////////////////////
-      for(RecordSecurityLock recordSecurityLock : RecordSecurityLockFilters.filterForReadLocks(CollectionUtils.nonNullList(table.getRecordSecurityLocks())))
-      {
-         addSubFilterForRecordSecurityLock(QContext.getQInstance(), QContext.getQSession(), table, securityFilter, recordSecurityLock, null, table.getName(), false);
-      }
-
-      return (securityFilter);
+      MultiRecordSecurityLock locks = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(table.getRecordSecurityLocks()));
+      return makeFilterForRecordSecurityLock(QContext.getQInstance(), QContext.getQSession(), table, locks);
    }
 
 
 
    /*******************************************************************************
-    ** Helper for makeSecuritySearchQuery.
-    **
-    ** Originally copied from RDBMS module... should this be shared?
-    ** and/or, how big of a re-write did that get in the joins-enhancements branch...
+    ** An empty filter represents true. Preserve that identity within an OR even
+    ** when an all-access leaf contributes no criteria; AND can omit true children.
     *******************************************************************************/
-   private static void addSubFilterForRecordSecurityLock(QInstance instance, QSession session, QTableMetaData table, QQueryFilter securityFilter, RecordSecurityLock recordSecurityLock, JoinsContext joinsContext, String tableNameOrAlias, boolean isOuter) throws QException
+   private static QQueryFilter makeFilterForRecordSecurityLock(QInstance instance, QSession session, QTableMetaData table, RecordSecurityLock recordSecurityLock) throws QException
    {
-      //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // check if the key type has an all-access key, and if so, if it's set to true for the current user/session //
-      //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      QSecurityKeyType securityKeyType = instance.getSecurityKeyType(recordSecurityLock.getSecurityKeyType());
-      if(StringUtils.hasContent(securityKeyType.getAllAccessKeyName()))
+      if(recordSecurityLock instanceof MultiRecordSecurityLock multiRecordSecurityLock)
       {
-         if(session.hasSecurityKeyValue(securityKeyType.getAllAccessKeyName(), true, QFieldType.BOOLEAN))
+         QQueryFilter securityFilter = new QQueryFilter();
+         securityFilter.setBooleanOperator(multiRecordSecurityLock.getOperator().toFilterOperator());
+         boolean hasTrueBranch = false;
+         for(RecordSecurityLock child : CollectionUtils.nonNullList(multiRecordSecurityLock.getLocks()))
          {
-            ///////////////////////////////////////////////////////////////////////////////
-            // if we have all-access on this key, then we don't need a criterion for it. //
-            ///////////////////////////////////////////////////////////////////////////////
-            return;
+            QQueryFilter childFilter = makeFilterForRecordSecurityLock(instance, session, table, child);
+            if(childFilter.hasAnyCriteria())
+            {
+               securityFilter.addSubFilter(childFilter);
+            }
+            else
+            {
+               hasTrueBranch = true;
+            }
          }
+         if(hasTrueBranch && QQueryFilter.BooleanOperator.OR.equals(securityFilter.getBooleanOperator()))
+         {
+            return new QQueryFilter();
+         }
+         return securityFilter;
       }
 
-      ///////////////////////////////////////////////////////////////////////////////////////
-      // some differences from RDBMS here, due to not yet having joins support in mongo... //
-      ///////////////////////////////////////////////////////////////////////////////////////
-      // String fieldName = tableNameOrAlias + "." + recordSecurityLock.getFieldName();
+      QSecurityKeyType securityKeyType = instance.getSecurityKeyType(recordSecurityLock.getSecurityKeyType());
+      if(StringUtils.hasContent(securityKeyType.getAllAccessKeyName())
+         && session.hasSecurityKeyValue(securityKeyType.getAllAccessKeyName(), true, QFieldType.BOOLEAN))
+      {
+         return new QQueryFilter();
+      }
+
       String fieldName = recordSecurityLock.getFieldName();
       if(CollectionUtils.nullSafeHasContents(recordSecurityLock.getJoinNameChain()))
       {
          throw (new QException("Security locks in mongodb with joinNameChain is not yet supported"));
-         // fieldName = recordSecurityLock.getFieldName();
       }
 
-      ///////////////////////////////////////////////////////////////////////////////////////////
-      // else - get the key values from the session and decide what kind of criterion to build //
-      ///////////////////////////////////////////////////////////////////////////////////////////
       QQueryFilter          lockFilter   = new QQueryFilter();
       List<QFilterCriteria> lockCriteria = new ArrayList<>();
       lockFilter.setCriteria(lockCriteria);
@@ -574,15 +672,7 @@ public class AbstractMongoDBAction
       QFieldType type = QFieldType.INTEGER;
       try
       {
-         if(joinsContext == null)
-         {
-            type = table.getField(fieldName).getType();
-         }
-         else
-         {
-            JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(fieldName);
-            type = fieldAndTableNameOrAlias.field().getType();
-         }
+         type = table.getField(fieldName).getType();
       }
       catch(Exception e)
       {
@@ -590,30 +680,20 @@ public class AbstractMongoDBAction
       }
 
       List<Serializable> securityKeyValues = session.getSecurityKeyValues(recordSecurityLock.getSecurityKeyType(), type);
+      securityKeyValues.removeIf(value -> value == null);
       if(CollectionUtils.nullSafeIsEmpty(securityKeyValues))
       {
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // handle user with no values -- they can only see null values, and only iff the lock's null-value behavior is ALLOW //
-         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          if(RecordSecurityLock.NullValueBehavior.ALLOW.equals(NullValueBehaviorUtil.getEffectiveNullValueBehavior(recordSecurityLock)))
          {
             lockCriteria.add(new QFilterCriteria(fieldName, QCriteriaOperator.IS_BLANK));
          }
          else
          {
-            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // else, if no user/session values, and null-value behavior is deny, then setup a FALSE condition, to allow no rows.           //
-            // todo - make some explicit contradiction here - maybe even avoid running the whole query - as you're not allowed ANY records //
-            /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
             lockCriteria.add(new QFilterCriteria(fieldName, QCriteriaOperator.IN, Collections.emptyList()));
          }
       }
       else
       {
-         //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // else, if user/session has some values, build an IN rule -                                                //
-         // noting that if the lock's null-value behavior is ALLOW, then we actually want IS_NULL_OR_IN, not just IN //
-         //////////////////////////////////////////////////////////////////////////////////////////////////////////////
          if(RecordSecurityLock.NullValueBehavior.ALLOW.equals(NullValueBehaviorUtil.getEffectiveNullValueBehavior(recordSecurityLock)))
          {
             lockCriteria.add(new QFilterCriteria(fieldName, QCriteriaOperator.IS_NULL_OR_IN, securityKeyValues));
@@ -624,18 +704,7 @@ public class AbstractMongoDBAction
          }
       }
 
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // if this field is on the outer side of an outer join, then if we do a straight filter on it, then we're basically      //
-      // nullifying the outer join... so for an outer join use-case, OR the security field criteria with a primary-key IS NULL //
-      // which will make missing rows from the join be found.                                                                  //
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      if(isOuter)
-      {
-         lockFilter.setBooleanOperator(QQueryFilter.BooleanOperator.OR);
-         lockFilter.addCriteria(new QFilterCriteria(tableNameOrAlias + "." + table.getPrimaryKeyField(), QCriteriaOperator.IS_BLANK));
-      }
-
-      securityFilter.addSubFilter(lockFilter);
+      return lockFilter;
    }
 
 
@@ -644,6 +713,16 @@ public class AbstractMongoDBAction
     ** w/o considering security, just map a QQueryFilter to a Bson searchQuery.
     *******************************************************************************/
    private Bson makeSearchQueryDocumentWithoutSecurity(QTableMetaData table, QQueryFilter filter)
+   {
+      return makeSearchQueryDocumentWithoutSecurity(table, filter, Map.of(), "");
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve private computed aliases or physical fields within the source root.
+    *******************************************************************************/
+   private Bson makeSearchQueryDocumentWithoutSecurity(QTableMetaData table, QQueryFilter filter, Map<QFilterCriteria, String> computedNames, String physicalPrefix)
    {
       if(filter == null || !filter.hasAnyCriteria())
       {
@@ -657,23 +736,27 @@ public class AbstractMongoDBAction
          List<Serializable> values = criteria.getValues() == null ? new ArrayList<>() : new ArrayList<>(criteria.getValues());
          QFieldMetaData     field  = table.getFieldOrVirtualField(criteria.getFieldName());
 
-         ////////////////////////////////////////////////////////////////////////////////////////////
-         // determine the field backend name - for virtual fields, use the virtual field's name     //
-         // (since $addFields computed it under that name). for criteria with a fieldFunction,      //
-         // use the computed field name pattern.                                                    //
-         ////////////////////////////////////////////////////////////////////////////////////////////
+         ///////////////////////////////////////////////////////////////////////////////
+         // Read pipelines supply private aliases. Retain legacy names for callers of //
+         // the protected document-only filter helper, including native Delete.       //
+         ///////////////////////////////////////////////////////////////////////////////
+         String computedName = computedNames.get(criteria);
          String fieldBackendName;
-         if(field instanceof QVirtualFieldMetaData)
+         if(computedName != null)
          {
-            fieldBackendName = field.getName();
+            fieldBackendName = computedName;
+         }
+         else if(field instanceof QVirtualFieldMetaData)
+         {
+            fieldBackendName = physicalPrefix + field.getName();
          }
          else if(criteria.getFieldFunction() != null)
          {
-            fieldBackendName = criteria.getFieldName() + "_" + criteria.getFieldFunction().getFunctionTypeIdentifierName();
+            fieldBackendName = physicalPrefix + criteria.getFieldName() + "_" + criteria.getFieldFunction().getFunctionTypeIdentifierName();
          }
          else
          {
-            fieldBackendName = getFieldBackendName(field);
+            fieldBackendName = physicalPrefix + getFieldBackendName(field);
          }
 
          //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -708,7 +791,7 @@ public class AbstractMongoDBAction
          /////////////////////////////////////////////////////////////////////////////////////////
          // make sure any values we're going to run against the primary key (_id) are ObjectIds //
          /////////////////////////////////////////////////////////////////////////////////////////
-         if(field.getName().equals(table.getPrimaryKeyField()))
+         if(computedName == null && field.getName().equals(table.getPrimaryKeyField()))
          {
             ListIterator<Serializable> iterator = values.listIterator();
             while(iterator.hasNext())
@@ -777,7 +860,7 @@ public class AbstractMongoDBAction
       {
          for(QQueryFilter subFilter : filter.getSubFilters())
          {
-            criteriaFilters.add(makeSearchQueryDocumentWithoutSecurity(table, subFilter));
+            criteriaFilters.add(makeSearchQueryDocumentWithoutSecurity(table, subFilter, computedNames, physicalPrefix));
          }
       }
 

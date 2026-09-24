@@ -744,9 +744,8 @@ class UpdateActionTest extends BaseTest
          assertEquals(1, errorRecords.size());
          assertEquals(2, errorRecords.get(0).getValueInteger("id"));
          assertThat(errorRecords.get(0).getErrors().get(0).getMessage())
-            .contains("You do not have permission")
-            .contains("kmarsh")
-            .contains("Only Writable By");
+            .isEqualTo("You do not have permission to update this record.")
+            .doesNotContain("kmarsh");
 
          assertEquals(2, new CountAction().execute(new CountInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
             .withFilter(new QQueryFilter(new QFilterCriteria("lastName", QCriteriaOperator.IS_NOT_BLANK)))).getCount());

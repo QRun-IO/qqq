@@ -38,6 +38,8 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
@@ -55,6 +57,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class RunBackendStepInput extends AbstractActionInput
 {
+   private InputSource inputSource = QInputSource.SYSTEM;
+
    private static final QLogger LOG = QLogger.getLogger(RunBackendStepInput.class);
 
    private ProcessState                         processState;
@@ -102,6 +106,7 @@ public class RunBackendStepInput extends AbstractActionInput
     *******************************************************************************/
    public void cloneFieldsInto(RunBackendStepInput target)
    {
+      target.setInputSource(getInputSource());
       target.setStepName(getStepName());
       target.setTableName(getTableName());
       target.setProcessName(getProcessName());
@@ -638,5 +643,37 @@ public class RunBackendStepInput extends AbstractActionInput
    public <T extends QProcessPayload> T getProcessPayload(Class<T> payloadClass) throws QException
    {
       return QProcessPayload.fromProcessState(payloadClass, getProcessState());
+   }
+
+
+
+   /*******************************************************************************
+    ** Source of caller values and automatic record loading. Backend code continues
+    ** to choose the source for its own actions independently.
+    *******************************************************************************/
+   public InputSource getInputSource()
+   {
+      return (inputSource);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void setInputSource(InputSource inputSource)
+   {
+      this.inputSource = inputSource;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public RunBackendStepInput withInputSource(InputSource inputSource)
+   {
+      setInputSource(inputSource);
+      return (this);
    }
 }

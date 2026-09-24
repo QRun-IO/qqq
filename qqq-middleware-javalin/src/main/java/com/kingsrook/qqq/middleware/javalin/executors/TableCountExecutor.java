@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.middleware.javalin.JoinedTablePermissions;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableCountInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableCountOutputInterface;
 import org.apache.commons.lang3.BooleanUtils;
@@ -72,6 +73,8 @@ public class TableCountExecutor extends AbstractMiddlewareExecutor<TableCountInp
          countInput.setIncludeDistinctCount(input.getIncludeDistinct());
          countInput.setTimeoutSeconds(DEFAULT_QUERY_TIMEOUT_SECONDS); // todo param
          countInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
+
+         JoinedTablePermissions.checkReadPermissions(countInput, countInput.getQueryJoins(), countInput.getFilter());
 
          if(countInput.getFilter() != null)
          {

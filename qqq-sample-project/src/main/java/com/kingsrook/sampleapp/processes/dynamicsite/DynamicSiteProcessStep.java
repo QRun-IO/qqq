@@ -22,6 +22,7 @@
 package com.kingsrook.sampleapp.processes.dynamicsite;
 
 
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -43,6 +44,7 @@ public class DynamicSiteProcessStep implements BackendStep
       ProcessBasedRouterPayload processPayload = runBackendStepInput.getProcessPayload(ProcessBasedRouterPayload.class);
 
       String path = processPayload.getPath();
+      processPayload.setResponseHeaders(Map.of("Content-Type", "text/plain; charset=utf-8"));
       processPayload.setResponseString("You requested: " + path + "(at path-param: " + processPayload.getPathParams().get("pagePath") + ")");
       runBackendStepOutput.setProcessPayload(processPayload);
    }

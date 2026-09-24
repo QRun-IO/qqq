@@ -23,21 +23,23 @@ package com.kingsrook.qqq.backend.core.processes.implementations.savedreports;
 
 
 import java.util.List;
+import java.util.Objects;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
-import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.savedreports.ScheduledReport;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -73,6 +75,10 @@ public class RunScheduledReportExecuteStep implements BackendStep
 
          ScheduledReport scheduledReport = new ScheduledReport(records.get(0));
          scheduledReportId = scheduledReport.getId();
+         if(!StringUtils.hasContent(scheduledReport.getUserId()))
+         {
+            throw new QPermissionDeniedException("Scheduled report must have an owner.");
+         }
 
          ////////////////////////////////////////////////////////////////////////////////////
          // get the schedule's user - as that will drive the security key we need to apply //
@@ -106,7 +112,7 @@ public class RunScheduledReportExecuteStep implements BackendStep
             }
          }
 
-         RunProcessOutput renderProcessOutput = runProcessAction.execute(renderProcessInput);
+         runProcessAction.execute(renderProcessInput);
       }
       catch(QUserFacingException ufe)
       {
@@ -137,6 +143,11 @@ public class RunScheduledReportExecuteStep implements BackendStep
          // create automated-session for user //
          ///////////////////////////////////////
          QSession session = authenticationModule.createAutomatedSessionForUser(qInstance, userId);
+         if(session == null || session instanceof QSystemUserSession || session.getUser() == null
+            || !Objects.equals(userId, session.getUser().getIdReference()) || !authenticationModule.isSessionValid(qInstance, session))
+         {
+            throw new QPermissionDeniedException("Could not establish the scheduled report owner's session.");
+         }
 
          /////////////////////////////////////////////
          // set that session in the current context //

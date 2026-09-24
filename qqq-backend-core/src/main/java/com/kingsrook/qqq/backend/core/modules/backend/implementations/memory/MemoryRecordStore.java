@@ -44,7 +44,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DateTimeGroupBy;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
-import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -62,7 +64,6 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.ImplicitQueryJoinForSecurityLock;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -71,7 +72,6 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -83,6 +83,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsConfig;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsUtil;
+import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.utils.BackendQueryFilterUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
@@ -209,24 +210,85 @@ public class MemoryRecordStore
 
 
    /*******************************************************************************
+    ** Inspect only structural relationship values; never expose whole stored rows.
+    *******************************************************************************/
+   public List<Serializable> findAssociatedPrimaryKeys(AssociatedRecordDiscovery.Input input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      List<Serializable> keys = new ArrayList<>();
+      for(QRecord record : getTableData(queryInput.getTable()).values())
+      {
+         if(BackendQueryFilterUtils.doesRecordMatch(queryInput.getFilter(), record))
+         {
+            keys.add(record.getValue(queryInput.getTable().getPrimaryKeyField()));
+         }
+      }
+      return keys;
+   }
+
+
+
+   /*******************************************************************************
+    ** Return only declared parent relationship values without read transformations.
+    *******************************************************************************/
+   public List<QRecord> readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput input) throws QException
+   {
+      QueryInput query = input.newQueryInput();
+      List<QRecord> result = new ArrayList<>();
+      for(QRecord record : getTableData(query.getTable()).values())
+      {
+         if(input.matches(record))
+         {
+            QRecord projected = new QRecord();
+            query.getFieldNamesToInclude().forEach(field -> projected.setValue(field, record.getValue(field)));
+            result.add(projected);
+         }
+      }
+      return result;
+   }
+
+
+
+   /*******************************************************************************
+    ** Return only schema-constrained key material, without read transformations.
+    *******************************************************************************/
+   public List<QRecord> lookupUniqueKey(UniqueKeyLookup.Input input) throws QException
+   {
+      QueryInput query = input.newQueryInput();
+      List<QRecord> result = new ArrayList<>();
+      for(QRecord record : getTableData(query.getTable()).values())
+      {
+         if(input.matches(record))
+         {
+            QRecord projected = new QRecord();
+            query.getFieldNamesToInclude().forEach(field -> projected.setValue(field, record.getValue(field)));
+            result.add(projected);
+         }
+      }
+      return result;
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public List<QRecord> query(QueryInput input) throws QException
    {
+      if(!buildJoinCrossProductFromJoinContext)
+      {
+         throw (new QException("Memory query requires security-aware join resolution"));
+      }
+
       incrementStatistic(input);
 
       Collection<QRecord> tableData = getTableData(input.getTable()).values();
       List<QRecord>       records   = new ArrayList<>();
 
       QQueryFilter filter       = clonedOrNewFilter(input.getFilter());
-      JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), input.getTableName(), input.getQueryJoins(), filter);
+      JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), input, filter);
 
-      ////////////////////////////////////////////////////////////////////////////////
-      // see comment on #withBuildJoinCrossProductFromJoinContext for full history. //
-      // when true, use joinsContext's query joins (includes security joins);       //
-      // when false, use the input's query joins (original behavior).               //
-      ////////////////////////////////////////////////////////////////////////////////
-      List<QueryJoin> queryJoins = buildJoinCrossProductFromJoinContext ? joinsContext.getQueryJoins() : input.getQueryJoins();
+      List<QueryJoin> queryJoins = joinsContext.getQueryJoins();
 
       ///////////////////////////////////////////////////////////////////////////////////////////
       // if there are query joins, then use the cross product of those joins as the table data //
@@ -246,54 +308,107 @@ public class MemoryRecordStore
       {
          QTableMetaData joinTable = QContext.getQInstance().getTable(queryJoin.getJoinTable());
          joinTable = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableMetaData(joinTable).withInputSource(input.getInputSource()));
+         if(joinTable == null)
+         {
+            throw (new QException("Query join table is not available"));
+         }
          personalizedTables.put(joinTable.getName(), joinTable);
       }
 
-      for(QRecord qRecord : tableData)
+      for(QRecord storedRecord : tableData)
       {
-         if(qRecord.getTableName() == null)
+         QRecord recordToReturn = new QRecord(storedRecord);
+         recordToReturn.setTableName(input.getTableName());
+         if(BackendQueryFilterUtils.doesRecordMatch(filter, joinsContext, recordToReturn))
          {
-            ///////////////////////////////////////////////////////////////////////////////////////////
-            // internally, doesRecordMatch likes to know table names on records, so, set if missing. //
-            ///////////////////////////////////////////////////////////////////////////////////////////
-            qRecord.setTableName(input.getTableName());
-         }
-
-         boolean recordMatches = BackendQueryFilterUtils.doesRecordMatch(input.getFilter(), joinsContext, qRecord);
-
-         if(recordMatches)
-         {
-            qRecord.setErrors(new ArrayList<>());
-            ValidateRecordSecurityLockHelper.validateSecurityFields(input.getTable(), List.of(qRecord), ValidateRecordSecurityLockHelper.Action.SELECT, null);
-            if(CollectionUtils.nullSafeHasContents(qRecord.getErrors()))
+            addVirtualFieldsToRecord(recordToReturn, input.getTable(), null, input.getFieldNamesToInclude(), joinsContext);
+            for(QueryJoin queryJoin : queryJoins)
             {
-               //////////////////////////////////////////////////////////////////////////////////////////////////////
-               // security error!  no record for you.  but remove the error, so future generations won't see it... //
-               //////////////////////////////////////////////////////////////////////////////////////////////////////
-               qRecord.setErrors(new ArrayList<>());
-               LOG.trace("Error selecting record (presumably security?): " + qRecord.getErrors());
+               if(queryJoin.getSelect())
+               {
+                  addVirtualFieldsToRecord(recordToReturn, personalizedTables.get(queryJoin.getJoinTable()), queryJoin.getJoinTableOrItsAlias(), input.getFieldNamesToInclude(), joinsContext);
+               }
             }
-            else
-            {
-               //////////////////////////////////////////////////////////////////////////////////
-               // make sure we're not giving back records that are all full of associations... //
-               // or fields that the user isn't supposed to get (e.g., from personalization)   //
-               // or old display values (or just ones that wern't requested)                   //
-               //////////////////////////////////////////////////////////////////////////////////
-               QRecord recordToReturn = new QRecord(qRecord);
-               stripUnrecognizedFieldsFromRecords(List.of(recordToReturn), personalizedTables, input.getTable());
-               addVirtualFieldsToRecords(List.of(recordToReturn), input.getTable());
-               recordToReturn.setAssociatedRecords(new HashMap<>());
-               recordToReturn.setDisplayValues(new HashMap<>());
-               records.add(recordToReturn);
-            }
+            recordToReturn.setAssociatedRecords(new HashMap<>());
+            recordToReturn.setDisplayValues(new HashMap<>());
+            recordToReturn.setErrors(new ArrayList<>());
+            records.add(recordToReturn);
          }
       }
 
-      BackendQueryFilterUtils.sortRecordList(joinsContext, input.getFilter(), records);
-      records = BackendQueryFilterUtils.applySkipAndLimit(input.getFilter(), records);
+      BackendQueryFilterUtils.sortRecordList(joinsContext, filter, records);
+      records = BackendQueryFilterUtils.applySkipAndLimit(filter, records);
+      for(QRecord record : records)
+      {
+         projectQueryRecord(record, input, personalizedTables, joinsContext);
+      }
 
       return (records);
+   }
+
+
+
+   /*******************************************************************************
+    ** Project after filtering and ordering so unselected operands stay internal.
+    ** Heavy values use the same length-detail representation as native queries.
+    *******************************************************************************/
+   private void projectQueryRecord(QRecord record, QueryInput input, Map<String, QTableMetaData> tableMap, JoinsContext joinsContext) throws QException
+   {
+      Collection<String> fieldNames = input.getFieldNamesToInclude() == null ? record.getValues().keySet() : input.getFieldNamesToInclude();
+      Map<String, Serializable> values = new HashMap<>();
+      HashMap<String, Serializable> heavyFieldLengths = new HashMap<>();
+      for(String fieldName : fieldNames)
+      {
+         String tableNameOrAlias = input.getTableName();
+         String localFieldName = fieldName;
+         QueryJoin selectedJoin = null;
+         int dotIndex = fieldName.indexOf('.');
+         if(dotIndex >= 0)
+         {
+            tableNameOrAlias = fieldName.substring(0, dotIndex);
+            localFieldName = fieldName.substring(dotIndex + 1);
+            for(QueryJoin queryJoin : joinsContext.getQueryJoins())
+            {
+               if(queryJoin.getJoinTableOrItsAlias().equals(tableNameOrAlias))
+               {
+                  selectedJoin = queryJoin;
+                  break;
+               }
+            }
+            if((selectedJoin != null && !selectedJoin.getSelect()) || (selectedJoin == null && !tableNameOrAlias.equals(input.getTableName())))
+            {
+               continue;
+            }
+         }
+         QTableMetaData table = tableMap.get(joinsContext.resolveTableNameOrAliasToTableName(tableNameOrAlias));
+         QFieldMetaData field = table == null ? null : table.getFields().get(localFieldName);
+         if(field == null && table != null)
+         {
+            field = table.getVirtualField(localFieldName);
+         }
+         if(field == null)
+         {
+            continue;
+         }
+         Serializable value = record.getValue(selectedJoin == null ? localFieldName : fieldName);
+         if(field.getIsHeavy() && !input.getShouldFetchHeavyFields())
+         {
+            Integer length = value == null ? null : field.getType() == QFieldType.BLOB
+               ? ValueUtils.getValueAsByteArray(value).length : ValueUtils.getValueAsString(value).length();
+            heavyFieldLengths.put(fieldName, length);
+         }
+         else
+         {
+            values.put(fieldName, value);
+         }
+      }
+      record.setValues(values);
+      record.setBackendDetails(new HashMap<>(CollectionUtils.nonNullMap(record.getBackendDetails())));
+      record.getBackendDetails().remove(QRecord.BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS);
+      if(!heavyFieldLengths.isEmpty())
+      {
+         record.addBackendDetail(QRecord.BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS, heavyFieldLengths);
+      }
    }
 
 
@@ -301,19 +416,18 @@ public class MemoryRecordStore
    /***************************************************************************
     *
     ***************************************************************************/
-   private void addVirtualFieldsToRecords(List<QRecord> records, QTableMetaData table) throws QException
+   private void addVirtualFieldsToRecord(QRecord record, QTableMetaData table, String tableNameOrAlias, Set<String> fieldNamesToInclude, JoinsContext joinsContext) throws QException
    {
       for(QVirtualFieldMetaData virtualField : CollectionUtils.nonNullMap(table.getVirtualFields()).values())
       {
-         if(virtualField.getIsQuerySelectable() && virtualField.getFieldFunction() != null)
+         String fieldName = tableNameOrAlias == null ? virtualField.getName() : tableNameOrAlias + "." + virtualField.getName();
+         if(virtualField.getIsQuerySelectable() && virtualField.getFieldFunction() != null
+            && (fieldNamesToInclude == null || fieldNamesToInclude.contains(fieldName)))
          {
             FieldFunctionType fieldFunctionType = FieldFunctionTypeRegistry.ofOrWithNew(QContext.getQInstance()).getFieldFunctionType(virtualField.getFieldFunction().getFunctionTypeIdentifier());
 
-            for(QRecord record : records)
-            {
-               Serializable value = fieldFunctionType.apply(virtualField.getFieldFunction(), record);
-               record.withValue(virtualField.getName(), value);
-            }
+            Serializable value = fieldFunctionType.apply(virtualField.getFieldFunction(), BackendQueryFilterUtils.recordForFieldFunction(record, fieldName, joinsContext));
+            record.withValue(fieldName, ValueUtils.getValueAsFieldType(virtualField.getType(), value));
          }
       }
    }
@@ -339,21 +453,21 @@ public class MemoryRecordStore
     *******************************************************************************/
    private Collection<QRecord> buildJoinCrossProduct(QTableMetaData table, List<QueryJoin> queryJoins, JoinsContext joinsContext) throws QException
    {
-      QInstance qInstance = QContext.getQInstance();
-
       List<QRecord>  crossProduct = new ArrayList<>();
       QTableMetaData leftTable    = table;
       for(QRecord record : getTableData(leftTable).values())
       {
-         QRecord productRecord = new QRecord();
+         QRecord productRecord = new QRecord().withTableName(table.getName());
          addRecordToProduct(productRecord, record, null);
          crossProduct.add(productRecord);
       }
 
       for(QueryJoin queryJoin : queryJoins)
       {
-         QTableMetaData      nextTable        = qInstance.getTable(queryJoin.getJoinTable());
+         QTableMetaData      nextTable        = joinsContext.getTable(queryJoin.getJoinTable());
          Collection<QRecord> nextTableRecords = getTableData(nextTable).values();
+         QQueryFilter joinFilter = new QQueryFilter();
+         joinFilter.setCriteria(queryJoin.getSecurityCriteria());
 
          QJoinMetaData joinMetaData = queryJoin.getJoinMetaData();
          if(joinMetaData == null)
@@ -372,8 +486,11 @@ public class MemoryRecordStore
                {
                   QRecord joinRecord = new QRecord(productRecord);
                   addRecordToProduct(joinRecord, nextTableRecord, queryJoin.getJoinTableOrItsAlias());
-                  nextLevelProduct.add(joinRecord);
-                  matchFound = true;
+                  if(BackendQueryFilterUtils.doesRecordMatch(joinFilter, joinsContext, joinRecord))
+                  {
+                     nextLevelProduct.add(joinRecord);
+                     matchFound = true;
+                  }
                }
             }
 
@@ -382,6 +499,10 @@ public class MemoryRecordStore
                if(QueryJoin.Type.LEFT.equals(queryJoin.getType()))
                {
                   QRecord joinRecord = new QRecord(productRecord);
+                  for(String fieldName : nextTable.getFields().keySet())
+                  {
+                     joinRecord.setValue(queryJoin.getJoinTableOrItsAlias() + "." + fieldName, null);
+                  }
                   nextLevelProduct.add(joinRecord);
                }
             }
@@ -406,7 +527,7 @@ public class MemoryRecordStore
             ? productRecord.getValue(queryJoin.getBaseTableOrAlias() + "." + joinOn.getLeftField())
             : productRecord.getValue(joinOn.getLeftField());
          Serializable rightValue = nextTableRecord.getValue(joinOn.getRightField());
-         if(!Objects.equals(leftValue, rightValue))
+         if(leftValue == null || rightValue == null || !Objects.equals(leftValue, rightValue))
          {
             return (false);
          }
@@ -439,7 +560,17 @@ public class MemoryRecordStore
       // set up a query input - we'll implement count by counting the records in a query output //
       ////////////////////////////////////////////////////////////////////////////////////////////
       QueryInput queryInput = new QueryInput();
-      queryInput.setTableName(input.getTableName());
+      queryInput.setCommonParamsFrom(input);
+      QTableMetaData queryTable = input.getTable();
+      if(BooleanUtils.isTrue(input.getIncludeDistinctCount()) && !queryTable.getFields().containsKey(queryTable.getPrimaryKeyField()))
+      {
+         queryTable = queryTable.clone();
+         queryTable.addField(QContext.getQInstance().getTable(input.getTableName()).getField(queryTable.getPrimaryKeyField()).clone());
+      }
+      queryInput.setTableMetaData(queryTable);
+      queryInput.setInputSource(input.getInputSource());
+      queryInput.setFieldNamesToInclude(BooleanUtils.isTrue(input.getIncludeDistinctCount()) ? Set.of(queryTable.getPrimaryKeyField()) : Set.of());
+      queryInput.setShouldFetchHeavyFields(true);
 
       if(input.getFilter() != null)
       {
@@ -471,8 +602,7 @@ public class MemoryRecordStore
       //////////////////////////////////////
       if(BooleanUtils.isTrue(input.getIncludeDistinctCount()))
       {
-         QTableMetaData    table           = QContext.getQInstance().getTable(input.getTableName());
-         String            primaryKeyField = table.getPrimaryKeyField();
+         String            primaryKeyField = queryInput.getTable().getPrimaryKeyField();
          Set<Serializable> distinctValues  = new HashSet<>();
          for(QRecord record : queryResult)
          {
@@ -501,79 +631,74 @@ public class MemoryRecordStore
       QTableMetaData             table     = input.getTable();
       Map<Serializable, QRecord> tableData = getTableData(table);
 
-      ////////////////////////////////////////
-      // grab the next unique serial to use //
-      ////////////////////////////////////////
-      Integer nextSerial = getNextSerial(table);
-      if(nextSerial == null)
+      ///////////////////////////////////////////////////////////////////////
+      // Keep key selection, owner checks and writes in the same table lock. //
+      ///////////////////////////////////////////////////////////////////////
+      synchronized(tableData)
       {
-         nextSerial = 1;
-      }
-
-      while(tableData.containsKey(nextSerial))
-      {
-         nextSerial++;
-      }
-
-      List<QRecord>  outputRecords   = new ArrayList<>();
-      QFieldMetaData primaryKeyField = table.getField(table.getPrimaryKeyField());
-      for(QRecord record : input.getRecords())
-      {
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // make a copy of the record, to be inserted, and returned. this can avoid some cases where the in-memory store acts      //
-         // differently from other backends, because of having the same record variable in the backend store and in the user-code. //
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         QRecord recordToInsert = new QRecord(record);
-         stripUnrecognizedFieldsFromRecords(List.of(recordToInsert), table);
-
-         makeValueTypesMatchFieldTypes(table, recordToInsert);
-
-         if(CollectionUtils.nullSafeHasContents(recordToInsert.getErrors()))
+         Integer nextSerial = Objects.requireNonNullElse(getNextSerial(table), 1);
+         Set<Object> existingKeys = new HashSet<>();
+         for(QRecord stored : tableData.values())
          {
-            outputRecords.add(recordToInsert);
-            continue;
+            existingKeys.add(AssociatedRecordUpdate.primaryKey(table, stored));
          }
 
-         /////////////////////////////////////////////////
-         // set the next serial in the record if needed //
-         /////////////////////////////////////////////////
-         if(recordToInsert.getValue(primaryKeyField.getName()) == null && (primaryKeyField.getType().equals(QFieldType.INTEGER) || primaryKeyField.getType().equals(QFieldType.LONG)))
+         List<QRecord> outputRecords = new ArrayList<>();
+         QFieldMetaData primaryKeyField = table.getField(table.getPrimaryKeyField());
+         boolean generatedSerial = primaryKeyField.getType().equals(QFieldType.INTEGER) || primaryKeyField.getType().equals(QFieldType.LONG);
+         for(QRecord record : input.getRecords())
          {
-            if(primaryKeyField.getType().equals(QFieldType.LONG))
+            //////////////////////////////////////////////////////////////////////
+            // Copy values so native storage never shares the caller's record. //
+            //////////////////////////////////////////////////////////////////////
+            QRecord recordToInsert = new QRecord(record);
+            stripUnrecognizedFieldsFromRecords(List.of(recordToInsert), table);
+            makeValueTypesMatchFieldTypes(table, recordToInsert);
+
+            if(CollectionUtils.nullSafeHasContents(recordToInsert.getErrors()))
             {
-               recordToInsert.setValue(primaryKeyField.getName(), (nextSerial++).longValue());
+               outputRecords.add(recordToInsert);
+               continue;
             }
-            else
+
+            if(recordToInsert.getValue(primaryKeyField.getName()) == null && generatedSerial)
             {
-               recordToInsert.setValue(primaryKeyField.getName(), nextSerial++);
+               do
+               {
+                  Serializable serial = primaryKeyField.getType().equals(QFieldType.LONG) ? nextSerial.longValue() : (Serializable) nextSerial;
+                  recordToInsert.setValue(primaryKeyField.getName(), serial);
+                  nextSerial++;
+               }
+               while(existingKeys.contains(AssociatedRecordUpdate.primaryKey(table, recordToInsert)));
+            }
+
+            Object key = AssociatedRecordUpdate.primaryKey(table, recordToInsert);
+            if(key == null || existingKeys.contains(key))
+            {
+               recordToInsert.addError(new BadInputStatusMessage(key == null ? "A primary key is required" : "A record with this primary key already exists"));
+               outputRecords.add(recordToInsert);
+               continue;
+            }
+
+            //////////////////////////////////////////////////////////////////////////
+            // Preserve the existing serial sequence after a caller-supplied key. //
+            //////////////////////////////////////////////////////////////////////////
+            if(generatedSerial && recordToInsert.getValueInteger(primaryKeyField.getName()) >= nextSerial)
+            {
+               nextSerial = recordToInsert.getValueInteger(primaryKeyField.getName()) + 1;
+            }
+
+            tableData.put(recordToInsert.getValue(primaryKeyField.getName()), recordToInsert);
+            existingKeys.add(key);
+            if(returnInsertedRecords)
+            {
+               outputRecords.add(recordToInsert);
             }
          }
 
-         ///////////////////////////////////////////////////////////////////////////////////////////////////
-         // make sure that if the user supplied a serial, greater than the one we had, that we skip ahead //
-         ///////////////////////////////////////////////////////////////////////////////////////////////////
-         if(primaryKeyField.getType().equals(QFieldType.INTEGER) && recordToInsert.getValueInteger(primaryKeyField.getName()) > nextSerial)
-         {
-            nextSerial = recordToInsert.getValueInteger(primaryKeyField.getName()) + 1;
-         }
-         else if(primaryKeyField.getType().equals(QFieldType.LONG) && recordToInsert.getValueInteger(primaryKeyField.getName()) > nextSerial)
-         {
-            //////////////////////////////////////
-            // todo - mmm, could overflow here? //
-            //////////////////////////////////////
-            nextSerial = recordToInsert.getValueInteger(primaryKeyField.getName()) + 1;
-         }
-
-         tableData.put(recordToInsert.getValue(primaryKeyField.getName()), recordToInsert);
-         if(returnInsertedRecords)
-         {
-            outputRecords.add(recordToInsert);
-         }
+         setNextSerial(table, nextSerial);
+         return (outputRecords);
       }
-
-      setNextSerial(table, nextSerial);
-
-      return (outputRecords);
    }
 
 
@@ -857,10 +982,19 @@ public class MemoryRecordStore
       //////////////////////
       // first do a query //
       //////////////////////
+      JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), aggregateInput, clonedOrNewFilter(aggregateInput.getFilter()));
       QueryInput queryInput = new QueryInput();
-      queryInput.setTableName(aggregateInput.getTableName());
-      queryInput.setFilter(aggregateInput.getFilter());
-      queryInput.setQueryJoins(aggregateInput.getQueryJoins());
+      queryInput.setCommonParamsFrom(aggregateInput);
+      queryInput.setQueryJoins(joinsContext.getQueryJoins().stream().map(queryJoin -> queryJoin.clone().withSelect(true)).toList());
+      queryInput.setTableMetaData(aggregateInput.getTable());
+      queryInput.setInputSource(aggregateInput.getInputSource());
+      Set<String> operandFields = new HashSet<>();
+      CollectionUtils.nonNullList(aggregateInput.getAggregates()).forEach(aggregate -> operandFields.add(aggregate.getFieldName()));
+      CollectionUtils.nonNullList(aggregateInput.getGroupBys()).forEach(groupBy -> operandFields.add(groupBy.getFieldName()));
+      queryInput.setFieldNamesToInclude(operandFields);
+      queryInput.setShouldFetchHeavyFields(true);
+      queryInput.setFilter(clonedOrNewFilter(aggregateInput.getFilter()));
+      queryInput.getFilter().setOrderBys(List.of());
       List<QRecord> queryResult = query(queryInput);
 
       List<AggregateResult> results    = new ArrayList<>();
@@ -922,7 +1056,7 @@ public class MemoryRecordStore
 
          for(Aggregate aggregate : aggregates)
          {
-            Serializable aggregateValue = computeAggregate(records, aggregate, aggregateInput.getTable());
+            Serializable aggregateValue = computeAggregate(records, aggregate, joinsContext);
 
             aggregateValues.put(aggregate, aggregateValue);
          }
@@ -1062,15 +1196,14 @@ public class MemoryRecordStore
     **
     *******************************************************************************/
    @SuppressWarnings({ "rawtypes", "unchecked" })
-   private static Serializable computeAggregate(List<QRecord> records, Aggregate aggregate, QTableMetaData table)
+   private static Serializable computeAggregate(List<QRecord> records, Aggregate aggregate, JoinsContext joinsContext)
    {
       String            fieldName = aggregate.getFieldName();
       AggregateOperator operator  = aggregate.getOperator();
       QFieldType        fieldType;
       if(aggregate.getFieldType() == null)
       {
-         // todo - joins probably?
-         QFieldMetaData field = table.getField(fieldName);
+         QFieldMetaData field = joinsContext.getFieldAndTableNameOrAlias(fieldName, true).field();
          if((field.getType().equals(QFieldType.INTEGER) || field.getType().equals(QFieldType.LONG)) && (operator.equals(AggregateOperator.AVG)))
          {
             fieldType = QFieldType.DECIMAL;
@@ -1287,19 +1420,9 @@ public class MemoryRecordStore
    /*******************************************************************************
     * Fluent setter for buildJoinCrossProductFromJoinContext
     *
-    * <p>The original implementation of this class only built cross-products for
-    * joins explicitly added to the QueryInput.  This meant that joins needed for
-    * security locks (added by JoinsContext) were not included, causing incorrect
-    * query results for tables with join-chain security locks.</p>
-    *
-    * <p>The corrected behavior (using joins from JoinsContext, which includes
-    * security joins) is now the default ({@code true}).  Originally this defaulted
-    * to {@code false} while we gained confidence, but after fixing a double-flip
-    * bug in {@code JoinsContext.fillInMissingJoinMetaData} that was causing
-    * multi-hop security chain failures, all tests pass with the new default.</p>
-    *
-    * <p>If a test needs the old behavior, it can set this to {@code false} on the
-    * MemoryRecordStore singleton instance.</p>
+    * <p>Keep this setting true so queries include the joins required by READ
+    * rules. The legacy false mode is retained as a configuration value, but
+    * queries reject it with a checked QException.</p>
     *
     * @return this
     *******************************************************************************/

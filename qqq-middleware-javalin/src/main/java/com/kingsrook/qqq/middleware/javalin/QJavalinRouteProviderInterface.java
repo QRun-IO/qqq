@@ -66,9 +66,8 @@ public interface QJavalinRouteProviderInterface
    }
 
    /***************************************************************************
-    ** when the javalin service is being configured as part of its boot up,
-    ** accept the Javalin service object, to perform whatever setup you need,
-    ** such as setting up before/after handlers.
+    ** Observe the created service before it starts. Routes, before/after handlers
+    ** and error handlers must be registered in acceptJavalinConfig instead.
     ***************************************************************************/
    default void acceptJavalinService(Javalin service)
    {

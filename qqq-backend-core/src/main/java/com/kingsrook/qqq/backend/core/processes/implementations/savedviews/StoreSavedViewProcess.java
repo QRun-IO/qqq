@@ -25,6 +25,8 @@ package com.kingsrook.qqq.backend.core.processes.implementations.savedviews;
 import java.io.Serializable;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -35,6 +37,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -101,27 +104,40 @@ public class StoreSavedViewProcess implements BackendStep
          List<QRecord> savedViewList;
          if(qRecord.getValueInteger("id") == null)
          {
-            checkForDuplicates(userId, tableName, label, null);
-
             InsertInput input = new InsertInput();
             input.setTableName(SavedView.TABLE_NAME);
+            input.setInputSource(QInputSource.USER);
             input.setRecords(List.of(qRecord));
 
+            PermissionsHelper.checkTablePermissionThrowing(input, TablePermissionSubType.INSERT);
+            checkForDuplicates(userId, tableName, label, null);
             InsertOutput output = new InsertAction().execute(input);
             savedViewList = output.getRecords();
          }
          else
          {
-            checkForDuplicates(userId, tableName, label, qRecord.getValueInteger("id"));
-
             UpdateInput input = new UpdateInput();
             input.setTableName(SavedView.TABLE_NAME);
+            input.setInputSource(QInputSource.USER);
             input.setRecords(List.of(qRecord));
 
+            PermissionsHelper.checkTablePermissionThrowing(input, TablePermissionSubType.EDIT);
+            checkForDuplicates(userId, tableName, label, qRecord.getValueInteger("id"));
             UpdateOutput output = new UpdateAction().execute(input);
             savedViewList = output.getRecords();
          }
 
+         if(CollectionUtils.nullSafeIsEmpty(savedViewList))
+         {
+            throw new QUserFacingException("No saved view was stored.");
+         }
+         for(QRecord record : savedViewList)
+         {
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+            {
+               throw new QUserFacingException("Error storing saved view: " + record.getErrorsAsString());
+            }
+         }
          runBackendStepOutput.addValue("savedViewList", (Serializable) savedViewList);
       }
       catch(Exception e)

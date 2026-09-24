@@ -135,7 +135,7 @@ public class StringUtils
 
 
    /*******************************************************************************
-    ** truncate a string (null- and index-bounds- safely) at a max length.
+    ** Truncate to at most maxLength UTF-16 units without splitting a surrogate pair.
     **
     *******************************************************************************/
    public static String safeTruncate(String input, int maxLength)
@@ -150,6 +150,10 @@ public class StringUtils
          return (input);
       }
 
+      if(maxLength > 0 && Character.isHighSurrogate(input.charAt(maxLength - 1)) && Character.isLowSurrogate(input.charAt(maxLength)))
+      {
+         maxLength--;
+      }
       return (input.substring(0, maxLength));
    }
 
@@ -158,7 +162,8 @@ public class StringUtils
    /*******************************************************************************
     ** null- and index-bounds- safely truncate a string to a max length, appending
     ** a suffix (like "...") if it did get truncated.  Note that the returned string,
-    ** with the suffix added, will be at most maxLength.
+    ** with the suffix added, will be at most maxLength UTF-16 units. If the suffix
+    ** alone exceeds maxLength, truncate the suffix. Preserve surrogate pairs.
     **
     *******************************************************************************/
    public static String safeTruncate(String input, int maxLength, String suffix)
@@ -173,7 +178,11 @@ public class StringUtils
          return (input);
       }
 
-      return (input.substring(0, (maxLength - suffix.length())) + suffix);
+      if(suffix.length() >= maxLength)
+      {
+         return (safeTruncate(suffix, maxLength));
+      }
+      return (safeTruncate(input, maxLength - suffix.length()) + suffix);
    }
 
 

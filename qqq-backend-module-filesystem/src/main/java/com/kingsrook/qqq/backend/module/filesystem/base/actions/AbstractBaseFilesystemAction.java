@@ -30,10 +30,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.adapters.CsvToQRecordAdapter;
 import com.kingsrook.qqq.backend.core.adapters.JsonToQRecordAdapter;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -69,6 +73,7 @@ import com.kingsrook.qqq.backend.module.filesystem.base.FilesystemRecordBackendD
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemTableBackendDetails;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.Cardinality;
+import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.RecordFormat;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.model.metadata.SFTPBackendVariantSetting;
 import org.apache.commons.io.IOUtils;
@@ -271,6 +276,130 @@ public abstract class AbstractBaseFilesystemAction<FILE>
          throw new IllegalArgumentException("Table backend details was not of expected type (was " + tableBackendDetails.getClass().getSimpleName() + ")");
       }
       return outputClass.cast(tableBackendDetails);
+   }
+
+
+
+   /*******************************************************************************
+    ** MANY-file readers need explicit matching; projected key contents may be heavy.
+    *******************************************************************************/
+   public List<QRecord> lookupUniqueKey(UniqueKeyLookup.Input input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      AbstractFilesystemTableBackendDetails tableDetails = getTableBackendDetails(AbstractFilesystemTableBackendDetails.class, queryInput.getTable());
+      Set<String> fieldNames = new HashSet<>(queryInput.getFieldNamesToInclude());
+      collectFilterFieldNames(queryInput.getFilter(), fieldNames);
+      queryInput.setShouldFetchHeavyFields(fieldNames.stream().anyMatch(name -> queryInput.getTable().getField(name).getIsHeavy()));
+      queryInput.setFilter(null);
+      List<QRecord> matches = new ArrayList<>();
+      for(QRecord record : executeQuery(queryInput).getRecords())
+      {
+         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            throw new QException("Could not read declared key values from file");
+         }
+         if(input.matches(record))
+         {
+            //////////////////////////////////////////////////////////////////////////
+            // A successful JSON read knows absent requested fields have null values. //
+            // Complete only this native projection, leaving ordinary reads unchanged. //
+            //////////////////////////////////////////////////////////////////////////
+            if(tableDetails.getCardinality() == Cardinality.MANY && tableDetails.getRecordFormat() == RecordFormat.JSON)
+            {
+               for(String fieldName : queryInput.getFieldNamesToInclude())
+               {
+                  record.getValues().putIfAbsent(fieldName, null);
+               }
+            }
+            matches.add(record);
+         }
+      }
+      return matches;
+   }
+
+
+
+   /*******************************************************************************
+    ** Read only exact parent keys, retaining every declared relationship component.
+    *******************************************************************************/
+   public List<QRecord> readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      AbstractFilesystemTableBackendDetails tableDetails = getTableBackendDetails(AbstractFilesystemTableBackendDetails.class, queryInput.getTable());
+      Set<String> fieldNames = new HashSet<>(queryInput.getFieldNamesToInclude());
+      collectFilterFieldNames(queryInput.getFilter(), fieldNames);
+      queryInput.setShouldFetchHeavyFields(fieldNames.stream().anyMatch(name -> queryInput.getTable().getField(name).getIsHeavy()));
+      queryInput.setFilter(null);
+      List<QRecord> matches = new ArrayList<>();
+      for(QRecord record : executeQuery(queryInput).getRecords())
+      {
+         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            throw new QException("Could not read stored association values from file");
+         }
+         if(input.matches(record))
+         {
+            if(tableDetails.getCardinality() == Cardinality.MANY && tableDetails.getRecordFormat() == RecordFormat.JSON)
+            {
+               for(String fieldName : queryInput.getFieldNamesToInclude())
+               {
+                  record.getValues().putIfAbsent(fieldName, null);
+               }
+            }
+            matches.add(record);
+         }
+      }
+      return matches;
+   }
+
+
+
+   /*******************************************************************************
+    ** MANY-file reads return all rows, so apply relationship criteria explicitly.
+    *******************************************************************************/
+   public List<Serializable> findAssociatedPrimaryKeys(AssociatedRecordDiscovery.Input input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      QQueryFilter filter = queryInput.getFilter();
+      Set<String> fieldNames = new HashSet<>();
+      collectFilterFieldNames(filter, fieldNames);
+      queryInput.setShouldFetchHeavyFields(fieldNames.stream().anyMatch(name -> queryInput.getTable().getField(name).getIsHeavy()));
+      queryInput.setFilter(null);
+      QueryOutput output = executeQuery(queryInput);
+      List<Serializable> primaryKeys = new ArrayList<>();
+      for(QRecord record : output.getRecords())
+      {
+         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            throw new QException("Could not read association membership from file");
+         }
+         for(String fieldName : fieldNames)
+         {
+            record.setValue(fieldName, ValueUtils.getValueAsFieldType(queryInput.getTable().getField(fieldName).getType(), record.getValue(fieldName)));
+         }
+         if(BackendQueryFilterUtils.doesRecordMatch(filter, record))
+         {
+            primaryKeys.add(record.getValue(queryInput.getTable().getPrimaryKeyField()));
+         }
+      }
+      return primaryKeys;
+   }
+
+
+
+   /*******************************************************************************
+    ** Convert only predicate fields and read heavy contents only when required.
+    *******************************************************************************/
+   private void collectFilterFieldNames(QQueryFilter filter, Set<String> fieldNames)
+   {
+      for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
+      {
+         fieldNames.add(criteria.getFieldName());
+      }
+      for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
+      {
+         collectFilterFieldNames(subFilter, fieldNames);
+      }
    }
 
 

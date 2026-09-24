@@ -4,7 +4,7 @@ include::../variables.adoc[]
 
 An application in QQQ is defined as a set of Meta Data objects.  These objects are all stored together in an object called a `*QInstance*`.
 
-Currently, a `QInstance` must be programmatically constructed in java code - e.g., by constructing objects which get added to the QInstance, for example:
+A `QInstance` can be constructed in Java, populated by metadata producers, or loaded from configuration files. In this Java fragment, the application supplies the three metadata-building methods:
 
 [source,java]
 .Adding meta-data for two tables and one process to a QInstance
@@ -15,18 +15,18 @@ qInstance.addTable(defineHomeTable());
 qInstance.addProcess(defineSendPersonHomeProcess());
 ----
 
-It is on the QQQ roadmap to allow meta-data to be defined in a non-programmatic way, for example, in YAML or JSON files, or even from a dynamic data source (e.g. a document or relational database).
+`ConfigFilesBasedQQQApplication` supports metadata files such as YAML and JSON. `MetaDataProducerBasedQQQApplication` loads Java metadata producers. See <<MetaDataProduction>> for the Java patterns.
+
+Directory loading is recursive and ordered by filename. Every file must contain valid top-level YAML/JSON metadata: missing directories, unsupported files, unknown properties and mapping failures throw `QException` rather than leaving a successful partial load. For a packaged resource, `MetaDataLoaderHelper.readMetaDataFile(instance, inputStream, fileName)` reads one object with the same validation; the caller closes the stream and adds the returned object to the instance. The sample's Person table uses this path, so its YAML definition works outside a source checkout.
 
 The middleware and/or frontends being used in an application will drive how the `QInstance` is connected to the running server/process.
-For example, using the `qqq-middleware-javalin` module, a the `QJavalinImplementation` class () has a constructor which takes a `QInstance` as an argument:
+For HTTP applications, pass a configured `AbstractQQQApplication` to `QApplicationJavalinServer`. Here, `application` supplies the instance; the caller handles `QException`. See <<Javalin,the Javalin server guide>> for a complete entry point.
 
 [source,java]
-.Starting a QQQ Javalin middleware server - passing a QInstance as a parameter to the new QJavalinImplementation
+.Starting a QQQ Javalin application server
 ----
-QJavalinImplementation qJavalinImplementation = new QJavalinImplementation(qInstance);
-Javalin service = Javalin.create();
-service.routes(qJavalinImplementation.getRoutes());
-service.start();
+QApplicationJavalinServer server = new QApplicationJavalinServer(application);
+server.start();
 ----
 
 *QInstance Setup:*
@@ -42,7 +42,7 @@ be a matter of personal preference.
 
 Generally you will set up a `QInstance` in your application's startup flow, and then place it in the server (e.g., javalin).
 But, if, during application-code runtime, you need access to any of the meta-data in the instance, you access it
-via the `QContext` object's static `getInstance()` method.  This can be useful, for example, to get a list of the defined
+via the `QContext` object's static `getQInstance()` method.  This can be useful, for example, to get a list of the defined
 tables in the application, or fields in a table, or details about a field, etc.
 
 It is generally considered risky and/or not a good idea at all to modify the `QInstance` after it has been validated and

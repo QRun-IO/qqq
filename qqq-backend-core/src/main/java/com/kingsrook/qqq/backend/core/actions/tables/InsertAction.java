@@ -22,12 +22,9 @@
 package com.kingsrook.qqq.backend.core.actions.tables;
 
 
-import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -43,6 +40,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
@@ -57,22 +55,16 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
-import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
-import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
-import com.kingsrook.qqq.backend.core.model.statusmessages.DuplicateKeyBadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QErrorMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -114,6 +106,47 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
    @Override
    public InsertOutput execute(InsertInput insertInput) throws QException
    {
+      return execute(insertInput, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Replacement trees stop failed writes before presentation callbacks can hide them.
+    *******************************************************************************/
+   InsertOutput execute(InsertInput input, boolean failOnRecordErrors) throws QException
+   {
+      return execute(input, null, null, failOnRecordErrors);
+   }
+
+
+
+   /*******************************************************************************
+    ** Replace needs native identities before POST presentation changes. Original
+    ** copy identity is also required when generated keys must reach caller records.
+    *******************************************************************************/
+   ReplaceResult executeForReplace(InsertInput input, boolean correlateOriginals) throws QException
+   {
+      Set<Object> originals = null;
+      if(correlateOriginals)
+      {
+         originals = new HashSet<>();
+         for(QRecord record : input.getRecords())
+         {
+            originals.add(record.trackCopies());
+         }
+      }
+      List<QRecord> nativeRecords = new ArrayList<>();
+      return new ReplaceResult(execute(input, nativeRecords, originals, true), nativeRecords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Ordinary Insert does not enable Replace's private identity bookkeeping.
+    *******************************************************************************/
+   private InsertOutput execute(InsertInput insertInput, List<QRecord> nativeRecords, Set<Object> originalIdentities, boolean failOnRecordErrors) throws QException
+   {
       ActionHelper.validateSession(insertInput);
 
       if(!StringUtils.hasContent(insertInput.getTableName()))
@@ -136,6 +169,29 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       /////////////////////////////
       performValidations(insertInput, false, false);
 
+      Set<Object> expectedNativeOrigins = null;
+      if(nativeRecords != null)
+      {
+         if(insertInput.getRecords() == null)
+         {
+            throw new QException("Replace INSERT PRE omitted its record list");
+         }
+         Set<Object> seen = new HashSet<>();
+         for(QRecord record : CollectionUtils.nonNullList(insertInput.getRecords()))
+         {
+            if(record == null || !seen.add(record.trackCopies())
+               || (originalIdentities != null && !originalIdentities.contains(record.trackCopies())))
+            {
+               throw new QException("Replace INSERT cannot correlate a PRE record with its original input");
+            }
+         }
+         if(originalIdentities != null && !seen.equals(originalIdentities))
+         {
+            throw new QException("Replace INSERT omitted an original input record");
+         }
+         expectedNativeOrigins = seen;
+      }
+
       //////////////////////////////////////////////////////
       // use the backend module to actually do the insert //
       //////////////////////////////////////////////////////
@@ -157,6 +213,26 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          insertOutput.setRecords(new ArrayList<>());
       }
 
+      if(failOnRecordErrors)
+      {
+         ReplaceAction.requireSuccessfulRecords(insertOutput.getRecords(), "INSERT");
+      }
+      if(expectedNativeOrigins != null)
+      {
+         Set<Object> remaining = new HashSet<>(expectedNativeOrigins);
+         for(QRecord record : insertOutput.getRecords())
+         {
+            if(record == null || !remaining.remove(record.trackCopies()))
+            {
+               throw new QException("Replace INSERT returned an unexpected native record origin");
+            }
+         }
+         if(!remaining.isEmpty())
+         {
+            throw new QException("Replace INSERT omitted a native record origin");
+         }
+      }
+
       //////////////////////////////
       // log if there were errors //
       //////////////////////////////
@@ -169,7 +245,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       //////////////////////////////////////////////////
       // insert any associations in the input records //
       //////////////////////////////////////////////////
-      manageAssociations(table, insertOutput.getRecords(), insertInput);
+      manageAssociations(table, insertOutput.getRecords(), insertInput, failOnRecordErrors);
 
       //////////////////
       // do the audit //
@@ -190,9 +266,34 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       ////////////////////////////////////////////////////////////////
       // finally, run the post-insert customizers, if there are any //
       ////////////////////////////////////////////////////////////////
+      if(failOnRecordErrors)
+      {
+         ReplaceAction.requireSuccessfulRecords(insertOutput.getRecords(), "INSERT");
+      }
+      if(nativeRecords != null)
+      {
+         for(QRecord record : insertOutput.getRecords())
+         {
+            record.capturePrimaryKey(table, record.getValue(table.getPrimaryKeyField()));
+            nativeRecords.add(new QRecord(record));
+         }
+      }
       runPostInsertCustomizers(insertInput, table, insertOutput);
+      if(failOnRecordErrors)
+      {
+         ReplaceAction.requireSuccessfulRecords(insertOutput.getRecords(), "INSERT");
+      }
 
       return insertOutput;
+   }
+
+
+
+   /*******************************************************************************
+    ** Package-private native snapshots never become ordinary Insert output fields.
+    *******************************************************************************/
+   record ReplaceResult(InsertOutput output, List<QRecord> nativeRecords)
+   {
    }
 
 
@@ -297,7 +398,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.INSERT, QContext.getQInstance(), table, insertInput.getRecords(), null);
 
       runPreInsertCustomizerIfItIsTime(insertInput, isPreview, preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun.BEFORE_UNIQUE_KEY_CHECKS);
-      setErrorsIfUniqueKeyErrors(insertInput, table);
+      UniqueKeyHelper.validateInsertStoredKeys(insertInput);
 
       runPreInsertCustomizerIfItIsTime(insertInput, isPreview, preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun.BEFORE_REQUIRED_FIELD_CHECKS);
       if(insertInput.getInputSource().shouldValidateRequiredFields())
@@ -308,6 +409,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       runPreInsertCustomizerIfItIsTime(insertInput, isPreview, preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun.BEFORE_SECURITY_CHECKS);
       ValidateRecordSecurityLockHelper.validateSecurityFields(insertInput.getTable(), insertInput.getRecords(), ValidateRecordSecurityLockHelper.Action.INSERT, insertInput.getTransaction());
 
+      UniqueKeyHelper.validateInsertBatchKeys(insertInput);
       runPreInsertCustomizerIfItIsTime(insertInput, isPreview, preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun.AFTER_ALL_VALIDATIONS);
    }
 
@@ -384,7 +486,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          {
             for(QFieldMetaData requiredField : requiredFields)
             {
-               if(record.getValue(requiredField.getName()) == null || (requiredField.getType().isStringLike() && record.getValueString(requiredField.getName()).trim().equals("")))
+               if(record.getValue(requiredField.getName()) == null || ((requiredField.getType().isStringLike() || record.getValue(requiredField.getName()) instanceof String) && record.getValueString(requiredField.getName()).trim().equals("")))
                {
                   record.addError(new BadInputStatusMessage("Missing value in required field: " + Objects.requireNonNullElse(requiredField.getLabel(), requiredField.getName())));
                }
@@ -398,13 +500,11 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void manageAssociations(QTableMetaData table, List<QRecord> insertedRecords, InsertInput insertInput) throws QException
+   private void manageAssociations(QTableMetaData table, List<QRecord> insertedRecords, InsertInput insertInput, boolean failOnRecordErrors) throws QException
    {
       for(Association association : CollectionUtils.nonNullList(table.getAssociations()))
       {
-         // e.g., order -> orderLine
-         QJoinMetaData join = QContext.getQInstance().getJoin(association.getJoinName()); // todo ... ever need to flip?
-         // just assume this, at least for now... if(BooleanUtils.isTrue(association.getDoInserts()))
+         AssociationJoin join = AssociationJoin.resolve(table, association);
 
          List<QRecord> nextLevelInserts = new ArrayList<>();
          for(QRecord record : insertedRecords)
@@ -418,11 +518,7 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
             {
                for(QRecord associatedRecord : CollectionUtils.nonNullList(record.getAssociatedRecords().get(association.getName())))
                {
-                  for(JoinOn joinOn : join.getJoinOns())
-                  {
-                     QFieldType type = table.getField(joinOn.getLeftField()).getType();
-                     associatedRecord.setValue(joinOn.getRightField(), ValueUtils.getValueAsFieldType(type, record.getValue(joinOn.getLeftField())));
-                  }
+                  join.assignParentValues(record, associatedRecord);
                   nextLevelInserts.add(associatedRecord);
                }
             }
@@ -431,11 +527,12 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          if(CollectionUtils.nullSafeHasContents(nextLevelInserts))
          {
             InsertInput nextLevelInsertInput = new InsertInput();
+            nextLevelInsertInput.setInputSource(insertInput.getInputSource());
             nextLevelInsertInput.withFlags(insertInput.getFlags());
             nextLevelInsertInput.setTransaction(insertInput.getTransaction());
             nextLevelInsertInput.setTableName(association.getAssociatedTableName());
             nextLevelInsertInput.setRecords(nextLevelInserts);
-            InsertOutput nextLevelInsertOutput = new InsertAction().execute(nextLevelInsertInput);
+            InsertOutput nextLevelInsertOutput = new InsertAction().execute(nextLevelInsertInput, failOnRecordErrors);
 
             ///////////////////////////////////////////////////////////////////////////////////////
             // copy inserted primary keys over from the output records to the input records also //
@@ -572,69 +669,6 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          catch(Exception e)
          {
             LOG.warn("Exception copying values to output associated record", e, logPair("tableName", tableName));
-         }
-      }
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private void setErrorsIfUniqueKeyErrors(InsertInput insertInput, QTableMetaData table) throws QException
-   {
-      if(CollectionUtils.nullSafeHasContents(table.getUniqueKeys()))
-      {
-         Map<UniqueKey, Set<List<Serializable>>> keysInThisList = new HashMap<>();
-         if(insertInput.getSkipUniqueKeyCheck())
-         {
-            LOG.debug("Skipping unique key check in " + insertInput.getTableName() + " insert.");
-            return;
-         }
-
-         ////////////////////////////////////////////
-         // check for any pre-existing unique keys //
-         ////////////////////////////////////////////
-         Map<UniqueKey, Set<List<Serializable>>> existingKeys = new HashMap<>();
-         List<UniqueKey>                         uniqueKeys   = CollectionUtils.nonNullList(table.getUniqueKeys());
-         for(UniqueKey uniqueKey : uniqueKeys)
-         {
-            existingKeys.put(uniqueKey, UniqueKeyHelper.getExistingKeys(insertInput.getTransaction(), table, insertInput.getRecords(), uniqueKey).keySet());
-         }
-
-         /////////////////////////////////////
-         // make sure this map is populated //
-         /////////////////////////////////////
-         uniqueKeys.forEach(uk -> keysInThisList.computeIfAbsent(uk, x -> new HashSet<>()));
-
-         for(QRecord record : insertInput.getRecords())
-         {
-            //////////////////////////////////////////////////////////
-            // check if this record violates any of the unique keys //
-            //////////////////////////////////////////////////////////
-            boolean foundDupe = false;
-            for(UniqueKey uniqueKey : uniqueKeys)
-            {
-               Optional<List<Serializable>> keyValues = UniqueKeyHelper.getKeyValues(table, uniqueKey, record);
-               if(keyValues.isPresent() && (existingKeys.get(uniqueKey).contains(keyValues.get()) || keysInThisList.get(uniqueKey).contains(keyValues.get())))
-               {
-                  record.addError(new DuplicateKeyBadInputStatusMessage("Another record already exists with this " + uniqueKey.getDescription(table)));
-                  foundDupe = true;
-                  break;
-               }
-            }
-
-            ///////////////////////////////////////////////////////////////////////////////
-            // if this record doesn't violate any uk's, then we can add it to the output //
-            ///////////////////////////////////////////////////////////////////////////////
-            if(!foundDupe)
-            {
-               for(UniqueKey uniqueKey : uniqueKeys)
-               {
-                  Optional<List<Serializable>> keyValues = UniqueKeyHelper.getKeyValues(table, uniqueKey, record);
-                  keyValues.ifPresent(kv -> keysInThisList.get(uniqueKey).add(kv));
-               }
-            }
          }
       }
    }

@@ -26,10 +26,13 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
-import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -53,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.statusmessages.PermissionDeniedMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QErrorMessage;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
@@ -121,6 +125,56 @@ public class ValidateRecordSecurityLockHelper
       {
          record.setValue(primaryKeyField, null);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Authorize stored owners before mutation without exposing private values to
+    ** public results or the separate audit/customizer snapshot. Native Query retains
+    ** ordinary READ security; presentation transformations must not change owners.
+    *******************************************************************************/
+   public static Map<Object, QRecord> validateStoredWriteLocks(QTableMetaData table, Map<Object, QRecord> visibleRecords, Action action, QBackendTransaction transaction) throws QException
+   {
+      MultiRecordSecurityLock writeLocks = RecordSecurityLockFilters.filterForWriteLockTree(table.getRecordSecurityLocks());
+      if(writeLocks == null || CollectionUtils.nullSafeIsEmpty(writeLocks.getLocks()) || visibleRecords.isEmpty())
+      {
+         return null;
+      }
+
+      QTableMetaData physicalTable = AssociatedRecordDiscovery.physicalParentTable(table);
+      List<Serializable> primaryKeys = new ArrayList<>();
+      for(QRecord record : visibleRecords.values())
+      {
+         primaryKeys.add(record.resolvePrimaryKey(table));
+      }
+      QueryInput queryInput = new QueryInput(table.getName()).withTransaction(transaction)
+         .withFilter(new QQueryFilter(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, primaryKeys)))
+         .withShouldFetchHeavyFields(true).withShouldOmitHiddenFields(false).withShouldMaskPasswords(false)
+         .withFieldNamesToInclude(new HashSet<>(physicalTable.getFields().keySet()));
+      queryInput.setTableMetaData(physicalTable);
+      QueryOutput queryOutput = new QBackendModuleDispatcher().getQBackendModule(queryInput.getBackend()).getQueryInterface().executeForDml(queryInput);
+      if(queryOutput == null || queryOutput.getRecords() == null)
+      {
+         throw new QException("Unable to read stored records for write authorization");
+      }
+
+      Map<Object, QRecord> privateRecords = new HashMap<>();
+      for(QRecord record : queryOutput.getRecords())
+      {
+         if(record == null || CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            throw new QException("Unable to read stored records for write authorization");
+         }
+         Object key = AssociatedRecordUpdate.primaryKey(physicalTable, record);
+         if(!visibleRecords.containsKey(key))
+         {
+            throw new QException("Unexpected stored record in write authorization");
+         }
+         privateRecords.putIfAbsent(key, new QRecord(record));
+      }
+      ValidateRecordSecurityLockHelper.validateSecurityFields(physicalTable, new ArrayList<>(privateRecords.values()), action, transaction);
+      return privateRecords;
    }
 
 
@@ -323,19 +377,14 @@ public class ValidateRecordSecurityLockHelper
             // execute the query for joined records - then put them in a map with keys corresponding to the join values //
             // e.g., (17,47)=(JoinRecord), (18,48)=(JoinRecord)                                                         //
             //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            QueryOutput                      queryOutput               = new QueryAction().execute(queryInput);
+            QueryOutput                      queryOutput               = queryStoredLockRecords(queryInput, rightMostJoin);
             Map<List<Serializable>, QRecord> joinRecordMapByJoinFields = new HashMap<>();
             for(QRecord joinRecord : queryOutput.getRecords())
             {
                List<Serializable> joinRecordValues = new ArrayList<>();
                for(JoinOn joinOn : rightMostJoin.getJoinOns())
                {
-                  Serializable joinValue = joinRecord.getValue(rightMostJoin.getLeftTable() + "." + joinOn.getLeftField());
-                  if(joinValue == null && joinRecord.getValues().keySet().stream().anyMatch(n -> !n.contains(".")))
-                  {
-                     joinValue = joinRecord.getValue(joinOn.getLeftField());
-                  }
-                  joinRecordValues.add(joinValue);
+                  joinRecordValues.add(storedLockValue(joinRecord, rightMostJoin.getLeftTable(), joinOn.getLeftField(), leftMostJoinTable.getName()));
                }
 
                joinRecordMapByJoinFields.put(joinRecordValues, joinRecord);
@@ -355,11 +404,7 @@ public class ValidateRecordSecurityLockHelper
 
                   String         fieldName           = recordSecurityLock.getFieldName().replaceFirst(".*\\.", "");
                   QFieldMetaData field               = leftMostJoinTable.getField(fieldName);
-                  Serializable   recordSecurityValue = joinRecord.getValue(fieldName);
-                  if(recordSecurityValue == null && joinRecord.getValues().keySet().stream().anyMatch(n -> n.contains(".")))
-                  {
-                     recordSecurityValue = joinRecord.getValue(recordSecurityLock.getFieldName());
-                  }
+                  Serializable   recordSecurityValue = storedLockValue(joinRecord, leftMostJoinTable.getName(), fieldName, leftMostJoinTable.getName());
 
                   for(QRecord inputRecord : inputRecords)
                   {
@@ -384,6 +429,66 @@ public class ValidateRecordSecurityLockHelper
             }
          }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Authorization uses stored values; display customizers, READ behaviors and
+    ** hidden/heavy field omission must not change a joined security decision.
+    *******************************************************************************/
+   private static QueryOutput queryStoredLockRecords(QueryInput input, QJoinMetaData rightMostJoin) throws QException
+   {
+      QTableMetaData table = TableMetaDataPersonalizerAction.execute(input);
+      if(table == null)
+      {
+         throw new QException("Joined security table is not available");
+      }
+      table = AssociatedRecordDiscovery.physicalParentTable(table);
+      input.setTableMetaData(table);
+      input.setShouldFetchHeavyFields(true);
+      input.setShouldOmitHiddenFields(false);
+      input.setShouldMaskPasswords(false);
+      Set<String> fields = new HashSet<>(table.getFields().keySet());
+      for(JoinOn joinOn : rightMostJoin.getJoinOns())
+      {
+         fields.add(rightMostJoin.getLeftTable().equals(table.getName()) ? joinOn.getLeftField() : rightMostJoin.getLeftTable() + "." + joinOn.getLeftField());
+      }
+      input.setFieldNamesToInclude(fields);
+      FilterValidationHelper.validateFieldNamesInFilter(input);
+      input.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, input.getFilter(), Collections.emptySet()));
+      QueryOutput output = new QBackendModuleDispatcher().getQBackendModule(input.getBackend()).getQueryInterface().executeForDml(input);
+      if(output == null || output.getRecords() == null)
+      {
+         throw new QException("Unable to read stored joined security values");
+      }
+      for(QRecord record : output.getRecords())
+      {
+         if(record == null || CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            throw new QException("Unable to read stored joined security values");
+         }
+      }
+      return output;
+   }
+
+
+
+   /*******************************************************************************
+    ** Missing projection is not an explicit null covered by a lock's null policy.
+    *******************************************************************************/
+   private static Serializable storedLockValue(QRecord record, String tableName, String fieldName, String rootTableName) throws QException
+   {
+      String qualifiedName = tableName + "." + fieldName;
+      if(record.getValues().containsKey(qualifiedName))
+      {
+         return record.getValue(qualifiedName);
+      }
+      if(tableName.equals(rootTableName) && record.getValues().containsKey(fieldName))
+      {
+         return record.getValue(fieldName);
+      }
+      throw new QException("Missing stored joined security field: " + qualifiedName);
    }
 
 
@@ -643,6 +748,7 @@ public class ValidateRecordSecurityLockHelper
          //////////////////////////////////////////////////////////////////
          List<QErrorMessage> errorsFromThisLevel = new ArrayList<>();
 
+         int failedBranches = 0;
          int i = 0;
          for(RecordSecurityLock lock : locksToCheck.getLocks())
          {
@@ -659,6 +765,10 @@ public class ValidateRecordSecurityLockHelper
             }
 
             errorsFromThisLevel.addAll(errorsFromThisLock);
+            if(!errorsFromThisLock.isEmpty())
+            {
+               failedBranches++;
+            }
 
             treePositions.remove(treePositions.size() - 1);
             i++;
@@ -679,7 +789,7 @@ public class ValidateRecordSecurityLockHelper
             //////////////////////////////////////////////////////////
             // for an OR - only return if ALL conditions had errors //
             //////////////////////////////////////////////////////////
-            if(errorsFromThisLevel.size() == locksToCheck.getLocks().size())
+            if(failedBranches == locksToCheck.getLocks().size())
             {
                return (errorsFromThisLevel); // todo something smarter?
             }

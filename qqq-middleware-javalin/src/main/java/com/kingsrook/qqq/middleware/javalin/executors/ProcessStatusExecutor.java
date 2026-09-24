@@ -61,7 +61,7 @@ public class ProcessStatusExecutor extends AbstractMiddlewareExecutor<ProcessSta
          String jobUUID     = input.getJobUUID();
 
          LOG.debug("Request for status of process " + processUUID + ", job " + jobUUID);
-         Optional<AsyncJobStatus> optionalJobStatus = new AsyncJobManager().getJobStatus(jobUUID);
+         Optional<AsyncJobStatus> optionalJobStatus = new AsyncJobManager().getJobStatusForUser(jobUUID, processName, processUUID);
          if(optionalJobStatus.isEmpty())
          {
             ProcessExecutorUtils.serializeRunProcessExceptionForCaller(output, new RuntimeException("Could not find status of process step job"));
@@ -79,7 +79,7 @@ public class ProcessStatusExecutor extends AbstractMiddlewareExecutor<ProcessSta
                // if the job is complete, get the process result from state provider, and return it //
                // this output should look like it did if the job finished synchronously!!           //
                ///////////////////////////////////////////////////////////////////////////////////////
-               Optional<ProcessState> processState = RunProcessAction.getState(processUUID);
+               Optional<ProcessState> processState = RunProcessAction.getStateForUser(processUUID, processName);
                if(processState.isPresent())
                {
                   RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());

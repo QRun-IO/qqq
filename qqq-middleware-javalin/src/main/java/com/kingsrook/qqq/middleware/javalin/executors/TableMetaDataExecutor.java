@@ -23,8 +23,8 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 
 
 import com.kingsrook.qqq.backend.core.actions.metadata.TableMetaDataAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
-import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -58,7 +58,10 @@ public class TableMetaDataExecutor extends AbstractMiddlewareExecutor<TableMetaD
 
       tableMetaDataInput.setTableName(tableName);
       tableMetaDataInput.setInputSource(QInputSource.USER);
-      PermissionsHelper.checkTablePermissionThrowing(tableMetaDataInput, TablePermissionSubType.READ);
+      if(PermissionsHelper.getPermissionCheckResult(tableMetaDataInput, table).equals(PermissionCheckResult.DENY_HIDE))
+      {
+         throw (new QNotFoundException("Table [" + tableName + "] was not found."));
+      }
 
       TableMetaDataAction tableMetaDataAction = new TableMetaDataAction();
       TableMetaDataOutput tableMetaDataOutput = tableMetaDataAction.execute(tableMetaDataInput);

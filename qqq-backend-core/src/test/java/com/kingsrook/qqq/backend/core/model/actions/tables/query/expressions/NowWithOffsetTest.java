@@ -26,12 +26,15 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 
 /*******************************************************************************
@@ -84,6 +87,80 @@ class NowWithOffsetTest extends BaseTest
          assertEquals(LocalDate.now().minusDays(1), NowWithOffset.minus(1, ChronoUnit.DAYS).evaluate(dateField));
          assertEquals(LocalDate.now().minusDays(7), NowWithOffset.minus(1, ChronoUnit.WEEKS).evaluate(dateField));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** A null field argument should default to DATE_TIME and return an Instant.
+    *******************************************************************************/
+   @Test
+   void testEvaluate_nullField_defaultsToDateTime() throws QException
+   {
+      // Act
+      Object result = NowWithOffset.minus(1, ChronoUnit.DAYS).evaluate(null);
+
+      // Assert — null field must fall back to DATE_TIME → Instant
+      assertInstanceOf(Instant.class, result);
+   }
+
+
+
+   /*******************************************************************************
+    ** Evaluating against an unsupported field type (e.g. INTEGER) should throw QException.
+    *******************************************************************************/
+   @Test
+   void testEvaluate_unsupportedFieldType_throws()
+   {
+      QFieldMetaData intField = new QFieldMetaData("n", QFieldType.INTEGER);
+      assertThatThrownBy(() -> NowWithOffset.minus(1, ChronoUnit.DAYS).evaluate(intField))
+         .isInstanceOf(QException.class)
+         .hasMessageContaining("Unsupported");
+   }
+
+
+
+   /*******************************************************************************
+    ** DATE field with a PLUS offset should move forward, not backward.
+    *******************************************************************************/
+   @Test
+   void testEvaluate_plusOperator_dateField_movesForward() throws QException
+   {
+      // Act
+      LocalDate result = (LocalDate) NowWithOffset.plus(3, ChronoUnit.DAYS).evaluate(
+         new QFieldMetaData("d", QFieldType.DATE));
+
+      // Assert
+      assertEquals(LocalDate.now().plusDays(3), result);
+   }
+
+
+
+   /*******************************************************************************
+    ** DATE_TIME field with DAYS unit should return an Instant roughly 24 h away.
+    *******************************************************************************/
+   @Test
+   void testEvaluate_daysUnit_dateTimeField_returnsInstant() throws QException
+   {
+      long now    = System.currentTimeMillis();
+      long result = ((Instant) NowWithOffset.minus(1, ChronoUnit.DAYS).evaluate(
+         new QFieldMetaData("dt", QFieldType.DATE_TIME))).toEpochMilli();
+
+      assertThat(result).isCloseTo(now - DAY_IN_MILLIS, Offset.offset(100L));
+   }
+
+
+
+   /*******************************************************************************
+    ** factory getters should round-trip the values set in the factory method.
+    *******************************************************************************/
+   @Test
+   void testFactoryGetters_roundTrip()
+   {
+      NowWithOffset expr = NowWithOffset.plus(5, ChronoUnit.HOURS);
+      assertEquals(NowWithOffset.Operator.PLUS, expr.getOperator());
+      assertEquals(5, expr.getAmount());
+      assertEquals(ChronoUnit.HOURS, expr.getTimeUnit());
    }
 
 }

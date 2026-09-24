@@ -145,7 +145,7 @@ public class MongoDBUpdateAction extends AbstractMongoDBAction implements Update
       List<Bson> queryToLog     = new ArrayList<>();
 
       QRecord        firstRecord = recordList.get(0);
-      List<ObjectId> ids         = recordList.stream().map(r -> new ObjectId(r.getValueString("id"))).toList();
+      List<ObjectId> ids         = recordList.stream().map(r -> new ObjectId(r.getValueString(table.getPrimaryKeyField()))).toList();
       Bson           filter      = Filters.in("_id", ids);
       queryToLog.add(filter);
 

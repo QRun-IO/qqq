@@ -51,4 +51,18 @@ class JsonExportStreamerTest extends BaseTest
       assertEquals("order:client", runOne.apply("Order: Client"));
    }
 
+
+
+   /*******************************************************************************
+    ** An optional label must not erase the field's JSON key.
+    *******************************************************************************/
+   @Test
+   void testMissingLabelUsesFieldName()
+   {
+      JsonExportStreamer streamer = new JsonExportStreamer();
+      assertEquals("ownedCount", streamer.getLabelForJson(new QFieldMetaData("ownedCount", QFieldType.INTEGER)));
+   }
+
+
+
 }

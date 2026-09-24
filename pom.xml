@@ -77,10 +77,11 @@
   </modules>
 
   <properties>
-    <revision>0.42.0-SNAPSHOT</revision>
+    <revision>4.1.0-SNAPSHOT</revision>
 
-    <!-- Security: Override Jetty version to fix CVE-2025-XXXX (HTTP/2 vulnerability) -->
-    <jetty.version>11.0.26</jetty.version>
+    <!-- Keep Javalin and its Jetty modules on a consistent version. -->
+    <jetty.version>12.1.13</jetty.version>
+    <javalin.version>7.2.3</javalin.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -181,6 +182,56 @@
 
   <dependencyManagement>
     <dependencies>
+      <!-- Align patched libraries across direct and transitive dependencies. -->
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>2.21.5</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-bom</artifactId>
+        <version>4.1.137.Final</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.mchange</groupId>
+        <artifactId>c3p0</artifactId>
+        <version>0.14.0</version>
+      </dependency>
+      <dependency>
+        <groupId>com.mchange</groupId>
+        <artifactId>mchange-commons-java</artifactId>
+        <version>0.6.0</version>
+      </dependency>
+      <dependency>
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-utils</artifactId>
+        <version>4.0.3</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents.client5</groupId>
+        <artifactId>httpclient5</artifactId>
+        <version>5.6.3</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5</artifactId>
+        <version>5.4.3</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents.core5</groupId>
+        <artifactId>httpcore5-h2</artifactId>
+        <version>5.4.3</version>
+      </dependency>
+      <dependency>
+        <groupId>com.github.jknack</groupId>
+        <artifactId>handlebars</artifactId>
+        <version>4.5.2</version>
+      </dependency>
       <!-- Security: Override Jetty version transitively brought by Javalin -->
       <dependency>
         <groupId>org.eclipse.jetty</groupId>
@@ -190,14 +241,11 @@
         <scope>import</scope>
       </dependency>
       <dependency>
-        <groupId>org.eclipse.jetty.http2</groupId>
-        <artifactId>http2-server</artifactId>
+        <groupId>org.eclipse.jetty.ee10</groupId>
+        <artifactId>jetty-ee10-bom</artifactId>
         <version>${jetty.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.eclipse.jetty.http2</groupId>
-        <artifactId>http2-common</artifactId>
-        <version>${jetty.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
       <!-- Security: Override protobuf-java to fix DoS vulnerability (transitive via mysql-connector-j) -->
       <dependency>
@@ -205,27 +253,15 @@
         <artifactId>protobuf-java</artifactId>
         <version>4.33.3</version>
       </dependency>
-      <!-- Security: Exclude vulnerable org.iq80.snappy from transitive dependencies -->
-      <dependency>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-checkstyle-plugin</artifactId>
-        <version>3.6.0</version>
-        <exclusions>
-          <exclusion>
-            <groupId>org.iq80.snappy</groupId>
-            <artifactId>snappy</artifactId>
-          </exclusion>
-        </exclusions>
-      </dependency>
       <dependency>
         <groupId>org.apache.logging.log4j</groupId>
         <artifactId>log4j-api</artifactId>
-        <version>2.25.3</version>
+        <version>2.25.5</version>
       </dependency>
       <dependency>
         <groupId>org.apache.logging.log4j</groupId>
         <artifactId>log4j-core</artifactId>
-        <version>2.25.3</version>
+        <version>2.25.5</version>
       </dependency>
       <dependency>
         <groupId>org.junit.jupiter</groupId>
@@ -242,7 +278,7 @@
       <dependency>
         <groupId>org.assertj</groupId>
         <artifactId>assertj-core</artifactId>
-        <version>3.27.6</version>
+        <version>3.27.7</version>
         <scope>test</scope>
       </dependency>
     </dependencies>

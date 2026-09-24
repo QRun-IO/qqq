@@ -51,9 +51,9 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
+import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
 import org.apache.commons.lang3.BooleanUtils;
-import org.eclipse.jetty.util.resource.Resource;
 
 
 /*******************************************************************************
@@ -86,6 +86,7 @@ public class QApplicationJavalinServer
    private List<AbstractMiddlewareVersion>      middlewareVersionList               = List.of(new MiddlewareVersionV1());
    private List<QJavalinRouteProviderInterface> additionalRouteProviders            = null;
    private Consumer<Javalin>                    javalinConfigurationCustomizer      = null;
+   private Consumer<JavalinConfig>              javalinConfigCustomizer;
    private QJavalinMetaData                     javalinMetaData                     = null;
 
    private long                lastQInstanceHotSwapMillis;
@@ -148,29 +149,9 @@ public class QApplicationJavalinServer
 
       service = Javalin.create(config ->
       {
-         if(serveFrontendMaterialDashboard)
+         if(serveFrontendMaterialDashboard && getClass().getResource("/material-dashboard-overlay") != null)
          {
-            ////////////////////////////////////////////////////////////////////////////////////////
-            // If you have any assets to add to the web server (e.g., logos, icons) place them at //
-            // src/main/resources/material-dashboard-overlay                                      //
-            // we'll use the same check that javalin (jetty?) internally uses to see if this      //
-            // directory exists - because if it doesn't, then it'll fail to start the server...   //
-            // note that that Resource object is auto-closable, hence the try-with-resources      //
-            ////////////////////////////////////////////////////////////////////////////////////////
-            try(Resource resource = Resource.newClassPathResource("/material-dashboard-overlay"))
-            {
-               if(resource != null)
-               {
-                  config.staticFiles.add("/material-dashboard-overlay");
-               }
-            }
-
-            //////////////////////////////////////////////////////////////////////////////////////////
-            // Note: Static file serving and SPA deep linking for Material Dashboard is now handled //
-            // by IsolatedSpaRouteProvider (configured above) instead of config.staticFiles.add()   //
-            // and config.spaRoot.addFile(). This ensures proper <base href> tag injection for      //
-            // relative URL resolution when deep linking into the SPA.                              //
-            //////////////////////////////////////////////////////////////////////////////////////////
+            config.staticFiles.add("/material-dashboard-overlay");
          }
 
          ///////////////////////////////////////////
@@ -181,7 +162,7 @@ public class QApplicationJavalinServer
             try
             {
                QJavalinImplementation qJavalinImplementation = new QJavalinImplementation(qInstance, javalinMetaData);
-               config.router.apiBuilder(qJavalinImplementation.getRoutes());
+               config.routes.apiBuilder(qJavalinImplementation.getRoutes());
             }
             catch(QInstanceValidationException e)
             {
@@ -200,9 +181,9 @@ public class QApplicationJavalinServer
             for(AbstractMiddlewareVersion version : middlewareVersionList)
             {
                version.setQInstance(qInstance);
-               config.router.apiBuilder(version.getJavalinEndpointGroup(qInstance));
+               config.routes.apiBuilder(version.getJavalinEndpointGroup(qInstance));
             }
-            config.router.apiBuilder(new QMiddlewareApiSpecHandler(middlewareVersionList).defineJavalinEndpointGroup());
+            config.routes.apiBuilder(new QMiddlewareApiSpecHandler(middlewareVersionList).defineJavalinEndpointGroup());
          }
 
          ///////////////////////////////////////////////////////////////////////////////////////////
@@ -246,7 +227,7 @@ public class QApplicationJavalinServer
                   Object         apiHandler      = apiHandlerClass.getConstructor(QInstance.class).newInstance(qInstance);
                   EndpointGroup  routes          = (EndpointGroup) apiHandlerClass.getMethod("getRoutes").invoke(apiHandler);
 
-                  config.router.apiBuilder(routes);
+                  config.routes.apiBuilder(routes);
                   LOG.info("Registered application API routes from ApiInstanceMetaDataContainer");
                }
             }
@@ -273,36 +254,41 @@ public class QApplicationJavalinServer
             EndpointGroup javalinEndpointGroup = routeProvider.getJavalinEndpointGroup();
             if(javalinEndpointGroup != null)
             {
-               config.router.apiBuilder(javalinEndpointGroup);
+               config.routes.apiBuilder(javalinEndpointGroup);
             }
 
             routeProvider.acceptJavalinConfig(config);
          }
+
+         //////////////////////////////////////////////////////////////////////////////////////
+         // per system property, set the server to hot-swap the q instance before all routes //
+         //////////////////////////////////////////////////////////////////////////////////////
+         String hotSwapPropertyValue = System.getProperty("qqq.javalin.hotSwapInstance", "false");
+         if(BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(hotSwapPropertyValue)))
+         {
+            LOG.info("Server will hotSwap QInstance before requests every [" + millisBetweenHotSwaps + "] millis.");
+            config.routes.before(context -> hotSwapQInstance());
+         }
+
+         config.routes.before((Context context) -> context.header("Content-Type", "application/json"));
+         config.routes.after(QJavalinImplementation::clearQContext);
+
+         addNullResponseCharsetFixer(config);
+
+         if(javalinConfigCustomizer != null)
+         {
+            javalinConfigCustomizer.accept(config);
+         }
       });
 
-      //////////////////////////////////////////////////////////////////////
-      // also pass the javalin service into any additionalRouteProviders, //
-      // in case they need additional setup, e.g., before/after handlers. //
-      //////////////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////////////
+      // Service observers run after all route configuration is complete. //
+      /////////////////////////////////////////////////////////////////////
       for(QJavalinRouteProviderInterface routeProvider : CollectionUtils.nonNullList(additionalRouteProviders))
       {
          routeProvider.acceptJavalinService(service);
       }
 
-      //////////////////////////////////////////////////////////////////////////////////////
-      // per system property, set the server to hot-swap the q instance before all routes //
-      //////////////////////////////////////////////////////////////////////////////////////
-      String hotSwapPropertyValue = System.getProperty("qqq.javalin.hotSwapInstance", "false");
-      if(BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(hotSwapPropertyValue)))
-      {
-         LOG.info("Server will hotSwap QInstance before requests every [" + millisBetweenHotSwaps + "] millis.");
-         service.before(context -> hotSwapQInstance());
-      }
-
-      service.before((Context context) -> context.header("Content-Type", "application/json"));
-      service.after(QJavalinImplementation::clearQContext);
-
-      addNullResponseCharsetFixer();
 
       ////////////////////////////////////////////////
       // allow a configuration-customizer to be run //
@@ -346,9 +332,9 @@ public class QApplicationJavalinServer
     ** so, if w see charset=null in contentType, replace it with the system
     ** default, which may not be 100% right, but has to be better than "null"...
     ***************************************************************************/
-   private void addNullResponseCharsetFixer()
+   private void addNullResponseCharsetFixer(JavalinConfig config)
    {
-      service.after((Context context) ->
+      config.routes.after((Context context) ->
       {
          String contentType = context.res().getContentType();
          if(contentType != null && contentType.contains("charset=null"))
@@ -879,7 +865,38 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    ** Getter for javalinConfigurationCustomizer
+    ** Getter for the callback that configures routes and handlers before creation.
+    *******************************************************************************/
+   public Consumer<JavalinConfig> getJavalinConfigCustomizer()
+   {
+      return (this.javalinConfigCustomizer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for the callback that configures routes and handlers before creation.
+    *******************************************************************************/
+   public void setJavalinConfigCustomizer(Consumer<JavalinConfig> javalinConfigCustomizer)
+   {
+      this.javalinConfigCustomizer = javalinConfigCustomizer;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for configuration-time routes and handlers.
+    *******************************************************************************/
+   public QApplicationJavalinServer withJavalinConfigCustomizer(Consumer<JavalinConfig> javalinConfigCustomizer)
+   {
+      this.javalinConfigCustomizer = javalinConfigCustomizer;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the service observer, called after route configuration.
     *******************************************************************************/
    public Consumer<Javalin> getJavalinConfigurationCustomizer()
    {
@@ -889,7 +906,7 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    ** Setter for javalinConfigurationCustomizer
+    ** Setter for the service observer, called after route configuration.
     *******************************************************************************/
    public void setJavalinConfigurationCustomizer(Consumer<Javalin> javalinConfigurationCustomizer)
    {
@@ -899,7 +916,7 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    ** Fluent setter for javalinConfigurationCustomizer
+    ** Fluent setter for the service observer; use javalinConfigCustomizer for routes.
     *******************************************************************************/
    public QApplicationJavalinServer withJavalinConfigurationCustomizer(Consumer<Javalin> javalinConfigurationCustomizer)
    {

@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -187,6 +188,7 @@ class QPicoCliImplementationTest
       ///////////////////////////////////////////////////////
       QInstance qInstanceWithoutProcesses = TestUtils.defineInstance();
       qInstanceWithoutProcesses.setProcesses(new HashMap<>());
+      qInstanceWithoutProcesses.getTable("person").withoutCapabilities(Capability.TABLE_INSERT, Capability.TABLE_UPDATE, Capability.TABLE_DELETE);
       testOutput = testCli(qInstanceWithoutProcesses, "person");
       assertTestOutputDoesNotContain(testOutput, "process");
    }

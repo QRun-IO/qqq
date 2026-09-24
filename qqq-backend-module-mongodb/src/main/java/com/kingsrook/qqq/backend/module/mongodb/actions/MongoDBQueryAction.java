@@ -22,13 +22,17 @@
 package com.kingsrook.qqq.backend.module.mongodb.actions;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ActionTimeoutHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -44,11 +48,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.module.mongodb.fieldfunctions.MongoDBFieldFunctionAdapterInterface;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBBackendMetaData;
-import com.mongodb.client.AggregateIterable;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import org.bson.types.ObjectId;
 
 
 /*******************************************************************************
@@ -69,9 +74,82 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
 
 
    /*******************************************************************************
+    ** Display locks and unrelated computed fields cannot hide stored key conflicts.
+    *******************************************************************************/
+   @Override
+   public List<QRecord> lookupUniqueKey(UniqueKeyLookup.Input input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      QTableMetaData table = queryInput.getTable().clone();
+      table.setRecordSecurityLocks(List.of());
+      table.setVirtualFields(Map.of());
+      queryInput.setTableMetaData(table);
+      return execute(queryInput).getRecords();
+   }
+
+
+
+   /*******************************************************************************
+    ** Stored relationship values are independent of display locks and computations.
+    *******************************************************************************/
+   @Override
+   public List<QRecord> readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      QTableMetaData table = queryInput.getTable().clone();
+      table.setRecordSecurityLocks(List.of());
+      table.setVirtualFields(Map.of());
+      queryInput.setTableMetaData(table);
+      return executeForDml(queryInput).getRecords();
+   }
+
+
+
+   /*******************************************************************************
+    ** Discover relationship membership without changing the caller's read visibility.
+    *******************************************************************************/
+   @Override
+   public List<Serializable> findAssociatedPrimaryKeys(AssociatedRecordDiscovery.Input input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      QTableMetaData table = queryInput.getTable().clone();
+      table.setRecordSecurityLocks(List.of());
+      table.setVirtualFields(Map.of());
+      queryInput.setTableMetaData(table);
+      return executeForDml(queryInput).getRecords().stream().map(record -> record.getValue(table.getPrimaryKeyField())).toList();
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public QueryOutput execute(QueryInput queryInput) throws QException
+   {
+      return execute(queryInput, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Reject native identities that cannot safely select a later MongoDB write.
+    *******************************************************************************/
+   @Override
+   public QueryOutput executeForDml(QueryInput queryInput) throws QException
+   {
+      if(queryInput.getRecordPipe() != null)
+      {
+         throw new QException("DML prefetch requires a materialized record list");
+      }
+      return execute(queryInput, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Ordinary reads retain their existing native identity and projection behavior.
+    *******************************************************************************/
+   private QueryOutput execute(QueryInput queryInput, Boolean requireWriteIdentity) throws QException
    {
       MongoClientContainer mongoClientContainer = null;
 
@@ -103,25 +181,20 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
          /////////////////////////////////////
          // build the aggregation pipeline  //
          /////////////////////////////////////
-         List<Bson> pipeline = new ArrayList<>();
+         List<Bson> pipeline = makeFilterPipeline(table, backend, filter);
 
-         ////////////////////////////////////////////////////////////////////////////////////
-         // if there are virtual fields or criteria-level fieldFunctions, add $addFields   //
-         ////////////////////////////////////////////////////////////////////////////////////
-         Document addFieldsDocument = buildAddFieldsDocument(table, backend, filter);
+         ///////////////////////////////////////////////////////////////////////
+         // Preserve named virtual projection after filtering original values. //
+         // Inline predicate aliases have already been removed with the wrapper. //
+         ///////////////////////////////////////////////////////////////////////
+         Document addFieldsDocument = buildAddFieldsDocument(table, backend, null);
+         if(requireWriteIdentity && addFieldsDocument.keySet().stream().anyMatch(name -> name.equals("_id") || name.startsWith("_id.")))
+         {
+            throw new QException("MongoDB write prefetch cannot replace the native primary key _id");
+         }
          if(!addFieldsDocument.isEmpty())
          {
             pipeline.add(new Document("$addFields", addFieldsDocument));
-         }
-
-         ////////////////////
-         // $match stage   //
-         ////////////////////
-         Bson searchQuery = makeSearchQueryDocument(table, filter);
-         setQueryInQueryStat(searchQuery);
-         if(!searchQuery.toBsonDocument().isEmpty())
-         {
-            pipeline.add(new Document("$match", searchQuery));
          }
 
          ///////////////////////////////////
@@ -236,27 +309,47 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
          }
 
          queryToLog = pipeline;
+         setQueryInQueryStat(new Document("pipeline", pipeline));
 
          ////////////////////////////////////////////
          // iterate over results, building records //
          ////////////////////////////////////////////
-         AggregateIterable<Document> cursor = collection.aggregate(mongoClientContainer.getMongoSession(), pipeline);
-
-         for(Document document : cursor)
+         try(MongoCursor<Document> cursor = collection.aggregate(mongoClientContainer.getMongoSession(), pipeline).iterator())
          {
-            /////////////////////////////////////////////////////////////////////////
-            // once we've started getting results, go ahead and cancel the timeout //
-            /////////////////////////////////////////////////////////////////////////
-            actionTimeoutHelper.cancel();
-            setQueryStatFirstResultTime();
-
-            QRecord record = documentToRecord(queryInput, document);
-            queryOutput.addRecord(record);
-
-            if(queryInput.getAsyncJobCallback().wasCancelRequested())
+            while(cursor.hasNext())
             {
-               LOG.info("Breaking query job, as requested.");
-               break;
+               Document document = cursor.next();
+               /////////////////////////////////////////////////////////////////////////
+               // once we've started getting results, go ahead and cancel the timeout //
+               /////////////////////////////////////////////////////////////////////////
+               actionTimeoutHelper.cancel();
+               setQueryStatFirstResultTime();
+
+               String nativePrimaryKey = null;
+               if(requireWriteIdentity)
+               {
+                  if(document.get("_id") instanceof ObjectId objectId)
+                  {
+                     nativePrimaryKey = objectId.toHexString();
+                  }
+                  else
+                  {
+                     throw new QException("MongoDB writes require native ObjectId primary keys");
+                  }
+               }
+
+               QRecord record = documentToRecord(queryInput, document);
+               if(requireWriteIdentity && !nativePrimaryKey.equals(record.getValue(table.getPrimaryKeyField())))
+               {
+                  throw new QException("MongoDB primary key changed during write prefetch");
+               }
+               queryOutput.addRecord(record);
+
+               if(queryInput.getAsyncJobCallback().wasCancelRequested())
+               {
+                  LOG.info("Breaking query job, as requested.");
+                  break;
+               }
             }
          }
 
@@ -275,6 +368,11 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
       }
       finally
       {
+         if(actionTimeoutHelper != null)
+         {
+            actionTimeoutHelper.cancel();
+         }
+
          logQuery(getBackendTableName(queryInput.getTable()), "query", queryToLog, queryStartTime);
 
          if(mongoClientContainer != null)

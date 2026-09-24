@@ -37,6 +37,8 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -118,6 +120,27 @@ public class BaseAPIActionUtil
 
    protected APIBackendMetaData       backendMetaData;
    protected AbstractTableActionInput actionInput;
+
+
+
+   /*******************************************************************************
+    ** Override only when the provider can read every stored declared-key conflict.
+    ** Ordinary paginated queries may be visibility-filtered and are insufficient.
+    *******************************************************************************/
+   public List<QRecord> lookupUniqueKey(UniqueKeyLookup.Input input) throws QException
+   {
+      throw new QException("API provider does not implement complete unique-key lookup");
+   }
+
+
+
+   /*******************************************************************************
+    ** Ordinary upstream reads cannot promise complete physical relationship values.
+    *******************************************************************************/
+   public List<QRecord> readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput input) throws QException
+   {
+      throw new QException("API provider does not implement complete association-value lookup");
+   }
 
 
 

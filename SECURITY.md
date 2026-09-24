@@ -4,8 +4,9 @@
 
 | Version | Supported          | Notes |
 | ------- | ------------------ | ----- |
-| 0.36.x  | :white_check_mark: | Current development |
-| 0.35.x  | :white_check_mark: | Latest stable |
+| 4.0.x   | :white_check_mark: | Current stable |
+| 0.36.x  | :white_check_mark: | Earlier supported series |
+| 0.35.x  | :white_check_mark: | Earlier supported series |
 | < 0.35  | :x:                | End of life |
 
 We recommend using the latest stable version for security updates.

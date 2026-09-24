@@ -43,7 +43,8 @@ jobs:
             CI=false npm run build
             mkdir -p src/main/resources/material-dashboard
             cp -R build/. src/main/resources/material-dashboard/
-            mvn -B -s /tmp/circleci/mvn-settings.xml -Dqqq.version=0.0.0-sample-acceptance -Drevision=0.0.0-sample-acceptance '-Dtest=*Test' clean install
+            # This internal test dependency is installed only on this build machine.
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Dqqq.version=0.0.0-sample-acceptance -Drevision=0.0.0-sample-acceptance -Dgpg.skip=true '-Dtest=*Test' clean install
       - run:
           name: Run sample data, HTTP and browser acceptance
           command: |

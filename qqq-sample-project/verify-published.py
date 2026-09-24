@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -36,6 +37,9 @@ def main():
         files.extractall(work, filter='data')
 
     sample = work / 'qqq-sample-project'
+    # Inherited plugin paths resolve relative to the standalone sample project.
+    for configuration in ('checkstyle', 'spotbugs'):
+        shutil.copytree(work / configuration, sample / configuration)
     namespace = {'m': 'http://maven.apache.org/POM/4.0.0'}
     ET.register_namespace('', namespace['m'])
     pom = ET.parse(sample / 'pom.xml')

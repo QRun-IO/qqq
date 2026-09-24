@@ -1,8 +1,25 @@
 # QQQ Sample Project
 
-QRun-owned reference application for QQQ 4.0: tables, related records, processes, widgets, the Material Dashboard 0.41.0, and a PicoCLI entry point. Requires Java 21 and Maven 3.8 or later. The default database is an in-memory H2 database populated with sample data at server startup.
+QRun-owned reference application for QQQ 4.0: tables, related records, processes, widgets, the Next quickstart dashboard, Material Dashboard 0.41.0, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
 
-## Build and run
+## Quickstart with Next
+
+Requires JDK 21+, Git, curl, unzip, and a running Docker daemon, using Bash on macOS, Linux, or Windows WSL. No Maven or Node.js installation is needed. From a directory where you want the editable sample checkout:
+
+```bash
+curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.0.0/quickstart.sh
+bash quickstart.sh
+```
+
+The script checks prerequisites and ports, clones into `qqq-sample`, compiles only this application against released QQQ 4.0.0, and opens <http://localhost:3000/app/person>. Docker supplies the versioned Next dashboard; Java runs the sample on port 8000. Local mock authentication and seeded H2 records require no provider account or database setup. Use this sample with local synthetic data.
+
+Create a Person, edit and refresh it, then choose **Actions → Greet Interactive** from the record. Enter a greeting prefix and suffix and advance through the process. The existing Next limitations, including widget parity [#550](https://github.com/QRun-IO/qqq/issues/550), remain deferred; this quickstart does not certify every framework feature.
+
+Press Ctrl+C to stop the owned application and dashboard container. Edit Java files under `qqq-sample/qqq-sample-project/src/main/java`, then run `./quickstart.sh` from `qqq-sample` to recompile and restart. Seeded data resets on each launch. Build and application output is in `qqq-sample/quickstart.log`. Use `bash quickstart.sh my-directory` for another destination; an existing destination is never overwritten. The script prints prerequisite installation links and reports occupied ports before downloading or starting anything.
+
+## Framework development and Material dashboard
+
+Requires Java 21 and Maven 3.8 or later. This separate path builds the framework and runs its acceptance tests.
 
 From the QQQ repository root, install the framework modules, then build this separate sample:
 

@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.automation.AutomationStatus;
@@ -152,6 +153,10 @@ class ValueUtilsTest extends BaseTest
       assertThrows(QValueException.class, () -> ValueUtils.getValueAsInteger(1_000_000_000_000L));
       assertThrows(QValueException.class, () -> ValueUtils.getValueAsInteger(1.1F));
       assertThrows(QValueException.class, () -> ValueUtils.getValueAsInteger(1.1D));
+      for(String value : List.of("1.5", "-1.5", "1,000.5", "1.00000000000000000001", "1.0.0"))
+      {
+         assertThrows(QValueException.class, () -> ValueUtils.getValueAsInteger(value), value);
+      }
    }
 
 
@@ -185,6 +190,10 @@ class ValueUtilsTest extends BaseTest
       assertThrows(QValueException.class, () -> ValueUtils.getValueAsLong(new Object()));
       assertThrows(QValueException.class, () -> ValueUtils.getValueAsLong(1.1F));
       assertThrows(QValueException.class, () -> ValueUtils.getValueAsLong(1.1D));
+      for(String value : List.of("1.5", "-1.5", "1,000.5", "1.00000000000000000001", "1.0.0"))
+      {
+         assertThrows(QValueException.class, () -> ValueUtils.getValueAsLong(value), value);
+      }
    }
 
 

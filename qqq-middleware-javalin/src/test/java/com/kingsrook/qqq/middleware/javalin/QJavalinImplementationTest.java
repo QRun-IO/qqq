@@ -249,7 +249,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       assertEquals(200, response.getStatus());
       jsonObject = JsonUtils.toJSONObject(response.getBody());
       values = jsonObject.getJSONObject("values");
-      assertFalse(values.has("photo"));
+      assertEquals(JSONObject.NULL, values.get("photo"));
    }
 
 
@@ -857,7 +857,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertTrue(jsonObject.has("values"));
       JSONObject values = jsonObject.getJSONObject("values");
-      assertFalse(values.has("birthDate"));
+      assertEquals(JSONObject.NULL, values.get("birthDate"));
    }
 
 
@@ -903,7 +903,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertTrue(jsonObject.has("values"));
       JSONObject values = jsonObject.getJSONObject("values");
-      assertFalse(values.has("birthDate"));
+      assertEquals(JSONObject.NULL, values.get("birthDate"));
    }
 
 
@@ -941,7 +941,7 @@ class QJavalinImplementationTest extends QJavalinTestBase
       jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertTrue(jsonObject.has("values"));
       JSONObject values = jsonObject.getJSONObject("values");
-      assertFalse(values.has("birthDate"));
+      assertEquals(JSONObject.NULL, values.get("birthDate"));
    }
 
 

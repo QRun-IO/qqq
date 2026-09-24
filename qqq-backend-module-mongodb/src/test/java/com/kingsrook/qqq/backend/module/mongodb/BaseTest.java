@@ -49,7 +49,7 @@ public class BaseTest
 
    private static GenericContainer<?> mongoDBContainer;
 
-   private static final String MONGO_IMAGE = "mongo:6.0";
+   private static final String MONGO_IMAGE = "mongo:7.0";
 
 
 

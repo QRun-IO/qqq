@@ -25,8 +25,11 @@ package com.kingsrook.qqq.backend.core.model.metadata.dashboard.nocode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOutput;
@@ -63,8 +66,17 @@ public class WidgetAggregate extends AbstractWidgetValueSourceWithFilter
    {
       AggregateInput aggregateInput = new AggregateInput();
       aggregateInput.setTableName(tableName);
+      aggregateInput.setInputSource(input.getInputSource());
+      if(input.getInputSource() == QInputSource.USER)
+      {
+         PermissionsHelper.checkTablePermissionThrowing(aggregateInput, TablePermissionSubType.READ);
+      }
       aggregateInput.setAggregates(List.of(aggregate));
       aggregateInput.setFilter(getEffectiveFilter(input));
+      if(input.getInputSource() == QInputSource.USER)
+      {
+         PermissionsHelper.checkJoinedTableReadPermissions(aggregateInput, aggregateInput.getQueryJoins(), aggregateInput.getFilter());
+      }
 
       AggregateOutput       aggregateOutput = new AggregateAction().execute(aggregateInput);
       List<AggregateResult> results         = aggregateOutput.getResults();

@@ -79,7 +79,7 @@ public class JavalinHealthRouteProvider implements QJavalinRouteProviderInterfac
       String endpointPath = healthConfig.getEndpointPath();
       LOG.info("Registering health check endpoint", logPair("path", endpointPath));
 
-      config.router.apiBuilder(() ->
+      config.routes.apiBuilder(() ->
       {
          get(endpointPath, ctx ->
          {

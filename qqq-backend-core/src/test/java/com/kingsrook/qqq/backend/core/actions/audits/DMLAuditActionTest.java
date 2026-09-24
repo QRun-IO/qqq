@@ -213,6 +213,37 @@ class DMLAuditActionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Hidden old keys still correlate distinct rows without hydrating snapshots.
+    *******************************************************************************/
+   @Test
+   void testFieldAuditMatchesPrivateOldIdentities() throws QException
+   {
+      QInstance instance = QContext.getQInstance();
+      new AuditsMetaDataProvider().defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, null);
+      QTableMetaData table = instance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      table.setAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD));
+      table.getField("id").setIsHidden(true);
+      QRecord first = new QRecord().withValue("firstName", "Old A");
+      QRecord second = new QRecord().withValue("firstName", "Old B");
+      first.capturePrimaryKey(table, 17);
+      second.capturePrimaryKey(table, 18);
+      new DMLAuditAction().execute(new DMLAuditInput()
+         .withTableActionInput(new UpdateInput(table.getName()))
+         .withOldRecordList(List.of(new QRecord(second), new QRecord(first)))
+         .withRecordList(List.of(new QRecord().withValue("id", 17).withValue("firstName", "New A"),
+            new QRecord().withValue("id", 18).withValue("firstName", "New B"))));
+      List<QRecord> details = TestUtils.queryTable("auditDetail").stream()
+         .filter(record -> "firstName".equals(record.getValueString("fieldName"))).toList();
+      assertEquals(2, details.size());
+      assertTrue(details.stream().anyMatch(record -> "Old A".equals(record.getValueString("oldValue")) && "New A".equals(record.getValueString("newValue"))));
+      assertTrue(details.stream().anyMatch(record -> "Old B".equals(record.getValueString("oldValue")) && "New B".equals(record.getValueString("newValue"))));
+      assertFalse(first.getValues().containsKey("id"));
+      assertFalse(second.getValues().containsKey("id"));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -367,6 +398,16 @@ class DMLAuditActionTest extends BaseTest
          .isPresent()
          .get().extracting(r -> r.getValueString("message"))
          .matches(s -> s.matches("Changed Sequence No. from 1 to 2"));
+
+      ////////////////////////////////////////////////////////////////////////////////////
+      // field not present in record at all (patch-style update) - must produce no audit //
+      // this prevents treating every absent field as if it was explicitly cleared       //
+      ////////////////////////////////////////////////////////////////////////////////////
+      QRecord patchRecord = new QRecord(); // name key not present in values map
+      assertThat(DMLAuditAction.makeAuditDetailRecordForField("name", table, UPDATE,
+         patchRecord,
+         new QRecord().withValue("name", "Homer")))
+         .isEmpty();
    }
 
 
@@ -398,6 +439,25 @@ class DMLAuditActionTest extends BaseTest
       QContext.setQSession(new QSession().withValue("apiVersion", "20230921").withValue("apiLabel", "Our Public API"));
       assertEquals(" while shipping an order via Script \"My Script\" during process: Greet via Our Public API Version: 20230921", DMLAuditAction.getContentSuffix(new DMLAuditInput().withAuditContext("while shipping an order")));
       QContext.popAction();
+   }
+
+
+
+   /*******************************************************************************
+    ** automationStatus is a QQQ-internal system field that must be excluded from
+    ** audit details just like createDate and modifyDate.  Its value changes on
+    ** every automated operation, producing noisy irrelevant audit trail if included.
+    *******************************************************************************/
+   @Test
+   void testMakeAuditDetailRecordForField_automationStatusField_isExcluded()
+   {
+      QTableMetaData table = new QTableMetaData()
+         .withField(new QFieldMetaData("automationStatus", QFieldType.INTEGER).withLabel("Automation Status"));
+
+      assertThat(DMLAuditAction.makeAuditDetailRecordForField("automationStatus", table, UPDATE,
+         new QRecord().withValue("automationStatus", 2),
+         new QRecord().withValue("automationStatus", 1)))
+         .isEmpty();
    }
 
 

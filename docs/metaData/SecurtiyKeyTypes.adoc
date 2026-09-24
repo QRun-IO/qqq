@@ -13,7 +13,8 @@ The use-case being handled here is:
 The lock & key metaphor is realized by the user being associated with one or more "Keys"
 (as values in their session), and records in tables being associated with one or more "Locks"
 (as values in fields).
-A user is only allowed to access records where the user's key(s) match the record's security lock(s).
+In this default `READ_AND_WRITE` example, access requires satisfying the record's applicable security locks.
+A lock can instead apply only to reads or writes; see the `lockScope` properties under {link-table}. Table permissions remain independent.
 
 For a practical example, picture a multi-tenant Order Management System,where all orders are assigned to a "client".
 Users (customers) should only be able to see orders associated with the client which that user works for.
@@ -39,11 +40,8 @@ security key values are set, based on data from the authentication backend.
 === Additional Scenarios
 
 ==== All Access Key
-A "super-user" may be allowed to access all records in a table regardless of their record locks,
-if the Security Key Type specifies an `allAccessKeyName`,
-and if the user has a key in their session with that key name, and a value of `true`.
-Going back to the lock & key metaphor, this can be thought of as a "skeleton key",
-that can unlock any record lock (of the security key's type).
+A Security Key Type's `allAccessKeyName` satisfies locks of that type when the session contains the named key with a value of `true`.
+This satisfies that lock even as an alternative within an OR group; other required lock branches and table permissions still apply.
 
 ==== Null Value Behaviors
 In a record security lock, different behaviors can be defined for handling rows with a null key value.

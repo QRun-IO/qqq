@@ -1,9 +1,12 @@
+[#Javalin]
 == QQQ Middleware:  Javalin web server
 include::../variables.adoc[]
 
 QQQ provides a standard implementation of a middleware layer - that is - code that exists between the
 QQQ backend and user interface.  This implementation is a web server built using the https://javalin.io/[Javalin framework],
 packaged and deployed in the `qqq-middleware-javalin` maven module
+
+The 4.0 migration candidate uses Java 21, Javalin 7.2.3 and Jetty 12.1.13. The Javalin 7 configuration examples below target that candidate; QQQ 4.0 publication remains pending.
 
 The de facto way to create a QQQ application server is to write a class which uses an instance of one of the
 subclasses of `QApplicationJavalinServer`.
@@ -13,21 +16,22 @@ For example, if your application metadata is defined in a directory of yaml file
 [source,java]
 .ConfigFileBasedQQQApplication usage example
 ----
-public static void main(String[] args)
+public class MyServer
 {
-   try
+   public static void main(String[] args) throws QException
    {
-      String path = "src/main/resources/metadata";
-      ConfigFilesBasedQQQApplication application = new ConfigFilesBasedQQQApplication(path);
-      QApplicationJavalinServer javalinServer = new QApplicationJavalinServer(application);
-      javalinServer.start();
-   }
-   catch(Exception e)
-   {
-      LOG.error("Failed to start javalin server.  See stack trace for details.", e);
+      if(args.length != 1)
+      {
+         throw new IllegalArgumentException("Usage: MyServer <metadata-directory>");
+      }
+      ConfigFilesBasedQQQApplication application = new ConfigFilesBasedQQQApplication(args[0]);
+      QApplicationJavalinServer server = new QApplicationJavalinServer(application);
+      server.start();
    }
 }
 ----
+
+Pass an existing metadata directory. Startup exceptions propagate so an invalid configuration produces a nonzero process exit. For metadata bundled in a JAR, use resource streams as described in <<QInstance>>; source-directory paths are not available in a deployed artifact.
 
 A similar class exists if your metadata is produced by a package of Java MetaDataProducer objects:  `MetaDataProducerBasedQQQApplication`.
 
@@ -42,14 +46,32 @@ in the maven artifact `qqq-frontend-material-dashboard`.
 of the QQQ middleware, which current version of `qqq-frontend-material-dashboard` are compatible with.
 * `List<AbstractMiddlewareVersion> middlewareVersionList` - (default contains `MiddlewareVersionV1`) - list of
 newer, formally versioned implementations of the QQQ middleware interface to be served.
-* `Consumer<Javalin> javalinConfigurationCustomizer` - (default `null`) - optional hook to customize the
-javalin service object before it is started.
+* `Consumer<JavalinConfig> javalinConfigCustomizer` - (default `null`) - optional configuration-time hook for route, handler and other Javalin setup. Access it with `getJavalinConfigCustomizer`, `setJavalinConfigCustomizer` or `withJavalinConfigCustomizer`.
+* `Consumer<Javalin> javalinConfigurationCustomizer` - (default `null`) - optional observer of the created service before startup, for example to capture its reference. Despite its historical name, this hook does not register routes or handlers in Javalin 7; use `javalinConfigCustomizer` for that work.
 * `List<QJavalinRouteProviderInterface> additionalRouteProviders` - (default `null`) - list of fully custom
 implementations of `QJavalinRouteProviderInterface`, to add additional endpoints to the javalin server.
 ** _Note, you may first want to consider using JavalinRouteProviderMetaData instead - see below._
 * `QJavalinMetaData javalinMetaData` - (default `null`) - optional alternative place to define `JavalinMetaData` (vs.
 defining it in the `QInstance`). _Note that if it is set in both places, the one in the QApplicationJavalinServer
 is used._
+
+=== Route registration and service observation
+
+Javalin 7 registers routes, before/after handlers and error/exception handlers during configuration.
+Custom `QJavalinRouteProviderInterface` implementations use `acceptJavalinConfig(JavalinConfig)` for this setup, calling `config.routes`.
+`getJavalinEndpointGroup()` still returns `io.javalin.apibuilder.EndpointGroup`; QQQ installs that group with `config.routes.apiBuilder(...)`.
+`acceptJavalinService(Javalin)` observes the created service and must not be used to register handlers.
+
+For a server-level registration callback, configure the server before calling `start()`:
+
+[source,java]
+----
+server.withJavalinConfigCustomizer(config ->
+   config.routes.get("/custom/status", ctx -> ctx.result("ready")));
+----
+
+A service observer remains separate. For example, an existing `AtomicReference<Javalin> serviceReference` can still be populated with `server.withJavalinConfigurationCustomizer(serviceReference::set)`.
+Preserve authentication and handler scopes when moving provider setup; the registration hook does not itself grant access to a route.
 
 === JavalinMetaData
 Certain behaviors of a QQQ Javalin server are configured in a declarative manner by adding a `QJavalinMetaData`
@@ -67,6 +89,24 @@ as input.
 * `Integer queryWithoutLimitDefault` - (default `1000`)
 * `Level queryWithoutLimitLogLevel` - (default `INFO`)
 
+[#ProcessUploads]
+==== Process file uploads
+
+The legacy process endpoints accept multipart files through `uploadedFileArchiveTableName`. Each multipart field becomes a list of `StorageInput` values for the backend step. QQQ checks process access before archiving, then validates every filename before writing the first file. Submit a nonblank filename without directory separators, colons or control characters; `.` and `..` are rejected. Each accepted file uses its own generated archive directory. The archive is internal storage: a permitted process can consume its uploads without granting users direct table READ/WRITE access. Downloads still require the explicit grants described in <<ProcessDownloadGrants>>.
+
+Configure upload limits with Javalin's native multipart settings before starting the server. `config.http.maxRequestSize` applies to buffered request-body access and does not set the multipart upload limit. For example:
+
+[source,java]
+----
+server.withJavalinConfigCustomizer(config ->
+{
+   config.jetty.multipartConfig.maxFileSize(10, io.javalin.config.SizeUnit.MB);
+   config.jetty.multipartConfig.maxTotalRequestSize(20, io.javalin.config.SizeUnit.MB);
+});
+----
+
+Invalid filenames and multipart parser rejections return HTTP client errors, before archive writes or process execution. This includes requests with chunked transfer encoding. Ordinary backend process failures retain their existing process error envelope. Archive retention and deletion remain application responsibilities; storage errors or later process failures do not provide transactional rollback of archived files.
+
 ==== JavalinRouteProviderMetaData
 This type of metadata allows you to add additional http route providers to your Javalin instance, e.g., for
 serving static files or for running custom code from your application (in the form of QQQ Processes) to respond
@@ -76,11 +116,12 @@ to HTTP requests.
 * `String fileSystemPath` - (required for a static router)
 * `String processName` - required for a dynamic, process-based router.  Must be a process name within the QQQ Instance.
 See below for additional details
-* `List<String> methods` - required list of HTTP methods (verbs) that are served by the route provider
-* `QCodeReference routeAuthenticator - Optional reference to a class that implements `RouteAuthenticatorInterface`,
+* `List<String> methods` - optional list of HTTP methods for a process-based route: `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`. Defaults to `GET` when omitted or empty.
+* `QCodeReference routeAuthenticator` - Optional reference to a class that implements `RouteAuthenticatorInterface`,
 to provide security authentication to all requests handled by the route provider.
 ** A default implementation is provided as `SimpleRouteAuthenticator`, which requires that a user session be present
 to access paths served by the route provider.
+* `QCodeReference contextHandler` - Optional reference to a `RouteProviderContextHandlerInterface` implementation for a process-based route. Extend `DefaultRouteProviderContextHandler` to augment its request and response mappings.
 
 ===== Process-based route provider processes
 If you define a `JavalinRouteProviderMetaData` with a `processName` (e.g., to serve dynamic HTTP responses from your javalin
@@ -92,6 +133,10 @@ the shape of the `ProcessBasedRouterPayload` class.  Similarly, the http respons
 the process's output/state conforming to the fields in that class.  As such, it is recommended to use a
 `ProcessBasedRouterPayload`  instance, as show in this example:
 
+The default `DefaultRouteProviderContextHandler` stores the HTTP `method` process-input value as a String such as `"GET"` or `"POST"`. Read it with `input.getValueString("method")` or `ProcessBasedRouterPayload.getMethod()`; do not cast the underlying value to Javalin `HandlerType`. Custom context handlers define their own input mapping.
+
+The default mapping also supplies path parameters, repeated query/form values, cookies, the raw String body, and a `requestHeaders` input map. Set `responseHeaders` explicitly for non-JSON output because the application server defaults to `application/json`. Responses may use `responseString`, `responseBytes`, or a `responseStorageInput` process-output value containing a `StorageInput`; these are checked in that order. For redirects, set `redirectURL` and optionally `statusCode` (default `302`).
+
 [source,java]
 .Process-based router usage example (including ProcessBasedRouterPayload)
 ----
@@ -102,6 +147,7 @@ public class MyDynamicSiteProcessStep implements BackendStep
    {
       ProcessBasedRouterPayload payload = input.getProcessPayload(ProcessBasedRouterPayload.class);
       String path = payload.getPath();
+      payload.setResponseHeaders(Map.of("Content-Type", "text/plain; charset=utf-8"));
       payload.setResponseString("You requested: " + path);
       output.setProcessPayload(payload);
    }

@@ -55,4 +55,4 @@ Alternatively, the no-arg constructor can be used along with `.withLeftField().w
 used in some framework-generated queries using the join.
 The field names are assumed to come from the rightTable.
 
-#TODO# what else do we need here?
+A join declaration describes the relationship; it does not by itself fetch joined fields or guarantee that related writes are atomic. Configure the query joins or associations that use it and verify transaction support in the selected backend. See <<QueryJoin>> for query examples.

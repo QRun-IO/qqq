@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.actions.tables;
 
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
@@ -44,6 +46,8 @@ import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -146,5 +150,157 @@ class GetActionTest extends BaseTest
          QContext.getQSession().getUser().getIdReference());
       assertEquals("DARIN", new GetAction().executeForRecord(new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withPrimaryKey(1).withInputSource(QInputSource.USER)).getValueString("firstName"));
    }
+
+
+
+   /*******************************************************************************
+    ** static shorthand GetAction.execute(tableName, primaryKey) returns the record
+    ** when found, and null when the id does not exist.
+    *******************************************************************************/
+   @Test
+   void testStaticShorthandByPrimaryKey_foundAndMissing() throws QException
+   {
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(
+         new QRecord().withValue("firstName", "Alice")));
+
+      QRecord found = GetAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, (Serializable) 1);
+      assertNotNull(found);
+      assertEquals("Alice", found.getValueString("firstName"));
+
+      QRecord missing = GetAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, (Serializable) 999);
+      assertNull(missing);
+   }
+
+
+
+   /*******************************************************************************
+    ** static shorthand GetAction.execute(tableName, uniqueKeyMap) returns the record
+    ** when found by a unique-key lookup, and null when no match.
+    *******************************************************************************/
+   @Test
+   void testStaticShorthandByUniqueKey_foundAndMissing() throws QException
+   {
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_SHAPE).withRecord(
+         new QRecord().withValue("name", "circle")));
+
+      QTableMetaData shapeTable = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_SHAPE);
+      shapeTable.withUniqueKey(new UniqueKey("name"));
+
+      QRecord found = GetAction.execute(TestUtils.TABLE_NAME_SHAPE, Map.of("name", "circle"));
+      assertNotNull(found);
+      assertEquals("circle", found.getValueString("name"));
+
+      QRecord missing = GetAction.execute(TestUtils.TABLE_NAME_SHAPE, Map.of("name", "triangle"));
+      assertNull(missing);
+   }
+
+
+
+   /*******************************************************************************
+    ** requesting a table that does not exist in the QInstance must throw a
+    ** QException rather than a NullPointerException.
+    *******************************************************************************/
+   @Test
+   void testGetUnrecognizedTable_throwsQException()
+   {
+      assertThatThrownBy(() -> new GetAction().execute(new GetInput("doesNotExist").withPrimaryKey(1)))
+         .isInstanceOf(QException.class)
+         .hasMessageContaining("doesNotExist");
+   }
+
+
+
+   /*******************************************************************************
+    ** convertGetInputToQueryInput must throw when neither primaryKey nor uniqueKey
+    ** is set on the input — prevents silent empty-filter queries.
+    *******************************************************************************/
+   @Test
+   void testConvertGetInputToQueryInput_neitherKeySet_throwsQException()
+   {
+      assertThatThrownBy(() -> GetAction.convertGetInputToQueryInput(new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY)))
+         .isInstanceOf(QException.class)
+         .hasMessageContaining("Missing required input");
+   }
+
+
+
+   /*******************************************************************************
+    ** executeViaQuery must find the same record as execute() for a basic pkey lookup.
+    *******************************************************************************/
+   @Test
+   void testExecuteViaQuery_basicFetch() throws QException
+   {
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(
+         new QRecord().withValue("firstName", "Bob")));
+
+      GetInput getInput = new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withPrimaryKey(1);
+      GetOutput output = new GetAction().executeViaQuery(getInput);
+      assertNotNull(output.getRecord());
+      assertEquals("Bob", output.getRecord().getValueString("firstName"));
+   }
+
+
+
+   /*******************************************************************************
+    ** shouldMaskPasswords must replace the raw value of PASSWORD-type fields with
+    ** asterisks while optionally preserving the display value as the real string.
+    *******************************************************************************/
+   @Test
+   void testShouldMaskPasswords() throws QException
+   {
+      QInstance      qInstance     = QContext.getQInstance();
+      QTableMetaData personMemory  = qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      String         passwordField = "testPassword";
+
+      personMemory.addField(new QFieldMetaData(passwordField, QFieldType.PASSWORD));
+
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(
+         new QRecord().withValue("firstName", "Carol").withValue(passwordField, "s3cr3t")));
+
+      GetInput maskedInput = new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withPrimaryKey(1)
+         .withShouldMaskPasswords(true);
+      QRecord maskedRecord = new GetAction().executeForRecord(maskedInput);
+      assertNotNull(maskedRecord);
+      assertThat(maskedRecord.getValueString(passwordField)).isEqualTo("************");
+
+      GetInput unmaskedInput = new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withPrimaryKey(1)
+         .withShouldMaskPasswords(false);
+      QRecord unmaskedRecord = new GetAction().executeForRecord(unmaskedInput);
+      assertThat(unmaskedRecord.getValueString(passwordField)).isEqualTo("s3cr3t");
+   }
+
+
+
+   /*******************************************************************************
+    ** shouldOmitHiddenFields must strip fields whose isHidden flag is set.
+    *******************************************************************************/
+   @Test
+   void testShouldOmitHiddenFields() throws QException
+   {
+      QInstance      qInstance   = QContext.getQInstance();
+      QTableMetaData personMemory = qInstance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      String         hiddenField = "internalNote";
+
+      personMemory.addField(new QFieldMetaData(hiddenField, QFieldType.STRING).withIsHidden(true));
+
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(
+         new QRecord().withValue("firstName", "Dave").withValue(hiddenField, "internal")));
+
+      QRecord omitted = new GetAction().executeForRecord(new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withPrimaryKey(1)
+         .withShouldOmitHiddenFields(true));
+      assertNotNull(omitted);
+      assertNull(omitted.getValue(hiddenField));
+
+      QRecord included = new GetAction().executeForRecord(new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withPrimaryKey(1)
+         .withShouldOmitHiddenFields(false));
+      assertNotNull(included);
+      assertEquals("internal", included.getValueString(hiddenField));
+   }
+
+
 
 }

@@ -40,12 +40,19 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
@@ -56,6 +63,8 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -386,8 +395,8 @@ class DeleteActionTest extends BaseTest
       assertEquals(1, deleteOutput.getRecordsWithErrors().size());
       assertThat(deleteOutput.getRecordsWithErrors().get(0).getErrors().get(0).getMessage())
          .contains("You do not have permission")
-         .contains("kmarsh")
-         .contains("Only Writable By");
+         .doesNotContain("kmarsh")
+         .doesNotContain("Only Writable By");
 
       assertEquals(1, new CountAction().execute(new CountInput(TestUtils.TABLE_NAME_PERSON_MEMORY)).getCount());
       assertEquals(1, new CountAction().execute(new CountInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
@@ -448,7 +457,7 @@ class DeleteActionTest extends BaseTest
    {
       QContext.getQSession().setSecurityKeyValues(MapBuilder.of(TestUtils.SECURITY_KEY_TYPE_STORE, ListBuilder.of(1)));
 
-      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER);
       table.withCustomizer(TableCustomizers.PRE_DELETE_RECORD, new QCodeReference(OrderPreDeleteCustomizer.class));
 
       ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -476,7 +485,7 @@ class DeleteActionTest extends BaseTest
       /////////////////////////////
       // try to delete them both //
       /////////////////////////////
-      new DeleteAction().execute(new DeleteInput(TestUtils.TABLE_NAME_ORDER).withPrimaryKeys(List.of(OrderPreDeleteCustomizer.DELETE_WARN_ID, OrderPreDeleteCustomizer.DELETE_WARN_ID)));
+      new DeleteAction().execute(new DeleteInput(TestUtils.TABLE_NAME_ORDER).withPrimaryKeys(List.of(OrderPreDeleteCustomizer.DELETE_ERROR_ID, OrderPreDeleteCustomizer.DELETE_WARN_ID)));
 
       ///////////////////////
       // count what's left //
@@ -485,6 +494,124 @@ class DeleteActionTest extends BaseTest
       assertEquals(1, new CountAction().execute(new CountInput(TestUtils.TABLE_NAME_LINE_ITEM)).getCount());
       assertEquals(1, new CountAction().execute(new CountInput(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC)).getCount());
       assertEquals(0, new CountAction().execute(new CountInput(TestUtils.TABLE_NAME_ORDER_EXTRINSIC)).getCount());
+   }
+
+
+
+   /*******************************************************************************
+    ** Typed duplicate targets must yield one failure and cannot recurse forever.
+    *******************************************************************************/
+   @Test
+   void testCyclicDeleteKeepsAllRecordsAndRestoresDuplicateKeys() throws QException
+   {
+      String tableName = seedCyclicRecords();
+      List<QRecord> before = queryTable(tableName);
+      DeleteInput input = new DeleteInput(tableName).withPrimaryKeys(List.of(1, "1"));
+      DeleteOutput output = new DeleteAction().execute(input);
+      assertEquals(0, output.getDeletedRecordCount());
+      assertThat(output.getRecordsWithErrors()).hasSize(1);
+      assertThat(input.getPrimaryKeys()).containsExactly(1, "1");
+      assertEquals(before.stream().map(QRecord::getValues).toList(), queryTable(tableName).stream().map(QRecord::getValues).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** An omission cascade cannot delete the owner of the pending UPDATE.
+    *******************************************************************************/
+   @Test
+   void testCyclicOmissionKeepsUpdatingParent() throws QException
+   {
+      String tableName = seedCyclicRecords();
+      List<QRecord> before = queryTable(tableName);
+      QRecord patch = new QRecord().withValue("id", 1).withValue("payload", "must not change")
+         .withAssociatedRecords("children", List.of());
+      QRecord output = new UpdateAction().executeForRecord(new UpdateInput(tableName).withRecord(patch));
+      assertThat(output.getErrors()).isNotEmpty();
+      assertEquals(before.stream().map(QRecord::getValues).toList(), queryTable(tableName).stream().map(QRecord::getValues).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** Filter/key input state is restored even when the pre-delete customizer throws.
+    *******************************************************************************/
+   @Test
+   void testFilterInputRestoredAfterCustomizerFailure() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new InsertAction().execute(new InsertInput(tableName).withRecord(new QRecord().withValue("id", 7)));
+      QContext.getQInstance().getTable(tableName).withCustomizer(TableCustomizers.PRE_DELETE_RECORD, new QCodeReference(ThrowingPreDeleteCustomizer.class));
+      QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 7));
+      DeleteInput input = new DeleteInput(tableName).withQueryFilter(filter);
+      assertThrows(QException.class, () -> new DeleteAction().execute(input));
+      assertSame(filter, input.getQueryFilter());
+      assertNull(input.getPrimaryKeys());
+      assertThat(queryTable(tableName)).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Validation failures must not be audited as successful deletions.
+    *******************************************************************************/
+   @Test
+   void testRejectedDeleteIsExcludedFromAudit() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      QInstance instance = QContext.getQInstance();
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("id", OrderPreDeleteCustomizer.DELETE_ERROR_ID),
+         new QRecord().withValue("id", OrderPreDeleteCustomizer.DELETE_WARN_ID))));
+      new AuditsMetaDataProvider().defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, null);
+      instance.getTable(tableName).setAuditRules(new QAuditRules().withAuditLevel(AuditLevel.RECORD));
+      instance.getTable(tableName).withCustomizer(TableCustomizers.PRE_DELETE_RECORD, new QCodeReference(OrderPreDeleteCustomizer.class));
+      DeleteOutput output = new DeleteAction().execute(new DeleteInput(tableName)
+         .withPrimaryKeys(List.of(OrderPreDeleteCustomizer.DELETE_ERROR_ID, OrderPreDeleteCustomizer.DELETE_WARN_ID)));
+      assertEquals(1, output.getDeletedRecordCount());
+      assertThat(output.getRecordsWithErrors()).hasSize(1);
+      assertThat(TestUtils.queryTable("audit")).hasSize(1);
+      assertThat(queryTable(tableName)).extracting(record -> record.getValueInteger("id")).containsExactly(OrderPreDeleteCustomizer.DELETE_ERROR_ID);
+   }
+
+
+
+   /*******************************************************************************
+    ** A two-row cycle and one unrelated row isolate recursive ownership.
+    *******************************************************************************/
+   private String seedCyclicRecords() throws QException
+   {
+      String tableName = "cyclicRecords";
+      QTableMetaData table = new QTableMetaData().withName(tableName).withBackendName(TestUtils.MEMORY_BACKEND_NAME).withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("parentId", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("payload", QFieldType.STRING))
+         .withAssociation(new Association().withName("children").withAssociatedTableName(tableName).withJoinName("cyclicChildren"));
+      QContext.getQInstance().addTable(table);
+      QContext.getQInstance().addJoin(new QJoinMetaData().withName("cyclicChildren").withLeftTable(tableName).withRightTable(tableName)
+         .withType(JoinType.ONE_TO_MANY).withJoinOn(new JoinOn("id", "parentId")));
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("id", 1).withValue("parentId", 2).withValue("payload", "first"),
+         new QRecord().withValue("id", 2).withValue("parentId", 1).withValue("payload", "second"),
+         new QRecord().withValue("id", 3).withValue("payload", "unrelated"))));
+      return tableName;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static class ThrowingPreDeleteCustomizer extends AbstractPreDeleteCustomizer
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public List<QRecord> apply(List<QRecord> records) throws QException
+      {
+         throw new QException("Expected pre-delete failure");
+      }
    }
 
 

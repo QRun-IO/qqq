@@ -1,30 +1,14 @@
 # QQQ Language Support - JavaScript
 
-JavaScript runtime integration for QQQ. Execute JavaScript code within QQQ processes.
+JavaScript execution through the standalone Nashorn engine. `QJavaScriptExecutor` implements the core `QCodeExecutor` contract for a `QCodeReference`, an input context and an execution logger. Use the script/code-reference contracts and module tests when integrating scripts into customizers or process steps.
 
-## Features
+QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md) and [4.0 migration guide](../docs/migration/4.0.adoc).
 
-- GraalJS runtime integration
-- JavaScript-based process steps
-- Scripting for transformations and validations
-- Shared context between Java and JavaScript
+## Source and examples
 
-## Usage
-
-```java
-// Define a JavaScript-based process step
-QProcessMetaData process = new QProcessMetaData()
-   .withName("transform-data")
-   .withStep(new QCodeReference()
-      .withCodeType(QCodeType.JAVASCRIPT)
-      .withCode("record.total = record.quantity * record.price;"));
-```
-
-## Requirements
-
-- Java 17+
-- GraalJS runtime
+- [QJavaScriptExecutor](src/main/java/com/kingsrook/qqq/languages/javascript/QJavaScriptExecutor.java)
+- [Module tests](src/test/java/)
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

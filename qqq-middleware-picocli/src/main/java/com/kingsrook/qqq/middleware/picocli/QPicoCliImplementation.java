@@ -38,6 +38,8 @@ import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.metadata.MetaDataAction;
 import com.kingsrook.qqq.backend.core.actions.metadata.TableMetaDataAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.ExportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
@@ -49,6 +51,8 @@ import com.kingsrook.qqq.backend.core.adapters.CsvToQRecordAdapter;
 import com.kingsrook.qqq.backend.core.adapters.JsonToQFieldMappingAdapter;
 import com.kingsrook.qqq.backend.core.adapters.JsonToQRecordAdapter;
 import com.kingsrook.qqq.backend.core.adapters.QInstanceAdapter;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
@@ -65,6 +69,7 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.shared.mapping.AbstractQFieldMapping;
 import com.kingsrook.qqq.backend.core.model.actions.shared.mapping.QKeyBasedFieldMapping;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
@@ -113,8 +118,7 @@ public class QPicoCliImplementation
 {
    public static final int DEFAULT_QUERY_LIMIT = 20;
 
-   private static QInstance qInstance;
-   private static QSession  session;
+   private final QInstance qInstance;
 
 
 
@@ -123,15 +127,12 @@ public class QPicoCliImplementation
     *******************************************************************************/
    public static void main(String[] args) throws IOException
    {
-      // todo - authentication
-      // qInstance.addBackend(QMetaDataProvider.getQBackend());
-
       // parse args to look up metaData and prime instance
       if(args.length > 0 && args[0].startsWith("--qInstanceJsonFile="))
       {
          String filePath      = args[0].replaceFirst("--.*=", "");
          String qInstanceJson = FileUtils.readFileToString(new File(filePath), StandardCharsets.UTF_8);
-         qInstance = new QInstanceAdapter().jsonToQInstanceIncludingBackends(qInstanceJson);
+         QInstance qInstance = new QInstanceAdapter().jsonToQInstanceIncludingBackends(qInstanceJson);
 
          String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
 
@@ -161,7 +162,7 @@ public class QPicoCliImplementation
          Configurator.initialize(null, "qqq-picocli-log4j2.xml");
       }
 
-      QPicoCliImplementation.qInstance = qInstance;
+      this.qInstance = qInstance;
    }
 
 
@@ -193,59 +194,71 @@ public class QPicoCliImplementation
     *******************************************************************************/
    public int runCli(String name, String[] args, PrintStream out, PrintStream err)
    {
-      CommandSpec topCommandSpec = new QCommandBuilder(qInstance).buildCommandSpec(name);
-
-      CommandLine commandLine = new CommandLine(topCommandSpec);
-      commandLine.setOut(new PrintWriter(out, true));
-      commandLine.setErr(new PrintWriter(err, true));
-
+      CapturedContext originalContext = QContext.capture();
+      Map<String, Serializable> originalObjects = QContext.getObjects();
       try
       {
-         setupSession(args);
-         // todo - think about, do some tables get turned off based on authentication?
+         QContext.setObjects(null);
+         QContext.init(qInstance, null);
+         CommandSpec topCommandSpec = new QCommandBuilder(qInstance).buildCommandSpec(name);
 
-         ParseResult parseResult = commandLine.parseArgs(args);
+         CommandLine commandLine = new CommandLine(topCommandSpec);
+         commandLine.setOut(new PrintWriter(out, true));
+         commandLine.setErr(new PrintWriter(err, true));
 
-         ///////////////////////////////////////////
-         // Did user request usage help (--help)? //
-         ///////////////////////////////////////////
-         if(commandLine.isUsageHelpRequested())
+         try
          {
-            commandLine.usage(commandLine.getOut());
-            return commandLine.getCommandSpec().exitCodeOnUsageHelp();
-         }
-         ////////////////////////////////////////////////
-         // Did user request version help (--version)? //
-         ////////////////////////////////////////////////
-         else if(commandLine.isVersionHelpRequested())
-         {
-            commandLine.printVersionHelp(commandLine.getOut());
-            return commandLine.getCommandSpec().exitCodeOnVersionHelp();
-         }
+            QContext.setQSession(setupSession());
+            // todo - think about, do some tables get turned off based on authentication?
 
-         ///////////////////////////
-         // else, run the command //
-         ///////////////////////////
-         return run(commandLine, parseResult);
+            ParseResult parseResult = commandLine.parseArgs(args);
+
+            ///////////////////////////////////////////
+            // Did user request usage help (--help)? //
+            ///////////////////////////////////////////
+            if(commandLine.isUsageHelpRequested())
+            {
+               commandLine.usage(commandLine.getOut());
+               return commandLine.getCommandSpec().exitCodeOnUsageHelp();
+            }
+            ////////////////////////////////////////////////
+            // Did user request version help (--version)? //
+            ////////////////////////////////////////////////
+            else if(commandLine.isVersionHelpRequested())
+            {
+               commandLine.printVersionHelp(commandLine.getOut());
+               return commandLine.getCommandSpec().exitCodeOnVersionHelp();
+            }
+
+            ///////////////////////////
+            // else, run the command //
+            ///////////////////////////
+            return run(commandLine, parseResult);
+         }
+         catch(ParameterException ex)
+         {
+            //////////////////////////////////////////////////
+            // handle command-line/param parsing exceptions //
+            //////////////////////////////////////////////////
+            commandLine.getErr().println(ex.getMessage());
+            UnmatchedArgumentException.printSuggestions(ex, commandLine.getErr());
+            ex.getCommandLine().usage(commandLine.getErr());
+            return commandLine.getCommandSpec().exitCodeOnInvalidInput();
+         }
+         catch(Exception ex)
+         {
+            ///////////////////////////////////////////
+            // handle exceptions from business logic //
+            ///////////////////////////////////////////
+            ex.printStackTrace();
+            commandLine.getErr().println("Error: " + ex.getMessage());
+            return (commandLine.getCommandSpec().exitCodeOnExecutionException());
+         }
       }
-      catch(ParameterException ex)
+      finally
       {
-         //////////////////////////////////////////////////
-         // handle command-line/param parsing exceptions //
-         //////////////////////////////////////////////////
-         commandLine.getErr().println(ex.getMessage());
-         UnmatchedArgumentException.printSuggestions(ex, commandLine.getErr());
-         ex.getCommandLine().usage(commandLine.getErr());
-         return commandLine.getCommandSpec().exitCodeOnInvalidInput();
-      }
-      catch(Exception ex)
-      {
-         ///////////////////////////////////////////
-         // handle exceptions from business logic //
-         ///////////////////////////////////////////
-         ex.printStackTrace();
-         commandLine.getErr().println("Error: " + ex.getMessage());
-         return (commandLine.getCommandSpec().exitCodeOnExecutionException());
+         QContext.setObjects(originalObjects);
+         QContext.init(originalContext);
       }
    }
 
@@ -274,7 +287,7 @@ public class QPicoCliImplementation
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void setupSession(String[] args) throws QModuleDispatchException, QAuthenticationException
+   private QSession setupSession() throws QModuleDispatchException, QAuthenticationException
    {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
@@ -295,7 +308,7 @@ public class QPicoCliImplementation
          authenticationContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, sessionId);
 
          // todo - does this need some per-provider logic actually?  mmm...
-         session = authenticationModule.createSession(qInstance, authenticationContext);
+         return authenticationModule.createSession(qInstance, authenticationContext);
       }
       catch(QAuthenticationException qae)
       {
@@ -443,6 +456,7 @@ public class QPicoCliImplementation
       RunProcessInput  request     = new RunProcessInput();
 
       request.setProcessName(processName);
+      request.setInputSource(QInputSource.USER);
       request.setCallback(new PicoCliProcessCallback(subCommandLine));
 
       for(OptionSpec matchedOption : processParseResult.matchedOptions())
@@ -456,6 +470,7 @@ public class QPicoCliImplementation
 
       try
       {
+         PermissionsHelper.checkProcessPermissionThrowing(request, processName, request.getValues());
          RunProcessOutput result = new RunProcessAction().execute(request);
          subCommandLine.getOut().println("Process Results: "); // todo better!!
          for(QFieldMetaData outputField : process.getOutputFields())
@@ -503,9 +518,12 @@ public class QPicoCliImplementation
    {
       CountInput countInput = new CountInput();
       countInput.setTableName(tableName);
+      countInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
       countInput.setFilter(generateQueryFilter(subParseResult));
 
       CountAction countAction = new CountAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(countInput, null, countInput.getFilter());
       CountOutput countOutput = countAction.execute(countInput);
       commandLine.getOut().println(JsonUtils.toPrettyJson(countOutput));
       return commandLine.getCommandSpec().exitCodeOnSuccess();
@@ -520,6 +538,8 @@ public class QPicoCliImplementation
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(tableName);
+      queryInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
 
       // todo - think about these (e.g., based on user's requested output format?
       // queryInput.setShouldGenerateDisplayValues(true);
@@ -544,6 +564,7 @@ public class QPicoCliImplementation
       filter.setSkip(subParseResult.matchedOptionValue("skip", null));
 
       QueryAction   queryAction = new QueryAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(queryInput, null, queryInput.getFilter());
       QueryOutput   queryOutput = queryAction.execute(queryInput);
       List<QRecord> records     = queryOutput.getRecords();
       if(records.isEmpty())
@@ -567,6 +588,8 @@ public class QPicoCliImplementation
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(tableName);
+      queryInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
       queryInput.setFilter(generateQueryFilter(subParseResult));
       queryInput.getFilter().setSkip(subParseResult.matchedOptionValue("skip", null));
       queryInput.getFilter().setLimit(subParseResult.matchedOptionValue("limit", null));
@@ -576,6 +599,7 @@ public class QPicoCliImplementation
       // queryInput.setShouldTranslatePossibleValues(true);
 
       QueryAction queryAction = new QueryAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(queryInput, null, queryInput.getFilter());
       QueryOutput queryOutput = queryAction.execute(queryInput);
       commandLine.getOut().println(JsonUtils.toPrettyJson(queryOutput));
       return commandLine.getCommandSpec().exitCodeOnSuccess();
@@ -588,6 +612,13 @@ public class QPicoCliImplementation
     *******************************************************************************/
    private int runTableExport(CommandLine commandLine, String tableName, ParseResult subParseResult) throws QException
    {
+      ExportInput exportInput = new ExportInput();
+      exportInput.setTableName(tableName);
+      exportInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ);
+      exportInput.setQueryFilter(generateQueryFilter(subParseResult));
+      PermissionsHelper.checkJoinedTableReadPermissions(exportInput, null, exportInput.getQueryFilter());
+
       String filename = subParseResult.matchedOptionValue("--filename", "");
 
       /////////////////////////////////////////////////////////////////////////////////////////
@@ -618,15 +649,11 @@ public class QPicoCliImplementation
          /////////////////////////////////////////////
          // set up the report action's input object //
          /////////////////////////////////////////////
-         ExportInput exportInput = new ExportInput();
-         exportInput.setTableName(tableName);
          exportInput.setReportDestination(new ReportDestination()
             .withReportFormat(reportFormat)
             .withFilename(filename)
             .withReportOutputStream(outputStream));
          exportInput.setLimit(subParseResult.matchedOptionValue("limit", null));
-
-         exportInput.setQueryFilter(generateQueryFilter(subParseResult));
 
          String fieldNames = subParseResult.matchedOptionValue("--fieldNames", "");
          if(StringUtils.hasContent(fieldNames))
@@ -685,6 +712,8 @@ public class QPicoCliImplementation
    {
       InsertInput insertInput = new InsertInput();
       insertInput.setTableName(tableName);
+      insertInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(insertInput, TablePermissionSubType.INSERT);
       QTableMetaData table = qInstance.getTable(tableName);
 
       AbstractQFieldMapping<?> mapping = null;
@@ -780,6 +809,8 @@ public class QPicoCliImplementation
    {
       UpdateInput updateInput = new UpdateInput();
       updateInput.setTableName(tableName);
+      updateInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
       QTableMetaData table = qInstance.getTable(tableName);
 
       List<QRecord> recordsToUpdate = new ArrayList<>();
@@ -873,6 +904,8 @@ public class QPicoCliImplementation
    {
       DeleteInput deleteInput = new DeleteInput();
       deleteInput.setTableName(tableName);
+      deleteInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(deleteInput, TablePermissionSubType.DELETE);
 
       /////////////////////////////////////////////
       // get the pKeys that the user specified //
@@ -898,6 +931,7 @@ public class QPicoCliImplementation
       }
 
       DeleteAction deleteAction = new DeleteAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(deleteInput, null, deleteInput.getQueryFilter());
       DeleteOutput deleteResult = deleteAction.execute(deleteInput);
       commandLine.getOut().println(JsonUtils.toPrettyJson(deleteResult));
       return commandLine.getCommandSpec().exitCodeOnSuccess();
@@ -932,9 +966,11 @@ public class QPicoCliImplementation
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(tableName);
+      queryInput.setInputSource(QInputSource.USER);
       queryInput.setFilter(generateQueryFilter(subParseResult));
 
       QueryAction queryAction = new QueryAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(queryInput, null, queryInput.getFilter());
       QueryOutput queryOutput = queryAction.execute(queryInput);
       return (queryOutput.getRecords());
    }

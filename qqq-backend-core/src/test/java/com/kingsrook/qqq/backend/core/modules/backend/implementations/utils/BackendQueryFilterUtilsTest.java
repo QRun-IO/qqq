@@ -24,8 +24,11 @@ package com.kingsrook.qqq.backend.core.modules.backend.implementations.utils;
 
 import java.io.Serializable;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Month;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,23 +37,31 @@ import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.SubStringFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateFunction;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.WeekdayOfDateTimeFunction;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.ListBuilder;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -651,6 +662,112 @@ class BackendQueryFilterUtilsTest extends BaseTest
       assertEquals(Set.of(), BackendQueryFilterUtils.identifyJoinTablesInFilter(TestUtils.TABLE_NAME_ORDER,
          new QQueryFilter(new QFilterCriteria("orderNo", QCriteriaOperator.EQUALS).withOtherFieldName("firstInitial"))));
 
+   }
+
+
+
+   /*******************************************************************************
+    ** A joined function sees its local datetime and secondary timezone field.
+    ** Ordinary filters use ISO weekdays, while sorting retains Sunday-first.
+    ** Qualified function sources and root-qualified references remain compatible.
+    *******************************************************************************/
+   @Test
+   void testJoinedWeekdaySecondaryFieldAndSortingCompatibility() throws Exception
+   {
+      QInstance instance = QContext.getQInstance();
+      Map<String, QTableMetaData> originalTables = instance.getTables();
+      String originalMetadata = JsonUtils.toJson(originalTables);
+      Map<String, QTableMetaData> tables = new LinkedHashMap<>(originalTables);
+      Map<String, Serializable> arguments = Map.of(WeekdayOfDateTimeFunction.PARAM_TIME_ZONE_ID, "UTC",
+         WeekdayOfDateTimeFunction.PARAM_ZONE_ID_FROM_FIELD_NAME, "zone",
+         WeekdayOfDateTimeFunction.PARAM_USE_SESSION_ZONE_ID, false,
+         WeekdayOfDateTimeFunction.PARAM_SORT_SUNDAY_FIRST, true);
+      FieldFunction localFunction = new FieldFunction().withFunctionTypeIdentifier(WeekdayOfDateTimeFunction.IDENTIFIER)
+         .withFieldName("timestamp").withArguments(arguments);
+      FieldFunction qualifiedFunction = new FieldFunction().withFunctionTypeIdentifier(WeekdayOfDateTimeFunction.IDENTIFIER)
+         .withFieldName("owner.timestamp").withArguments(Map.of(WeekdayOfDateTimeFunction.PARAM_TIME_ZONE_ID, "UTC",
+            WeekdayOfDateTimeFunction.PARAM_ZONE_ID_FROM_FIELD_NAME, "owner.zone",
+            WeekdayOfDateTimeFunction.PARAM_USE_SESSION_ZONE_ID, false,
+            WeekdayOfDateTimeFunction.PARAM_SORT_SUNDAY_FIRST, true));
+      for(String tableName : List.of(TestUtils.TABLE_NAME_ORDER, TestUtils.TABLE_NAME_LINE_ITEM))
+      {
+         tables.put(tableName, tables.get(tableName).clone().withRecordSecurityLocks(List.of())
+            .withField(new QFieldMetaData("zone", QFieldType.STRING))
+            .withVirtualField(new QVirtualFieldMetaData("weekday", QFieldType.INTEGER).withIsQueryCriteria(true).withIsQuerySelectable(true)
+               .withFieldFunction(localFunction)));
+      }
+      instance.setTables(tables);
+      try
+      {
+         JoinsContext joins = new JoinsContext(instance, TestUtils.TABLE_NAME_ORDER,
+            new ArrayList<>(List.of(new QueryJoin(TestUtils.TABLE_NAME_LINE_ITEM).withAlias("owner").withType(QueryJoin.Type.INNER))), new QQueryFilter());
+         Instant sundayInChildZone = Instant.parse("2026-03-02T00:30:00Z");
+         Instant mondayInChildZone = Instant.parse("2026-03-02T12:30:00Z");
+         QRecord childSunday = new QRecord().withValue("timestamp", sundayInChildZone).withValue("zone", "America/Los_Angeles");
+         QRecord childMonday = new QRecord().withValue("timestamp", mondayInChildZone).withValue("zone", "America/Los_Angeles");
+         WeekdayOfDateTimeFunction type = new WeekdayOfDateTimeFunction();
+         assertAll(
+            () -> assertEquals(7, type.apply(localFunction, childSunday)),
+            () -> assertEquals(1, type.apply(localFunction, childMonday)),
+            () -> assertEquals(0, type.applyForSorting(localFunction, childSunday)),
+            () -> assertEquals(1, type.applyForSorting(localFunction, childMonday)));
+         QRecord sunday = new QRecord().withTableName(TestUtils.TABLE_NAME_ORDER).withValue("id", 2)
+            .withValue("timestamp", Instant.parse("2026-03-03T12:00:00Z")).withValue("zone", "UTC")
+            .withValue("owner.timestamp", sundayInChildZone).withValue("owner.zone", "America/Los_Angeles");
+         QRecord monday = new QRecord().withTableName(TestUtils.TABLE_NAME_ORDER).withValue("id", 1)
+            .withValue("timestamp", Instant.parse("2026-03-01T12:00:00Z")).withValue("zone", "UTC")
+            .withValue("owner.timestamp", mondayInChildZone).withValue("owner.zone", "America/Los_Angeles");
+         QRecord absentChild = new QRecord(sunday);
+         absentChild.removeValue("owner.timestamp");
+         QQueryFilter local = new QQueryFilter(new QFilterCriteria("owner.weekday", QCriteriaOperator.EQUALS, 7));
+         QQueryFilter nested = new QQueryFilter().withSubFilter(local.clone());
+         QQueryFilter qualified = new QQueryFilter(new QFilterCriteria("owner.timestamp", QCriteriaOperator.EQUALS, 7).withFieldFunction(qualifiedFunction));
+         QQueryFilter root = new QQueryFilter(new QFilterCriteria("weekday", QCriteriaOperator.EQUALS, 2));
+         QQueryFilter qualifiedRoot = new QQueryFilter(new QFilterCriteria(TestUtils.TABLE_NAME_ORDER + ".weekday", QCriteriaOperator.EQUALS, 2));
+         QQueryFilter missing = new QQueryFilter(new QFilterCriteria("owner.weekday", QCriteriaOperator.IS_BLANK));
+         QQueryFilter unknown = new QQueryFilter(new QFilterCriteria("ghost.timestamp", QCriteriaOperator.EQUALS, 2).withFieldFunction(localFunction));
+         QQueryFilter childSort = new QQueryFilter().withOrderBy(new QFilterOrderBy("owner.weekday")).withOrderBy(new QFilterOrderBy("id"));
+         QQueryFilter rootSort = new QQueryFilter().withOrderBy(new QFilterOrderBy(TestUtils.TABLE_NAME_ORDER + ".weekday")).withOrderBy(new QFilterOrderBy("id"));
+         List<QQueryFilter> filters = List.of(local, nested, qualified, root, qualifiedRoot, missing, unknown, childSort, rootSort);
+         List<QRecord> records = List.of(sunday, monday, absentChild, childSunday, childMonday);
+         String filtersBefore = JsonUtils.toJson(filters);
+         String recordsBefore = JsonUtils.toJson(records);
+         String functionsBefore = JsonUtils.toJson(List.of(localFunction, qualifiedFunction));
+         String metadataBefore = JsonUtils.toJson(tables);
+         String joinsBefore = JsonUtils.toJson(joins.getQueryJoins());
+         assertAll(
+            () -> assertTrue(BackendQueryFilterUtils.doesRecordMatch(local, joins, sunday), "Joined local datetime and secondary zone"),
+            () -> assertFalse(BackendQueryFilterUtils.doesRecordMatch(local, joins, monday), "Joined Monday control"),
+            () -> assertTrue(BackendQueryFilterUtils.doesRecordMatch(nested, joins, sunday), "Nested joined function"),
+            () -> assertTrue(BackendQueryFilterUtils.doesRecordMatch(qualified, joins, sunday), "Already-qualified function source and zone"),
+            () -> assertTrue(BackendQueryFilterUtils.doesRecordMatch(root, joins, sunday), "Unqualified root function"),
+            () -> assertTrue(BackendQueryFilterUtils.doesRecordMatch(qualifiedRoot, joins, sunday), "Qualified root function"),
+            () -> assertTrue(BackendQueryFilterUtils.doesRecordMatch(missing, joins, absentChild), "Absent child cannot fall back to root"),
+            () -> assertFalse(BackendQueryFilterUtils.doesRecordMatch(unknown, joins, sunday), "Unknown prefix cannot evaluate root local function"),
+            () ->
+            {
+               List<QRecord> sorted = new ArrayList<>(List.of(monday, sunday));
+               BackendQueryFilterUtils.sortRecordList(joins, childSort, sorted);
+               assertEquals(List.of(2, 1), sorted.stream().map(record -> record.getValueInteger("id")).toList(), "Child Sunday sorts before Monday using applyForSorting");
+            },
+            () ->
+            {
+               List<QRecord> sorted = new ArrayList<>(List.of(sunday, monday));
+               BackendQueryFilterUtils.sortRecordList(joins, rootSort, sorted);
+               assertEquals(List.of(1, 2), sorted.stream().map(record -> record.getValueInteger("id")).toList(), "Root-qualified Sunday-first compatibility");
+            },
+            () -> assertEquals(filtersBefore, JsonUtils.toJson(filters)),
+            () -> assertEquals(recordsBefore, JsonUtils.toJson(records)),
+            () -> assertEquals(functionsBefore, JsonUtils.toJson(List.of(localFunction, qualifiedFunction))),
+            () -> assertSame(arguments, localFunction.getArguments()),
+            () -> assertEquals(metadataBefore, JsonUtils.toJson(tables)),
+            () -> assertEquals(joinsBefore, JsonUtils.toJson(joins.getQueryJoins())));
+      }
+      finally
+      {
+         instance.setTables(originalTables);
+         assertEquals(originalMetadata, JsonUtils.toJson(originalTables));
+      }
    }
 
 }

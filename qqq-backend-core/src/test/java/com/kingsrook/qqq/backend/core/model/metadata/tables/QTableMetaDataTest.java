@@ -66,6 +66,26 @@ class QTableMetaDataTest extends BaseTest
 {
 
    /*******************************************************************************
+    ** Backend exclusions must disable operations when supplied as a set.
+    *******************************************************************************/
+   @Test
+   void testBackendWithoutCapabilitiesSet()
+   {
+      QBackendMetaData backend = new QBackendMetaData()
+         .withCapabilities(Capability.TABLE_INSERT, Capability.TABLE_UPDATE)
+         .withoutCapabilities(Set.of(Capability.TABLE_INSERT, Capability.TABLE_DELETE));
+      QTableMetaData table = new QTableMetaData();
+
+      assertFalse(table.isCapabilityEnabled(backend, Capability.TABLE_INSERT));
+      assertFalse(table.isCapabilityEnabled(backend, Capability.TABLE_DELETE));
+      assertFalse(table.isCapabilityEnabled(backend, Capability.QUERY_STATS));
+      assertTrue(table.isCapabilityEnabled(backend, Capability.TABLE_UPDATE));
+      assertFalse(backend.getEnabledCapabilities().contains(Capability.TABLE_INSERT));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

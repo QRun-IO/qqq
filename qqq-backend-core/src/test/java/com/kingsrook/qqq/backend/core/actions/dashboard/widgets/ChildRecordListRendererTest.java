@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidatorTest;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -162,6 +163,12 @@ class ChildRecordListRendererTest extends BaseTest
       // order id, being the join field, should implicitly be omitted - and we asked to omit lineNumber //
       ////////////////////////////////////////////////////////////////////////////////////////////////////
       assertTrue(childRecordListData.getOmitFieldNames().contains("orderId"));
+
+      RenderWidgetInput userInput = new RenderWidgetInput().withWidgetMetaData(widget).withInputSource(QInputSource.USER);
+      userInput.setQueryParams(new HashMap<>(Map.of("id", "1")));
+      ChildRecordListData userData = (ChildRecordListData) new RenderWidgetAction().execute(userInput).getWidgetData();
+      assertEquals(2, userData.getTotalRows());
+      assertEquals("BCD", userData.getQueryOutput().getRecords().getFirst().getValueString("sku"));
    }
 
 

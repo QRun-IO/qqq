@@ -194,9 +194,9 @@ public class ValueUtils
                      throw (nfe);
                   }
                }
-               if(s.matches(".*\\.\\d+$"))
+               if(s.matches("[+-]?\\d+\\.0+"))
                {
-                  String sWithoutDecimal = s.replaceAll("\\.\\d+$", "");
+                  String sWithoutDecimal = s.replaceAll("\\.0+$", "");
                   try
                   {
                      return (getValueAsLong(sWithoutDecimal));
@@ -301,9 +301,9 @@ public class ValueUtils
                      throw (nfe);
                   }
                }
-               if(s.matches(".*\\.\\d+$"))
+               if(s.matches("[+-]?\\d+\\.0+"))
                {
-                  String sWithoutDecimal = s.replaceAll("\\.\\d+$", "");
+                  String sWithoutDecimal = s.replaceAll("\\.0+$", "");
                   try
                   {
                      return (getValueAsInteger(sWithoutDecimal));

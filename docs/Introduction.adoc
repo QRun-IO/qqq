@@ -1,173 +1,26 @@
 = Introduction
 include::variables.adoc[]
 
-QQQ is a Low-code Application Framework for Engineers.
-Its purpose is to provide the basic structural elements of an application - things that every application needs - so that the engineers building an application on top of QQQ don't need to worry about those pieces, and can instead focus on the unique needs of the application that they are building.
+QQQ is a metadata-driven application framework for Java engineers building business software. An application describes its tables, fields, relationships, processes, authentication and permissions in a QInstance. Backend modules perform data operations; middleware exposes the application through HTTP, CLI or other supported entry points; a separately versioned dashboard supplies the standard administration UI.
 
-== What makes QQQ special?
+== QQQ 4.0 status and prerequisites
 
-The scope of what QQQ provides is far-reaching, and most likely goes beyond what you may initially be thinking.
-That is to say, QQQ includes code all the way from the backend of an application, through its middleware layer, and including its frontend.
-For example, a common set of modules deployed in a QQQ application will provide:
+QQQ 4.0 requires Java 21 and Maven 3.8 or later. The 4.0 release is undergoing candidate validation; final 4.0.0 has not been published. The repository README records current availability. Existing applications should follow the xref:migration/4.0.adoc[4.0 migration guide], which covers package renames and removed APIs.
 
-* Backend RDBMS/Database connectivity and access.
-* Frontend web UI (e.g., a React application)
-* A java web server acting as middleware between the frontend web UI and the backend
+== Describe the application
 
-That is to say - as an engineer deploying a QQQ application - you do not need to write a single line of code that is concerned with any of those things.
+Register backend connection metadata, then tables and fields that use those backends. Add relationships, possible-value sources, processes, reports and widgets as needed. Metadata can be produced by Java classes and annotations; the repository also contains metadata loaders for supported file-based definitions. Application code supplies business rules and integrations that the built-in actions do not provide.
 
-* You do not need to write code to connect to your database.
-* You do not write any web UI code.
-* You do not write any middleware code to tie together the frontend and backend.
+QQQ includes relational database modules, MongoDB, filesystem storage and API backend support. Backend capabilities differ: check the selected module before relying on joins, transactions, aggregation or other optional behavior. Configure middleware and the dashboard to expose the metadata as a usable application; defining a table alone does not launch a server.
 
-Instead, QQQ includes *all* of these pieces.
-QQQ knows how to connect to databases (and actually, several other kinds of backend systems - but ignore that for now).
-Plus it knows how to do most of what an application needs to do with a database (single-record lookups, complex queries, joins, aggregates, bulk inserts, updates, deletes).
-QQQ also knows how to present the data from a database - in table views, or single-record views, or exports, or reports or widgets.
-And it knows how to present a powerful ad-hoc query interface to users, and how to show screens where users can create, update, and delete records.
-It also provides the connective tissue (middleware) between those backend layers where data is stored, and frontend layers were users interact with data.
+== Configure access explicitly
 
-== What makes your application special?
+Choose and configure an authentication provider, such as OAuth2 or Auth0, including its required credentials and endpoints. Register it for the intended authentication scope, configure permission rules and any record-level security keys, and test permitted and denied access. Selecting a provider does not automatically define application authorization. Mock and fully anonymous authentication are useful for deliberately limited examples; the sample's explicit mock option is intended for local sample data.
 
-I've said a lot about what does QQQ knows - but let's dig a little deeper.
-What does QQQ know, and what does it not know?
-Well - what it doesn't know is, it doesn't know the special or unique aspects of the application that you are building.
+== Processes and extension points
 
-So, what makes your application unique?
+QQQ provides CRUD actions, reporting, scheduled jobs, record automations and process steps. Applications implement backend steps, customizers and widget renderers where their business behavior is needed. Streamed ETL processes separate extraction, transformation/validation and writes; preview and validation must not perform the final data changes. Production QBits, including the separate ESB QBit, have their own delivery and compatibility requirements and are outside this core release train.
 
-Is your application unique because it needs to have screens where users can search for records in a table?
+== Start with the sample
 
-No!
-
-QQQ assumes (as does the author of this document) that all applications (at least of the nature that QQQ supports) need what we call Query Screens.
-So QQQ gives you a Query Screen for all of your tables - with zero code from you.
-
-Is your application unique because you want users to be able to view, create, edit, and delete records from tables?
-
-No!
-
-QQQ assumes that all applications need these basic https://en.wikipedia.org/wiki/Create,_read,_update_and_delete[CRUD] capabilities.
-So QQQ provides all of these UI screens - for view, create, edit, delete - along with the supporting middleware and backend code - all the way down to the SQL that selects & manages the data.
-You get it all for free - zero code.
-
-Is your application unique because you have a `fiz_bar` table, with 47 columns, and a `whoz_zat` table, with 42 columns of its own, that joins to `fiz_bar` on the `zizzy_ziz_id` field?
-
-Yes!
-
-OK - we found some of it - what makes your application unique is the data that you're working with.
-Your tables - their fields - the connection info for your database.
-QQQ doesn't know those details.
-So - that's your first job as a QQQ application engineer - to describe your data to QQQ.
-
-For the example above - you need to tell QQQ that you have a `fiz_bar` table, and that you have a `whoz_zat` table - and you need to tell QQQ what the fields or columns in thsoe tables are.
-You can even tell QQQ how to join those tables (on that `zizzy_ziz_id` field).
-And then that's it.
-Once QQQ has this {link-table} meta data, it can then provide its Query screens, and full CRUD screens to your tables, in your database, with your fields.
-
-And at the risk of repeating myself - you can do this (get a full Query & CRUD application) with zero lines of actual procedural code.
-You only need to supply meta-data (which, at the time of this writing, is done in Java, but it's just creating objects - and in the future could be done in YAML files, for example).
-
-== Beyond Basics
-Going beyond the basic wiring as described above, QQQ also provides some of the more advanced elements needed in a modern data-driven web application, including:
-
-* Authentication & Authorization
-* ad-hoc Query engine for access to data tables
-* Full CRUD (Create, Read, Update, Delete) capabilities
-* Multistep custom workflows ("Processes" in QQQ parlance)
-* Scheduled jobs
-* Enterprise Service Bus
-
-So what do we mean by all of this?
-We said that basically every application needs, for example, Authentication & Authorization.
-Login screens.
-User & Role tables.
-Permissions.
-So, when it's time for you to build a new application for your _Big Tall Floor Lamp_ manufacturing business, do you need to start by writing a login screen?
-And a Permissions scheme?
-And throwing HTTP 401 errors?
-And managing user-role relationships?
-And then having a bug in the check permission logic on the _Light Bulb Inventory Edit_ screen, so Jim is always keying in bad quantities, even though he isn't supposed to have permission there?
-
-No!
-
-All of the (really important, even though application developers hate doing it) aspects of security - you don't need to write ANY code for dealing with that.
-Just tell QQQ what Authentication provider you want to use (e.g., OAuth2 or https://auth0.com/[Auth0]), and - to paraphrase the old https://www.youtube.com/watch?v=YHzM4avGrKI[iMac ad] - there's no step 2.
-QQQ just does it.
-
-''''
-
-QQQ can provide this type of application using a variety and/or combination of backend data storage types.
-And, whichever type of backend is used, QQQ gives a common interface (both user-facing and programmer-facing).
-Backend types include:
-
-* Relational Databases (RDBMS)
-* File Systems
-* Web APIs
-* NoSQL/Document Databases (_Future_)
-
-In addition, out-of-the-box, QQQ also goes beyond these basics, delivering:
-
-* Bulk versions of all CRUD operations.
-* Automatically generated JSON APIs.
-* Auditing of data changes.
-* End-user (e.g., non-engineer) customization via dynamic scripting capabilities
-
-#todo say much more#
-
-== QQQ Architecture
-
-Like a house!
-
-== Developing a QQQ Application
-In developing an application with QQQ, engineers will generally have to define two types of code:
-
-. *Meta Data* - This is the code that you use to tell QQQ the shape of your application - your unique Tables, Processes, Apps, Reports, Widgets, etc.
-In general, this code is 100% declarative in nature (as opposed to procedural or functional).
-That is to say - it has no logic.
-It is just a definition of what exists - but it has no instructions, algorithms, or business logic.
-
-* _In a future version of QQQ, we anticipate being able to define meta-data in a format such as YAML or JSON, or to even load it from a relational or document database.
-This speaks to the fact that this "code" is not executable code - but rather is a simple declaration of (meta) data._
-* A key function of QQQ then is to drive all of its layers of functionality - frontend UIs, middleware, and core backend actions (e.g., ORM operations) - based on this meta-data.
-** For example:
-... You define the meta-data for a table in your application - including its fields and their data types, as well as what backend system the table exists within.
-... Then, the QQQ Frontend Material Dashboard UI's Query Screen loads that table's meta-data, and uses it to control the screen that is presented.  Including:
-**** The data grid shown on the screen will have columns for each field in the table.
-**** The Filter button in the Query Screen will present a menu listing all fields from the table for the user to build ad-hoc queries against the table.
-The data-types specified for the fields (in the meta-data) dictate what operators QQQ allows the user to use against fields (e.g., Strings offer "contains" vs Numbers offer "greater than").
-**** Values for records from the table will be formatted for presentation based on the meta-data (such as a numeric field being shown with commas if it represents a quantity, or formatted as currency).
-* Other kinds of information that you tell QQQ about in the form of meta-data objects includes:
-** Details about the database you are using, and how to connect to it.
-** A database table's name, fields, their types, its keys, and basic business rules (required fields, read-only fields, field lengths).
-** The specification of a custom workflow (process), including what screens are needed, with input & output values, and references to the custom application code for processing the data.
-** Details about a chart that summarizes data from a table for presentation as a dashboard widget.
-** The description of web API - its URL and authentication mechanism.
-** A table/path within a web API, and the fields returned in the JSON at that endpoint.
-// the section below is kinda dumb.  like, it says you have to write application code, but
-// then it just talks about how your app code gets for-free the same shit that QQQ does.
-// it should instead say more about what your custom app code is or does.
-// 2. *Application code* - to customize beyond what the framework does out-of-the box, and to provide application-specific business-logic.
-// QQQ provides its programmers the same classes that it internally uses for record access, resulting in a unified application model.
-// For example:
-// * The same record-security model that is enforced for ad-hoc user queries through the frontend is applied to custom application code.
-// ** So if your table has a security key defined, which says that users can only see Order records that are associated with the user's assigned Store, then QQQ's order Query Screen will enforce that rule.
-// ** And at the same time - any custom processes ran by a user will have the same security applied to any queries that they run against the Order table.
-// ** And any custom dashboard widgets - will only include data that the user is allowed to see.
-// * Record audits are performed in custom code the same as they are in framework-driven actions.
-// ** So if a custom process edits a record, details of the changed fields show up in the record's audit, the same as if the record was edited using the standard QQQ edit action.
-// * Changed records are sent through the ESB automatically regardless of whether they are updated by custom application code or standard framework code.
-// ** Meaning record automations are triggered regardless of how a record is created or edited - without you, as an application engineering, needing to send records through the bus.
-// * The multi-threaded, paged producer/consumer pattern used in standard framework actions is how all custom application actions are also invoked.
-// ** For example, the standard QQQ Bulk Edit action uses the same streamed-ETL process that custom application processes can use.
-// Meaning your custom processes can take full advantage of the same complex frontend, middleware, and backend structural pieces, and you can just focus on your unique busines logic needs.
-
-. *Application code* - to customize beyond what the QQQ framework does out-of-the box, and to provide application-specific business-logic.
-QQQ provides its programmers the same classes that it internally uses for record access, resulting in a unified application model.
-For example:
-
-== Lifecycle?
-* define meta data
-** enrichment
-** validation
-* start application
-* for dev - hotSwap
+Follow the {qqq-tree-url}/qqq-sample-project[sample application's README] to build and run its H2-backed tables, greeting process, dashboard and CLI. The framework build needs Docker for its integration tests. Use the metadata and action reference sections below when replacing sample behavior with your own application.

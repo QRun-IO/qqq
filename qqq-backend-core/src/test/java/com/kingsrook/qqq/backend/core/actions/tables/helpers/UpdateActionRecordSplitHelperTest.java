@@ -58,6 +58,7 @@ class UpdateActionRecordSplitHelperTest extends BaseTest
       String tableName = getClass().getSimpleName();
       QContext.getQInstance().addTable(new QTableMetaData()
          .withName(tableName)
+         .withPrimaryKeyField("id")
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
          .withField(new QFieldMetaData("A", QFieldType.INTEGER))
          .withField(new QFieldMetaData("B", QFieldType.INTEGER))

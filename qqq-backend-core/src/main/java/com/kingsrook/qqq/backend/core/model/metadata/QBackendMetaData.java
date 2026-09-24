@@ -319,7 +319,7 @@ public class QBackendMetaData implements TopLevelMetaDataInterface
    {
       for(Capability disabledCapability : disabledCapabilities)
       {
-         withCapability(disabledCapability);
+         withoutCapability(disabledCapability);
       }
       return (this);
    }

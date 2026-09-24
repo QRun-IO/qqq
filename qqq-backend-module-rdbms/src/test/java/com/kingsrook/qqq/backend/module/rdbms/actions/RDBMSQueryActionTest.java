@@ -1006,9 +1006,9 @@ public class RDBMSQueryActionTest extends RDBMSActionTest
       runTestSql("INSERT INTO `order` (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (10, NULL, 6, 5)", null);
 
       QInstance  qInstance  = TestUtils.defineInstance();
+      reInitInstanceInContext(qInstance);
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(TestUtils.TABLE_NAME_ORDER);
-      reInitInstanceInContext(qInstance);
 
       Predicate<QRecord> hasNullStoreId = r -> r.getValueInteger("storeId") == null;
 

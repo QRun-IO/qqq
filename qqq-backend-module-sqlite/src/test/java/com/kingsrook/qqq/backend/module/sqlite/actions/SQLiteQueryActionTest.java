@@ -27,6 +27,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -59,10 +61,12 @@ import com.kingsrook.qqq.backend.module.sqlite.BaseTest;
 import com.kingsrook.qqq.backend.module.sqlite.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -73,6 +77,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 public class SQLiteQueryActionTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** Bounded SQLite windows preserve ordered native populations.
+    *******************************************************************************/
+   @Test
+   void testQueryPaginationWindows() throws QException
+   {
+      List<Integer> original = List.of(1, 2, 3, 4, 5);
+      List<Executable> cases = new ArrayList<>();
+      for(Integer limit : List.of(0, 1, 3, 10))
+      {
+         for(Integer skip : Arrays.asList(null, 0, 1, 3, 5, 10))
+         {
+            cases.add(() ->
+            {
+               int start = Math.min(skip == null ? 0 : skip, original.size());
+               int end = limit == null ? original.size() : Math.min(start + limit, original.size());
+               QueryInput input = initQueryRequest().withFilter(new QQueryFilter()
+                  .withOrderBy(new QFilterOrderBy("id")).withLimit(limit).withSkip(skip));
+               assertEquals(original.subList(start, end), new QueryAction().execute(input).getRecords().stream()
+                  .map(record -> record.getValueInteger("id")).toList(), "limit=" + limit + ", skip=" + skip);
+            });
+         }
+      }
+      assertAll(cases);
+   }
+
 
 
    /*******************************************************************************
@@ -979,10 +1010,10 @@ public class SQLiteQueryActionTest extends BaseTest
       runTestSql("INSERT INTO `order` (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (9, NULL, 1, 6)", null);
       runTestSql("INSERT INTO `order` (id, store_id, bill_to_person_id, ship_to_person_id) VALUES (10, NULL, 6, 5)", null);
 
-      QInstance  qInstance  = TestUtils.defineInstance();
+      QInstance qInstance = TestUtils.defineInstance();
+      reInitInstanceInContext(qInstance);
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(TestUtils.TABLE_NAME_ORDER);
-      reInitInstanceInContext(qInstance);
 
       Predicate<QRecord> hasNullStoreId = r -> r.getValueInteger("storeId") == null;
 

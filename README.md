@@ -1,11 +1,9 @@
 # qqq
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
 Metadata-driven application framework for building business software in Java.
 
 **For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems
-**Latest Release:** v0.35.0 | **Development:** v0.36.0-SNAPSHOT
+**4.0 status:** Prerelease. Maven Central currently provides `4.0.0-RC.2`; this branch contains additional candidate fixes. `4.0.0-RC.3` and final `4.0.0` have not been published. See the [changelog](CHANGELOG.md) for changes and open release gates.
 
 ## Why This Exists
 
@@ -13,7 +11,7 @@ Building business applications means writing the same patterns repeatedly: table
 
 QQQ takes a different approach. You define your data model and business rules through metadata, and QQQ generates the working application - complete with API, dashboard, and backend logic.
 
-This isn't a no-code tool. You write Java when you need custom behavior. But the boilerplate - the 80% that's the same across every app - is handled for you.
+Write Java for custom behavior while sharing metadata across the configured backend, middleware, and dashboard modules.
 
 ## Features
 
@@ -28,26 +26,31 @@ This isn't a no-code tool. You write Java when you need custom behavior. But the
 
 **Prerequisites:** Java 21+, Maven 3.8+
 
+The published RC.2 is available for evaluation using the BOM below. To exercise the changes on this branch, build from source using the [sample instructions](qqq-sample-project/README.md); RC.2 does not include these unpublished fixes. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
+
 ```xml
-<!-- Latest stable release -->
-<dependency>
-    <groupId>com.kingsrook.qqq</groupId>
-    <artifactId>qqq-backend-core</artifactId>
-    <version>0.35.0</version>
-</dependency>
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-bom-pom</artifactId>
+            <version>4.0.0-RC.2</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
 
-<!-- Or use the development snapshot -->
-<dependency>
-    <groupId>com.kingsrook.qqq</groupId>
-    <artifactId>qqq-backend-core</artifactId>
-    <version>0.36.0-SNAPSHOT</version>
-</dependency>
-
-<dependency>
-    <groupId>com.kingsrook.qqq</groupId>
-    <artifactId>qqq-backend-module-rdbms</artifactId>
-    <version>0.35.0</version> <!-- or 0.36.0-SNAPSHOT -->
-</dependency>
+<dependencies>
+    <dependency>
+        <groupId>com.kingsrook.qqq</groupId>
+        <artifactId>qqq-backend-core</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>com.kingsrook.qqq</groupId>
+        <artifactId>qqq-backend-module-rdbms</artifactId>
+    </dependency>
+</dependencies>
 ```
 
 Define a table:
@@ -63,7 +66,7 @@ new QTableMetaData()
     .withField(new QFieldMetaData("total", QFieldType.DECIMAL));
 ```
 
-QQQ generates: REST endpoints, dashboard screens, query capabilities, and validation.
+Register table metadata in a configured application to expose query and validation behavior through its selected backend, middleware and dashboard.
 
 ## Usage
 
@@ -99,17 +102,12 @@ See [qqq-frontend-material-dashboard](https://github.com/QRun-IO/qqq-frontend-ma
 
 ## Project Status
 
-**Maturity:** Stable, used in production systems  
-**Breaking changes:** Major versions may break API; see release notes  
-
-**Roadmap:**
-- Improved widget system
-- Enhanced process tracing
+QQQ 4.0 is undergoing release validation. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). Final publication follows candidate verification and QRun-owned reference-application acceptance.
 
 ## Contributing
 
 ```bash
-git clone git@github.com:QRun-IO/qqq.git
+git clone --branch feature/qqq-4-polish https://github.com/QRun-IO/qqq.git
 cd qqq
 mvn clean install
 ```
@@ -118,8 +116,8 @@ See [Developer Onboarding](https://github.com/QRun-IO/qqq/wiki/Developer-Onboard
 
 ## Documentation
 
-Full documentation: [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki)
+Start with the [sample application](qqq-sample-project/README.md), [4.0 migration guide](docs/migration/4.0.adoc), [framework documentation](https://www.qrun.io/docs), and [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki).
 
 ## License
 
-Apache-2.0 - See [LICENSE](LICENSE) for details.
+See [LICENSE](LICENSE), [NOTICE](NOTICE), and the license headers in individual source files.

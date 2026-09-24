@@ -26,7 +26,9 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,6 +41,8 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.BufferedRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipeBufferedWrapper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
@@ -49,18 +53,18 @@ import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
-import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
@@ -69,7 +73,6 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 
 /*******************************************************************************
@@ -81,10 +84,13 @@ public class QueryAction
    private static final QLogger LOG = QLogger.getLogger(QueryAction.class);
 
    private Optional<TableCustomizerInterface> postQueryRecordCustomizer;
+   private int associationDepth;
 
    private QueryInput               queryInput;
    private QueryInterface           queryInterface;
    private QPossibleValueTranslator qPossibleValueTranslator;
+   private boolean preservePrimaryKeys;
+   private final Set<Object> nativePrimaryKeys = new HashSet<>();
 
 
 
@@ -93,6 +99,32 @@ public class QueryAction
     *******************************************************************************/
    public QueryOutput execute(QueryInput queryInput) throws QException
    {
+      return execute(queryInput, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** DML bookkeeping needs row identity independently of its public fields.
+    *******************************************************************************/
+   QueryOutput executeForDml(QueryInput queryInput) throws QException
+   {
+      if(queryInput.getRecordPipe() != null)
+      {
+         throw new QException("DML prefetch requires a materialized record list");
+      }
+      return execute(queryInput, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Public invocations always restore ordinary Query behavior on reuse.
+    *******************************************************************************/
+   private QueryOutput execute(QueryInput queryInput, boolean preservePrimaryKeys) throws QException
+   {
+      this.preservePrimaryKeys = preservePrimaryKeys;
+      nativePrimaryKeys.clear();
       ActionHelper.validateSession(queryInput);
 
       if(queryInput.getTableName() == null)
@@ -106,11 +138,14 @@ public class QueryAction
          throw (new QException("A table named [" + queryInput.getTableName() + "] was not found in the active QInstance"));
       }
       table = TableMetaDataPersonalizerAction.execute(queryInput);
+      if(table == null)
+      {
+         throw (new QException("Query table is not available"));
+      }
       queryInput.setTableMetaData(table);
 
       validateFieldNamesToInclude(queryInput);
       FilterValidationHelper.validateFieldNamesInFilter(queryInput);
-
       QBackendMetaData backend = queryInput.getBackend();
       postQueryRecordCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_QUERY_RECORD.getRole());
       this.queryInput = queryInput;
@@ -141,7 +176,7 @@ public class QueryAction
 
       queryInterface = qModule.getQueryInterface();
       queryInterface.setQueryStat(queryStat);
-      QueryOutput queryOutput = queryInterface.execute(queryInput);
+      QueryOutput queryOutput = preservePrimaryKeys ? executeDmlQuery(queryInput) : queryInterface.execute(queryInput);
 
       if(queryStat != null)
       {
@@ -168,6 +203,45 @@ public class QueryAction
       }
 
       return queryOutput;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fetch a heavy key only for identity, leaving other field-loading choices
+    ** and the original personalized metadata available to presentation code.
+    *******************************************************************************/
+   private QueryOutput executeDmlQuery(QueryInput input) throws QException
+   {
+      QTableMetaData table = input.getTable();
+      String primaryKey = table.getPrimaryKeyField();
+      boolean omitHeavyKey = table.getField(primaryKey).getIsHeavy() && !input.getShouldFetchHeavyFields();
+      QueryOutput output;
+      try
+      {
+         if(omitHeavyKey)
+         {
+            QTableMetaData nativeTable = table.clone();
+            nativeTable.getField(primaryKey).setIsHeavy(false);
+            input.setTableMetaData(nativeTable);
+         }
+         output = queryInterface.executeForDml(input);
+      }
+      finally
+      {
+         input.setTableMetaData(table);
+      }
+      for(QRecord record : CollectionUtils.nonNullList(output.getRecords()))
+      {
+         Serializable key = record.getValue(primaryKey);
+         if(omitHeavyKey)
+         {
+            record.removeValue(primaryKey);
+         }
+         record.capturePrimaryKey(table, key);
+         nativePrimaryKeys.add(AssociatedRecordUpdate.primaryKey(table, record));
+      }
+      return output;
    }
 
 
@@ -269,18 +343,26 @@ public class QueryAction
     *******************************************************************************/
    private void manageAssociations(QueryInput queryInput, List<QRecord> queryOutputRecords) throws QException
    {
+      if(associationDepth > 64 && !queryOutputRecords.isEmpty())
+      {
+         throw new QException("Associated records exceed the maximum depth of 64");
+      }
       QTableMetaData table = queryInput.getTable();
       for(Association association : CollectionUtils.nonNullList(table.getAssociations()))
       {
          if(queryInput.getAssociationNamesToInclude() == null || queryInput.getAssociationNamesToInclude().contains(association.getName()))
          {
-            // e.g., order -> orderLine
-            QJoinMetaData join = QContext.getQInstance().getJoin(association.getJoinName()); // todo ... ever need to flip?
-            // just assume this, at least for now... if(BooleanUtils.isTrue(association.getDoInserts()))
+            AssociationJoin join = AssociationJoin.resolve(table, association);
 
             QueryInput nextLevelQueryInput = new QueryInput();
             nextLevelQueryInput.setTableName(association.getAssociatedTableName());
-            nextLevelQueryInput.setIncludeAssociations(true);
+            nextLevelQueryInput.setInputSource(queryInput.getInputSource());
+            nextLevelQueryInput.setIncludeAssociations(!queryOutputRecords.isEmpty());
+            nextLevelQueryInput.setShouldFetchHeavyFields(queryInput.getShouldFetchHeavyFields());
+            nextLevelQueryInput.setShouldOmitHiddenFields(queryInput.getShouldOmitHiddenFields());
+            nextLevelQueryInput.setShouldMaskPasswords(queryInput.getShouldMaskPasswords());
+            nextLevelQueryInput.setShouldTranslatePossibleValues(queryInput.getShouldTranslatePossibleValues());
+            nextLevelQueryInput.setShouldGenerateDisplayValues(queryInput.getShouldGenerateDisplayValues());
             nextLevelQueryInput.setAssociationNamesToInclude(buildNextLevelAssociationNamesToInclude(association.getName(), queryInput.getAssociationNamesToInclude()));
             nextLevelQueryInput.setTransaction(queryInput.getTransaction());
 
@@ -289,53 +371,67 @@ public class QueryAction
 
             ListingHash<List<Serializable>, QRecord> outerResultMap = new ListingHash<>();
 
-            if(join.getJoinOns().size() == 1)
+            Set<Serializable> singleValues = new HashSet<>();
+            filter.setBooleanOperator(QQueryFilter.BooleanOperator.OR);
+            for(QRecord record : queryOutputRecords)
             {
-               JoinOn            joinOn = join.getJoinOns().get(0);
-               Set<Serializable> values = new HashSet<>();
-               for(QRecord record : queryOutputRecords)
+               if(join.getJoinOns().stream().anyMatch(joinOn -> !record.getValues().containsKey(joinOn.getLeftField())))
                {
-                  Serializable value       = record.getValue(joinOn.getLeftField());
-                  Serializable valueAsType = ValueUtils.getValueAsFieldType(table.getField(joinOn.getLeftField()).getType(), value);
-                  values.add(valueAsType);
-                  outerResultMap.add(List.of(valueAsType), record);
+                  throw new QException("Association parent relationship fields were not returned by the query");
                }
-               filter.addCriteria(new QFilterCriteria(joinOn.getRightField(), QCriteriaOperator.IN, new ArrayList<>(values)));
-            }
-            else
-            {
-               filter.setBooleanOperator(QQueryFilter.BooleanOperator.OR);
-
-               for(QRecord record : queryOutputRecords)
+               List<Serializable> values = join.parentValues(record);
+               if(values.contains(null))
+               {
+                  continue;
+               }
+               outerResultMap.add(values, record);
+               if(join.getJoinOns().size() == 1)
+               {
+                  singleValues.add(values.get(0));
+               }
+               else
                {
                   QQueryFilter subFilter = new QQueryFilter();
-                  filter.addSubFilter(subFilter);
-                  List<Serializable> values = new ArrayList<>();
-                  for(JoinOn joinOn : join.getJoinOns())
+                  for(int i = 0; i < join.getJoinOns().size(); i++)
                   {
-                     Serializable value = record.getValue(joinOn.getLeftField());
-                     values.add(value);
-                     subFilter.addCriteria(new QFilterCriteria(joinOn.getRightField(), QCriteriaOperator.EQUALS, value));
+                     subFilter.addCriteria(new QFilterCriteria(join.getJoinOns().get(i).getRightField(), QCriteriaOperator.EQUALS, Collections.singletonList(values.get(i))));
                   }
-                  outerResultMap.add(values, record);
+                  filter.addSubFilter(subFilter);
                }
             }
+            if(join.getJoinOns().size() == 1 || outerResultMap.isEmpty())
+            {
+               ///////////////////////////////////////////////////////////////////////////////////
+               // An empty tuple set must still run child authorization, using a no-match query. //
+               // NULL components never mean membership in the set of unassigned child records. //
+               ///////////////////////////////////////////////////////////////////////////////////
+               filter.addCriteria(new QFilterCriteria(join.getJoinOns().get(0).getRightField(), QCriteriaOperator.IN, new ArrayList<>(singleValues)));
+            }
 
-            QueryOutput nextLevelQueryOutput = new QueryAction().execute(nextLevelQueryInput);
+            QueryAction nextLevelAction = new QueryAction();
+            nextLevelAction.associationDepth = associationDepth + 1;
+            QueryOutput nextLevelQueryOutput = nextLevelAction.execute(nextLevelQueryInput);
+            ListingHash<List<Serializable>, QRecord> childResultMap = new ListingHash<>();
             for(QRecord record : nextLevelQueryOutput.getRecords())
             {
-               List<Serializable> values = new ArrayList<>();
-               for(JoinOn joinOn : join.getJoinOns())
+               if(join.getJoinOns().stream().anyMatch(joinOn -> !record.getValues().containsKey(joinOn.getRightField())))
                {
-                  Serializable value = record.getValue(joinOn.getRightField());
-                  values.add(value);
+                  throw new QException("Association child relationship fields were not returned by the query");
                }
+               childResultMap.add(join.childValues(record), record);
+            }
 
-               if(outerResultMap.containsKey(values))
+            for(QRecord outerRecord : queryOutputRecords)
+            {
+               outerRecord.withAssociatedRecords(association.getName(), new ArrayList<>());
+            }
+            for(List<Serializable> values : outerResultMap.keySet())
+            {
+               if(childResultMap.containsKey(values))
                {
                   for(QRecord outerRecord : outerResultMap.get(values))
                   {
-                     outerRecord.withAssociatedRecord(association.getName(), record);
+                     outerRecord.withAssociatedRecords(association.getName(), new ArrayList<>(childResultMap.get(values)));
                   }
                }
             }
@@ -360,7 +456,7 @@ public class QueryAction
       {
          if(nextLevelCandidateName.startsWith(name + "."))
          {
-            rs.add(nextLevelCandidateName.replaceFirst(name + ".", ""));
+            rs.add(nextLevelCandidateName.substring(name.length() + 1));
          }
       }
 
@@ -378,7 +474,20 @@ public class QueryAction
    {
       if(this.postQueryRecordCustomizer.isPresent())
       {
-         records = postQueryRecordCustomizer.get().postQuery(queryInput, records);
+         List<QRecord> customizedRecords = postQueryRecordCustomizer.get().postQuery(queryInput, records);
+         if(customizedRecords == null)
+         {
+            throw new QException("Post-query customizer returned null records");
+         }
+         if(customizedRecords != records)
+         {
+            ///////////////////////////////////////////////////////////////////////
+            // A replacement may be a view backed by the published record list. //
+            ///////////////////////////////////////////////////////////////////////
+            customizedRecords = new ArrayList<>(customizedRecords);
+            records.clear();
+            records.addAll(customizedRecords);
+         }
       }
 
       ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.READ, QContext.getQInstance(), queryInput.getTable(), records, null);
@@ -402,6 +511,19 @@ public class QueryAction
          manageAssociations(queryInput, records);
       }
 
+      Map<QRecord, Serializable> primaryKeys = preservePrimaryKeys ? new IdentityHashMap<>() : Collections.emptyMap();
+      if(preservePrimaryKeys)
+      {
+         for(QRecord record : records)
+         {
+            if(!nativePrimaryKeys.contains(AssociatedRecordUpdate.primaryKey(queryInput.getTable(), record)))
+            {
+               throw new QException("DML prefetch customizer returned a record outside the native result");
+            }
+            primaryKeys.put(record, record.resolvePrimaryKey(queryInput.getTable()));
+         }
+      }
+
       //////////////////////////////
       // mask any password fields //
       //////////////////////////////
@@ -413,7 +535,27 @@ public class QueryAction
          //////////////////////////////////////////////////
          // build up sets of passwords and hidden fields //
          //////////////////////////////////////////////////
-         Map<String, QFieldMetaData> fields = queryInput.getTable().getFields();
+         Map<String, QFieldMetaData> fields = new HashMap<>(queryInput.getTable().getFields());
+         fields.putAll(CollectionUtils.nonNullMap(queryInput.getTable().getVirtualFields()));
+         for(QueryJoin queryJoin : CollectionUtils.nonNullList(queryInput.getQueryJoins()))
+         {
+            if(!queryJoin.getSelect())
+            {
+               continue;
+            }
+            QTableMetaData joinTable = QContext.getQInstance().getTable(queryJoin.getJoinTable());
+            if(joinTable == null)
+            {
+               throw new QException("Requested join table [" + queryJoin.getJoinTable() + "] is not a defined table.");
+            }
+            joinTable = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableMetaData(joinTable).withInputSource(queryInput.getInputSource()));
+            Map<String, QFieldMetaData> joinFields = new HashMap<>(joinTable.getFields());
+            joinFields.putAll(CollectionUtils.nonNullMap(joinTable.getVirtualFields()));
+            for(QFieldMetaData field : joinFields.values())
+            {
+               fields.put(queryJoin.getJoinTableOrItsAlias() + "." + field.getName(), field);
+            }
+         }
          for(String fieldName : fields.keySet())
          {
             QFieldMetaData field = fields.get(fieldName);
@@ -430,6 +572,8 @@ public class QueryAction
          /////////////////////////////////////////////////////
          // iterate over records replacing values with mask //
          /////////////////////////////////////////////////////
+         boolean privateLabel = hiddenFields.contains(queryInput.getTable().getPrimaryKeyField()) || maskedFields.contains(queryInput.getTable().getPrimaryKeyField())
+            || CollectionUtils.nonNullList(queryInput.getTable().getRecordLabelFields()).stream().anyMatch(field -> hiddenFields.contains(field) || maskedFields.contains(field));
          for(QRecord record : records)
          {
             /////////////////////////
@@ -446,13 +590,32 @@ public class QueryAction
                // empty out the value completely first (which will remove from     //
                // display fields as well) then update display value if flag is set //
                //////////////////////////////////////////////////////////////////////
+               boolean hasValue = record.getValues().containsKey(maskedFieldName);
                record.removeValue(maskedFieldName);
-               record.setValue(maskedFieldName, "************");
-               if(queryInput.getShouldGenerateDisplayValues())
+               if(hasValue)
                {
-                  record.setDisplayValue(maskedFieldName, record.getValueString(maskedFieldName));
+                  record.setValue(maskedFieldName, "************");
+                  if(queryInput.getShouldGenerateDisplayValues())
+                  {
+                     record.setDisplayValue(maskedFieldName, record.getValueString(maskedFieldName));
+                  }
                }
             }
+            if(privateLabel && record.getRecordLabel() != null)
+            {
+               ///////////////////////////////////////////////////////////////////////
+               // A failed label format must not fall back to the old private label. //
+               ///////////////////////////////////////////////////////////////////////
+               record.setRecordLabel(null);
+               record.setRecordLabel(QValueFormatter.formatRecordLabel(queryInput.getTable(), record));
+            }
+         }
+      }
+      if(preservePrimaryKeys)
+      {
+         for(QRecord record : records)
+         {
+            record.capturePrimaryKey(queryInput.getTable(), primaryKeys.get(record));
          }
       }
    }

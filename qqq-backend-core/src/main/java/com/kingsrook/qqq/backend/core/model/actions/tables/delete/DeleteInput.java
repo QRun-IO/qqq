@@ -140,7 +140,7 @@ public class DeleteInput extends AbstractTableActionInput
       ///////////////////////////////////////////////////////////////////////////////////////////////
       // the action may edit this list (e.g., to remove keys w/ errors), so wrap it in MutableList //
       ///////////////////////////////////////////////////////////////////////////////////////////////
-      this.primaryKeys = new MutableList<>(primaryKeys);
+      this.primaryKeys = primaryKeys == null ? null : new MutableList<>(primaryKeys);
    }
 
 

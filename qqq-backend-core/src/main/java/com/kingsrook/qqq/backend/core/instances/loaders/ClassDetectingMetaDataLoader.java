@@ -115,6 +115,8 @@ public class ClassDetectingMetaDataLoader extends AbstractMetaDataLoader<QMetaDa
    public QMetaDataObject mapToMetaDataObject(QInstance qInstance, Map<String, Object> map, LoadingContext context) throws QMetaDataLoaderException
    {
       AbstractMetaDataLoader<?> loaderForMap = getLoaderForMap(map);
-      return loaderForMap.mapToMetaDataObject(qInstance, map, context);
+      QMetaDataObject metadata = loaderForMap.mapToMetaDataObject(qInstance, map, context);
+      getProblems().addAll(loaderForMap.getProblems());
+      return metadata;
    }
 }

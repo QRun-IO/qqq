@@ -39,6 +39,8 @@ import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ActionTimeoutHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
@@ -94,6 +96,51 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
     *******************************************************************************/
    public QueryOutput execute(QueryInput queryInput) throws QException
    {
+      return execute(queryInput, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Native declared-key lookups retain database equality and caller transactions.
+    *******************************************************************************/
+   @Override
+   public List<QRecord> lookupUniqueKey(UniqueKeyLookup.Input input) throws QException
+   {
+      return execute(input.newQueryInput(), true).getRecords();
+   }
+
+
+
+   /*******************************************************************************
+    ** Private parent tuples retain physical values and the caller's transaction.
+    *******************************************************************************/
+   @Override
+   public List<QRecord> readAssociationValues(AssociatedRecordDiscovery.StoredValuesInput input) throws QException
+   {
+      return execute(input.newQueryInput(), true).getRecords();
+   }
+
+
+
+   /*******************************************************************************
+    ** Structural membership ignores row locks without changing query input or context.
+    *******************************************************************************/
+   @Override
+   public List<Serializable> findAssociatedPrimaryKeys(AssociatedRecordDiscovery.Input input) throws QException
+   {
+      QueryInput queryInput = input.newQueryInput();
+      return execute(queryInput, true).getRecords().stream()
+         .map(record -> record.getValue(queryInput.getTable().getPrimaryKeyField())).toList();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private QueryOutput execute(QueryInput queryInput, boolean omitSecurity) throws QException
+   {
       try
       {
          QTableMetaData table     = queryInput.getTable();
@@ -104,7 +151,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          Selection          selection = makeSelection(queryInput);
          CollectionUtils.addAllIfNotNull(params, selection.paramsForSelection());
 
-         StringBuilder sql = makeSQL(queryInput, selection, tableName, params, table);
+         StringBuilder sql = makeSQL(queryInput, selection, tableName, params, table, omitSecurity);
 
          Connection connection;
          boolean    needToCloseConnection = false;
@@ -122,9 +169,6 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
 
          try
          {
-            /////////////////////////////////////
-            // create a statement from the SQL //
-            /////////////////////////////////////
             statement = createStatement(connection, sql.toString(), queryInput);
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -242,10 +286,11 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
    /***************************************************************************
     **
     ***************************************************************************/
-   private StringBuilder makeSQL(QueryInput queryInput, Selection selection, String tableName, List<Serializable> params, QTableMetaData table) throws QException
+   private StringBuilder makeSQL(QueryInput queryInput, Selection selection, String tableName, List<Serializable> params, QTableMetaData table, boolean omitSecurity) throws QException
    {
-      QQueryFilter filter       = clonedOrNewFilter(queryInput.getFilter());
-      JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), tableName, queryInput.getQueryJoins(), filter);
+      QQueryFilter filter = clonedOrNewFilter(queryInput.getFilter());
+      JoinsContext joinsContext = omitSecurity ? new JoinsContext(tableName, filter, true)
+         : new JoinsContext(QContext.getQInstance(), queryInput, filter);
 
       StringBuilder sql = new StringBuilder();
 
@@ -445,6 +490,10 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
             // make sure personalization is applied to the join table, if applicable //
             ///////////////////////////////////////////////////////////////////////////
             joinTable = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableMetaData(joinTable).withInputSource(queryInput.getInputSource()));
+            if(joinTable == null)
+            {
+               throw (new QException("Query join table is not available"));
+            }
 
             ///////////////////////////////////
             // filter by fieldNamesToInclude //

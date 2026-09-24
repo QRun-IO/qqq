@@ -23,3 +23,5 @@
 :link-tables: <<Tables,QQQ Tables>>
 :link-widget: <<Widgets,QQQ Widget>>
 :link-widgets: <<Widgets,QQQ Widgets>>
+:qqq-source-url: https://github.com/QRun-IO/qqq/blob/feature/qqq-4-polish
+:qqq-tree-url: https://github.com/QRun-IO/qqq/tree/feature/qqq-4-polish

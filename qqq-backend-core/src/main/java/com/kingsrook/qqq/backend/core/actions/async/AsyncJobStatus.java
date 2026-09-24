@@ -23,6 +23,8 @@ package com.kingsrook.qqq.backend.core.actions.async;
 
 
 import java.io.Serializable;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
 
 
 /*******************************************************************************
@@ -31,6 +33,8 @@ import java.io.Serializable;
  *******************************************************************************/
 public class AsyncJobStatus implements Serializable
 {
+   private transient ProcessStateAccess stateAccess;
+
    private String        jobName;
    private AsyncJobState state;
    private String        message;
@@ -220,4 +224,23 @@ public class AsyncJobStatus implements Serializable
       return (this);
    }
 
+
+   /*******************************************************************************
+    ** Server-owned authorization, never part of an HTTP state response.
+    *******************************************************************************/
+   @JsonIgnore
+   public ProcessStateAccess getStateAccess()
+   {
+      return stateAccess;
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public void setStateAccess(ProcessStateAccess stateAccess)
+   {
+      this.stateAccess = stateAccess;
+   }
 }

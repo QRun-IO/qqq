@@ -67,6 +67,7 @@ import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAc
 import com.kingsrook.qqq.backend.core.adapters.QInstanceAdapter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
@@ -75,6 +76,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.ProcessMetaDataInput;
@@ -122,6 +124,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleVal
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
@@ -629,6 +632,7 @@ public class QJavalinImplementation
          deleteInput.setPrimaryKeys(primaryKeys);
 
          PermissionsHelper.checkTablePermissionThrowing(deleteInput, TablePermissionSubType.DELETE);
+         AssociatedWritePermissions.check(deleteInput);
 
          DeleteAction deleteAction = new DeleteAction();
          DeleteOutput deleteResult = deleteAction.execute(deleteInput);
@@ -672,15 +676,21 @@ public class QJavalinImplementation
          updateInput.setRecords(recordList);
 
          record.setValue(tableMetaData.getPrimaryKeyField(), primaryKey);
-         setRecordValuesForInsertOrUpdate(context, tableMetaData, record);
+         setRecordValuesForInsertOrUpdate(context, tableMetaData, record, updateInput);
 
+         AssociatedWritePermissions.check(updateInput);
          UpdateAction updateAction = new UpdateAction();
          UpdateOutput updateOutput = updateAction.execute(updateInput);
          QRecord      outputRecord = updateOutput.getRecords().get(0);
 
          if(CollectionUtils.nullSafeHasContents(outputRecord.getErrors()))
          {
-            throw (new QUserFacingException("Error updating " + tableMetaData.getLabel() + ": " + joinErrorsWithCommasAndAnd(outputRecord.getErrors())));
+            String message = "Error updating " + tableMetaData.getLabel() + ": " + joinErrorsWithCommasAndAnd(outputRecord.getErrors());
+            if(outputRecord.getErrors().stream().allMatch(error -> error instanceof BadInputStatusMessage))
+            {
+               throw new QBadRequestException(message);
+            }
+            throw new QUserFacingException(message);
          }
 
          ////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -707,10 +717,21 @@ public class QJavalinImplementation
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void setRecordValuesForInsertOrUpdate(Context context, QTableMetaData tableMetaData, QRecord record) throws IOException
+   private static void setRecordValuesForInsertOrUpdate(Context context, QTableMetaData tableMetaData, QRecord record, AbstractTableActionInput input) throws IOException, QException
    {
       String  contentType       = Objects.requireNonNullElse(context.header("content-type"), "");
       boolean isContentTypeJson = contentType.toLowerCase().contains("json");
+      String associationFormat = context.header(AssociatedRecordRequest.HEADER);
+      boolean recursiveAssociations = associationFormat != null;
+      if(recursiveAssociations)
+      {
+         if(!AssociatedRecordRequest.FORMAT.equals(associationFormat) || isContentTypeJson
+            || CollectionUtils.nonNullList(context.formParams("associations")).size() != 1
+            || !StringUtils.hasContent(context.formParam("associations")))
+         {
+            throw new QBadRequestException("record-v1 requires exactly one associations form field");
+         }
+      }
 
       try
       {
@@ -746,6 +767,10 @@ public class QJavalinImplementation
       }
       catch(Exception e)
       {
+         if(isContentTypeJson)
+         {
+            throw new QBadRequestException("Invalid JSON record body", e);
+         }
          LOG.info("Error trying to read body as map", e, logPair("contentType", contentType));
       }
 
@@ -763,6 +788,11 @@ public class QJavalinImplementation
 
             if("associations".equals(fieldName) && StringUtils.hasContent(value))
             {
+               if(recursiveAssociations)
+               {
+                  record.setAssociatedRecords(AssociatedRecordRequest.read(value, input));
+                  continue;
+               }
                JSONObject associationsJSON = new JSONObject(value);
                for(String key : associationsJSON.keySet())
                {
@@ -776,7 +806,7 @@ public class QJavalinImplementation
                      JSONObject recordJSON       = associatedRecordsJSON.getJSONObject(i);
                      for(String k : recordJSON.keySet())
                      {
-                        associatedRecord.withValue(k, ValueUtils.getValueAsString(recordJSON.get(k)));
+                        associatedRecord.withValue(k, recordJSON.isNull(k) ? null : ValueUtils.getValueAsString(recordJSON.get(k)));
                      }
                      associatedRecords.add(associatedRecord);
                   }
@@ -870,9 +900,10 @@ public class QJavalinImplementation
          QRecord       record     = new QRecord();
          record.setTableName(tableName);
          recordList.add(record);
-         setRecordValuesForInsertOrUpdate(context, tableMetaData, record);
+         setRecordValuesForInsertOrUpdate(context, tableMetaData, record, insertInput);
          insertInput.setRecords(recordList);
 
+         AssociatedWritePermissions.check(insertInput);
          InsertAction insertAction = new InsertAction();
          InsertOutput insertOutput = insertAction.execute(insertInput);
          QRecord      outputRecord = insertOutput.getRecords().get(0);
@@ -880,7 +911,12 @@ public class QJavalinImplementation
          QTableMetaData table = qInstance.getTable(tableName);
          if(CollectionUtils.nullSafeHasContents(outputRecord.getErrors()))
          {
-            throw (new QUserFacingException("Error inserting " + table.getLabel() + ": " + joinErrorsWithCommasAndAnd(outputRecord.getErrors())));
+            String message = "Error inserting " + table.getLabel() + ": " + joinErrorsWithCommasAndAnd(outputRecord.getErrors());
+            if(outputRecord.getErrors().stream().allMatch(error -> error instanceof BadInputStatusMessage))
+            {
+               throw new QBadRequestException(message);
+            }
+            throw new QUserFacingException(message);
          }
 
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -935,6 +971,9 @@ public class QJavalinImplementation
          }
 
          PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
+
+         JoinedTablePermissions.checkReadPermissions(getInput, getInput.getQueryJoins(), null);
+         JoinedTablePermissions.checkAssociationReadPermissions(getInput);
 
          // todo - validate that the primary key is of the proper type (e.g,. not a string for an id field)
          //  and throw a 400-series error (tell the user bad-request), rather than, we're doing a 500 (server error)
@@ -1173,6 +1212,7 @@ public class QJavalinImplementation
          CountInput countInput = new CountInput();
          setupSession(context, countInput);
          countInput.setTableName(table);
+         countInput.setInputSource(QInputSource.USER);
          QJavalinAccessLogger.logStartSilent("count");
 
          PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
@@ -1187,6 +1227,8 @@ public class QJavalinImplementation
          countInput.setQueryJoins(processQueryJoinsParam(context));
          countInput.setIncludeDistinctCount(QJavalinUtils.queryParamIsTrue(context, "includeDistinct"));
          countInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
+
+         JoinedTablePermissions.checkReadPermissions(countInput, countInput.getQueryJoins(), countInput.getFilter());
 
          CountAction countAction = new CountAction();
          CountOutput countOutput = countAction.execute(countInput);
@@ -1239,6 +1281,7 @@ public class QJavalinImplementation
          QJavalinAccessLogger.logStart("query", logPair("table", table));
 
          queryInput.setTableName(table);
+         queryInput.setInputSource(QInputSource.USER);
          queryInput.setShouldGenerateDisplayValues(true);
          queryInput.setShouldTranslatePossibleValues(true);
          queryInput.setTimeoutSeconds(DEFAULT_QUERY_TIMEOUT_SECONDS);
@@ -1273,6 +1316,8 @@ public class QJavalinImplementation
 
          List<QueryJoin> queryJoins = processQueryJoinsParam(context);
          queryInput.setQueryJoins(queryJoins);
+
+         JoinedTablePermissions.checkReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
 
          QueryAction queryAction = new QueryAction();
          QueryOutput queryOutput = queryAction.execute(queryInput);
@@ -1443,6 +1488,7 @@ public class QJavalinImplementation
       String widgetName = context.pathParam("name");
 
       RenderWidgetInput input = new RenderWidgetInput()
+         .withInputSource(QInputSource.USER)
          .withWidgetMetaData(qInstance.getWidget(widgetName));
 
       try
@@ -1450,7 +1496,7 @@ public class QJavalinImplementation
          setupSession(context, input);
          QJavalinAccessLogger.logStartSilent("widget");
 
-         // todo permission?
+         PermissionsHelper.checkWidgetPermissionThrowing(input, widgetName);
 
          //////////////////////////
          // process query string //
@@ -1824,7 +1870,7 @@ public class QJavalinImplementation
          Map<String, Serializable> processValues = new HashMap<>();
          if(context.queryParamMap().containsKey("processUUID") && StringUtils.hasContent(context.queryParam("processUUID")))
          {
-            Optional<ProcessState> processState = RunProcessAction.getState(context.queryParam("processUUID"));
+            Optional<ProcessState> processState = RunProcessAction.getStateForUser(context.queryParam("processUUID"), null);
             if(processState.isPresent())
             {
                processValues = processState.get().getValues();
@@ -2009,18 +2055,17 @@ public class QJavalinImplementation
 
       service = Javalin.create(config ->
          {
-            config.router.apiBuilder(getRoutes());
+            config.routes.apiBuilder(getRoutes());
 
             for(EndpointGroup endpointGroup : CollectionUtils.nonNullList(endpointGroups))
             {
-               config.router.apiBuilder(endpointGroup);
+               config.routes.apiBuilder(endpointGroup);
             }
+            config.routes.before(QJavalinImplementation::hotSwapQInstance);
+            config.routes.before((Context context) -> context.header("Content-Type", "application/json"));
+            config.routes.after(QJavalinImplementation::clearQContext);
          }
       ).start(port);
-
-      service.before(QJavalinImplementation::hotSwapQInstance);
-      service.before((Context context) -> context.header("Content-Type", "application/json"));
-      service.after(QJavalinImplementation::clearQContext);
    }
 
 

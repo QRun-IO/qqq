@@ -19,12 +19,20 @@
   ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
   -->
 
+<!DOCTYPE html>
 <html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <title>QQQ public sample SPA</title>
+   <script src="app.js" defer></script>
+</head>
 <body>
 <h1>Welcome to the public site</h1>
+<p>In IsolatedSpaServer, the private demonstration uses HTTP Basic credentials <code>sample</code> / <code>sample-only</code>. These public credentials are for synthetic local data only.</p>
+<p>Current route: <output id="current-route"></output></p>
 <ul>
+   <li><a href="details" data-route>Open the public details route without reloading.</a></li>
    <li><a href="/private/">Try to access the private site.</a></li>
 </ul>
 </body>
 </html>
-

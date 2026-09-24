@@ -80,7 +80,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
          setBackendMetaData(aggregateInput.getBackend());
 
          QQueryFilter filter       = clonedOrNewFilter(aggregateInput.getFilter());
-         JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), table.getName(), aggregateInput.getQueryJoins(), filter);
+         JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), aggregateInput, filter);
 
          List<Serializable> selectParams = new ArrayList<>();
          List<String>       selectClauses = buildSelectClauses(aggregateInput, joinsContext, selectParams);
@@ -281,12 +281,12 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
                {
                   String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
                   String         realFieldName  = virtualField.getFieldFunction().getFieldName();
-                  QFieldMetaData realField      = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+                  QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
                   String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
 
                   FieldFunction                      fieldFunction              = virtualField.getFieldFunction();
                   RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter       = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
-                  QTableMetaData                     fieldTable                 = QContext.getQInstance().getTable(fieldTableName);
+                  QTableMetaData                     fieldTable                 = joinsContext.getTable(fieldTableName);
                   Function<String, String>           fieldNameToColumnReference = makeFieldNameToColumnReferenceFunction(fieldAndTableNameOrAlias.tableNameOrAlias(), fieldTable);
                   requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
 
@@ -331,10 +331,10 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
          {
             String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
             String         realFieldName  = virtualField.getFieldFunction().getFieldName();
-            QFieldMetaData realField      = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+            QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
             String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
 
-            QTableMetaData                     fieldTable           = QContext.getQInstance().getTable(fieldTableName);
+            QTableMetaData                     fieldTable           = joinsContext.getTable(fieldTableName);
             FieldFunction                      fieldFunction        = virtualField.getFieldFunction();
             RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
             requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);

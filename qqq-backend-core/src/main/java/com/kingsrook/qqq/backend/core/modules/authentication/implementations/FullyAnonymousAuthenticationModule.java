@@ -158,7 +158,7 @@ public class FullyAnonymousAuthenticationModule implements QAuthenticationModule
          ///////////////////////////////////////////////////////////////////////////
          sessionUuid = UUID.randomUUID().toString();
          qSession.setUuid(sessionUuid);
-         qSession.setIdReference("Session:" + sessionUuid);
+         qSession.setIdReference(sessionUuid);
       }
 
       qSession.setUser(qUser);

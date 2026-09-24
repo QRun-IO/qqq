@@ -1,0 +1,106 @@
+[#AggregateAction]
+== AggregateAction
+include::../variables.adoc[]
+
+`AggregateAction` computes scalar or grouped values for a {link-table} through its backend's aggregate operation.
+Initialize `QContext` with the intended instance and session before constructing the input.
+This is a Java action API; it does not define a generic HTTP aggregate endpoint.
+
+=== Example
+
+Count canonical sample FieldLab rows by `booleanValue`, ordered by the group value.
+
+[source,java]
+----
+Aggregate count = new Aggregate("id", AggregateOperator.COUNT);
+GroupBy group = new GroupBy(QFieldType.BOOLEAN, "booleanValue");
+AggregateInput input = new AggregateInput("fieldLab")
+   .withAggregate(count)
+   .withGroupBy(group)
+   .withFilter(new QQueryFilter()
+      .withOrderBy(new QFilterOrderByGroupBy(group)))
+   .withLimit(20)
+   .withInputSource(QInputSource.USER);
+AggregateOutput output = new AggregateAction().execute(input);
+for(AggregateResult result : output.getResults())
+{
+   Serializable groupValue = result.getGroupByValue(group);
+   Serializable rowCount = result.getAggregateValue(count);
+}
+----
+
+=== Descriptors and result values
+
+Select the `Aggregate` and `GroupBy` descriptors needed for the computation. Use an empty `aggregates` list for group-only requests on RDBMS and MongoDB; null-list handling is backend-dependent.
+Each aggregate requires an available field name and one of `COUNT`, `COUNT_DISTINCT`, `SUM`, `MIN`, `MAX` or `AVG`.
+Each group requires an available field name and a result `QFieldType`; `new GroupBy(fieldMetaData)` derives both from the field.
+Use complete descriptors and non-negative limits. Unavailable fields fail common selection validation; malformed requests and invalid limits retain backend-specific behavior.
+
+RDBMS and Memory `COUNT(field)` count non-null operands, and `COUNT_DISTINCT(field)` counts distinct non-null values; use a non-null primary key to count rows.
+Memory defaults count results to `QFieldType.INTEGER`. RDBMS COUNT may inherit the operand type unless it is temporal; COUNT_DISTINCT defaults to INTEGER. Set `Aggregate.fieldType` explicitly when a numeric result type is required.
+Their AVG of INTEGER/LONG defaults to DECIMAL; other results generally use the operand type unless overridden. Operator/type combinations, precision and conversion limits remain backend-dependent.
+
+MongoDB retains native BSON and operand-based result conversion, including its existing Decimal128, binary, civil-time and AVG limitations. Use provider-specific result checks for these types.
+Memory grouping and COUNT_DISTINCT use Java value equality; decimal scale and array identity can distinguish otherwise equivalent values. Its DECIMAL AVG uses double arithmetic. Precision and conversion rules are backend-dependent.
+
+RDBMS empty scalar input produces one result: counts are zero and SUM/MIN/MAX/AVG are null. Memory and MongoDB can produce no scalar row for empty input. Memory SUM uses zero for an all-null group. Grouped empty input produces no results.
+Null group values and empty strings remain distinct where the backend distinguishes them; Aggregate does not merge their labels.
+`AggregateOutput.results` contains `AggregateResult` objects with separate descriptor-keyed `aggregateValues` and `groupByValues` maps. Reuse matching descriptors to retrieve values and allow null results.
+These maps are not complete QRecords; Query READ behaviors, display formatting, label generation and possible-value translation are not applied to them.
+
+=== Filtering, ordering and expressions
+
+`filter` restricts source rows. RDBMS and MongoDB ignore Query-style `skip`/`limit` for aggregation. Memory applies those windows to source rows before grouping.
+RDBMS applies `AggregateInput.limit` to result rows; Memory and MongoDB retain their existing ignored-result-limit behavior. Without supported ordering, result order is not guaranteed.
+Use `QFilterOrderByAggregate` and `QFilterOrderByGroupBy` for supported provider ordering. RDBMS typed aggregate ordering is limited to its existing root physical-field/operator handling; qualified/virtual operands and COUNT_DISTINCT ordering have compatibility gaps. MongoDB supports its existing selected aggregate and typed group ordering; plain group and unselected aggregate sorting remain limited. Memory retains its own grouping and comparison rules.
+
+Use unqualified names for selected base-table operands, including virtual fields. Explicit or supported inferred joins can supply `tableOrAlias.field` operands. Aggregate joins need not set `select=true`; join multiplicity affects counts and other aggregates.
+Selectable virtual fields require a supported field-function implementation. Memory evaluates base and joined virtual operands in their own table or alias scope, including local field arguments; an unmatched LEFT child supplies null local fields and each function retains its null behavior. RDBMS requires a native adapter, whose parameters are bound for expression occurrences in SELECT, GROUP BY and ORDER BY; native functions and ordering expressions remain dialect-dependent.
+MongoDB's shared filter pipeline evaluates supported virtual predicates and inline functions on physical fields while keeping physical READ-owner values separate. Required filter computations reject missing native adapters; inline functions on virtual fields remain unsupported. Aggregate value/group computations retain their existing provider fallbacks. MongoDB has no aggregate join implementation; do not submit explicit joins, which the provider can ignore.
+`GroupBy.formatString` is trusted application-authored native formatting. RDBMS substitutes the escaped field expression through `String.format`; arbitrary format text is not converted into bind parameters.
+Do not accept SQL format strings from untrusted HTTP input. Memory formatting and other adapters are not a portable SQL-expression language.
+
+=== Active metadata and private fields
+
+Selection validation uses active personalized base/join metadata for the input source. RDBMS uses that metadata for native base/join mappings and READ/READ_AND_WRITE locks. Memory applies active READ rules through its shared read path, including supported INNER and LEFT joins; other adapters require separate provider validation.
+For locks on fields in the queried table, MongoDB Query, Count and Aggregate apply active READ and READ_AND_WRITE scopes and retain nested AND/OR groups; WRITE-only locks do not restrict these reads. USER uses personalized metadata; SYSTEM still applies its active table's locks. A true all-access key satisfies its corresponding lock, including an OR alternative, without bypassing other required lock branches or the caller filter.
+Null session-key entries do not grant read access; access to null or missing lock values remains governed by the effective null-value policy and all-access key.
+USER-removed fields cannot become aggregate, group or ordering operands; filter fields retain their normal validation.
+Filter value behaviors apply before execution. Result values do not receive Query's READ transformations.
+Available hidden/PASSWORD operands may be used by COUNT and COUNT_DISTINCT; cardinality is not password-masked. Counts can disclose null/distinct information and are not statistical anonymity.
+Aggregate returns computed map values directly. Hidden/PASSWORD field metadata does not establish a universal operand restriction or apply Query result masking. Callers must choose the operands they authorize for the result they expose. Public virtual expressions and trusted format strings remain application-authored.
+Table-permission grants belong to the calling entry point; invoking Aggregate does not itself create an HTTP READ grant.
+
+=== Configured statistics and widgets
+
+Column statistics run as USER for grouped values, scalar statistics and their preliminary row-limit count. They require READ on the base and requested joined tables, including joins used only by filters. An available private primary key may supply its internal count without being included in the returned records. ColumnStats presentation deliberately combines null and empty-string bins where applicable, independently of Aggregate's native grouping semantics.
+
+Javalin and Slack widget entry points mark `RenderWidgetInput` as USER. Built-in `WidgetAggregate` and `Aggregate2DTableWidgetRenderer` carry this source into Aggregate. For USER inputs, these built-ins require base-table READ; no-code aggregate filters also require READ on their joined tables. Two-dimensional grouping fields and labels use active metadata. Direct Java widget inputs default to SYSTEM; a query/form parameter named `inputSource` does not change the execution source. Custom renderers must propagate the input source and enforce their own required table permissions. No-code value-source failures retain the renderer's existing missing-value behavior.
+
+Two-dimensional tables retain their existing column naming: null and text-null values, or values matching the structural `_row`/`_total` keys, can collide. Choose column values that avoid these collisions.
+
+=== AggregateInput
+
+* `tableName` - *String, Required* - Table with a supported native aggregate operation.
+* `aggregates` - *List of Aggregate, default: null* - Selected aggregate descriptors; optional for group-only requests.
+* `groupBys` - *List of GroupBy, default: empty* - Group descriptors; empty requests scalar aggregation when aggregates are selected.
+* `filter` - *QQueryFilter, default: null* - Source-row predicates and supported result ordering.
+* `queryJoins` - *List of QueryJoin, default: null* - Optional joins and aliases supported by the backend.
+* `limit` - *Integer, default: null* - Non-negative maximum result rows; null adds no Aggregate result limit.
+* `inputSource` - *InputSource, inherited default: QInputSource.SYSTEM* - Select USER explicitly for user-facing calls requiring USER metadata.
+* `transaction` - *QBackendTransaction, default: null* - Optional caller-owned transaction supported by the backend.
+* `timeoutSeconds` - *Integer, default: null* - Supported native timeout; null, zero and negative values disable the RDBMS timeout.
+* `queryHints` - *EnumSet of QueryHint, default: empty* - Includes `MAY_USE_READ_ONLY_BACKEND` where supported.
+
+=== Transactions, cancellation and providers
+
+RDBMS joined column-statistics requests can fail when the count operand's physical column name is present in multiple joined tables, because the existing aggregate sort leaves that column unqualified.
+
+RDBMS uses the supplied `RDBMSTransaction` connection, including its pending data, and never commits, rolls back or closes that caller transaction.
+Without that transaction, `MAY_USE_READ_ONLY_BACKEND` can select a configured read-only backend; otherwise routing falls back to the normal backend. A supplied transaction takes precedence over the hint.
+Positive RDBMS timeouts and `cancel()` on the executing AggregateAction request native statement cancellation; completion and error recovery depend on the driver/backend. Cancellation is not transaction rollback or an end-to-end deadline covering connection acquisition.
+Calling `cancel()` before the backend delegate is assigned does not queue a later cancellation.
+RDBMS cancels its timeout task when execution ends. MongoDB Aggregate retains its existing timeout-helper cleanup limitations; its timeout helper does not establish native cancellation, an end-to-end deadline or transaction rollback. Use a separate action instance per independent operation; these controls do not promise concurrent reuse of one action.
+
+RDBMS, Memory and MongoDB provide aggregate implementations; support for the declared operators, types, functions, joins, nulls, ordering and limits differs by adapter/dialect. MongoDB COUNT currently counts input rows, and COUNT_DISTINCT is explicitly unsupported. Its result conversion does not establish the RDBMS/Memory count defaults above.
+A backend without an aggregate implementation rejects the operation. The common input/visibility checks do not certify all-provider parity, distributed transactions or portability of custom expressions.

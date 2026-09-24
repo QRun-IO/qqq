@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QReportingException;
@@ -44,6 +45,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportOutput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
@@ -168,6 +170,11 @@ public class ExportAction
          }
       }
 
+      if(exportInput.getInputSource() == QInputSource.USER)
+      {
+         PermissionsHelper.checkJoinedTableReadPermissions(exportInput, getQueryJoins(exportInput), exportInput.getQueryFilter());
+      }
+
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////
       // check if this report format has a max-rows limit -- if so, do a count to verify we're under the limit //
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -223,29 +230,7 @@ public class ExportAction
       queryInput.setFilter(exportInput.getQueryFilter());
       queryInput.setInputSource(exportInput.getInputSource());
 
-      List<QueryJoin> queryJoins     = new ArrayList<>();
-      Set<String>     addedJoinNames = new HashSet<>();
-      if(CollectionUtils.nullSafeHasContents(exportInput.getFieldNames()))
-      {
-         /////////////////////////////////////////////////////////////////////////////////////////////
-         // make sure that any tables being selected from are included as (LEFT) joins in the query //
-         /////////////////////////////////////////////////////////////////////////////////////////////
-         for(String fieldName : exportInput.getFieldNames())
-         {
-            if(fieldName.contains("."))
-            {
-               String[] parts         = fieldName.split("\\.", 2);
-               String   joinTableName = parts[0];
-               if(!addedJoinNames.contains(joinTableName))
-               {
-                  queryJoins.add(new QueryJoin(joinTableName).withType(QueryJoin.Type.LEFT).withSelect(true));
-                  addedJoinNames.add(joinTableName);
-               }
-            }
-         }
-      }
-
-      queryInput.setQueryJoins(queryJoins);
+      queryInput.setQueryJoins(getQueryJoins(exportInput));
 
       if(queryInput.getFilter() == null)
       {
@@ -259,6 +244,11 @@ public class ExportAction
       if(CollectionUtils.nullSafeHasContents(exportInput.getFieldNames()))
       {
          queryInput.withFieldNamesToInclude(new HashSet<>(exportInput.getFieldNames()));
+      }
+
+      if(exportInput.getInputSource() == QInputSource.USER)
+      {
+         PermissionsHelper.checkJoinedTableReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
       }
 
       /////////////////////////////////////////////////////////////////
@@ -506,4 +496,35 @@ public class ExportAction
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Resolve selected joins consistently for authorization and query execution.
+    *******************************************************************************/
+   private List<QueryJoin> getQueryJoins(ExportInput exportInput)
+   {
+      List<QueryJoin> queryJoins     = new ArrayList<>();
+      Set<String>     addedJoinNames = new HashSet<>();
+      if(CollectionUtils.nullSafeHasContents(exportInput.getFieldNames()))
+      {
+         /////////////////////////////////////////////////////////////////////////////////////////////
+         // make sure that any tables being selected from are included as (LEFT) joins in the query //
+         /////////////////////////////////////////////////////////////////////////////////////////////
+         for(String fieldName : exportInput.getFieldNames())
+         {
+            if(fieldName.contains("."))
+            {
+               String[] parts         = fieldName.split("\\.", 2);
+               String   joinTableName = parts[0];
+               if(!addedJoinNames.contains(joinTableName))
+               {
+                  queryJoins.add(new QueryJoin(joinTableName).withType(QueryJoin.Type.LEFT).withSelect(true));
+                  addedJoinNames.add(joinTableName);
+               }
+            }
+         }
+      }
+
+      return queryJoins;
+   }
 }

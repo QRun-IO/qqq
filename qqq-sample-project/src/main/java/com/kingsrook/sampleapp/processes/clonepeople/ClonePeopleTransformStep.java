@@ -42,7 +42,7 @@ public class ClonePeopleTransformStep extends AbstractTransformStep implements P
 {
    private ProcessSummaryLine okSummary            = new ProcessSummaryLine(Status.OK, 0, "can be cloned with no issues.");
    private ProcessSummaryLine warningCloneSummary  = new ProcessSummaryLine(Status.WARNING, 0, "can be cloned, but because are already a clone, their clone cannot be cloned in the future.");
-   private ProcessSummaryLine refuseCloningSummary = new ProcessSummaryLine(Status.ERROR, 0, "say they don't want to be cloned (probably a Garret...)");
+   private ProcessSummaryLine refuseCloningSummary = new ProcessSummaryLine(Status.ERROR, 0, "declined cloning in this sample scenario");
    private ProcessSummaryLine nestedCloneSummary   = new ProcessSummaryLine(Status.ERROR, 0, "are already a clone of a clone, so they can't be cloned again.");
 
 
@@ -80,7 +80,7 @@ public class ClonePeopleTransformStep extends AbstractTransformStep implements P
       for(QRecord inputPerson : runBackendStepInput.getRecords())
       {
          Serializable id = inputPerson.getValue("id");
-         if("Garret".equals(inputPerson.getValueString("firstName")))
+         if("Morgan".equals(inputPerson.getValueString("firstName")))
          {
             refuseCloningSummary.incrementCountAndAddPrimaryKey(id);
          }

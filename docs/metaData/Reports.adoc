@@ -6,6 +6,74 @@ QQQ can generate reports based on {link-tables} defined within a QQQ Instance.
 Users can run reports, providing input values.
 Alternatively, application code can run reports as needed, supplying input values.
 
+=== Report data access [[ReportAccess]]
+
+`ReportInput` defaults to SYSTEM. Developer-defined named reports and built-in saved-report generation retain their trusted source behavior. The direct HTTP route checks the named report permission; processes can use `ReportProcessPermissionChecker` for the selected report. Report permission can expose approved output without granting raw-table READ.
+
+The report input source is not uniformly propagated into nested count/query inputs. Applications can set query policy through `DataSourceQueryInputCustomizer`; the returned input is respected. Automatic source propagation, additional source permissions and forced post-customizer privacy are deferred in https://github.com/QRun-IO/qqq/issues/448[#448]. Custom record sources must authorize their own data; static suppliers remain trusted application code.
+
+=== Table exports [[TableExports]]
+
+`ExportAction` exports table data as XLSX, JSON, CSV or TSV. `LIST_OF_MAPS` is a test utility with static, process-wide storage; it is not a concurrent production destination. Table exports add a label column for fields with a possible-value source.
+
+`ReportFormat.fromString` retains case-insensitive parsing of all enum values, including the test-only `LIST_OF_MAPS`; null, blank and unknown names are rejected. File HTTP routes can fail with a server error for that internal format; validation placement is deferred in https://github.com/QRun-IO/qqq/issues/490[#490]. The static map collector requires headers; header-free support is deferred in https://github.com/QRun-IO/qqq/issues/489[#489]. XLSX, JSON, CSV and TSV support header-free output. A zero-row limit produces a readable empty export. CSV data values double embedded quotes and replace line feeds with spaces. TSV data values use backslash escapes for tabs, line feeds, carriage returns and backslashes; JSON and XLSX preserve line feeds and tabs in field values. Header/title escaping remains a known limitation tracked in https://github.com/QRun-IO/qqq/issues/471[#471].
+
+The standard streamed POI XLSX implementation preserves numeric cell values but does not implement dynamic per-view numeric `DisplayFormat` styling. Explicit TABLE report-column format overrides are also incomplete. That presentation support, including DEFAULT clearing and style reuse, is deferred in https://github.com/QRun-IO/qqq/issues/472[#472]. Existing date/time and template styling behavior remains.
+
+The HTTP table-export route checks base-table READ. USER exports also check READ on selected and filter/order-referenced joined tables before preflight counting and again before query execution; an earlier preflight does not cache this authorization. This closes https://github.com/QRun-IO/qqq/issues/493[#493]. Direct Java callers remain responsible for base-table authorization. Broader core authorization and private-field predicate restrictions are deferred in https://github.com/QRun-IO/qqq/issues/494[#494]. Existing query output privacy and explicit REVEAL remain; hidden header omission is deferred in https://github.com/QRun-IO/qqq/issues/495[#495]. Explicit SYSTEM calls retain trusted behavior.
+
+Exports retain the original limit policy: `ExportInput.limit` replaces the query-filter limit, including null. An existing caller filter is shared and its limit is modified; its offset remains. Filter isolation, query-only limits, generic action-reuse revalidation and effective-window counting are deferred in https://github.com/QRun-IO/qqq/issues/488[#488]. Use a fresh export action for independent requests.
+
+Spreadsheet preflight retains the backend count interface and original maximum-data-count check. It can reject an export by counting rows outside USER personalization; that correction is deferred in https://github.com/QRun-IO/qqq/issues/496[#496]. It does not adjust for the effective skip/limit window or subtract title/header rows. Window corrections remain https://github.com/QRun-IO/qqq/issues/488[#488]; title/header capacity and physical writer guards remain https://github.com/QRun-IO/qqq/issues/465[#465]. Preflight and generation are not a transactional snapshot.
+
+=== Direct HTTP report downloads [[HttpReportDownloads]]
+
+Direct `/reports/{reportName}` downloads retain named-report permission checks and the trusted default for server-defined sources. Responses stream while the report is generated. A failure after delivery starts can leave partial output; callers should discard incomplete reports. Completed-response buffering is deferred in https://github.com/QRun-IO/qqq/issues/497[#497]. This is separate from saved-report generation before archive storage, which protects existing archive bytes.
+
+=== Report counts and progress [[ReportCounts]]
+
+The existing preliminary count for each table-backed TABLE view supplies progress totals and checks the selected format's data-row limit. `ReportOutput.totalRecordCount` sums those counts by data-source name. It is not a guaranteed count of emitted rows: query customizers, pagination, view transforms, custom/static sources and summary-only reports can differ. Counts do not include layout rows. Use a fresh `GenerateReportAction` for each report.
+
+The proposed processed-row definition, count-state reset, transformed-row guard and query-preparation changes are deferred in https://github.com/QRun-IO/qqq/issues/464[#464]. Query customizers retain their existing execution after transform setup, inside the asynchronous producer. This release does not require applications to move transform-provided query setup.
+
+=== Summary source and totals [[ReportSummaryScope]]
+
+Known summary limitations remain in this release. When a source also has TABLE views, summary collection runs during each table pass and receives that table's transformed records. Multiple table views can duplicate summary aggregates, and a table-only transform can change summary inputs. Source-isolation corrections are deferred in https://github.com/QRun-IO/qqq/issues/475[#475].
+
+Base and variance total maps are shared across views, so reports with unrelated summary sources can combine their totals (https://github.com/QRun-IO/qqq/issues/476[#476]). Total inputs are collected only when a relevant view requests a displayed total row; hiding that row can leave `${total.*}` formulas without their required values (https://github.com/QRun-IO/qqq/issues/477[#477]). These Medium fixes and their new tests are preserved for a future release; there is no new snapshot or transaction guarantee.
+
+Summary ordering retains its existing flat sort, including when `includeSummarySubTotals` is true. With multiple grouping fields, subtotals can be separated from their related rows or precede them. Hierarchical ordering and guaranteed children-before-subtotal placement are deferred in https://github.com/QRun-IO/qqq/issues/486[#486]. The grand total stays last; this ordering limitation does not by itself establish incorrect aggregate arithmetic.
+
+=== JSON column names [[ReportJsonColumns]]
+
+JSON output normalizes column labels by removing spaces and converting the leading acronym or capital to lower case, for example `First Count` becomes `firstCount`. A missing label uses the field name unchanged. Normalized labels are cached by field name, so a later view using the same field with a different label can reuse the earlier key. A blank label can produce an empty key. Per-view label caching and a blank-label fallback are deferred in https://github.com/QRun-IO/qqq/issues/487[#487]. Use consistent, nonblank labels and distinct resulting keys.
+
+=== Exporter lifecycle and spreadsheet bounds [[ReportExporterLifecycle]]
+
+`ExportStreamerInterface` retains its existing `finish()` contract for final writing and resource closure; no `AutoCloseable` or new cleanup hook is required in 4.0. Destination closure depends on the implementation. The standard POI exporter closes its wrapped destination during successful finalization and may close it on record failure; actions also close the destination on success. Direct-stream callers must discard failed output and follow their storage backend's abort/cleanup requirements. Exported bytes cannot be rolled back by the exporter. Saved reports finish local generation before opening archive storage as described below.
+
+The existing table-export loop can finish successfully after a producer/query failure (https://github.com/QRun-IO/qqq/issues/473[#473]). Report producer cleanup after consumer failure is deferred in https://github.com/QRun-IO/qqq/issues/474[#474]; the original shared loop still propagates producer errors, flushes final buffered records and supports its existing record-limit cancellation. Parent-to-child cancellation and new finalization boundaries are deferred in https://github.com/QRun-IO/qqq/issues/479[#479]. Applications must handle cooperative cancellation explicitly and discard partial direct output after failures. The candidate introduces no new loop callback API or guaranteed child cleanup.
+
+XLSX worksheets support at most 1,048,576 rows and 16,384 columns. Titles, headers, data and totals share that row budget. Existing preflight checks do not guarantee that every physical streamed row/cell fits, especially when records change or transforms expand output. Physical writer guards are deferred in https://github.com/QRun-IO/qqq/issues/465[#465]. Destination-ownership rules and a common cleanup API are deferred in https://github.com/QRun-IO/qqq/issues/466[#466] and https://github.com/QRun-IO/qqq/issues/467[#467]; header-cause diagnostics and allocation cleanup are deferred in https://github.com/QRun-IO/qqq/issues/468[#468] and https://github.com/QRun-IO/qqq/issues/469[#469].
+
+=== Saved-report storage and failures [[SavedReportStorage]]
+
+Saved reports generate into a temporary local file and close it before opening archive storage through `StorageAction.createOutputStream`. Size the runtime's temporary disk for concurrent report outputs. A generation failure removes the temporary file without creating or replacing the archive. A completed local file is copied through the existing storage stream API; custom storage backends do not need a new method.
+
+Opening, copying or closing the destination still follows the selected backend's streaming behavior. A failure during that stage can leave partial output or replace an earlier object. No atomic replacement or transaction across storage, history and email is promised. Stronger publication guarantees are deferred in https://github.com/QRun-IO/qqq/issues/459[#459].
+
+New cancellation checks before storage, download registration, public access and email delivery are deferred in https://github.com/QRun-IO/qqq/issues/479[#479]. Operations already in progress are not rolled back. The existing render-and-deliver lifecycle marks caught failures as FAILED when its history update succeeds, even if archive bytes were already written. History validation/error-handling improvements and a separate rendering-only status remain deferred in https://github.com/QRun-IO/qqq/issues/460[#460] and https://github.com/QRun-IO/qqq/issues/461[#461].
+
+Requested email requires trusted sender/provider configuration; absent configuration is an error. Local filesystem download URLs are encoded file URIs, and email HTML escapes both the link and visible filename. A local file URI is usable only where that filesystem is accessible; use a suitable storage/download service for remote recipients.
+
+=== Native pivot sources and customization [[ReportNativePivots]]
+
+The default XLSX implementation emits native pivot definitions and requests refresh on load. A supporting spreadsheet application calculates the pivot results; QQQ does not precompute native pivot cells. Use SUMMARY views for values calculated during report generation.
+
+Ordinary and empty TABLE-backed native pivots retain their existing behavior, including header-only ranges for empty sources. Known source-range, cache-XML, SUMMARY-source indexing/rendering and instance-validation limitations are tracked in https://github.com/QRun-IO/qqq/issues/484[#484]. A title can enter the source range, reserved XML characters in labels can break cache XML, SUMMARY sources can fail, and the validator can demand unrelated columns on a PIVOT view. Pivot sources reaggregate emitted rows; total or subtotal rows can therefore double count when included.
+
+View customization retains its existing TABLE-only timing after output preparation. Generalized customization before template creation is deferred in https://github.com/QRun-IO/qqq/issues/482[#482]; column objects remain shared by view clones (https://github.com/QRun-IO/qqq/issues/483[#483]). Early checks for incomplete runtime metadata are deferred in https://github.com/QRun-IO/qqq/issues/485[#485]. Existing unknown pivot-source lookup still rejects a missing source view. CSV, TSV and JSON omit native PIVOT views and render the supported views.
+
 === QReportMetaData
 Reports are defined in a QQQ Instance with a `*QReportMetaData*` object.
 Reports are defined in terms of their sources of data (`QReportDataSource`), and their view(s) of that data (`QReportView`).
@@ -35,6 +103,7 @@ new QReportField().withName("storeId").withFormula("${input.storeId}")
 
 * `dataSources` - *List of QReportDataSource, Required* - Definitions of the sources of data for the report.
 At least one is required.
+* `views` - *List of QReportView, Required* - Definitions of the report output views. At least one is required.
 
 ==== QReportDataSource
 Data sources for QQQ Reports can either reference {link-tables} within the QQQ Instance, or they can provide custom code in the form of a `CodeReference` to a  `Supplier`, for use cases such as a static data tab in an Excel report.
@@ -44,10 +113,12 @@ Data sources for QQQ Reports can either reference {link-tables} within the QQQ I
 * `name` - *String, Required* - Unique name for the data source within its containing Report.
 * `sourceTable` - *String, Conditional* - Reference to a {link-table} in the QQQ Instance, which the data source queries data from.
 * `queryFilter` - *QQueryFilter* - If a `sourceTable` is defined, then the filter specified here is used to filter and sort the records queried from that table when generating the report.
+* `queryJoins` - *List of QueryJoin* - Joins used by table-backed queries.
+* `queryInputCustomizer` - *QCodeReference* - Implements `DataSourceQueryInputCustomizer` to customize each prepared query input. The returned query input retains the policy selected by the application customizer.
+* `customRecordSource` - *QCodeReference* - Implements `ReportCustomRecordSourceInterface` to supply records through the report pipe.
 * `staticDataSupplier` - *QCodeReference, Conditional* - Reference to custom code which can be used to supply the data for the data source, as an alternative to querying a `sourceTable`.
 ** Must be a `JAVA` code type
-** Must be a `REPORT_STATIC_DATA_SUPPLIER` code usage.
-** The referenced class must implement the interface: `Supplier<List<List<Serializable>>>`.
+** The referenced class must implement the interface: `Supplier<List<List<Serializable>>>`. Each inner list supplies one row, mapped to `column0`, `column1`, and so on.
 
 ==== QReportView
 Report Views control how the source data for a report is organized and presented to the user in the output report file.
@@ -62,13 +133,15 @@ A single report can have multiple views, specifically, for the use-case where an
 ** *TABLE* views are a simple listing of the records from the data source.
 ** *SUMMARY* views are essentially pre-computed Pivot Tables.
 That is to say, the aggregation done by a Pivot Table in a spreadsheet file is done by QQQ while generating the report.
-In this way, a non-spreadsheet report (e.g., PDF or CSV) can have summarized data, as though it were a Pivot Table in a live spreadsheet.
-** *PIVOT* views produce actual Pivot Tables, and are only supported in Excel files _(and are not supported at the time of this writing)_.
-* `dataSourceName` - *String, Required* - Reference to a DataSource within the report, that is used to provide the rows for the view.
+In this way, a non-spreadsheet report (e.g., JSON or CSV) can have summarized data, as though it were a Pivot Table in a live spreadsheet.
+** *PIVOT* views produce native pivot tables with an output format that supports them, including the Excel POI implementation. Define pivotTableSourceViewName to identify the source view. Formats without native pivot support do not render a native PIVOT view; use SUMMARY for computed aggregate data. See {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/actions/reporting/ReportFormat.java[ReportFormat capabilities].
+* `dataSourceName` - *String, Required for TABLE and SUMMARY* - Reference to a DataSource within the report, that is used to provide the rows for the view.
 * `varianceDataSourceName` - *String* - Optional reference to a second DataSource within the report, that is used in `*SUMMARY*` type views for computing variances.
 ** For example, given a Data Source with a filter that selects all sales records for a given year, a Variance Data Source may have a filter that selects the previous year, for doing comparissons.
-* `pivotFields` - *List of String, Conditional* - For *SUMMARY* or *PIVOT* type views, specify the field(s) used as pivot rows.
+* `summaryFields` - *List of String, Conditional* - For *SUMMARY* views, specify the source fields used to group rows. These fields appear before the calculated columns in the output.
 ** For example, in a summary view of orders, you may "pivot" on the *customerId* field, to produce one row per-customer, with aggregate data for that customer.
+* `pivotTableSourceViewName` - *String, Required for PIVOT* - Name of the source view whose worksheet supplies pivot data. Ordinary TABLE sources are supported; SUMMARY-source limitations are tracked in https://github.com/QRun-IO/qqq/issues/484[#484].
+* `pivotTableDefinition` - *PivotTableDefinition, Required for PIVOT* - Defines `rows` and `columns` using `PivotTableGroupBy`, and `values` using `PivotTableValue` with a field name and aggregation function.
 * `titleFormat` - *String* - Java Format String, used with `titleFields` (if given), to produce a title row, e.g., first row in the view (before any rows from the data source).
 * `titleFields` - *List of String, Conditional* - Used with `titleFormat`, to provide values for any format specifiers in the format string.
 Syntax to reference a field (e.g., from a report input field) is: `${input.NAME}`, where `NAME` is the `name` attribute of the inputField.
@@ -88,20 +161,20 @@ new QFieldMetaData("endDate", QFieldType.DATE)
 * `includeHeaderRow` - *boolean, default true* - Indication that first row of the view should be the column labels.
 ** If true, then header row is put in the view.
 ** If false, then no header row is put in the view.
-* `includeTotalRow` - *boolean, default false* - Indication that a totals row should be added to the view.
-All numeric columns are summed to produce values in the totals row.
+* `includeTotalRow` - *boolean, default false* - Indication that a totals row should be added to a SUMMARY view.
+Each column formula is evaluated against the total aggregates; a ratio is recomputed from those aggregates rather than summed from displayed rows.
 ** If true, then totals row is put in the view.
 ** If false, then no totals row is put in the view.
-* `includePivotSubTotals` - *boolean, default false* - For a *SUMMARY* or *PIVOT* type view, if there are more than 1 *pivotFields* being used, this field is an indication that each higher-level pivot should include sub-totals.
-** #TODO - provide example#
-* `columns` - *List of QReportField, required* - Definition of the columns to appear in the view.  See section on QReportField for details.
-* `orderByFields` - *List of QFilterOrderBy, optional* - For a *SUMMARY* or *PIVOT* type view, how to sort the rows.
-* `recordTransformStep` - *QCodeReference, subclass of `AbstractTransformStep`* - Custom code reference that can be used to transform records after they are queried from the data source, and before they are placed into the view.
+* `includeSummarySubTotals` - *boolean, default false* - For a *SUMMARY* view with several `summaryFields`, include subtotal rows for higher grouping levels.
+** See {qqq-source-url}/qqq-backend-core/src/test/java/com/kingsrook/qqq/backend/core/actions/reporting/GenerateReportActionTest.java[report generation examples and assertions] for concrete configurations.
+* `columns` - *List of QReportField* - Definition of the columns to appear in the view. Instance validation requires columns or a view customizer, including for native PIVOT views; that validation limitation is tracked in https://github.com/QRun-IO/qqq/issues/484[#484]. Only TABLE views currently run the customizer. See section on QReportField for details.
+* `orderByFields` - *List of QFilterOrderBy, optional* - For a *SUMMARY* view, how to sort computed rows.
+* `recordTransformStep` - *QCodeReference, subclass of `AbstractTransformStep`* - Custom code reference for TABLE views that transforms records after they are queried from the data source and before output. When a source also has TABLE views, SUMMARY collection receives records during those table passes, including their transforms; source isolation is deferred in https://github.com/QRun-IO/qqq/issues/475[#475].
 Can be used to transform or customize values, or to look up additional values to add to the report.
-** #TODO - provide example#
+** See {qqq-source-url}/qqq-backend-core/src/test/java/com/kingsrook/qqq/backend/core/actions/reporting/GenerateReportActionTest.java[report generation examples and assertions] for concrete configurations.
 * `viewCustomizer` - *QCodeReference, implementation of interface `Function<QReportView, QReportView>`* - Custom code reference that can be used to customize the report view, at runtime.
-Can be used, for example, to dynamically define the report's *columns*.
-** #TODO - provide example#
+Runs for TABLE views after grouping and output preparation. It can customize that view's columns and labels, but template/pivot references may already use the declared metadata. The view clone shares column objects, so mutating an existing column can change the declared metadata. Generalized timing and column isolation are deferred in https://github.com/QRun-IO/qqq/issues/482[#482] and https://github.com/QRun-IO/qqq/issues/483[#483]. Implement `ReportViewCustomizer` when the customizer needs `ReportInput`.
+** See {qqq-source-url}/qqq-backend-core/src/test/java/com/kingsrook/qqq/backend/core/actions/reporting/GenerateReportActionTest.java[report generation examples and assertions] for concrete configurations.
 
 ===== QReportField
 Report Fields define the fields (AKA columns) of data that appear in a report view.
@@ -115,7 +188,7 @@ In general, will be a reference to a field from the ReportView's DataSource *unl
 If not given, may be derived from field, where possible.
 * `type` - *QFieldType*
 * `formula` - *String, conditional* - Required for *SUMMARY* type views.
-Defines the formula to be used for computing the value in this field.
+Defines the formula to be used for computing the value in this field. Function expressions start with `=`; `thisRow` variables refer to earlier calculated columns. `DIVIDE` and `DIVIDE_SCALE` return null for a zero denominator.
 ** For example:
 
 [source,java]
@@ -144,14 +217,14 @@ Defines the formula to be used for computing the value in this field.
 
 .withName("previousWeekMargin").withFormula("=SCALE(DIVIDE(${thisRow.previousWeekProfit},${variancePivot.sum.charge}),2)")
 
-.withName("marginThisVsPrevious").withFormula("=SCALE(MINUS(${thisRow.margin},${thisRow.marginPrevious}),3)")
+.withName("marginThisVsPrevious").withFormula("=SCALE(MINUS(${thisRow.thisWeekMargin},${thisRow.previousWeekMargin}),3)")
 
 .withName("exception").withFormula("""
-   =IF(LT(${thisRow.margin},0),Negative Margin,IF(LT(${thisRow.marginThisVsPrevious},0),Margin Decreased,""))""")
+   =IF(LT(${thisRow.thisWeekMargin},0),Negative Margin,IF(LT(${thisRow.marginThisVsPrevious},0),Margin Decreased,""))""")
 ----
 
-* `displayFormat` *String*
-* `isVirtual` *Boolean, default false* - (needs reviewed - may only be required for report views using a data source with a *staticDataSupplier*)
+* `displayFormat` *String* - Requested presentation format. Streamed POI numeric styling and explicit TABLE source-field overrides remain incomplete; see https://github.com/QRun-IO/qqq/issues/472[#472].
+* `isVirtual` *Boolean, default false* - Use the report column's own metadata instead of resolving a table field. Supply its type and label. Static supplier columns use positional names `column0`, `column1`, and so on.
 * `showPossibleValueLabel` *Boolean, default false* - To show a translated value for a Possible Value field (e.g., a name or other value meaningful to a user, instead of a foreign key).
 * `sourceFieldName` *String* - Used for the scenario where a possibleValue field is included in a report both as the foreign key (raw, id value), and the translated "label" value.
 In that case, the field marked with *showPossibleValueLabel* = true should be given a different name, and should use *sourceFieldName* to indicate the field that has the id value.
@@ -171,4 +244,3 @@ new QReportField("warehouseName")
    .withShowPossibleValueLabel(true)
    .withLabel("Warehouse Name"),
 ----
-

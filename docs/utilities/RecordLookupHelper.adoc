@@ -63,7 +63,7 @@ public class MyShipmentProcessStep implements BackendStep
    private RecordLookupHelper recordLookupHelper = new RecordLookupHelper();
 
    @Override
-   public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException;
+   public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException
    {
       // lookup the full shippingPartner table (because it's cheap & easy to do so)
       // use the partner's "code" as the key field (e.g,. they key in the helper's internal map).
@@ -71,7 +71,7 @@ public class MyShipmentProcessStep implements BackendStep
 
       // get all of the orderIds from the input shipments
       List<Serializable> orderIds = input.getRecords().stream()
-         .map(r -> r.getValue("id")).toList();
+         .map(r -> r.getValue("orderId")).toList();
 
       // fetch the orders related to by these shipments
       recordLookupHelper.preloadRecords("order", "id", orderIds);
@@ -79,7 +79,7 @@ public class MyShipmentProcessStep implements BackendStep
       for(QRecord shipment : input.getRecords())
       {
          // get someConfigField from the shippingPartner assigned to the shipment
-         Boolean someConfig = recordLookupHelper.getRecordValue("shippingPartner", "someConfigField", "code", shipment.getValue("partnerCode"));
+         Boolean someConfig = recordLookupHelper.getRecordValue("shippingPartner", "someConfigField", "code", shipment.getValue("partnerCode"), Boolean.class);
 
          // get the order record assigned to the shipment
          QRecord order = recordLookupHelper.getRecordByKey("order", "id", shipment.getValue("orderId"));
@@ -111,14 +111,14 @@ public class MyPurchaseOrderProcessStep implements BackendStep
    private RecordLookupHelper recordLookupHelper = new RecordLookupHelper();
 
    @Override
-   public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException;
+   public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException
    {
       for(QRecord poHeader : input.getRecords())
       {
          // fetch the lines under the header
          Serializable poNo = poHeader.getValue("poNo");
          List<QRecord> poLines = new QueryAction().execute(new QueryInput("purchaseOrderLine")
-            .withFilter(new QQueryFilter(new QFilterCriteria("poNo", EQUALS, poNo))));
+            .withFilter(new QQueryFilter(new QFilterCriteria("poNo", EQUALS, poNo)))).getRecords();
 
          for(QRecord poLine : poLines)
          {
@@ -138,7 +138,7 @@ That is to say, if the same `sku` appears on only 1 `poLine`, or if it appears o
 A slight tweak could be made to the example above, to make 1 `item` table lookup for each `poHeader` record:
 
 [source,java]
-.Tweaked example doing 1 item lookup per poLine
+.Tweaked example doing 1 item lookup per poHeader
 ----
 // continuing from above, after the List<QRecord> poLines has been built
 
@@ -152,7 +152,7 @@ for(QRecord poLine : poLines)
 {
    // get the items from the helper
    QRecord item = recordLookupHelper.getRecordByKey("item", "sku", poLine.getValue("sku"));
-
+}
 ----
 
 In this example, we've made a trade-off:  We will query the `item` table exactly 1 time for each `poHeader` that we process.
@@ -163,7 +163,7 @@ This could end up being better or worse than the previous example, depending on 
 A further tweak, a hybrid approach, could potentially reap the benefits of both of these examples (at the tradeoff of, more code, more complexity):
 
 [source,java]
-.Tweaked example doing 1 item lookup per poLine, but only for not-previously-encountered skus
+.Tweaked example doing 1 item lookup per poHeader, but only for not-previously-encountered skus
 ----
 // Critically - we must tell our recordLookupHelper to NOT do any one-off lookups in this table
 recordLookupHelper.setMayNotDoOneOffLookups("item", "sku");

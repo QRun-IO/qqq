@@ -14,8 +14,8 @@ The methods to access data from the `QContext` are fairly straightforward:
 ==== Get a QTableMetaData from the active QInstance
 [source,java]
 ----
-QTableMeataData myTable = QContext.getQInstance().getTable("myTable");
-for(QFieldMeataData field : myTable.getFields().values())
+QTableMetaData myTable = QContext.getQInstance().getTable("myTable");
+for(QFieldMetaData field : myTable.getFields().values())
 {
    // ...
 }

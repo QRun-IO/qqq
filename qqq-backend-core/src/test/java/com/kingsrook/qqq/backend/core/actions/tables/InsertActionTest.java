@@ -670,6 +670,31 @@ class InsertActionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Text input for typed fields must be validated before backend conversion.
+    *******************************************************************************/
+   @Test
+   void testRequiredTypedBlanksBeforeBackendConversion() throws QException
+   {
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).getField("noOfShoes").setIsRequired(true);
+      List<QRecord> records = List.of(
+         new QRecord().withValue("firstName", "Missing"),
+         new QRecord().withValue("firstName", "Empty").withValue("noOfShoes", ""),
+         new QRecord().withValue("firstName", "Spaces").withValue("noOfShoes", " \t "),
+         new QRecord().withValue("firstName", "Numeric zero").withValue("noOfShoes", 0),
+         new QRecord().withValue("firstName", "String zero").withValue("noOfShoes", "0"));
+      new InsertAction().performValidations(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(records), false, false);
+      for(Integer index : List.of(0, 1, 2))
+      {
+         assertEquals(1, records.get(index).getErrors().size());
+         assertTrue(records.get(index).getErrorsAsString().contains("Missing value in required field"));
+      }
+      assertTrue(records.get(3).getErrors().isEmpty());
+      assertTrue(records.get(4).getErrors().isEmpty());
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private static class TestInputSource implements InputSource

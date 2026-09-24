@@ -3,16 +3,17 @@ include::../variables.adoc[]
 
 The `*RenderTemplateAction*` performs the job of taking a template - that is, a string of code, in a templating language, such as https://velocity.apache.org/engine/1.7/user-guide.html[Velocity], and merging it with a set of data (known as a context), to produce some using-facing output, such as a String of HTML.
 
+Actions run within the application's current `QContext`; action inputs no longer accept a QInstance or session.
+
 === Examples
 ==== Canonical Form
 [source,java]
 ----
-RenderTemplateInput input = new RenderTemplateInput(qInstance);
-input.setSession(session);
+RenderTemplateInput input = new RenderTemplateInput();
 input.setCode("Hello, ${name}");
 input.setTemplateType(TemplateType.VELOCITY);
 input.setContext(Map.of("name", "Darin"));
-RenderTemplateOutput output = new RenderTemplateAction.execute(input);
+RenderTemplateOutput output = new RenderTemplateAction().execute(input);
 String result = output.getResult();
 assertEquals("Hello, Darin", result);
 ----
@@ -20,7 +21,7 @@ assertEquals("Hello, Darin", result);
 ==== Convenient Form
 [source,java]
 ----
-String result = RenderTemplateAction.renderVelocity(input, Map.of("name", "Darin"), "Hello, ${name}");
+String result = RenderTemplateAction.renderVelocity(Map.of("name", "Darin"), "Hello, ${name}");
 assertEquals("Hello, Darin", result);
 ----
 

@@ -33,10 +33,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
+import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.LogPair;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrCountInputInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -121,6 +125,9 @@ public class JoinsContext
    private final String          mainTableName;
    private final List<QueryJoin> queryJoins;
 
+   private final Map<String, QTableMetaData> tables = new HashMap<>();
+   private InputSource inputSource;
+
    private final QQueryFilter securityFilter;
 
    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -174,8 +181,34 @@ public class JoinsContext
     *******************************************************************************/
    public JoinsContext(QInstance instance, String tableName, List<QueryJoin> queryJoins, QQueryFilter filter) throws QException
    {
+      this(instance, tableName, queryJoins, filter, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep the active root metadata and personalize joined tables using the same
+    ** input source. The canonical instance still supplies the join registry.
+    *******************************************************************************/
+   public JoinsContext(QInstance instance, QueryOrCountInputInterface input, QQueryFilter filter) throws QException
+   {
+      this(instance, input.getTableName(), input.getQueryJoins(), filter, input);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private JoinsContext(QInstance instance, String tableName, List<QueryJoin> queryJoins, QQueryFilter filter, QueryOrCountInputInterface input) throws QException
+   {
       this.instance = instance;
       this.mainTableName = tableName;
+      if(input != null)
+      {
+         inputSource = input.getInputSource();
+         tables.put(tableName, executionTable(input.getTable()));
+      }
 
       /////////////////////////////////////////////////////////////////////////////
       // clone the incoming query joins - as this class will mutate them!  so in //
@@ -241,7 +274,7 @@ public class JoinsContext
       ///////////////////////////////////////////////////////////////////////////////////////
       if(!omitSecurity)
       {
-         MultiRecordSecurityLock multiRecordSecurityLock = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(instance.getTable(tableName).getRecordSecurityLocks()));
+         MultiRecordSecurityLock multiRecordSecurityLock = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(getTable(tableName).getRecordSecurityLocks()));
          for(RecordSecurityLock lock : multiRecordSecurityLock.getLocks())
          {
             ensureRecordSecurityLockIsRepresented(tableName, tableName, lock, null);
@@ -349,7 +382,7 @@ public class JoinsContext
             //////////////////////////////////////////////////////////////////////////////////////////
             // process all locks on this join's join-table.  keep track if any new joins were added //
             //////////////////////////////////////////////////////////////////////////////////////////
-            QTableMetaData joinTable = instance.getTable(queryJoin.getJoinTable());
+            QTableMetaData joinTable = getTable(queryJoin.getJoinTable());
 
             MultiRecordSecurityLock multiRecordSecurityLock = RecordSecurityLockFilters.filterForReadLockTree(CollectionUtils.nonNullList(joinTable.getRecordSecurityLocks()));
             for(RecordSecurityLock lock : multiRecordSecurityLock.getLocks())
@@ -450,7 +483,7 @@ public class JoinsContext
       Collections.reverse(joinNameChain);
       log("Evaluating recordSecurityLock.  Join name chain is of length: " + joinNameChain.size(), logPair("tableNameOrAlias", tableNameOrAlias), logPair("recordSecurityLock", recordSecurityLock.getFieldName()), logPair("joinNameChain", joinNameChain));
 
-      QTableMetaData tmpTable                = instance.getTable(tableName);
+      QTableMetaData tmpTable                = getTable(tableName);
       String         securityFieldTableAlias = tableNameOrAlias;
       String         baseTableOrAlias        = tableNameOrAlias;
 
@@ -507,7 +540,7 @@ public class JoinsContext
             {
                securityFieldTableAlias = matchedQueryJoin.getJoinTableOrItsAlias();
             }
-            tmpTable = instance.getTable(aliasToTableNameMap.getOrDefault(securityFieldTableAlias, securityFieldTableAlias));
+            tmpTable = getTable(aliasToTableNameMap.getOrDefault(securityFieldTableAlias, securityFieldTableAlias));
 
             ////////////////////////////////////////////////////////////////////////////////////////
             // set the baseTableOrAlias for the next iteration to be this join's joinTableOrAlias //
@@ -541,7 +574,7 @@ public class JoinsContext
 
             addQueryJoin(queryJoin, "forRecordSecurityLock (non-flipped)", "- ");
             addedQueryJoins.add(queryJoin);
-            tmpTable = instance.getTable(join.getRightTable());
+            tmpTable = getTable(join.getRightTable());
          }
          else if(join.getRightTable().equals(tmpTable.getName()))
          {
@@ -566,7 +599,7 @@ public class JoinsContext
 
             addQueryJoin(queryJoin, "forRecordSecurityLock (flipped)", "- ");
             addedQueryJoins.add(queryJoin);
-            tmpTable = instance.getTable(join.getLeftTable());
+            tmpTable = getTable(join.getLeftTable());
          }
          else
          {
@@ -883,7 +916,7 @@ public class JoinsContext
                   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                   // else, the join must be indirect - so look for an exposedJoin that will have a joinPath that will connect us //
                   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-                  QTableMetaData mainTable          = instance.getTable(mainTableName);
+                  QTableMetaData mainTable          = getTable(mainTableName);
                   boolean        addedAnyQueryJoins = false;
                   boolean        foundJoinMetaData  = false;
 
@@ -1011,19 +1044,65 @@ public class JoinsContext
     *******************************************************************************/
    private void processQueryJoin(QueryJoin queryJoin) throws QException
    {
-      QTableMetaData joinTable = QContext.getQInstance().getTable(queryJoin.getJoinTable());
+      String joinTableName = queryJoin.getJoinTable();
+      if(inputSource != null && !tables.containsKey(joinTableName))
+      {
+         QTableMetaData table = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput()
+            .withTableMetaData(instance.getTable(joinTableName)).withInputSource(inputSource));
+         tables.put(joinTableName, executionTable(table));
+      }
+
+      QTableMetaData joinTable = getTable(joinTableName);
       if(joinTable == null)
       {
          throw (new QException("Unrecognized name for join table: " + queryJoin.getJoinTable()));
       }
 
       String tableNameOrAlias = queryJoin.getJoinTableOrItsAlias();
-      if(aliasToTableNameMap.containsKey(tableNameOrAlias))
+      if(tableNameOrAlias.equals(mainTableName) || aliasToTableNameMap.containsKey(tableNameOrAlias))
       {
          dumpDebug(false, true);
          throw (new QException("Duplicate table name or alias: " + tableNameOrAlias));
       }
       aliasToTableNameMap.put(tableNameOrAlias, joinTable.getName());
+   }
+
+
+
+   /*******************************************************************************
+    ** Public selection is validated against active metadata. Native joins and
+    ** READ locks can still require physical fields removed from that public view.
+    *******************************************************************************/
+   private QTableMetaData executionTable(QTableMetaData activeTable)
+   {
+      if(activeTable == null)
+      {
+         return null;
+      }
+      QTableMetaData canonicalTable = instance.getTable(activeTable.getName());
+      if(canonicalTable != null && !activeTable.getFields().keySet().containsAll(canonicalTable.getFields().keySet()))
+      {
+         activeTable = activeTable.clone();
+         for(QFieldMetaData field : canonicalTable.getFields().values())
+         {
+            if(!activeTable.getFields().containsKey(field.getName()))
+            {
+               activeTable.addField(field.clone());
+            }
+         }
+      }
+      return activeTable;
+   }
+
+
+
+   /*******************************************************************************
+    ** Metadata resolved for this query. Joined tables are personalized once when
+    ** they enter the context; legacy constructors retain canonical metadata.
+    *******************************************************************************/
+   public QTableMetaData getTable(String tableName)
+   {
+      return tables.containsKey(tableName) ? tables.get(tableName) : instance.getTable(tableName);
    }
 
 
@@ -1114,7 +1193,7 @@ public class JoinsContext
          String baseFieldName = parts[1];
          String tableName     = resolveTableNameOrAliasToTableName(tableOrAlias);
 
-         QTableMetaData table = instance.getTable(tableName);
+         QTableMetaData table = getTable(tableName);
          if(table == null)
          {
             dumpDebug(false, true);
@@ -1124,7 +1203,7 @@ public class JoinsContext
          return getFieldAndTableNameOrAlias(baseFieldName, table, tableOrAlias, allowVirtualFields);
       }
 
-      return getFieldAndTableNameOrAlias(fieldName, instance.getTable(mainTableName), mainTableName, allowVirtualFields);
+      return getFieldAndTableNameOrAlias(fieldName, getTable(mainTableName), mainTableName, allowVirtualFields);
    }
 
 
@@ -1377,7 +1456,7 @@ public class JoinsContext
          ////////////////////////////////////////////////////////////////////////////////
          if(useExposedJoins)
          {
-            QTableMetaData mainTable = QContext.getQInstance().getTable(mainTableName);
+            QTableMetaData mainTable = getTable(mainTableName);
             for(ExposedJoin exposedJoin : CollectionUtils.nonNullList(mainTable.getExposedJoins()))
             {
                if(exposedJoin.getJoinTable().equals(joinTableName))

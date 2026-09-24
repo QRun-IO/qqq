@@ -25,11 +25,13 @@ package com.kingsrook.qqq.backend.core.processes.implementations.reports;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.Serializable;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -58,12 +60,14 @@ public class ExecuteReportStep implements BackendStep
    @Override
    public void run(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput) throws QException
    {
+      File tmpFile = null;
       try
       {
+
          ReportFormat    reportFormat = getReportFormat(runBackendStepInput);
          String          reportName   = runBackendStepInput.getValueString("reportName");
          QReportMetaData report       = QContext.getQInstance().getReport(reportName);
-         File            tmpFile      = File.createTempFile(reportName, "." + reportFormat.getExtension());
+         tmpFile = File.createTempFile(reportName, "." + reportFormat.getExtension());
 
          runBackendStepInput.getAsyncJobCallback().updateStatus("Generating Report");
 
@@ -79,15 +83,26 @@ public class ExecuteReportStep implements BackendStep
             reportInput.setInputValues(values);
 
             new GenerateReportAction().execute(reportInput);
-
-            String downloadFileBaseName = getDownloadFileBaseName(runBackendStepInput, report);
-
-            runBackendStepOutput.addValue("downloadFileName", downloadFileBaseName + "." + reportFormat.getExtension());
-            runBackendStepOutput.addValue("serverFilePath", tmpFile.getCanonicalPath());
          }
+
+         String downloadFileBaseName = getDownloadFileBaseName(runBackendStepInput, report);
+
+         runBackendStepOutput.addValue("downloadFileName", downloadFileBaseName + "." + reportFormat.getExtension());
+         runBackendStepOutput.addValue("serverFilePath", ProcessFileDownload.register(tmpFile));
       }
       catch(Exception e)
       {
+         if(tmpFile != null)
+         {
+            try
+            {
+               Files.deleteIfExists(tmpFile.toPath());
+            }
+            catch(Exception cleanupException)
+            {
+               e.addSuppressed(cleanupException);
+            }
+         }
          throw (new QException("Error running report", e));
       }
    }

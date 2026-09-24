@@ -162,7 +162,7 @@ class SampleBrowserIT
       driver.navigate().refresh();
       new WebDriverWait(driver, Duration.ofSeconds(30)).until(browser -> browser.findElement(By.tagName("body")).getText().contains("Updated Acceptance"));
       driver.findElement(By.cssSelector("[data-qqq-id='actions-menu']")).click();
-      new WebDriverWait(driver, Duration.ofSeconds(30)).until(browser -> !browser.findElements(By.cssSelector("[role='menuitem']")).isEmpty());
+      new WebDriverWait(driver, Duration.ofSeconds(30)).until(browser -> browser.findElement(By.cssSelector(".MuiMenu-paper")).getCssValue("transform").equals("none"));
       driver.findElement(By.cssSelector("[data-qqq-id='menu-item-greetinteractive']")).click();
       new WebDriverWait(driver, Duration.ofSeconds(30)).until(browser -> !browser.findElements(By.id("greetingPrefix")).isEmpty());
       driver.findElement(By.id("greetingPrefix")).sendKeys("Hello");

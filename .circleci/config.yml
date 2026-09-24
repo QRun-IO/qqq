@@ -12,9 +12,8 @@ commands:
           name: Keep package installation unattended
           command: |
             # These build machines are discarded after the job.
-            # Discard inherited package indices that can reference removed Ubuntu archives.
-            sudo rm -f /var/lib/apt/lists/*_Packages*
-            printf '%s\n' 'Acquire::http::No-Cache "true";' | sudo tee /etc/apt/apt.conf.d/99-qqq-no-cache >/dev/null
+            # Use Ubuntu's archive mirror, which also carries the signed security suite.
+            sudo sed -i 's|http://security.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
             sudo install -d /etc/needrestart/conf.d
             printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-qqq-ci.conf >/dev/null
 

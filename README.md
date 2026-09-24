@@ -3,7 +3,7 @@
 Metadata-driven application framework for building business software in Java.
 
 **For:** Engineers building internal tools, admin panels, data management apps, or CRUD-heavy systems
-**4.0 status:** Prerelease. Maven Central currently provides `4.0.0-RC.2`; this branch contains additional candidate fixes. `4.0.0-RC.3` and final `4.0.0` have not been published. See the [changelog](CHANGELOG.md) for changes and open release gates.
+**QQQ 4.0.0** is the first release under the semver contract. See the [changelog](CHANGELOG.md) for breaking changes, fixes and explicitly deferred issues.
 
 ## Why This Exists
 
@@ -26,7 +26,7 @@ Write Java for custom behavior while sharing metadata across the configured back
 
 **Prerequisites:** Java 21+, Maven 3.8+
 
-The published RC.2 is available for evaluation using the BOM below. To exercise the changes on this branch, build from source using the [sample instructions](qqq-sample-project/README.md); RC.2 does not include these unpublished fixes. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
+Use the 4.0.0 BOM below to align framework modules. Build the QRun-owned reference application using the [sample instructions](qqq-sample-project/README.md). Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
 
 ```xml
 <dependencyManagement>
@@ -34,7 +34,7 @@ The published RC.2 is available for evaluation using the BOM below. To exercise 
         <dependency>
             <groupId>com.kingsrook.qqq</groupId>
             <artifactId>qqq-bom-pom</artifactId>
-            <version>4.0.0-RC.2</version>
+            <version>4.0.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -102,12 +102,12 @@ See [qqq-frontend-material-dashboard](https://github.com/QRun-IO/qqq-frontend-ma
 
 ## Project Status
 
-QQQ 4.0 is undergoing release validation. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). Final publication follows candidate verification and QRun-owned reference-application acceptance.
+QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). The standard Material dashboard release is 0.41.0; Next remains a compatible preview. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).
 
 ## Contributing
 
 ```bash
-git clone --branch feature/qqq-4-polish https://github.com/QRun-IO/qqq.git
+git clone --branch main https://github.com/QRun-IO/qqq.git
 cd qqq
 mvn clean install
 ```

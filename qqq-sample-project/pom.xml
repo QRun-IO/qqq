@@ -34,7 +34,7 @@
    </parent>
 
    <properties>
-      <qqq.frontend.material-dashboard.version>0.40.0</qqq.frontend.material-dashboard.version>
+      <qqq.frontend.material-dashboard.version>0.41.0</qqq.frontend.material-dashboard.version>
       <!-- Skip deployment to Maven Central - this is a sample project, not a library -->
       <maven.deploy.skip>true</maven.deploy.skip>
       <central.publishing.skip>true</central.publishing.skip>

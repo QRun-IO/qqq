@@ -84,7 +84,7 @@ grep -r 'com\.kingsrook\.qqq\.backend\.javalin' . --include='*.java' --exclude-d
 
 [NOTE]
 ====
-This section describes the migration candidate: Javalin 7.2.3 with Jetty 12.1.13 on Java 21. QQQ 4.0 publication remains pending.
+QQQ 4.0.0 uses Javalin 7.2.3 with Jetty 12.1.13 on Java 21.
 ====
 
 Javalin 7 requires routes, before/after handlers and error/exception handlers to be registered during configuration.
@@ -103,7 +103,7 @@ public void acceptJavalinService(Javalin service)
 ----
 
 [source,java]
-.After (Javalin 7 candidate)
+.After (Javalin 7, QQQ 4.0)
 ----
 @Override
 public void acceptJavalinConfig(JavalinConfig config)
@@ -128,7 +128,7 @@ server.withJavalinConfigurationCustomizer(service ->
 ----
 
 [source,java]
-.After (Javalin 7 candidate)
+.After (Javalin 7, QQQ 4.0)
 ----
 server.withJavalinConfigCustomizer(config ->
    config.routes.get("/custom/status", ctx -> ctx.result("ready")));
@@ -141,7 +141,7 @@ It cannot install Javalin 7 handlers after creation.
 For process-backed routes using `DefaultRouteProviderContextHandler`, the `method` process-input value is now a String such as `"GET"` or `"POST"`, rather than Javalin `HandlerType`. Replace casts or enum comparisons with String access/comparison, for example `input.getValueString("method")`. The typed `ProcessBasedRouterPayload.getMethod()` accessor remains String-valued; custom context handlers retain their own mappings.
 
 Use Java 21 for the QQQ build and runtime; the middleware inherits the project compiler settings instead of overriding source/target to 11.
-The selected Javalin 7.2.3 artifact declares Jetty 12.1.12 upstream; the 12.1.13 candidate aligns both `org.eclipse.jetty:jetty-bom` and `org.eclipse.jetty.ee10:jetty-ee10-bom` to avoid mixing core and EE10 servlet/WebSocket versions.
+The selected Javalin 7.2.3 artifact declares Jetty 12.1.12 upstream; QQQ 4.0 aligns Jetty 12.1.13 through both `org.eclipse.jetty:jetty-bom` and `org.eclipse.jetty.ee10:jetty-ee10-bom` to avoid mixing core and EE10 servlet/WebSocket versions.
 The core BOM alone does not manage the EE10 artifacts. The annotation processor has its own explicit `io.javalin.community.openapi:openapi-annotation-processor:7.2.3` version.
 These choices do not by themselves establish runtime compatibility or advisory closure.
 See the https://javalin.io/migration-guide-javalin-6-to-7[upstream migration guide], https://repo.maven.apache.org/maven2/io/javalin/javalin-parent/7.2.3/javalin-parent-7.2.3.pom[Javalin parent POM] and https://repo.maven.apache.org/maven2/org/eclipse/jetty/ee10/jetty-ee10-bom/12.1.13/jetty-ee10-bom-12.1.13.pom[Jetty EE10 BOM] for the upstream APIs and dependency versions.
@@ -1074,7 +1074,7 @@ Dependent saved-view/report share and quick-view cleanup is deferred in https://
 
 The proposed extra saved-report rendering-ownership and grant-scope guard is deferred (#451/#446). Configure table record-security locks for owner/recipient record visibility. Automatic dependent-share cleanup remains deferred in https://github.com/QRun-IO/qqq/issues/504[#504]. Review custom locks, cleanup hooks and transaction needs. See link:../index.html#ConfiguredSavedReportSharing[configured saved-report sharing] for the existing metadata configuration recipe and limits.
 
-Dashboard recipient-ID truncation (https://github.com/QRun-IO/qqq/issues/444[#444]), missing-column preview failure (https://github.com/QRun-IO/qqq/issues/445[#445]) and mock identity/display issues (https://github.com/QRun-IO/qqq/issues/371[#371], https://github.com/QRun-IO/qqq/issues/332[#332]) are deferred Medium/Low findings. Their local patches are not included in the 4.0 candidate. See link:../index.html#DashboardSharingDemo[first-party fixture and dashboard limitations].
+Dashboard recipient-ID truncation (https://github.com/QRun-IO/qqq/issues/444[#444]), missing-column preview failure (https://github.com/QRun-IO/qqq/issues/445[#445]) and mock identity/display issues (https://github.com/QRun-IO/qqq/issues/371[#371], https://github.com/QRun-IO/qqq/issues/332[#332]) are deferred Medium/Low findings. Their local patches are not included in the 4.0 release. See link:../index.html#DashboardSharingDemo[first-party fixture and dashboard limitations].
 
 == Deferred read and JSON compatibility refinements
 

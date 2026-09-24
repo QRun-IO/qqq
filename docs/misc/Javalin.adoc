@@ -6,7 +6,7 @@ QQQ provides a standard implementation of a middleware layer - that is - code th
 QQQ backend and user interface.  This implementation is a web server built using the https://javalin.io/[Javalin framework],
 packaged and deployed in the `qqq-middleware-javalin` maven module
 
-The 4.0 migration candidate uses Java 21, Javalin 7.2.3 and Jetty 12.1.13. The Javalin 7 configuration examples below target that candidate; QQQ 4.0 publication remains pending.
+QQQ 4.0.0 uses Java 21, Javalin 7.2.3 and Jetty 12.1.13. The Javalin 7 configuration examples below target this release.
 
 The de facto way to create a QQQ application server is to write a class which uses an instance of one of the
 subclasses of `QApplicationJavalinServer`.

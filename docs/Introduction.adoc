@@ -5,7 +5,7 @@ QQQ is a metadata-driven application framework for Java engineers building busin
 
 == QQQ 4.0 status and prerequisites
 
-QQQ 4.0 requires Java 21 and Maven 3.8 or later. The 4.0 release is undergoing candidate validation; final 4.0.0 has not been published. The repository README records current availability. Existing applications should follow the xref:migration/4.0.adoc[4.0 migration guide], which covers package renames and removed APIs.
+QQQ 4.0.0 requires Java 21 and Maven 3.8 or later. The repository README records current availability. Existing applications should follow the xref:migration/4.0.adoc[4.0 migration guide], which covers package renames and removed APIs.
 
 == Describe the application
 

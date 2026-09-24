@@ -36,7 +36,7 @@ include::misc/ScheduledJobs.adoc[leveloffset=+1]
 
 === API server (OpenAPI)
 
-See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs[endpoint specification API] and the https://www.qrun.io/docs[hosted framework documentation]. Endpoint tags are optional in this candidate.
+See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs[endpoint specification API] and the https://www.qrun.io/docs[hosted framework documentation]. Endpoint tags are optional.
 
 == Custom Application Code
 include::misc/QContext.adoc[leveloffset=+1]

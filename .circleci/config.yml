@@ -37,6 +37,15 @@ jobs:
             git clone https://github.com/QRun-IO/qqq-frontend-material-dashboard.git /tmp/sample-material-dashboard
             cd /tmp/sample-material-dashboard
             git checkout --detach 2fdd3a5395fbcca5e3d6a6ae5cdf4f49ec432c03
+            # Consumers read this installed POM without the build's command-line properties.
+            python3 - <<'PY'
+            from pathlib import Path
+            pom = Path("pom.xml")
+            text = pom.read_text()
+            old = "<qqq.version>4.0.0-RC.3</qqq.version>"
+            assert text.count(old) == 1, "Pinned dashboard QQQ version changed"
+            pom.write_text(text.replace(old, "<qqq.version>0.0.0-sample-acceptance</qqq.version>"))
+            PY
             npm ci --legacy-peer-deps
             CI=true npm test -- --watchAll=false --runInBand
             # Match the accepted production build; existing source-map warnings remain warnings.

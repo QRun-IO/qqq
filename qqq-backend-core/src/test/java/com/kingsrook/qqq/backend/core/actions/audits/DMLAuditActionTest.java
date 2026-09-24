@@ -213,6 +213,37 @@ class DMLAuditActionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Hidden old keys still correlate distinct rows without hydrating snapshots.
+    *******************************************************************************/
+   @Test
+   void testFieldAuditMatchesPrivateOldIdentities() throws QException
+   {
+      QInstance instance = QContext.getQInstance();
+      new AuditsMetaDataProvider().defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, null);
+      QTableMetaData table = instance.getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      table.setAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD));
+      table.getField("id").setIsHidden(true);
+      QRecord first = new QRecord().withValue("firstName", "Old A");
+      QRecord second = new QRecord().withValue("firstName", "Old B");
+      first.capturePrimaryKey(table, 17);
+      second.capturePrimaryKey(table, 18);
+      new DMLAuditAction().execute(new DMLAuditInput()
+         .withTableActionInput(new UpdateInput(table.getName()))
+         .withOldRecordList(List.of(new QRecord(second), new QRecord(first)))
+         .withRecordList(List.of(new QRecord().withValue("id", 17).withValue("firstName", "New A"),
+            new QRecord().withValue("id", 18).withValue("firstName", "New B"))));
+      List<QRecord> details = TestUtils.queryTable("auditDetail").stream()
+         .filter(record -> "firstName".equals(record.getValueString("fieldName"))).toList();
+      assertEquals(2, details.size());
+      assertTrue(details.stream().anyMatch(record -> "Old A".equals(record.getValueString("oldValue")) && "New A".equals(record.getValueString("newValue"))));
+      assertTrue(details.stream().anyMatch(record -> "Old B".equals(record.getValueString("oldValue")) && "New B".equals(record.getValueString("newValue"))));
+      assertFalse(first.getValues().containsKey("id"));
+      assertFalse(second.getValues().containsKey("id"));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

@@ -18,7 +18,7 @@ QQQ Fields define
 Used to set values in the `displayValues` map within a `QRecord`.
 ** Recommended values for `displayFormat` come from the `DisplayFormat` interface, such as `DisplayFormat.CURRENCY`, `DisplayFormat.COMMAS`, or `DisplayFormat.DECIMAL2_COMMAS`.
 * `defaultValue` - Value to use for the field if no other value is given.  Type is based on the field's `type`.
-* `possibleValueSourceName` - *String* - Reference to a {link-pvs} to be used for this field.
+* `possibleValueSourceName` - *String* - Reference to a {link-possibleValueSource} to be used for this field.
 Values in this field should correspond to ids from the referenced Possible Value Source.
 * `maxLength` - *Integer* - Maximum string length in Java UTF-16 units. A supplementary Unicode character occupies two units.
 Only applicable for fields with `type=STRING`.  Needs to be used with a `FieldBehavior` of type `ValueTooLongBehavior`.

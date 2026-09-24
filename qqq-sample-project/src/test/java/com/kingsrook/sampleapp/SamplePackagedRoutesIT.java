@@ -26,11 +26,13 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,22 +54,37 @@ class SamplePackagedRoutesIT
          .withSpaRootPath("/sample").withSpaRootFile("static-site/index.html");
       assertFalse(SimpleFileSystemDirectoryRouter.loadStaticFilesFromJar);
       router.setQInstance(SampleMetaDataProvider.defineTestInstance());
-      Javalin server = Javalin.create(router::acceptJavalinConfig);
+      Javalin server = Javalin.create(config ->
+      {
+         router.acceptJavalinConfig(config);
+         config.routes.get("/sample/missing-record", context -> context.status(404).result("record missing"));
+      });
       try
       {
-         router.acceptJavalinService(server);
          server.start(0);
-         try(HttpClient client = HttpClient.newHttpClient())
+         try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
          {
             String baseUrl = "http://localhost:" + server.port();
-            HttpResponse<String> file = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample/hello.txt")).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> file = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample/hello.txt")).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, file.statusCode());
             assertEquals("World!", file.body().strip());
-            HttpResponse<String> deepLink = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample/deep/link")).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> deepLink = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample/deep/link")).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, deepLink.statusCode());
             assertTrue(deepLink.body().strip().endsWith("hello world"));
-            HttpResponse<String> missingAsset = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample/missing.js")).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> missingAsset = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample/missing.js")).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(404, missingAsset.statusCode());
+            assertAll(
+               () ->
+               {
+                  HttpResponse<String> neighbor = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample-other/deep/link")).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+                  assertEquals(404, neighbor.statusCode());
+               },
+               () ->
+               {
+                  HttpResponse<String> missingRecord = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/sample/missing-record")).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+                  assertEquals(404, missingRecord.statusCode());
+                  assertEquals("record missing", missingRecord.body());
+               });
          }
       }
       finally

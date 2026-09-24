@@ -22,6 +22,8 @@
 package com.kingsrook.sampleapp;
 
 
+import java.math.BigDecimal;
+import java.net.CookieManager;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -31,20 +33,25 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
@@ -56,10 +63,12 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -88,7 +97,7 @@ public class SampleJavalinServerTest
          assertEquals(QAuthenticationType.MOCK, new SampleMetaDataProvider().defineQInstance().getAuthentication().getType());
          sampleJavalinServer.start();
 
-         try(HttpClient client = HttpClient.newHttpClient())
+         try(HttpClient client = HttpClient.newBuilder().cookieHandler(new CookieManager()).build())
          {
             URI baseUri = URI.create("http://localhost:" + service.get().port());
             HttpResponse<String> dashboard = request(client, baseUri, "GET", "/", null, null);
@@ -136,7 +145,7 @@ public class SampleJavalinServerTest
             assertEquals("Hello Updated QQQ", results.getJSONArray("records").getJSONObject(0).getJSONObject("values").getString("greetingMessage"));
 
             HttpResponse<String> invalidResponse = request(client, baseUri, "POST", "/data/person", "{\"firstName\":\"Invalid\"}", "application/json");
-            assertEquals(500, invalidResponse.statusCode());
+            assertEquals(400, invalidResponse.statusCode());
             String validationError = JsonUtils.toJSONObject(invalidResponse.body()).getString("error");
             assertTrue(validationError.contains("Missing value in required field: Last Name"));
             assertTrue(validationError.contains("Missing value in required field: Email"));
@@ -155,6 +164,7 @@ public class SampleJavalinServerTest
             assertEquals(1, deleted.getInt("deletedRecordCount"));
             assertDatabasePerson(personId, null);
             assertEquals(404, request(client, baseUri, "GET", "/metaData/table/noSuchTable", null, null).statusCode());
+            assertEquals("Charlie", requestJson(client, baseUri, "GET", "/data/pet/1", null).getString("recordLabel"));
          }
 
          System.clearProperty("qqq.sample.mockAuthentication");
@@ -364,6 +374,200 @@ public class SampleJavalinServerTest
       {
          server.stop();
          QContext.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** READ permission still requires privacy for selected joined values in both APIs.
+    *******************************************************************************/
+   @Test
+   void testJoinedFieldPrivacyAcrossHttpReads() throws Exception
+   {
+      QInstance instance = SampleMetaDataProvider.defineTestInstance();
+      instance.getAuthentication().setCustomizer(new QCodeReference(PersonAndPetReads.class));
+      instance.getTable("person").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      instance.getTable("pet").setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
+      instance.getTable("pet").getField("name").setType(QFieldType.PASSWORD);
+      instance.getTable("pet").getField("speciesId").setIsHidden(true);
+      instance.getTable("pet").getSections().forEach(section -> section.setFieldNames(section.getFieldNames().stream()
+         .filter(field -> !field.equals("speciesId")).toList()));
+      SampleJavalinServer server = new SampleJavalinServer(new SampleMetaDataProvider()
+      {
+         /*******************************************************************************
+          **
+          *******************************************************************************/
+         @Override
+         public QInstance defineQInstance()
+         {
+            return instance;
+         }
+      });
+      AtomicReference<Javalin> service = new AtomicReference<>();
+      server.setPort(0);
+      server.withJavalinConfigurationCustomizer(service::set);
+      try
+      {
+         server.start();
+         List<List<String>> before = nativePetRows();
+         assertEquals(6, before.size());
+         Set<Integer> childIds = Set.of(1, 2, 3, 4);
+         assertEquals(List.of("Charlie", "Coco", "Louie", "Barkley"), before.stream().filter(row -> row.get(1).equals("1")).map(row -> row.get(2)).toList());
+         try(HttpClient client = HttpClient.newHttpClient())
+         {
+            URI baseUri = URI.create("http://localhost:" + service.get().port());
+            String joins = "[{\"joinTable\":\"pet\",\"alias\":\"animal\",\"select\":true}]";
+            String filter = "{\"criteria\":[{\"fieldName\":\"id\",\"operator\":\"EQUALS\",\"values\":[1]}],\"orderBys\":[{\"fieldName\":\"animal.id\",\"isAscending\":true}]}";
+            String query = "?queryJoins=" + URLEncoder.encode(joins, StandardCharsets.UTF_8) + "&filter=" + URLEncoder.encode(filter, StandardCharsets.UTF_8);
+            JSONObject legacy = requestJson(client, baseUri, "GET", "/data/person" + query, null);
+            JSONObject versioned = requestJson(client, baseUri, "POST", "/qqq/v1/table/person/query", "{\"joins\":" + joins + ",\"filter\":" + filter + "}");
+            JSONObject get = requestJson(client, baseUri, "GET", "/data/person/1?queryJoins=" + URLEncoder.encode(joins, StandardCharsets.UTF_8), null);
+            List<Executable> checks = new ArrayList<>();
+            for(JSONObject result : List.of(legacy, versioned))
+            {
+               JSONArray records = result.getJSONArray("records");
+               assertEquals(4, records.length());
+               for(int i = 0; i < records.length(); i++)
+               {
+                  JSONObject record = records.getJSONObject(i);
+                  assertEquals(i + 1, record.getJSONObject("values").getInt("animal.id"));
+                  checks.add(() -> assertPrivateJoinedPet(record, childIds));
+               }
+            }
+            checks.add(() -> assertPrivateJoinedPet(get, childIds));
+            checks.add(() -> assertEquals(before, nativePetRows()));
+            assertAll(checks);
+         }
+      }
+      finally
+      {
+         server.stop();
+         QContext.clear();
+         ConnectionManager.resetConnectionProviders();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native typed values survive the HTTP representation without exposing passwords.
+    *******************************************************************************/
+   @Test
+   void testFieldLabJsonRoundTrip() throws Exception
+   {
+      SampleJavalinServer server = new SampleJavalinServer(new SampleMetaDataProvider()
+      {
+         /*******************************************************************************
+          **
+          *******************************************************************************/
+         @Override
+         public QInstance defineQInstance() throws QException
+         {
+            return SampleMetaDataProvider.defineTestInstance();
+         }
+      });
+      AtomicReference<Javalin> service = new AtomicReference<>();
+      server.setPort(0);
+      server.withJavalinConfigurationCustomizer(service::set);
+      try
+      {
+         server.start();
+         Integer id;
+         try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend());
+            Statement statement = connection.createStatement())
+         {
+            assertEquals(1, statement.executeUpdate("INSERT INTO field_lab(name,long_value,decimal_value,boolean_value,date_value,time_value,date_time_value,text_value,html_value,password_value,blob_value) VALUES "
+               + "('HTTP field types',9223372036854775807,1234567890123456.7890,FALSE,DATE '2024-02-29',TIME '23:59:58',TIMESTAMP '2024-02-29 23:59:58','Plain text é','<p>Sample HTML</p>','synthetic-http-only',X'0001FF')"));
+            try(ResultSet rows = statement.executeQuery("SELECT id FROM field_lab WHERE name='HTTP field types'"))
+            {
+               assertTrue(rows.next());
+               id = rows.getInt(1);
+               assertFalse(rows.next());
+            }
+         }
+         try(HttpClient client = HttpClient.newBuilder().cookieHandler(new CookieManager()).build())
+         {
+            URI base = URI.create("http://localhost:" + service.get().port());
+            JSONObject record = requestJson(client, base, "GET", "/data/fieldLab/" + id, null);
+            JSONObject values = record.getJSONObject("values");
+            assertEquals(id, values.getInt("id"));
+            assertEquals("HTTP field types", values.getString("name"));
+            assertEquals(Long.MAX_VALUE, values.getLong("longValue"));
+            assertEquals(0, new BigDecimal("1234567890123456.7890").compareTo(values.getBigDecimal("decimalValue")));
+            assertFalse(values.getBoolean("booleanValue"));
+            assertEquals("2024-02-29", values.getString("dateValue"));
+            assertEquals("23:59:58", values.getString("timeValue"));
+            assertEquals("2024-02-29T23:59:58Z", values.getString("dateTimeValue"));
+            assertEquals("Plain text é", values.getString("textValue"));
+            assertEquals("<p>Sample HTML</p>", values.getString("htmlValue"));
+            assertEquals("************", values.getString("passwordValue"));
+            assertFalse(record.toString().contains("synthetic-http-only"));
+            assertArrayEquals(new byte[] { 0, 1, -1 }, Base64.getDecoder().decode(values.getString("blobValue")));
+            assertEquals("HTTP field types", record.getString("recordLabel"));
+            assertFalse(record.getJSONObject("displayValues").isEmpty());
+         }
+      }
+      finally
+      {
+         server.stop();
+         QContext.clear();
+         ConnectionManager.resetConnectionProviders();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void assertPrivateJoinedPet(JSONObject record, Set<Integer> childIds)
+   {
+      JSONObject values = record.getJSONObject("values");
+      JSONObject display = record.optJSONObject("displayValues");
+      assertAll(
+         () -> assertEquals(1, values.getInt("id")),
+         () -> assertTrue(childIds.contains(values.getInt("animal.id"))),
+         () -> assertEquals("************", values.getString("animal.name")),
+         () -> assertFalse(values.has("animal.speciesId")),
+         () -> assertTrue(display == null || !display.has("animal.speciesId")),
+         () -> assertTrue(display == null || !display.has("animal.name") || display.getString("animal.name").equals("************")));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private List<List<String>> nativePetRows() throws Exception
+   {
+      List<List<String>> result = new ArrayList<>();
+      try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend());
+          Statement statement = connection.createStatement();
+          ResultSet rows = statement.executeQuery("SELECT id,person_id,name,species_id FROM pet ORDER BY id"))
+      {
+         while(rows.next())
+         {
+            result.add(List.of(rows.getString(1), rows.getString(2), rows.getString(3), rows.getString(4)));
+         }
+      }
+      return result;
+   }
+
+
+
+   /*******************************************************************************
+    ** Both selected tables permit reading; field privacy remains independently required.
+    *******************************************************************************/
+   public static class PersonAndPetReads implements QAuthenticationModuleCustomizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
+      {
+         session.withPermissions("person.read", "pet.read");
       }
    }
 

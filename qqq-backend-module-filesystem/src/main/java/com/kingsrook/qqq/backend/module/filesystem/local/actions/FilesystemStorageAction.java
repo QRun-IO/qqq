@@ -28,7 +28,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -74,12 +76,22 @@ public class FilesystemStorageAction extends AbstractFilesystemAction implements
     **
     *******************************************************************************/
    @NotNull
-   private String getFullPath(StorageInput storageInput)
+   private String getFullPath(StorageInput storageInput) throws IOException, QBadRequestException
    {
-      QTableMetaData   table    = storageInput.getTable();
-      QBackendMetaData backend  = storageInput.getBackend();
-      String           fullPath = stripDuplicatedSlashes(getFullBasePath(table, backend) + File.separator + storageInput.getReference());
-      return fullPath;
+      QTableMetaData table = storageInput.getTable();
+      QBackendMetaData backend = storageInput.getBackend();
+      File base = new File(getFullBasePath(table, backend)).getCanonicalFile();
+      String reference = storageInput.getReference();
+      if(reference == null || reference.isBlank() || new File(reference).isAbsolute())
+      {
+         throw new QBadRequestException("Storage reference must be a relative file path");
+      }
+      File file = new File(base, reference).getCanonicalFile();
+      if(file.equals(base) || !file.toPath().startsWith(base.toPath()))
+      {
+         throw new QBadRequestException("Storage reference must remain inside its table directory");
+      }
+      return file.getPath();
    }
 
 
@@ -108,7 +120,14 @@ public class FilesystemStorageAction extends AbstractFilesystemAction implements
    @Override
    public String getDownloadURL(StorageInput storageInput) throws QException
    {
-      return ("file://" + getFullPath(storageInput));
+      try
+      {
+         return (Path.of(getFullPath(storageInput)).toUri().toASCIIString());
+      }
+      catch(IOException e)
+      {
+         throw new QException("Could not resolve storage download path", e);
+      }
    }
 
 }

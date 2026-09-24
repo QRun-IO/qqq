@@ -84,6 +84,13 @@ See ExposedJoin object below for details.
 The `supplementalMetaData` map attaches module-specific table settings. For application APIs, see {qqq-source-url}/qqq-middleware-api/src/main/java/com/kingsrook/qqq/api/model/metadata/tables/ApiTableMetaData.java[ApiTableMetaData].
 
 
+==== Unique-key validation
+
+QQQ checks declared unique keys before INSERT and key-changing UPDATE. Sparse updates retain omitted key components for validation; an explicit null remains null, and any null component is distinct. Unchanged self keys are allowed, but another stored owner is a conflict, including owners hidden by record security. Validation does not grant READ access or return stored key values. Within a request, accepted typed key tuples remain reserved for later records. If repeated updates target the same primary key and any fragment changes a key, every occurrence is rejected; combine those fragments into one record. Non-key-only updates retain their existing behavior.
+
+Native backend lookup must provide complete stored-key visibility. Custom backend query implementations provide `lookupUniqueKey(UniqueKeyLookup.Input)`; API providers implement the corresponding method on their configured `BaseAPIActionUtil`. Unsupported lookups fail before writing. These checks compare typed values before backend conversion; matching storage constraints are still needed for final stored-value uniqueness under concurrent writes, numeric rounding and database collations. INSERT customizers after the unique-key phase remain trusted and must preserve the constraint. The existing trusted INSERT `skipUniqueKeyCheck` option retains its behavior.
+
+
 ==== QFieldSection
 When users view records from a QQQ Table in a UI, fields are organized on the screen based on the `QFieldSection` objects in the table's meta-data.
 
@@ -136,7 +143,7 @@ Actions with a smaller value for `priority` are executed first.  Ties are broken
 
 ==== Association
 An `Association` is a way to define a relationship between tables, that facilitates, for example, a parent record having a list of its child records included in it when it is returned from a Query.
-Similarly, associated records can automatically be inserted/updated/deleted if they are included in a parent record when it is stored.
+INSERT and UPDATE can process associated records supplied with the parent; replacement UPDATE also deletes omitted stored members. Cascading DELETE follows the canonical declared association graph and complete stored membership, independently of supplied child records or UI visibility. See <<DeleteAction>> for selection, results and transaction boundaries.
 
 *Association Properties:*
 
@@ -144,6 +151,12 @@ Similarly, associated records can automatically be inserted/updated/deleted if t
 Used as the key in the `associatedRecords` map within `QRecord` objects for this table.
 * `associatedTableName` - *String, Required* - name of a {link-table}, which is the associated table.
 * `joinName` - *String, Required* - name of a {link-join} in the instance, which defines how the tables are joined.
+
+Full frontend table metadata exposes each association as `name`, `associatedTableName` and its resolved `join`, including the declared `joinOns` field pairs. Names are independent of target table names: `pets` may target `pet`, and multiple groups may target the same table. Use the exact association name to index `associatedRecords`; query `exposedJoins` are a separate contract. Child metadata and permission flags remain independent. Managed widget sections bind through `widgetName` and the widget's frontend defaults (`manageAssociationName` for ChildRecordList or `associationName` for RowBuilder).
+
+A successfully queried association is returned as an array, including `[]` when that group has no records. Base-only, unrequested and personalized-away groups remain absent; a failed query does not manufacture an empty group. Preserve this distinction in write clients: omitting a group leaves it unchanged, while an explicit empty replacement removes that group's stored children subject to the existing write permissions.
+
+Expanded reads use the declared parent and child endpoints in either join direction. Each relationship tuple is converted to the child's declared field types before matching; a tuple containing null has no read membership. Required relationship fields missing from query results cause an error instead of a misleading empty group. Nested association selections use literal names, including names containing regular-expression characters. Nested INSERT and UPDATE use the same oriented field pairs. Replacement UPDATE finds omitted children using the stored old relationship, then assigns retained/new children the normalized prospective values. Omitted parent components remain stored, including hidden/heavy fields; private fetched values are not added to the public patch or child response. A null old tuple has no members. A null prospective tuple permits an empty replacement, but rejects child writes before parent mutation. Cascading DELETE uses the same declared tuples and complete native membership, deleting descendants before ancestors; UPDATE removes omitted children before changing their parent. An incomplete or rejected child deletion stops that parent mutation. Cyclic cascades are rejected. Caller transactions provide rollback where supported; these operations do not create an automatic transaction. Custom backend requirements and remaining recursive HTTP copy limits are described in the migration guide.
 
 
 
@@ -173,7 +186,9 @@ Possible values are:
 * `lockScope` - *enum, default: READ_AND_WRITE* - control what types of operations the lock applies to.
 Possible values are:
 ** `READ_AND_WRITE` - control both reading and writing records based on the user having an appropriate security key.
-** `WRITE` - allow all users to read the record, but limit writes to users with an appropriate security key.
+** `WRITE` - restrict writes to users satisfying this lock; this lock does not restrict reads.
+** `READ` - restrict reads to users satisfying this lock; this lock does not itself restrict writes.
+Record-lock scope does not grant table permissions or bypass other applicable locks. Nested `MultiRecordSecurityLock` AND/OR groups retain their Boolean structure after filtering for the operation's applicable scopes.
 
 
 
@@ -192,7 +207,7 @@ Possible values are:
 
 ==== CacheOf
 One QQQ Table can be defined as a "cache of" another QQQ Table by assigning a `CacheOf` object to the table which will function as the cache.
-_Note, at this time, only limited use-cases are supported._
+Currently, only `UNIQUE_KEY_TO_UNIQUE_KEY` loads records from the source. The two primary-key-based modes below are declared but unfinished, and `cacheSourceMisses` has no effect. These existing limitations are deferred under https://github.com/QRun-IO/qqq/issues/545[issue #545]. Configure record-security rules on both source and cache tables when access is restricted; caching does not supply those application policies.
 
 *CacheOf Properties:*
 

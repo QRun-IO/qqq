@@ -91,8 +91,7 @@ public class MongoDBAggregateAction extends AbstractMongoDBAction implements Agg
          MongoDatabase             database   = mongoClientContainer.getMongoClient().getDatabase(backend.getDatabaseName());
          MongoCollection<Document> collection = database.getCollection(backendTableName);
 
-         QQueryFilter filter      = aggregateInput.getFilter();
-         Bson         searchQuery = makeSearchQueryDocument(table, filter);
+         QQueryFilter filter = aggregateInput.getFilter();
 
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // set up & start an actionTimeoutHelper (note, internally it'll deal with the time being null or negative as meaning not to timeout) //
@@ -100,14 +99,11 @@ public class MongoDBAggregateAction extends AbstractMongoDBAction implements Agg
          actionTimeoutHelper = new ActionTimeoutHelper(aggregateInput.getTimeoutSeconds(), TimeUnit.SECONDS, new TimeoutCanceller(mongoClientContainer));
          actionTimeoutHelper.start();
 
-         /////////////////////////////////////////////////////////////////////////
-         // we have to submit a list of BSON objects to the aggregate function. //
-         // the first one is the search query                                   //
-         // second is the group-by stuff, which we'll explain as we build it    //
-         /////////////////////////////////////////////////////////////////////////
-         List<Bson> bsonList = new ArrayList<>();
-         bsonList.add(Aggregates.match(searchQuery));
-         setQueryInQueryStat(searchQuery);
+         ////////////////////////////////////////////////////////////////////////
+         // Filter original documents before adding the group and sort stages. //
+         ////////////////////////////////////////////////////////////////////////
+         List<Bson> bsonList = makeFilterPipeline(table, backend, filter);
+         setQueryInQueryStat(new Document("pipeline", bsonList));
          queryToLog = bsonList;
 
          //////////////////////////////////////////////////////////////////////////////////////

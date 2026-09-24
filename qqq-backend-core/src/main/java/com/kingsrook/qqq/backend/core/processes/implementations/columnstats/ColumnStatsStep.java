@@ -44,7 +44,6 @@ import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
-import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
@@ -135,7 +134,8 @@ public class ColumnStatsStep implements BackendStep
          /////////////////////////////////////////
          // make sure user may query this table //
          /////////////////////////////////////////
-         PermissionsHelper.checkTablePermissionThrowing(new QueryInput().withTableName(tableName), TablePermissionSubType.READ);
+         QueryInput permissionInput = new QueryInput().withTableName(tableName).withInputSource(QInputSource.USER);
+         PermissionsHelper.checkTablePermissionThrowing(permissionInput, TablePermissionSubType.READ);
 
          QQueryFilter filter = null;
          if(StringUtils.hasContent(filterJSON))
@@ -156,6 +156,10 @@ public class ColumnStatsStep implements BackendStep
          // apply user personalization to the table - e.g., so user can't request a column they aren't allowed to see //
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
          QTableMetaData table = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput().withTableName(tableName).withInputSource(QInputSource.USER));
+         if(table == null)
+         {
+            throw (new QException("Column statistics table is not available"));
+         }
 
          FieldAndQueryJoin fieldAndQueryJoin = getFieldAndQueryJoin(table, fieldName);
          QFieldMetaData    field             = fieldAndQueryJoin.field();
@@ -170,6 +174,11 @@ public class ColumnStatsStep implements BackendStep
          {
             throw (new QException("Column stats are not supported for this field's data type."));
          }
+
+         permissionInput.setTableMetaData(table);
+         permissionInput.setFilter(filter);
+         permissionInput.setQueryJoins(queryJoin == null ? null : List.of(queryJoin));
+         PermissionsHelper.checkJoinedTableReadPermissions(permissionInput, permissionInput.getQueryJoins(), filter);
 
          ///////////////////////////////////////////////////////////////////////////////////////////
          // get the config for this table, if there is one -                                      //
@@ -233,7 +242,8 @@ public class ColumnStatsStep implements BackendStep
          AggregateInput aggregateInput = new AggregateInput();
          aggregateInput.withAggregate(aggregate);
          aggregateInput.withGroupBy(groupBy);
-         aggregateInput.setTableName(tableName);
+         aggregateInput.setTableMetaData(table);
+         aggregateInput.setInputSource(QInputSource.USER);
          aggregateInput.setFilter(filter);
          aggregateInput.setLimit(limit);
 
@@ -396,7 +406,8 @@ public class ColumnStatsStep implements BackendStep
          BigDecimal totalRows = null;
          if(CollectionUtils.nullSafeHasContents(statsAggregateInput.getAggregates()))
          {
-            statsAggregateInput.setTableName(tableName);
+            statsAggregateInput.setTableMetaData(table);
+            statsAggregateInput.setInputSource(QInputSource.USER);
             filter.setOrderBys(new ArrayList<>());
             statsAggregateInput.setFilter(filter);
             if(queryJoin != null)
@@ -511,6 +522,7 @@ public class ColumnStatsStep implements BackendStep
 
       CountInput countInput = new CountInput();
       countInput.setTableMetaData(table);
+      countInput.setInputSource(QInputSource.USER);
       countInput.setFilter(filter == null ? null : filter.clone()); // clone filter, in case it gets modified (e.g., for security)
       countInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
       countInput.withTimeoutSeconds(columnStatsTableConfig.getQueryTimeoutSeconds());
@@ -593,7 +605,7 @@ public class ColumnStatsStep implements BackendStep
    /*******************************************************************************
     **
     *******************************************************************************/
-   private FieldAndQueryJoin getFieldAndQueryJoin(QTableMetaData table, String fieldName)
+   private FieldAndQueryJoin getFieldAndQueryJoin(QTableMetaData table, String fieldName) throws QException
    {
       QFieldMetaData field     = null;
       QueryJoin      queryJoin = null;
@@ -604,7 +616,9 @@ public class ColumnStatsStep implements BackendStep
          {
             if(exposedJoin.getJoinTable().equals(parts[0]))
             {
-               field = QContext.getQInstance().getTable(exposedJoin.getJoinTable()).getFieldOrVirtualField(parts[1]);
+               QTableMetaData joinTable = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput()
+                  .withTableName(exposedJoin.getJoinTable()).withInputSource(QInputSource.USER));
+               field = joinTable == null ? null : joinTable.getFieldOrVirtualField(parts[1]);
                queryJoin = new QueryJoin()
                   .withJoinTable(exposedJoin.getJoinTable())
                   .withSelect(true)

@@ -1073,11 +1073,21 @@ public class QJavalinApiHandler
    @SuppressWarnings("UnnecessaryReturnStatement")
    public static void handleException(HttpStatus.Code statusCode, Context context, Exception e, APILog apiLog)
    {
-      QBadRequestException badRequestException = ExceptionUtils.findClassInRootChain(e, QBadRequestException.class);
+      QException badRequestException = ExceptionUtils.findClassInRootChain(e, QBadRequestException.class);
+      if(badRequestException == null)
+      {
+         badRequestException = ExceptionUtils.findClassInRootChain(e, com.kingsrook.qqq.backend.core.exceptions.QBadRequestException.class);
+      }
       if(badRequestException != null)
       {
          statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.BAD_REQUEST); // 400
          respondWithError(context, statusCode, badRequestException.getMessage(), apiLog);
+         return;
+      }
+
+      if(ExceptionUtils.findClassInRootChain(e, QPermissionDeniedException.class) != null)
+      {
+         respondWithError(context, HttpStatus.Code.FORBIDDEN, "You do not have permission to access the requested resource.", apiLog);
          return;
       }
 
@@ -1103,12 +1113,6 @@ public class QJavalinApiHandler
          if(e instanceof QAuthenticationException)
          {
             respondWithError(context, HttpStatus.Code.UNAUTHORIZED, "The required authentication credentials were missing or invalid.", apiLog); // 401
-            return;
-         }
-
-         if(e instanceof QPermissionDeniedException)
-         {
-            respondWithError(context, HttpStatus.Code.FORBIDDEN, "You do not have permission to access the requested resource.", apiLog); // 403
             return;
          }
 

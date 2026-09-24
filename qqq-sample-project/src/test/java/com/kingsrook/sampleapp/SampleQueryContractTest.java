@@ -22,6 +22,10 @@
 package com.kingsrook.sampleapp;
 
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -39,12 +43,15 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.sampleapp.metadata.FieldLabTableMetaDataProducer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import static java.util.Map.entry;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -165,5 +172,53 @@ class SampleQueryContractTest
       assertEquals(5, QueryAction.execute(TABLE, new QQueryFilter(new QFilterCriteria("name", QCriteriaOperator.NOT_IN))).size());
       assertThrows(QException.class, () -> QueryAction.execute(TABLE, new QQueryFilter(new QFilterCriteria("missingField", QCriteriaOperator.EQUALS, "value"))));
       assertThrows(QException.class, () -> QueryAction.execute(TABLE, new QQueryFilter(new QFilterCriteria("boundedValue", QCriteriaOperator.EQUALS, "invalid-number"))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Zero, bounded and beyond-end windows preserve exact ordered populations.
+    *******************************************************************************/
+   @Test
+   void testZeroAndBoundedLimitsMatchNativeOrderedRows() throws Exception
+   {
+      List<String> nativeNames = nativeOrderedNames();
+      List<Executable> cases = new ArrayList<>();
+      for(Integer limit : List.of(0, 1, 3, 10))
+      {
+         for(Integer skip : Arrays.asList(null, 0, 1, 3, 5, 10))
+         {
+            cases.add(() ->
+            {
+               int start = Math.min(skip == null ? 0 : skip, nativeNames.size());
+               int end = Math.min(start + limit, nativeNames.size());
+               QQueryFilter filter = new QQueryFilter().withOrderBy(new QFilterOrderBy("id")).withLimit(limit).withSkip(skip);
+               assertEquals(nativeNames.subList(start, end), QueryAction.execute(TABLE, filter).stream()
+                  .map(record -> record.getValueString("name")).toList(), "limit=" + limit + ", skip=" + skip);
+            });
+         }
+      }
+      assertAll(cases);
+      assertEquals(nativeNames, nativeOrderedNames());
+   }
+
+
+
+   /*******************************************************************************
+    ** Native SQL is independent of QueryAction's pagination and output processing.
+    *******************************************************************************/
+   private List<String> nativeOrderedNames() throws Exception
+   {
+      try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend());
+          Statement statement = connection.createStatement();
+          ResultSet rows = statement.executeQuery("SELECT name FROM field_lab ORDER BY id"))
+      {
+         List<String> names = new ArrayList<>();
+         while(rows.next())
+         {
+            names.add(rows.getString(1));
+         }
+         return names;
+      }
    }
 }

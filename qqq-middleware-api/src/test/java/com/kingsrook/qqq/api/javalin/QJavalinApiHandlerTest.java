@@ -87,6 +87,28 @@ import static org.junit.jupiter.api.Assertions.fail;
  *******************************************************************************/
 class QJavalinApiHandlerTest extends BaseTest
 {
+   /*******************************************************************************
+    ** A process continuation must use the same explicit test session.
+    *******************************************************************************/
+   @BeforeEach
+   void setProcessClientSession()
+   {
+      Unirest.config().reset().setDefaultHeader("Cookie", "sessionId=" + UUID.randomUUID());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void clearProcessClientSession()
+   {
+      Unirest.config().reset();
+   }
+
+
+
    private static final   int    PORT     = 6263;
    protected static final String BASE_URL = "http://localhost:" + PORT;
 

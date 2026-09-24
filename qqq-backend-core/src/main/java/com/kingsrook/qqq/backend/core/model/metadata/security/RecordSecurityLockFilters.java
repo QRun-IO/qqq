@@ -89,8 +89,11 @@ public class RecordSecurityLockFilters
          if(recordSecurityLock instanceof MultiRecordSecurityLock multiRecordSecurityLock)
          {
             MultiRecordSecurityLock filteredSubLock = filterForLockTree(multiRecordSecurityLock.getLocks(), allowedScopes);
-            filteredSubLock.setOperator(multiRecordSecurityLock.getOperator());
-            result.withLock(filteredSubLock);
+            if(filteredSubLock != null && !filteredSubLock.getLocks().isEmpty())
+            {
+               filteredSubLock.setOperator(multiRecordSecurityLock.getOperator());
+               result.withLock(filteredSubLock);
+            }
          }
          else
          {

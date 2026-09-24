@@ -24,19 +24,15 @@ package com.kingsrook.qqq.middleware.javalin;
 
 import java.util.ArrayDeque;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.ImplicitQueryJoinForSecurityLock;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
@@ -57,31 +53,7 @@ public class JoinedTablePermissions
     *******************************************************************************/
    public static void checkReadPermissions(AbstractTableActionInput input, List<QueryJoin> queryJoins, QQueryFilter filter) throws QException
    {
-      QQueryFilter resolvedFilter = filter == null ? new QQueryFilter() : filter.clone();
-      JoinsContext joinsContext = new JoinsContext(QContext.getQInstance(), input.getTableName(), queryJoins, resolvedFilter);
-      Set<String> tableNames = new LinkedHashSet<>();
-      for(QueryJoin queryJoin : joinsContext.getQueryJoins())
-      {
-         if(queryJoin instanceof ImplicitQueryJoinForSecurityLock)
-         {
-            continue;
-         }
-
-         tableNames.add(queryJoin.getJoinTable());
-         if(queryJoin.getBaseTableOrAlias() != null)
-         {
-            tableNames.add(joinsContext.resolveTableNameOrAliasToTableName(queryJoin.getBaseTableOrAlias()));
-         }
-      }
-
-      tableNames.remove(input.getTableName());
-      for(String tableName : tableNames)
-      {
-         if(!PermissionsHelper.hasTablePermission(input, tableName, TablePermissionSubType.READ))
-         {
-            throw new QPermissionDeniedException("Permission denied.");
-         }
-      }
+      PermissionsHelper.checkJoinedTableReadPermissions(input, queryJoins, filter);
    }
 
 

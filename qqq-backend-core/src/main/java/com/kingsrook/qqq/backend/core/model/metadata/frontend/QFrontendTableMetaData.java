@@ -49,6 +49,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
@@ -79,6 +80,7 @@ public class QFrontendTableMetaData
 
    private List<QFieldSection>                     sections;
    private List<QFrontendExposedJoin>              exposedJoins;
+   private List<QFrontendAssociation>              associations;
    private Map<String, QSupplementalTableMetaData> supplementalTableMetaData;
    private Set<String>                             capabilities;
 
@@ -144,6 +146,11 @@ public class QFrontendTableMetaData
          }
 
          this.sections = tableMetaData.getSections();
+         this.associations = new ArrayList<>();
+         for(Association association : CollectionUtils.nonNullList(tableMetaData.getAssociations()))
+         {
+            this.associations.add(new QFrontendAssociation(association, QContext.getQInstance().getJoin(association.getJoinName())));
+         }
 
          this.shareableTableMetaData = tableMetaData.getShareableTableMetaData();
 
@@ -502,4 +509,14 @@ public class QFrontendTableMetaData
    {
       return menus;
    }
+
+
+   /*******************************************************************************
+    ** Getter for associations
+    *******************************************************************************/
+   public List<QFrontendAssociation> getAssociations()
+   {
+      return (this.associations);
+   }
+
 }

@@ -80,7 +80,8 @@
     <revision>4.0.0-RC.2</revision>
 
     <!-- Keep Javalin and its Jetty modules on a consistent version. -->
-    <jetty.version>11.0.26</jetty.version>
+    <jetty.version>12.1.13</jetty.version>
+    <javalin.version>7.2.3</javalin.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -240,32 +241,17 @@
         <scope>import</scope>
       </dependency>
       <dependency>
-        <groupId>org.eclipse.jetty.http2</groupId>
-        <artifactId>http2-server</artifactId>
+        <groupId>org.eclipse.jetty.ee10</groupId>
+        <artifactId>jetty-ee10-bom</artifactId>
         <version>${jetty.version}</version>
-      </dependency>
-      <dependency>
-        <groupId>org.eclipse.jetty.http2</groupId>
-        <artifactId>http2-common</artifactId>
-        <version>${jetty.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
       </dependency>
       <!-- Security: Override protobuf-java to fix DoS vulnerability (transitive via mysql-connector-j) -->
       <dependency>
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
         <version>4.33.3</version>
-      </dependency>
-      <!-- Security: Exclude vulnerable org.iq80.snappy from transitive dependencies -->
-      <dependency>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-checkstyle-plugin</artifactId>
-        <version>3.6.0</version>
-        <exclusions>
-          <exclusion>
-            <groupId>org.iq80.snappy</groupId>
-            <artifactId>snappy</artifactId>
-          </exclusion>
-        </exclusions>
       </dependency>
       <dependency>
         <groupId>org.apache.logging.log4j</groupId>

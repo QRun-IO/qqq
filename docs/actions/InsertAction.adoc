@@ -23,9 +23,9 @@ A high-level flow of its internal logic is:
 . Perform the following validations, which include running the table's `PRE_INSERT_CUSTOMIZER`, if one is defined, at the time that is specified by the customizer's `WhenToRun` property (default is `AFTER_ALL_VALIDATIONS`):
 .. Ensure that default values specified in the table's fields are present if needed.
 .. Apply per-field behaviors, as defined in {link-field} meta-data, such as truncating strings that are longer than their specified max.
-.. Check for unique key violations (done here instead of in the backend, to provide better error messaging, and to allow a subset of records to be stored while some fail).
-_We might want to make an input control in the future to specify that either the full input set should succeed or fail..._
+.. Check for unique key violations to provide per-record errors and allow valid records to be stored while others fail. These preflight checks do not replace backend constraints, which also protect against concurrent writes and native value conversion.
 .. Validate that required fields (again, per {link-field} meta-data) are set, generating per-record errors if they are not.
+Blank string inputs are missing values even for numeric, date or boolean fields. Zero, `false` and non-null binary values satisfy presence validation.
 .. Validate any security fields in the records - e.g., ensure that the user has permission to insert records with the values they are attempting to insert.
 . Send the records to the table's backend module to actually insert them into the backend storage.
 . If the table has any associations defined, and if associated records are present, then recursively run `InsertAction` on the associated records.
@@ -65,15 +65,17 @@ Person insertedPerson = new Person(new InsertAction()
 ----
 
 === InsertInput
-* `table` - *String, Required* - Name of the table that records are to be inserted into.
-* `records` - *List of QRecord, Required* - List of records to be inserted into the table.
-If the list is empty, the insert action does a `noop`.
+* `tableName` - *String, Required* - Name of the table that records are to be inserted into.
+* `records` - *List of QRecord* - List of records to be inserted into the table.
+A null or empty list performs no backend insert and returns an empty record list after normal table/session validation.
 
 .Less common options
 * `inputSource` - *InputSource object, default: QInputSource.SYSTEM* - an indicator of what the source of the action is - generally, a `SYSTEM` triggered action, or a `USER` triggered action.
 ** `InsertAction` will call the `shouldValidateRequiredFields()` method on this object to determine if it should validate that required fields on the records have values.
 Both `QInputSource.SYSTEM` and `QInputSource.USER` return `true` from this method, but application can define their own `InputSource` objects with different behavior.
 ** In addition, this field can be used in pre- and post-insert customizers to drive further custom logic.
+* `transaction` - *QBackendTransaction object* - Optional caller-owned transaction, with backend-specific behavior.
+For RDBMS inserts, pass an `RDBMSTransaction` created from that table's backend. Uniqueness preflight and writes use it. Insert does not commit, roll back or close it; the caller owns those decisions.
 * `skipUniqueKeyCheck` - *boolean, default: false* - control whether or not `InsertAction` should check for unique key violations before attempting to insert its records.
 ** In a context where one has previously done this validation, or is okay letting the backend provide such checks, they may wish to avoid re-doing this work, and thus may set this property to `true`.
 * `omitDmlAudit` - *boolean, default: false* - control if the automatic DML audit that `InsertAction` generally performs should be omitted.
@@ -81,6 +83,8 @@ Both `QInputSource.SYSTEM` and `QInputSource.USER` return `true` from this metho
 
 
 === InsertOutput
-* `records` - *List of QRecord* - Copy of the input list of records, with details added based on the results of the input action.
+* `records` - *List of QRecord* - Result records with details added based on the input action.
 ** If there were warnings or errors, the corresponding field (`warnings` or `errors`) will be set in the records.
-** If the insert action generated any values (such as a serial id or a default value), those values will be in the record's `fields` map.
+** If the insert action generated any values (such as a serial id or a default value), those values will be in the record's `values` map.
+
+Inspect each returned record's errors before treating it as inserted. Metadata validation can reject individual records while valid records are persisted. Native conversion or constraint failures may throw `QException` instead of returning records; earlier statements or associated writes may already have succeeded. Insert does not promise automatic batch or recursive atomicity. Use a supported caller-owned transaction and explicitly roll it back when the operation must be all-or-nothing.

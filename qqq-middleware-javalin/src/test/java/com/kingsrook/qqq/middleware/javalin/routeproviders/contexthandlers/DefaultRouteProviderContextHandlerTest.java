@@ -79,8 +79,7 @@ class DefaultRouteProviderContextHandlerTest
       handler.handleRequest(mockContext, input);
 
       assertEquals("/test/path", input.getValue("path"));
-      // method() returns HandlerType enum, stored directly
-      assertEquals(io.javalin.http.HandlerType.GET, input.getValue("method"));
+      assertEquals("GET", input.getValue("method"));
       assertEquals("request body", input.getValue("bodyString"));
    }
 

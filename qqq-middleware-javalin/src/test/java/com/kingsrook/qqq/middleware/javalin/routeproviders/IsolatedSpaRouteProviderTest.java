@@ -23,6 +23,11 @@ package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -85,13 +90,12 @@ class IsolatedSpaRouteProviderTest
    /*******************************************************************************
     ** Clean up after each test.
     **
-    ** Clears the SpaNotFoundHandlerRegistry to prevent test pollution.
+    ** Each live server owns its registry and is stopped by the test that creates it.
     *******************************************************************************/
    @AfterEach
    void tearDown()
    {
       QContext.clear();
-      SpaNotFoundHandlerRegistry.getInstance().clear();
    }
 
 
@@ -185,19 +189,18 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
-    ** Test acceptJavalinService for path-scoped SPA
+    ** Test acceptJavalinConfig for path-scoped SPA
     *******************************************************************************/
    @Test
-   void testAcceptJavalinService_PathScoped()
+   void testAcceptJavalinConfig_PathScoped()
    {
-      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "admin-spa/");
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
       provider.setQInstance(qInstance);
-      provider.withSpaIndexFile("admin-spa/index.html");
+      provider.withSpaIndexFile("test-spa-admin/index.html");
 
-      Javalin service = Javalin.create();
+      Javalin service = Javalin.create(provider::acceptJavalinConfig);
       try
       {
-         provider.acceptJavalinService(service);
          ////////////////////////////////////////////
          // Should register handlers without error //
          ////////////////////////////////////////////
@@ -211,20 +214,19 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
-    ** Test acceptJavalinService for root SPA
+    ** Test acceptJavalinConfig for root SPA
     *******************************************************************************/
    @Test
-   void testAcceptJavalinService_RootSpa()
+   void testAcceptJavalinConfig_RootSpa()
    {
-      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "root-spa/");
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/", "test-spa-app/");
       provider.setQInstance(qInstance);
-      provider.withSpaIndexFile("root-spa/index.html");
+      provider.withSpaIndexFile("test-spa-app/index.html");
       provider.withExcludedPaths(List.of("/api", "/admin"));
 
-      Javalin service = Javalin.create();
+      Javalin service = Javalin.create(provider::acceptJavalinConfig);
       try
       {
-         provider.acceptJavalinService(service);
          ////////////////////////////////////////////
          // Should register handlers without error //
          ////////////////////////////////////////////
@@ -233,6 +235,120 @@ class IsolatedSpaRouteProviderTest
       {
          service.stop();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Same-path SPAs belong to their server, including after another is recreated.
+    *******************************************************************************/
+   @Test
+   void testSamePathServersRemainIsolatedAcrossRecreation() throws Exception
+   {
+      IsolatedSpaRouteProvider admin = new IsolatedSpaRouteProvider("/shared", "test-spa-admin")
+         .withSpaIndexFile("test-spa-admin/index.html").withLoadFromJar(true);
+      IsolatedSpaRouteProvider app = new IsolatedSpaRouteProvider("/shared", "test-spa-app")
+         .withSpaIndexFile("test-spa-app/index.html").withLoadFromJar(true);
+      admin.setQInstance(qInstance);
+      app.setQInstance(qInstance);
+
+      Javalin first = null;
+      Javalin second = null;
+      Javalin recreated = null;
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         first = createSharedSpaService(admin, "admin");
+         second = createSharedSpaService(app, "app");
+         first.start(0);
+         second.start(0);
+         for(int i = 0; i < 2; i++)
+         {
+            assertSpaContent(client, first, "Test SPA - Admin");
+            assertSpaContent(client, second, "Test SPA - App");
+         }
+
+         HttpResponse<String> adminAsset = request(client, first, "/shared/assets/admin.js");
+         assertEquals(200, adminAsset.statusCode());
+         assertTrue(adminAsset.body().contains("Test SPA Admin loaded"));
+         HttpResponse<String> appAsset = request(client, second, "/shared/assets/app.js");
+         assertEquals(200, appAsset.statusCode());
+         assertTrue(appAsset.body().contains("Test SPA App loaded"));
+         for(Javalin server : List.of(first, second))
+         {
+            HttpResponse<String> missingAsset = request(client, server, "/shared/assets/missing.js");
+            assertEquals(404, missingAsset.statusCode());
+            assertFalse(missingAsset.body().contains("<html"));
+            assertEquals(404, request(client, server, "/shared-other/deep/link").statusCode());
+         }
+         HttpResponse<String> explicitAdmin = request(client, first, "/shared/known404");
+         assertEquals(404, explicitAdmin.statusCode());
+         assertEquals("matched admin endpoint", explicitAdmin.body());
+         HttpResponse<String> explicitApp = request(client, second, "/shared/known404");
+         assertEquals(404, explicitApp.statusCode());
+         assertEquals("matched app endpoint", explicitApp.body());
+
+         first.stop();
+         first = null;
+         assertSpaContent(client, second, "Test SPA - App");
+         recreated = createSharedSpaService(admin, "admin");
+         recreated.start(0);
+         assertSpaContent(client, recreated, "Test SPA - Admin");
+         assertSpaContent(client, second, "Test SPA - App");
+      }
+      finally
+      {
+         if(recreated != null)
+         {
+            recreated.stop();
+         }
+         if(second != null)
+         {
+            second.stop();
+         }
+         if(first != null)
+         {
+            first.stop();
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Register the provider and explicit endpoint in the configuration phase.
+    *******************************************************************************/
+   private Javalin createSharedSpaService(IsolatedSpaRouteProvider provider, String owner)
+   {
+      return Javalin.create(config ->
+      {
+         provider.acceptJavalinConfig(config);
+         config.routes.get("/shared/known404", ctx -> ctx.status(404).result("matched " + owner + " endpoint"));
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Real HTTP requests are bounded and cannot silently follow a SPA redirect.
+    *******************************************************************************/
+   private HttpResponse<String> request(HttpClient client, Javalin service, String path) throws Exception
+   {
+      HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + service.port() + path))
+         .timeout(Duration.ofSeconds(5)).build();
+      return client.send(request, HttpResponse.BodyHandlers.ofString());
+   }
+
+
+
+   /*******************************************************************************
+    ** The two fixture indexes have distinct contents at the same URL.
+    *******************************************************************************/
+   private void assertSpaContent(HttpClient client, Javalin service, String marker) throws Exception
+   {
+      HttpResponse<String> response = request(client, service, "/shared/deep/link");
+      assertEquals(200, response.statusCode());
+      assertTrue(response.body().contains(marker), response.body());
+      assertTrue(response.body().contains("<base href=\"/shared/\">"), response.body());
    }
 
 
@@ -314,20 +430,19 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
-    ** Test acceptJavalinService without deep linking
+    ** Test acceptJavalinConfig without deep linking
     *******************************************************************************/
    @Test
-   void testAcceptJavalinService_WithoutDeepLinking()
+   void testAcceptJavalinConfig_WithoutDeepLinking()
    {
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
       provider.setQInstance(qInstance);
       provider.withSpaIndexFile("index.html");
       provider.withDeepLinking(false);
 
-      Javalin service = Javalin.create();
+      Javalin service = Javalin.create(provider::acceptJavalinConfig);
       try
       {
-         provider.acceptJavalinService(service);
          assertNotNull(service);
       }
       finally
@@ -339,19 +454,18 @@ class IsolatedSpaRouteProviderTest
 
 
    /*******************************************************************************
-    ** Test acceptJavalinService with authenticator
+    ** Test acceptJavalinConfig with authenticator
     *******************************************************************************/
    @Test
-   void testAcceptJavalinService_WithAuthenticator()
+   void testAcceptJavalinConfig_WithAuthenticator()
    {
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/admin", "test-spa-admin/");
       provider.setQInstance(qInstance);
       provider.withAuthenticator(new QCodeReference(String.class));
 
-      Javalin service = Javalin.create();
+      Javalin service = Javalin.create(provider::acceptJavalinConfig);
       try
       {
-         provider.acceptJavalinService(service);
          assertNotNull(service);
       }
       finally

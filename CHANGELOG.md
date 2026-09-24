@@ -92,6 +92,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Material parent widgets skip child metadata hidden by permissions, preserving permitted children and the surrounding dashboard ([#558](https://github.com/QRun-IO/qqq/issues/558)).
+
+- Application API custom process permission checks now see mapped/defaulted/customized inputs before execution. This closes a configured named-report authorization bypass ([#455](https://github.com/QRun-IO/qqq/issues/455)); standard denial remains before pre-run customization.
+
 - Metadata directory loading now rejects missing directories, invalid properties and mapping errors instead of reporting partial success. Packaged sample launchers share the same guarded H2 bootstrap and bundled Person YAML.
 - Isolated SPA authentication rejection stops endpoint execution, including requests to the bare protected path.
 - `DynamicDefaultValueBehavior.USER_ID` applies only during insert/update; reading a stored null no longer fabricates the current reader's ID.
@@ -116,19 +120,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Cron widgets now require source-table READ permission and preserve caller personalization when loading a record; expression-only descriptions and trusted internal calls retain their behavior ([#563](https://github.com/QRun-IO/qqq/issues/563)).
+
+- Child-record widgets now enforce parent, child and joined-table READ rules for user requests and keep paginated totals within personalized record visibility ([#561](https://github.com/QRun-IO/qqq/issues/561)).
+
+- No-code query/count widget values now preserve caller context and enforce source-table and joined-table READ rules ([#557](https://github.com/QRun-IO/qqq/issues/557)); trusted internal SYSTEM calls retain their existing behavior.
+
 - Align Jackson modules on 2.21.5 and Netty modules on 4.1.137.Final through their BOMs.
 - Update Log4j to 2.25.5, jsoup to 1.23.1, PostgreSQL JDBC to 42.7.12,
   c3p0 to 0.14.0, mchange-commons to 0.6.0, and Plexus Utils to 4.0.3.
 - Update affected test dependencies: AssertJ 3.27.7, HttpClient 5.6.3,
   HttpCore 5.4.3, and Handlebars 4.5.2.
-- Jetty 11 advisory remediation remains an open release gate while the Javalin 7 / Jetty 12
-  migration is being evaluated. These dependency updates do not resolve those Jetty advisories.
+- Migrate the candidate HTTP stack to Javalin 7.2.3 and Jetty 12.1.13, aligned through
+  the Jetty core and EE10 BOMs. Final dependency/advisory and public-artifact verification
+  remain pending.
 
 ### Known Issues / Deferred Bugs
 
-No bug/defect-labeled issues remained open in the September 9 release review. The resolved bugs
-are listed above. AWS SDK v1/v2 consolidation remains deferred (BREAK-04-05); existing SDK usage
-is unchanged in this release.
+- [#562](https://github.com/QRun-IO/qqq/issues/562): the current local Material sample grid displays a missing-license watermark (Low; deferred). Grid data and navigation work; public deployment license state is not established by this local observation.
+
+- [#560](https://github.com/QRun-IO/qqq/issues/560): the Material US map displays fixed demo locations and ignores supplied markers (Medium; deferred).
+
+- [#559](https://github.com/QRun-IO/qqq/issues/559): parent-widget tabs do not restore the saved selection after refresh (Low; deferred). Live tab switching works.
+
+- [#550](https://github.com/QRun-IO/qqq/issues/550): Next dashboard lacks canonical multi-statistics, table, stacked-bar, stepper, small-line and composite-child widget compatibility (Medium; deferred). Core workflows and selected chart rendering do not establish full Material/Next parity.
+- [#553](https://github.com/QRun-IO/qqq/issues/553): Material has incomplete empty/error indicators for some widget types, and deliberately malformed widget responses can blank the dashboard (Medium; deferred). The valid-empty stacked-bar crash is separately fixed under [#552](https://github.com/QRun-IO/qqq/issues/552).
+- [#554](https://github.com/QRun-IO/qqq/issues/554): Material forwards dropdown/date selection persistence through parent widgets; ordinary HTML widgets do not save selections despite `storeDropdownSelections=true` (Medium; deferred).
+- [#555](https://github.com/QRun-IO/qqq/issues/555): The native frontend widget metadata response omits `collapsible`, so declared widget collapse controls and persistence are unavailable through that response (Medium; deferred).
+- [#556](https://github.com/QRun-IO/qqq/issues/556): Input-field blocks can render a visible label whose target does not match the input's generated ID (Low; deferred).
+
+The September 23 triage defers Medium/Low issues to future releases:
+
+- [#444](https://github.com/QRun-IO/qqq/issues/444): dashboard sharing truncates recipient IDs containing colons (Medium).
+- [#445](https://github.com/QRun-IO/qqq/issues/445): report preview fails when a grid column has no field metadata (Medium).
+- [#371](https://github.com/QRun-IO/qqq/issues/371) and [#332](https://github.com/QRun-IO/qqq/issues/332): remaining mock identity/display behavior (Medium/Low).
+- [#447](https://github.com/QRun-IO/qqq/issues/447): saved-report deletion/retention policy investigation (Low; not a confirmed defect).
+
+Candidate guard issue [#446](https://github.com/QRun-IO/qqq/issues/446) is also deferred (Medium): its newly introduced render policy requires clarification in [#451](https://github.com/QRun-IO/qqq/issues/451). Related contract investigations are [#448](https://github.com/QRun-IO/qqq/issues/448), [#452](https://github.com/QRun-IO/qqq/issues/452) and [#453](https://github.com/QRun-IO/qqq/issues/453). Confirmed Medium process-cache/session findings [#449](https://github.com/QRun-IO/qqq/issues/449) and [#450](https://github.com/QRun-IO/qqq/issues/450) are deferred. The additional rendering guard (#446 and part of #451), scheduled ownership/nested policy (#452), and Medium cache/session fixes (#449/#450) have been removed from the candidate and preserved for future work. API provenance (#451), protected storage inputs (#453) and automatic saved-source policy (#448) have also been removed from the candidate with their new dependent assertions preserved. Application API async state ownership remains explicit and independent of SYSTEM process provenance. The mandatory atomic storage API ([#459](https://github.com/QRun-IO/qqq/issues/459)), history validation/error-handling changes ([#460](https://github.com/QRun-IO/qqq/issues/460)) and rendering-only COMPLETE status ([#461](https://github.com/QRun-IO/qqq/issues/461)) are also deferred and extracted. Saved-report generation now completes before opening destination storage ([#458](https://github.com/QRun-IO/qqq/issues/458)); the existing streaming API and render-and-deliver failure status remain. The repeated-close memory storage fix ([#462](https://github.com/QRun-IO/qqq/issues/462)) and SFTP action-reuse investigation ([#463](https://github.com/QRun-IO/qqq/issues/463)) are Medium and deferred; their candidate changes and new memory tests are preserved outside the active release. Report count/reuse/query-preparation changes ([#464](https://github.com/QRun-IO/qqq/issues/464)) are Medium and extracted with their eight new assertions preserved for a future release. XLSX bounds, destination ownership, cleanup API, exception causes and unused allocation findings are tracked in [#465](https://github.com/QRun-IO/qqq/issues/465), [#466](https://github.com/QRun-IO/qqq/issues/466), [#467](https://github.com/QRun-IO/qqq/issues/467), [#468](https://github.com/QRun-IO/qqq/issues/468) and [#469](https://github.com/QRun-IO/qqq/issues/469); their candidate patches and dependent new assertions are extracted and preserved for future work; the established exporter interface and destination behavior remain. CSV/TSV title/header escaping ([#471](https://github.com/QRun-IO/qqq/issues/471), Medium) and streamed POI numeric styling/report-column overrides ([#472](https://github.com/QRun-IO/qqq/issues/472), Low) are extracted and deferred with their new tests preserved. Medium summary findings [#475](https://github.com/QRun-IO/qqq/issues/475), [#476](https://github.com/QRun-IO/qqq/issues/476) and [#477](https://github.com/QRun-IO/qqq/issues/477) are extracted with their new tests preserved; repeated/transformed summary inputs, shared total maps and hidden-total formula limitations remain. Medium producer findings [#473](https://github.com/QRun-IO/qqq/issues/473) and [#474](https://github.com/QRun-IO/qqq/issues/474) are extracted with the coupled process/report/ETL cancellation changes [#478](https://github.com/QRun-IO/qqq/issues/478), [#479](https://github.com/QRun-IO/qqq/issues/479) and [#480](https://github.com/QRun-IO/qqq/issues/480). Low malformed-UUID diagnostics [#481](https://github.com/QRun-IO/qqq/issues/481) are also deferred. Candidate patches/new assertions are preserved; original optional-hook, callback and transaction contracts remain alongside independent access protections. The full unshipped-change triage is in progress. AWS SDK v1/v2 consolidation remains deferred (BREAK-04-05); existing SDK usage is unchanged in this release.
 
 ### Migration
 

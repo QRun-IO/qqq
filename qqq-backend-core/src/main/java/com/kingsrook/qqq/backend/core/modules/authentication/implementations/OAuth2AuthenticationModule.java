@@ -533,7 +533,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
    @Override
    public QSession createAutomatedSessionForUser(QInstance qInstance, Serializable userId) throws QAuthenticationException
    {
-      return QAuthenticationModuleInterface.super.createAutomatedSessionForUser(qInstance, userId);
+      QSession session = QAuthenticationModuleInterface.super.createAutomatedSessionForUser(qInstance, userId);
+      if(getCustomizer() != null)
+      {
+         getCustomizer().customizeAutomatedSessionForUser(qInstance, session, userId);
+      }
+      return session;
    }
 
 

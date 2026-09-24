@@ -120,10 +120,11 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    public static final String PROCESS_NAME_SIMPLE_THROW      = "simpleThrow";
    public static final String PROCESS_NAME_SLEEP_INTERACTIVE = "sleepInteractive";
 
-   public static final String TABLE_NAME_PERSON  = "person";
-   public static final String TABLE_NAME_PET     = "pet";
-   public static final String TABLE_NAME_CARRIER = "carrier";
-   public static final String TABLE_NAME_CITY    = "city";
+   public static final String TABLE_NAME_PERSON   = "person";
+   public static final String TABLE_NAME_PET      = "pet";
+   public static final String TABLE_NAME_PET_NOTE = "petNote";
+   public static final String TABLE_NAME_CARRIER  = "carrier";
+   public static final String TABLE_NAME_CITY     = "city";
 
    public static final String STEP_NAME_SLEEPER = "sleeper";
    public static final String STEP_NAME_THROWER = "thrower";
@@ -163,7 +164,16 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    @Override
    public QInstance defineQInstance() throws QException
    {
+      boolean sharingDemo = Boolean.getBoolean("qqq.sample.sharing");
+      if(sharingDemo && !Boolean.getBoolean("qqq.sample.mockAuthentication"))
+      {
+         throw new QException("The sharing demo requires qqq.sample.mockAuthentication=true.");
+      }
       QInstance instance = Boolean.getBoolean("qqq.sample.mockAuthentication") ? defineTestInstance() : defineInstance();
+      if(sharingDemo)
+      {
+         new SampleSharingMetaDataProvider().defineAll(instance);
+      }
       if(metadataDirectory != null)
       {
          MetaDataLoaderHelper.processAllMetaDataFilesInDirectory(instance, metadataDirectory);
@@ -189,12 +199,16 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PERSON));
       qInstance.addPossibleValueSource(QPossibleValueSource.newForEnum(PetSpecies.NAME, PetSpecies.values()));
       qInstance.addTable(defineTablePet());
+      qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PET));
+      qInstance.addTable(defineTablePetNote());
       qInstance.addTable(new QTableMetaData().withName(PetSpecies.NAME).withLabel("Pet Species")
          .withBackendName(ENUMERATION_BACKEND_NAME).withBackendDetails(new EnumerationTableBackendDetails().withEnumClass(PetSpecies.class))
          .withPrimaryKeyField("possibleValueId").withRecordLabelFormat("%s").withRecordLabelFields("possibleValueLabel")
          .withField(new QFieldMetaData("possibleValueId", QFieldType.INTEGER).withLabel("ID"))
          .withField(new QFieldMetaData("possibleValueLabel", QFieldType.STRING).withLabel("Species")));
       qInstance.addJoin(defineTablePersonJoinPet());
+      qInstance.addJoin(new QJoinMetaData().withName("petJoinNote").withLeftTable(TABLE_NAME_PET).withRightTable(TABLE_NAME_PET_NOTE)
+         .withType(JoinType.ONE_TO_MANY).withJoinOn(new JoinOn("id", "petId")));
       qInstance.addTable(defineTableCityFile());
       qInstance.addProcess(defineProcessGreetPeople());
       qInstance.addProcess(defineProcessGreetPeopleInteractive());
@@ -343,6 +357,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withChild(qInstance.getProcess(PROCESS_NAME_GREET).withIcon(new QIcon().withName("emoji_people")))
          .withChild(qInstance.getTable(TABLE_NAME_PERSON).withIcon(new QIcon().withName("person")))
          .withChild(qInstance.getTable(TABLE_NAME_PET).withIcon(new QIcon().withName("pets")))
+         .withChild(qInstance.getTable(TABLE_NAME_PET_NOTE).withIcon(new QIcon().withName("notes")))
          .withChild(qInstance.getTable(TABLE_NAME_CITY).withIcon(new QIcon().withName("location_city")))
          .withChild(qInstance.getProcess(PROCESS_NAME_GREET_INTERACTIVE).withIcon(new QIcon().withName("waving_hand")))
          .withWidgets(List.of(PersonsByCreateDateBarChart.class.getSimpleName(), QuickSightChartRenderer.class.getSimpleName()))
@@ -472,7 +487,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withLabel("Pet")
          .withBackendName(RDBMS_BACKEND_NAME)
          .withPrimaryKeyField("id")
-         .withRecordLabelFormat("%s %s")
+         .withRecordLabelFormat("%s")
          .withRecordLabelFields("name")
          .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
          .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withBackendName("create_date").withIsEditable(false))
@@ -481,6 +496,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withField(new QFieldMetaData("personId", QFieldType.INTEGER).withBackendName("person_id").withIsRequired(true).withPossibleValueSourceName(TABLE_NAME_PERSON))
          .withField(new QFieldMetaData("speciesId", QFieldType.INTEGER).withBackendName("species_id").withIsRequired(true).withPossibleValueSourceName(PetSpecies.NAME))
          .withField(new QFieldMetaData("birthDate", QFieldType.DATE).withBackendName("birth_date"))
+         .withAssociation(new Association().withName("notes").withAssociatedTableName(TABLE_NAME_PET_NOTE).withJoinName("petJoinNote"))
 
          .withSection(new QFieldSection("identity", "Identity", new QIcon("badge"), Tier.T1, List.of("id", "name")))
          .withSection(new QFieldSection("basicInfo", "Basic Info", new QIcon("dataset"), Tier.T2, List.of("personId", "speciesId", "birthDate")))
@@ -489,6 +505,28 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       QInstanceEnricher.setInferredFieldBackendNames(qTableMetaData);
 
       return (qTableMetaData);
+   }
+
+
+
+   /*******************************************************************************
+    ** Pet notes make Person/pets/notes a runnable three-level association graph.
+    *******************************************************************************/
+   public static QTableMetaData defineTablePetNote()
+   {
+      QTableMetaData table = new QTableMetaData().withName(TABLE_NAME_PET_NOTE).withLabel("Pet Note")
+         .withBackendName(RDBMS_BACKEND_NAME).withBackendDetails(new RDBMSTableBackendDetails().withTableName("pet_note"))
+         .withPrimaryKeyField("id").withRecordLabelFormat("%s").withRecordLabelFields("note")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
+         .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withIsEditable(false))
+         .withField(new QFieldMetaData("modifyDate", QFieldType.DATE_TIME).withIsEditable(false))
+         .withField(new QFieldMetaData("petId", QFieldType.INTEGER).withIsRequired(true).withPossibleValueSourceName(TABLE_NAME_PET))
+         .withField(new QFieldMetaData("note", QFieldType.STRING).withIsRequired(true).withMaxLength(80))
+         .withSection(new QFieldSection("identity", "Identity", new QIcon("notes"), Tier.T1, List.of("id", "note")))
+         .withSection(new QFieldSection("pet", "Pet", new QIcon("pets"), Tier.T2, List.of("petId")))
+         .withSection(new QFieldSection("dates", "Dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
+      QInstanceEnricher.setInferredFieldBackendNames(table);
+      return table;
    }
 
 

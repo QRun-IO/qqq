@@ -74,6 +74,10 @@ public class SampleJavalinServer extends QApplicationJavalinServer
       try
       {
          primeTestDatabase("prime-test-database.sql");
+         if(Boolean.getBoolean("qqq.sample.sharing"))
+         {
+            primeTestDatabase("prime-sharing-database.sql");
+         }
       }
       catch(Exception e)
       {

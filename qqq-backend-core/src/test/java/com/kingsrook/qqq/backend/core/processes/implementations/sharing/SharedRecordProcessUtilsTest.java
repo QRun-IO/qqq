@@ -161,7 +161,7 @@ class SharedRecordProcessUtilsTest extends BaseTest
       SharedRecordProcessUtils.AssetTableAndRecord asset = SharedRecordProcessUtils.getAssetTableAndRecord(
          SavedReport.TABLE_NAME, String.valueOf(report.getValueInteger("id")));
 
-      SharedRecordProcessUtils.assertRecordOwnership(asset.shareableTableMetaData(), asset.record(), "delete");
+      SharedRecordProcessUtils.assertRecordOwnership(asset, "delete");
    }
 
 
@@ -176,7 +176,7 @@ class SharedRecordProcessUtilsTest extends BaseTest
       SharedRecordProcessUtils.AssetTableAndRecord asset = SharedRecordProcessUtils.getAssetTableAndRecord(
          SavedReport.TABLE_NAME, String.valueOf(report.getValueInteger("id")));
 
-      assertThatThrownBy(() -> SharedRecordProcessUtils.assertRecordOwnership(asset.shareableTableMetaData(), asset.record(), "delete"))
+      assertThatThrownBy(() -> SharedRecordProcessUtils.assertRecordOwnership(asset, "delete"))
          .isInstanceOf(QException.class)
          .hasMessageContaining("not the owner");
    }

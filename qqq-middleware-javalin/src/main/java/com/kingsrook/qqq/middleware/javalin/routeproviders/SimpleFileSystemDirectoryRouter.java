@@ -38,7 +38,6 @@ import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
-import io.javalin.Javalin;
 import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
 import io.javalin.http.staticfiles.Location;
@@ -229,12 +228,20 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
             {
                LOG.info("Static file request is not authenticated, so telling javalin to skip remaining handlers", logPair("path", context.path()));
                context.skipRemainingHandlers();
+               QContext.clear();
             }
          }
          catch(Exception e)
          {
             context.skipRemainingHandlers();
-            QJavalinImplementation.handleException(context, e);
+            try
+            {
+               QJavalinImplementation.handleException(context, e);
+            }
+            finally
+            {
+               QContext.clear();
+            }
          }
       }
    }
@@ -268,18 +275,16 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
    public void acceptJavalinConfig(JavalinConfig config)
    {
       config.staticFiles.add(this::handleJavalinStaticFileConfig);
+      configureHandlers(config);
    }
 
 
 
    /***************************************************************************
-    ** Setup SPA deep linking support and authentication handlers.
-    ** This method is called AFTER Javalin config phase, which allows us to
-    ** register handlers that run after static file serving. This is critical
-    ** for proper SPA deep linking support with multiple SPAs.
+    ** Configure SPA fallback and authentication before server creation.
+    ** The 404 error phase still runs after static file handling at request time.
     ***************************************************************************/
-   @Override
-   public void acceptJavalinService(Javalin service)
+   private void configureHandlers(JavalinConfig config)
    {
       ///////////////////////////////////////////////////////////////////////////////////////////
       // If this is configured as an SPA, use Javalin's error handler (404) to catch unmatched //
@@ -295,8 +300,12 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
             logPair("spaRootPath", spaRootPath),
             logPair("spaRootFile", spaRootFile));
 
-         service.error(404, ctx ->
+         config.routes.error(404, ctx ->
          {
+            if(ctx.endpoints().lastHttpEndpoint() != null)
+            {
+               return;
+            }
             String requestPath = ctx.path();
 
             //////////////////////////////////////////////////////////////////////////////
@@ -304,15 +313,7 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
             // Special case: if spaRootPath is "/", we need to be more careful to avoid //
             // catching API routes and other non-SPA paths                              //
             //////////////////////////////////////////////////////////////////////////////
-            boolean isUnderSpaRoot = requestPath.startsWith(spaRootPath);
-            
-            // If SPA root is "/", check that it's not explicitly for other route types
-            if("/".equals(spaRootPath))
-            {
-               // For root-level SPAs, only proceed if it's not an API or static asset
-               // The isApiRequest() check below will handle this
-            }
-            else if(!isUnderSpaRoot)
+            if(!SpaPathUtils.isPathUnderPrefix(requestPath, SpaPathUtils.normalizePath(spaRootPath)))
             {
                LOG.debug("404 path not under our SPA root, skipping", logPair("path", requestPath), logPair("spaRoot", spaRootPath));
                return;
@@ -344,9 +345,8 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
                logPair("path", requestPath),
                logPair("spaRoot", spaRootPath));
 
-            try
+            try(InputStream indexStream = loadSpaIndex())
             {
-               InputStream indexStream = loadSpaIndex();
                if(indexStream != null)
                {
                   String indexHtml = IOUtils.toString(indexStream, StandardCharsets.UTF_8);
@@ -374,15 +374,18 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
       //////////////////////////////////////////////////////////////////
       // Set up authentication before/after handlers for all requests //
       //////////////////////////////////////////////////////////////////
-      String javalinPath = hostedPath;
+      String rootPath = SpaPathUtils.normalizePath(hostedPath);
+      String javalinPath = rootPath;
       if(!javalinPath.endsWith("/"))
       {
          javalinPath += "/";
       }
       javalinPath += "<subPath>";
 
-      service.before(javalinPath, this::before);
-      service.after(javalinPath, this::after);
+      config.routes.before(rootPath, this::before);
+      config.routes.before(javalinPath, this::before);
+      config.routes.after(rootPath, this::after);
+      config.routes.after(javalinPath, this::after);
    }
 
 

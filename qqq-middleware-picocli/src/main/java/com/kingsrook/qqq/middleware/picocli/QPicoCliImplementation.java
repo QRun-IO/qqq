@@ -38,6 +38,8 @@ import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.metadata.MetaDataAction;
 import com.kingsrook.qqq.backend.core.actions.metadata.TableMetaDataAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.ExportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
@@ -67,6 +69,7 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.shared.mapping.AbstractQFieldMapping;
 import com.kingsrook.qqq.backend.core.model.actions.shared.mapping.QKeyBasedFieldMapping;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
@@ -453,6 +456,7 @@ public class QPicoCliImplementation
       RunProcessInput  request     = new RunProcessInput();
 
       request.setProcessName(processName);
+      request.setInputSource(QInputSource.USER);
       request.setCallback(new PicoCliProcessCallback(subCommandLine));
 
       for(OptionSpec matchedOption : processParseResult.matchedOptions())
@@ -466,6 +470,7 @@ public class QPicoCliImplementation
 
       try
       {
+         PermissionsHelper.checkProcessPermissionThrowing(request, processName, request.getValues());
          RunProcessOutput result = new RunProcessAction().execute(request);
          subCommandLine.getOut().println("Process Results: "); // todo better!!
          for(QFieldMetaData outputField : process.getOutputFields())
@@ -513,9 +518,12 @@ public class QPicoCliImplementation
    {
       CountInput countInput = new CountInput();
       countInput.setTableName(tableName);
+      countInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
       countInput.setFilter(generateQueryFilter(subParseResult));
 
       CountAction countAction = new CountAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(countInput, null, countInput.getFilter());
       CountOutput countOutput = countAction.execute(countInput);
       commandLine.getOut().println(JsonUtils.toPrettyJson(countOutput));
       return commandLine.getCommandSpec().exitCodeOnSuccess();
@@ -530,6 +538,8 @@ public class QPicoCliImplementation
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(tableName);
+      queryInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
 
       // todo - think about these (e.g., based on user's requested output format?
       // queryInput.setShouldGenerateDisplayValues(true);
@@ -554,6 +564,7 @@ public class QPicoCliImplementation
       filter.setSkip(subParseResult.matchedOptionValue("skip", null));
 
       QueryAction   queryAction = new QueryAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(queryInput, null, queryInput.getFilter());
       QueryOutput   queryOutput = queryAction.execute(queryInput);
       List<QRecord> records     = queryOutput.getRecords();
       if(records.isEmpty())
@@ -577,6 +588,8 @@ public class QPicoCliImplementation
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(tableName);
+      queryInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
       queryInput.setFilter(generateQueryFilter(subParseResult));
       queryInput.getFilter().setSkip(subParseResult.matchedOptionValue("skip", null));
       queryInput.getFilter().setLimit(subParseResult.matchedOptionValue("limit", null));
@@ -586,6 +599,7 @@ public class QPicoCliImplementation
       // queryInput.setShouldTranslatePossibleValues(true);
 
       QueryAction queryAction = new QueryAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(queryInput, null, queryInput.getFilter());
       QueryOutput queryOutput = queryAction.execute(queryInput);
       commandLine.getOut().println(JsonUtils.toPrettyJson(queryOutput));
       return commandLine.getCommandSpec().exitCodeOnSuccess();
@@ -598,6 +612,13 @@ public class QPicoCliImplementation
     *******************************************************************************/
    private int runTableExport(CommandLine commandLine, String tableName, ParseResult subParseResult) throws QException
    {
+      ExportInput exportInput = new ExportInput();
+      exportInput.setTableName(tableName);
+      exportInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ);
+      exportInput.setQueryFilter(generateQueryFilter(subParseResult));
+      PermissionsHelper.checkJoinedTableReadPermissions(exportInput, null, exportInput.getQueryFilter());
+
       String filename = subParseResult.matchedOptionValue("--filename", "");
 
       /////////////////////////////////////////////////////////////////////////////////////////
@@ -628,15 +649,11 @@ public class QPicoCliImplementation
          /////////////////////////////////////////////
          // set up the report action's input object //
          /////////////////////////////////////////////
-         ExportInput exportInput = new ExportInput();
-         exportInput.setTableName(tableName);
          exportInput.setReportDestination(new ReportDestination()
             .withReportFormat(reportFormat)
             .withFilename(filename)
             .withReportOutputStream(outputStream));
          exportInput.setLimit(subParseResult.matchedOptionValue("limit", null));
-
-         exportInput.setQueryFilter(generateQueryFilter(subParseResult));
 
          String fieldNames = subParseResult.matchedOptionValue("--fieldNames", "");
          if(StringUtils.hasContent(fieldNames))
@@ -695,6 +712,8 @@ public class QPicoCliImplementation
    {
       InsertInput insertInput = new InsertInput();
       insertInput.setTableName(tableName);
+      insertInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(insertInput, TablePermissionSubType.INSERT);
       QTableMetaData table = qInstance.getTable(tableName);
 
       AbstractQFieldMapping<?> mapping = null;
@@ -790,6 +809,8 @@ public class QPicoCliImplementation
    {
       UpdateInput updateInput = new UpdateInput();
       updateInput.setTableName(tableName);
+      updateInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
       QTableMetaData table = qInstance.getTable(tableName);
 
       List<QRecord> recordsToUpdate = new ArrayList<>();
@@ -883,6 +904,8 @@ public class QPicoCliImplementation
    {
       DeleteInput deleteInput = new DeleteInput();
       deleteInput.setTableName(tableName);
+      deleteInput.setInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(deleteInput, TablePermissionSubType.DELETE);
 
       /////////////////////////////////////////////
       // get the pKeys that the user specified //
@@ -908,6 +931,7 @@ public class QPicoCliImplementation
       }
 
       DeleteAction deleteAction = new DeleteAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(deleteInput, null, deleteInput.getQueryFilter());
       DeleteOutput deleteResult = deleteAction.execute(deleteInput);
       commandLine.getOut().println(JsonUtils.toPrettyJson(deleteResult));
       return commandLine.getCommandSpec().exitCodeOnSuccess();
@@ -942,9 +966,11 @@ public class QPicoCliImplementation
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(tableName);
+      queryInput.setInputSource(QInputSource.USER);
       queryInput.setFilter(generateQueryFilter(subParseResult));
 
       QueryAction queryAction = new QueryAction();
+      PermissionsHelper.checkJoinedTableReadPermissions(queryInput, null, queryInput.getFilter());
       QueryOutput queryOutput = queryAction.execute(queryInput);
       return (queryOutput.getRecords());
    }

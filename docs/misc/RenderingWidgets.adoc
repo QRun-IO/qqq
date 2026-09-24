@@ -12,6 +12,7 @@ The only method required in a subclass of `AbstractWidgetRenderer` is:
 
 The fields available in `RenderWidgetInput` are:
 
+- `InputSource inputSource` - Defaults to `QInputSource.SYSTEM` for direct Java calls. Javalin and Slack widget entry points set `QInputSource.USER`. Custom renderers should carry this source into data actions and enforce the table permissions they require; client query parameters do not set it.
 - `Map<String, String> queryParams` - These are parameters supplied by the frontend, for example,
 if a user selected values from dropdowns to control a dimension of your widget, those name/value
 pairs would be in this map.  Similarly, if your widget is being included on a record view screen, then

@@ -34,6 +34,7 @@
    </parent>
 
    <properties>
+      <qqq.frontend.material-dashboard.version>0.40.0</qqq.frontend.material-dashboard.version>
       <!-- Skip deployment to Maven Central - this is a sample project, not a library -->
       <maven.deploy.skip>true</maven.deploy.skip>
       <central.publishing.skip>true</central.publishing.skip>
@@ -69,7 +70,7 @@
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-frontend-material-dashboard</artifactId>
-         <version>0.40.0</version>
+         <version>${qqq.frontend.material-dashboard.version}</version>
       </dependency>
       <dependency>
          <groupId>com.h2database</groupId>
@@ -77,6 +78,24 @@
          <version>2.2.220</version>
       </dependency>
 
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-mongodb</artifactId>
+         <version>${revision}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-middleware-api</artifactId>
+         <version>${revision}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-sqlite</artifactId>
+         <version>${revision}</version>
+         <scope>test</scope>
+      </dependency>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-backend-module-postgres</artifactId>
@@ -102,22 +121,18 @@
       <dependency>
          <groupId>org.slf4j</groupId>
          <artifactId>slf4j-simple</artifactId>
-         <version>2.0.6</version>
+         <version>2.0.18</version>
       </dependency>
 
       <!-- deps for frontend (selenium) tests -->
       <dependency>
          <groupId>org.seleniumhq.selenium</groupId>
          <artifactId>selenium-java</artifactId>
-         <version>4.19.1</version>
+         <version>4.49.0</version>
          <scope>test</scope>
       </dependency>
 
       <!-- Common deps for all qqq modules -->
-      <dependency>
-         <groupId>org.apache.maven.plugins</groupId>
-         <artifactId>maven-checkstyle-plugin</artifactId>
-      </dependency>
       <dependency>
          <groupId>org.apache.logging.log4j</groupId>
          <artifactId>log4j-api</artifactId>

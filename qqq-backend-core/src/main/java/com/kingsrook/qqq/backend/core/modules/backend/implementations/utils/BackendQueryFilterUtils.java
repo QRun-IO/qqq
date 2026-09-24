@@ -132,7 +132,7 @@ public class BackendQueryFilterUtils
 
             if(fieldAndTableNameOrAlias != null)
             {
-               criterionMatches = doesCriteriaMatch(criterion, fieldAndTableNameOrAlias.field(), qRecord);
+               criterionMatches = doesCriteriaMatch(criterion, fieldAndTableNameOrAlias.field(), qRecord, joinsContext);
             }
          }
 
@@ -142,7 +142,7 @@ public class BackendQueryFilterUtils
          /////////////////////////////////////////////////////////////////////////////////////
          if(criterionMatches == null)
          {
-            criterionMatches = doesCriteriaMatch(criterion, criterion.getFieldName(), getValue(criterion, null, qRecord));
+            criterionMatches = doesCriteriaMatch(criterion, criterion.getFieldName(), getValue(criterion, null, qRecord, joinsContext));
          }
 
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -160,7 +160,7 @@ public class BackendQueryFilterUtils
       ////////////////////////////////////////
       for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
       {
-         boolean subFilterMatches = doesRecordMatch(subFilter, qRecord);
+         boolean subFilterMatches = doesRecordMatch(subFilter, joinsContext, qRecord);
 
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // add this new value to the existing recordMatches value - and if we can short circuit the remaining checks, do so. //
@@ -211,7 +211,17 @@ public class BackendQueryFilterUtils
     *******************************************************************************/
    static boolean doesCriteriaMatch(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord)
    {
-      Serializable value = getValue(criterion, field, qRecord);
+      return doesCriteriaMatch(criterion, field, qRecord, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep execution metadata available while evaluating a field function.
+    *******************************************************************************/
+   private static boolean doesCriteriaMatch(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord, JoinsContext joinsContext)
+   {
+      Serializable value = getValue(criterion, field, qRecord, joinsContext);
       return doesCriteriaMatchValue(criterion, field, value);
    }
 
@@ -297,7 +307,7 @@ public class BackendQueryFilterUtils
    /***************************************************************************
     *
     ***************************************************************************/
-   private static Serializable getValue(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord)
+   private static Serializable getValue(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord, JoinsContext joinsContext)
    {
       String       fieldName = criterion.getFieldName();
       Serializable value     = qRecord.getValue(fieldName);
@@ -338,7 +348,7 @@ public class BackendQueryFilterUtils
          {
             FieldFunctionType fieldFunctionType = FieldFunctionTypeRegistry.ofOrWithNew(QContext.getQInstance()).getFieldFunctionType(fieldFunction.getFunctionTypeIdentifier());
             Objects.requireNonNull(fieldFunctionType, "Missing field function type for identifier [" + ObjectUtils.tryElse(() -> finalFieldFunction.getFunctionTypeIdentifier().getName(), "unknown") + "]");
-            value = fieldFunctionType.apply(fieldFunction, qRecord);
+            value = fieldFunctionType.apply(fieldFunction, recordForFieldFunction(qRecord, fieldName, joinsContext));
          }
          catch(QException e)
          {
@@ -349,6 +359,56 @@ public class BackendQueryFilterUtils
       return (value);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Functions read local field names, including secondary field arguments. Keep
+    ** qualified equivalents for explicit functions without exposing another join's
+    ** values as local fallbacks. Unqualified calls retain their existing record.
+    *******************************************************************************/
+   public static QRecord recordForFieldFunction(QRecord record, String fieldReference, JoinsContext joinsContext)
+   {
+      int dotIndex = fieldReference.indexOf('.');
+      if(dotIndex < 0)
+      {
+         return record;
+      }
+      String tableNameOrAlias = fieldReference.substring(0, dotIndex);
+      String prefix = tableNameOrAlias + ".";
+      boolean joinedReference = joinsContext != null && joinsContext.getQueryJoins().stream()
+         .anyMatch(join -> tableNameOrAlias.equals(join.getJoinTableOrItsAlias()));
+      boolean rootReference = !joinedReference && (tableNameOrAlias.equals(record.getTableName())
+         || (joinsContext != null && joinsContext.hasAliasOrTable(tableNameOrAlias))
+         || (joinsContext == null && record.getTableName() == null && record.getValues().keySet().stream().noneMatch(name -> name.contains("."))));
+      Map<String, Serializable> values = new HashMap<>();
+      if(rootReference)
+      {
+         for(Map.Entry<String, Serializable> entry : record.getValues().entrySet())
+         {
+            if(!entry.getKey().contains("."))
+            {
+               values.put(entry.getKey(), entry.getValue());
+               values.put(prefix + entry.getKey(), entry.getValue());
+            }
+         }
+      }
+      for(Map.Entry<String, Serializable> entry : record.getValues().entrySet())
+      {
+         if(entry.getKey().startsWith(prefix))
+         {
+            values.put(entry.getKey(), entry.getValue());
+            values.put(entry.getKey().substring(prefix.length()), entry.getValue());
+         }
+      }
+      QRecord functionRecord = new QRecord(record);
+      functionRecord.setValues(values);
+      if(joinsContext != null)
+      {
+         functionRecord.setTableName(joinsContext.resolveTableNameOrAliasToTableName(tableNameOrAlias));
+      }
+      return functionRecord;
+   }
 
 
 
@@ -786,8 +846,8 @@ public class BackendQueryFilterUtils
 
                try
                {
-                  valueA = fieldFunctionType.applyForSorting(fieldFunctions.get(orderBy.getFieldName()), a);
-                  valueB = fieldFunctionType.applyForSorting(fieldFunctions.get(orderBy.getFieldName()), b);
+                  valueA = fieldFunctionType.applyForSorting(fieldFunctions.get(orderBy.getFieldName()), recordForFieldFunction(a, orderBy.getFieldName(), joinsContext));
+                  valueB = fieldFunctionType.applyForSorting(fieldFunctions.get(orderBy.getFieldName()), recordForFieldFunction(b, orderBy.getFieldName(), joinsContext));
                }
                catch(Exception e)
                {

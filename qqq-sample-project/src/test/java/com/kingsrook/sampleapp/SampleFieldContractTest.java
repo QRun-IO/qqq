@@ -32,6 +32,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -47,6 +48,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
@@ -810,5 +812,53 @@ class SampleFieldContractTest
       assertFalse(rejected.getErrors().isEmpty());
       assertTrue(rejected.getErrors().toString().toLowerCase().contains(message), () -> rejected.getErrors().toString());
       assertEquals(before, CountAction.execute(TABLE, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Failed temporal conversion leaves the native rows unchanged for both writes.
+    *******************************************************************************/
+   @Test
+   void testInvalidTemporalInputsDoNotMutateStorage() throws Exception
+   {
+      QRecord record = insertAndRead(new QRecord().withValue("name", "temporal-control")
+         .withValue("dateValue", LocalDate.of(2024, 2, 29)).withValue("timeValue", LocalTime.of(23, 59, 58))
+         .withValue("dateTimeValue", Instant.parse("2024-02-29T23:59:58Z")));
+      List<List<String>> before = nativeFieldRows();
+      for(String field : List.of("dateValue", "timeValue", "dateTimeValue"))
+      {
+         assertThrows(QException.class, () -> new InsertAction().execute(new InsertInput(TABLE)
+            .withRecord(new QRecord().withValue("name", "invalid-" + field).withValue(field, "not-a-temporal-value"))));
+         assertEquals(before, nativeFieldRows());
+         assertThrows(QException.class, () -> UpdateAction.executeForRecords(new UpdateInput(TABLE)
+            .withRecord(new QRecord().withValue("id", record.getValueInteger("id")).withValue(field, "not-a-temporal-value"))));
+         assertEquals(before, nativeFieldRows());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native readback includes all columns, independently of QQQ conversion.
+    *******************************************************************************/
+   private List<List<String>> nativeFieldRows() throws Exception
+   {
+      List<List<String>> rows = new ArrayList<>();
+      try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend());
+         PreparedStatement statement = connection.prepareStatement("SELECT * FROM field_lab ORDER BY id");
+         ResultSet result = statement.executeQuery())
+      {
+         while(result.next())
+         {
+            List<String> row = new ArrayList<>();
+            for(int column = 1; column <= result.getMetaData().getColumnCount(); column++)
+            {
+               row.add(result.getString(column));
+            }
+            rows.add(row);
+         }
+      }
+      return rows;
    }
 }

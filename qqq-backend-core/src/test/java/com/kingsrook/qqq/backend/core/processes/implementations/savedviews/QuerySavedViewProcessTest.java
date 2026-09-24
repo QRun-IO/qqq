@@ -27,6 +27,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -34,6 +35,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
@@ -81,6 +83,30 @@ class QuerySavedViewProcessTest extends BaseTest
    void afterEach()
    {
       MemoryRecordStore.getInstance().setBuildJoinCrossProductFromJoinContext(MemoryRecordStore.BUILD_JOIN_CROSS_PRODUCT_FROM_JOIN_CONTEXT_DEFAULT);
+   }
+
+
+
+   /*******************************************************************************
+    ** A write-only user lock must not accidentally introduce recipient-only reads.
+    *******************************************************************************/
+   @Test
+   void testConfiguredWriteOnlyLockDoesNotRestrictReads() throws QException
+   {
+      QInstance instance = QContext.getQInstance();
+      instance.addSecurityKeyType(new QSecurityKeyType().withName("viewUser"));
+      RecordSecurityLock userLock = new RecordSecurityLock().withSecurityKeyType("viewUser").withFieldName("userId")
+         .withLockScope(RecordSecurityLock.LockScope.WRITE);
+      new SavedViewsMetaDataProvider().withUserLevelRecordSecurityLock(userLock).defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, null);
+      QContext.getQSession().withSecurityKeyValue("viewUser", DEFAULT_USER_ID);
+      QRecord record = new InsertAction().execute(new InsertInput(SavedView.TABLE_NAME)
+         .withRecordEntity(new SavedView().withUserId(DEFAULT_USER_ID).withTableName(TestUtils.TABLE_NAME_PERSON_MEMORY).withLabel("Shared metadata"))).getRecords().get(0);
+      assertTrue(record.getErrors() == null || record.getErrors().isEmpty(), record.getErrorsAsString());
+      assertEquals(1, new QueryAction().execute(new QueryInput(SavedView.TABLE_NAME)).getRecords().size());
+      QContext.setQSession(newSession("other-user"));
+      assertEquals(1, new QueryAction().execute(new QueryInput(SavedView.TABLE_NAME)).getRecords().size());
+      assertEquals(RecordSecurityLock.LockScope.WRITE, userLock.getLockScope());
+      assertEquals("userId", userLock.getFieldName());
    }
 
 

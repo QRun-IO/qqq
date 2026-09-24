@@ -25,8 +25,11 @@ package com.kingsrook.qqq.backend.core.model.metadata.dashboard.nocode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
@@ -62,9 +65,15 @@ public class WidgetQueryField extends AbstractWidgetValueSourceWithFilter
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(tableName);
+      queryInput.setInputSource(input.getInputSource());
       QQueryFilter effectiveFilter = getEffectiveFilter(input);
       queryInput.setFilter(effectiveFilter);
       effectiveFilter.setLimit(1);
+      if(input.getInputSource() == QInputSource.USER)
+      {
+         PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
+         PermissionsHelper.checkJoinedTableReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
+      }
       QueryOutput queryOutput = new QueryAction().execute(queryInput);
       if(CollectionUtils.nullSafeHasContents(queryOutput.getRecords()))
       {

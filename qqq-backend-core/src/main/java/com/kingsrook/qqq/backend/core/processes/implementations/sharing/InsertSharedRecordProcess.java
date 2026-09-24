@@ -121,11 +121,10 @@ public class InsertSharedRecordProcess implements BackendStep, MetaDataProducerI
          SharedRecordProcessUtils.AssetTableAndRecord assetTableAndRecord = SharedRecordProcessUtils.getAssetTableAndRecord(tableName, recordIdString);
 
          ShareableTableMetaData shareableTableMetaData = assetTableAndRecord.shareableTableMetaData();
-         QRecord                assetRecord            = assetTableAndRecord.record();
          Serializable           recordId               = assetTableAndRecord.recordId();
          assetTableLabel = assetTableAndRecord.table().getLabel();
 
-         SharedRecordProcessUtils.assertRecordOwnership(shareableTableMetaData, assetRecord, "share");
+         SharedRecordProcessUtils.assertRecordOwnership(assetTableAndRecord, "share");
 
          ////////////////////////////////
          // validate the audience type //

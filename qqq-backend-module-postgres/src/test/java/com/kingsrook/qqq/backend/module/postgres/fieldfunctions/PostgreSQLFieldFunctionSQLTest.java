@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
@@ -426,6 +427,49 @@ class PostgreSQLFieldFunctionSQLTest extends BaseTest
       assertEquals(2, records.size());
       assertEquals("Mon", records.get(0).getValueString("firstName"));
       assertEquals("Fri", records.get(1).getValueString("firstName"));
+   }
+
+
+   /***************************************************************************
+    ** Per-record zones and null fallback must agree for filtering and ordering.
+    ***************************************************************************/
+   @Test
+   void testWeekdayOfDateTimeWithZoneFromField() throws Exception
+   {
+      new DeleteAction().execute(new DeleteInput(TestUtils.TABLE_NAME_PERSON).withQueryFilter(new QQueryFilter()));
+      runTestSql("ALTER TABLE person ADD COLUMN time_zone_id TEXT", null);
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON)
+         .withField(new QFieldMetaData("timeZoneId", QFieldType.STRING).withBackendName("time_zone_id"));
+      runTestSql("INSERT INTO person (id, first_name, last_name, email, create_date, time_zone_id) VALUES "
+         + "(101, 'Chicago', 'Person', 'chicago@example.invalid', '2024-01-01 02:00:00', 'America/Chicago'), "
+         + "(102, 'UTC', 'Person', 'utc@example.invalid', '2024-01-01 02:00:00', 'UTC'), "
+         + "(103, 'Fallback', 'Person', 'fallback@example.invalid', '2024-01-01 02:00:00', NULL)", null);
+
+      FieldFunction weekdayFunction = new FieldFunction()
+         .withFieldName("createDate")
+         .withFunctionTypeIdentifier(WeekdayOfDateTimeFunction.IDENTIFIER);
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON)
+         .withVirtualField(new QVirtualFieldMetaData("createWeekday", QFieldType.INTEGER)
+            .withIsQueryCriteria(true).withIsQuerySelectable(true).withFieldFunction(weekdayFunction));
+
+      for(Boolean sundayFirst : List.of(false, true))
+      {
+         weekdayFunction.withArguments(Map.of(
+            WeekdayOfDateTimeFunction.PARAM_USE_SESSION_ZONE_ID, false,
+            WeekdayOfDateTimeFunction.PARAM_TIME_ZONE_ID, "UTC",
+            WeekdayOfDateTimeFunction.PARAM_ZONE_ID_FROM_FIELD_NAME, "timeZoneId",
+            WeekdayOfDateTimeFunction.PARAM_SORT_SUNDAY_FIRST, sundayFirst));
+         List<QRecord> sunday = QueryAction.execute(TestUtils.TABLE_NAME_PERSON,
+            new QQueryFilter(new QFilterCriteria("createWeekday", QCriteriaOperator.EQUALS, 7)));
+         assertEquals(List.of("Chicago"), sunday.stream().map(record -> record.getValueString("firstName")).toList());
+
+         List<QRecord> ordered = QueryAction.execute(TestUtils.TABLE_NAME_PERSON, new QQueryFilter()
+            .withOrderBy(new QFilterOrderBy("createWeekday", true)).withOrderBy(new QFilterOrderBy("id", true)));
+         assertEquals(sundayFirst ? List.of("Chicago", "UTC", "Fallback") : List.of("UTC", "Fallback", "Chicago"),
+            ordered.stream().map(record -> record.getValueString("firstName")).toList());
+         assertEquals(sundayFirst ? List.of(7, 1, 1) : List.of(1, 1, 7),
+            ordered.stream().map(record -> record.getValueInteger("createWeekday")).toList());
+      }
    }
 
 }

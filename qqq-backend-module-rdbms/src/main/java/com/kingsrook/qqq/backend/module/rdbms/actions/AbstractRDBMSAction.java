@@ -363,7 +363,7 @@ public abstract class AbstractRDBMSAction
       //////////////////////////////////////////////////////////////////////
       // start with the main table - un-aliased (well, aliased as itself) //
       //////////////////////////////////////////////////////////////////////
-      StringBuilder rs = new StringBuilder(escapeIdentifier(getTableName(instance.getTable(tableName))) + " AS " + escapeIdentifier(tableName));
+      StringBuilder rs = new StringBuilder(escapeIdentifier(getTableName(joinsContext.getTable(tableName))) + " AS " + escapeIdentifier(tableName));
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////
       // sort the query joins from the main table "outward"...                                              //
@@ -376,7 +376,7 @@ public abstract class AbstractRDBMSAction
       ////////////////////////////////////////////////////////
       for(QueryJoin queryJoin : queryJoins)
       {
-         QTableMetaData joinTable            = instance.getTable(queryJoin.getJoinTable());
+         QTableMetaData joinTable            = joinsContext.getTable(queryJoin.getJoinTable());
          String         joinTableNameOrAlias = queryJoin.getJoinTableOrItsAlias();
 
          ////////////////////////////////////////////////////////
@@ -402,8 +402,8 @@ public abstract class AbstractRDBMSAction
             ////////////////////////////////////////////////////////////////////////////////////////////////////////
             // figure out if the join needs flipped.  We want its left table to equal the queryJoin's base table. //
             ////////////////////////////////////////////////////////////////////////////////////////////////////////
-            QTableMetaData leftTable  = instance.getTable(joinMetaData.getLeftTable());
-            QTableMetaData rightTable = instance.getTable(joinMetaData.getRightTable());
+            QTableMetaData leftTable  = joinsContext.getTable(joinMetaData.getLeftTable());
+            QTableMetaData rightTable = joinsContext.getTable(joinMetaData.getRightTable());
 
             if(!joinMetaData.getLeftTable().equals(baseTableName))
             {
@@ -619,7 +619,7 @@ public abstract class AbstractRDBMSAction
             virtualField = v;
             String fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
             String realFieldName  = virtualField.getFieldFunction().getFieldName();
-            field = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+            field = joinsContext.getTable(fieldTableName).getField(realFieldName);
          }
 
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -667,7 +667,7 @@ public abstract class AbstractRDBMSAction
          {
             String         tableNameOrAlias = fieldAndTableNameOrAlias.tableNameOrAlias();
             String         fieldTableName   = joinsContext.resolveTableNameOrAliasToTableName(tableNameOrAlias);
-            QTableMetaData fieldTable       = QContext.getQInstance().getTable(fieldTableName);
+            QTableMetaData fieldTable       = joinsContext.getTable(fieldTableName);
             column = fieldFunctionAdapter.wrapColumnName(column, fieldFunction, makeFieldNameToColumnReferenceFunction(tableNameOrAlias, fieldTable));
          }
 
@@ -953,10 +953,10 @@ public abstract class AbstractRDBMSAction
             {
                String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
                String         realFieldName  = virtualField.getFieldFunction().getFieldName();
-               QFieldMetaData realField      = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+               QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
                tableDotColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
 
-               QTableMetaData                     fieldTable           = QContext.getQInstance().getTable(fieldTableName);
+               QTableMetaData                     fieldTable           = joinsContext.getTable(fieldTableName);
                FieldFunction                      fieldFunction        = virtualField.getFieldFunction();
                RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
                requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
@@ -998,12 +998,12 @@ public abstract class AbstractRDBMSAction
       {
          String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
          String         realFieldName  = virtualField.getFieldFunction().getFieldName();
-         QFieldMetaData realField      = QContext.getQInstance().getTable(fieldTableName).getField(realFieldName);
+         QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
          String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
 
          FieldFunction                      fieldFunction              = virtualField.getFieldFunction();
          RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter       = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
-         QTableMetaData                     fieldTable                 = QContext.getQInstance().getTable(fieldTableName);
+         QTableMetaData                     fieldTable                 = joinsContext.getTable(fieldTableName);
          Function<String, String>           fieldNameToColumnReference = makeFieldNameToColumnReferenceFunction(fieldAndTableNameOrAlias.tableNameOrAlias(), fieldTable);
          requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
 

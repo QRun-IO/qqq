@@ -39,7 +39,6 @@ import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.authentication.RouteAuthenticatorInterface;
-import io.javalin.Javalin;
 import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
 import io.javalin.http.Handler;
@@ -136,9 +135,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Configure static file serving during Javalin config phase.
-    **
-    ** Called by Javalin during server initialization to set up static file serving.
+    ** Configure static files, hooks, authentication and SPA fallback before start.
     **
     ** @param config The Javalin configuration to add static file settings to
     *******************************************************************************/
@@ -146,6 +143,15 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
    public void acceptJavalinConfig(JavalinConfig config)
    {
       config.staticFiles.add(this::configureStaticFiles);
+      SpaNotFoundHandlerRegistry.getInstance(config);
+      if("/".equals(spaPath))
+      {
+         registerRootSpaHandlers(config);
+      }
+      else
+      {
+         registerPathScopedHandlers(config);
+      }
    }
 
 
@@ -202,51 +208,14 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
 
 
    /*******************************************************************************
-    ** Register path-scoped handlers after Javalin service is created.
-    **
-    ** Called after Javalin is created to register before/after handlers and
-    ** the 404 handler for deep linking support.
-    **
-    ** @param service The Javalin service instance to register handlers with
-    *******************************************************************************/
-   @Override
-   public void acceptJavalinService(Javalin service)
-   {
-      //////////////////////////////////////////////////////////
-      // Ensure global 404 handler is registered with Javalin //
-      // (Safe to call multiple times - only registers once)  //
-      //////////////////////////////////////////////////////////
-      SpaNotFoundHandlerRegistry.getInstance().registerGlobalHandler(service);
-
-      if("/".equals(spaPath))
-      {
-         /////////////////////////////////////////
-         // Special handling for root path SPAs //
-         // Need to exclude other SPA paths     //
-         /////////////////////////////////////////
-         registerRootSpaHandlers(service);
-      }
-      else
-      {
-         ///////////////////////////////////
-         // Standard path-scoped SPA      //
-         // Everything is nicely isolated //
-         ///////////////////////////////////
-         registerPathScopedHandlers(service);
-      }
-   }
-
-
-
-   /*******************************************************************************
     ** Register handlers for a path-scoped SPA (e.g., /admin, /customer).
     **
     ** Everything is automatically isolated within the path prefix. Registers
     ** before/after handlers, authentication, and 404 handling for deep linking.
     **
-    ** @param service The Javalin service to register handlers with
+    ** @param config The Javalin configuration to register handlers with
     *******************************************************************************/
-   private void registerPathScopedHandlers(Javalin service)
+   private void registerPathScopedHandlers(JavalinConfig config)
    {
       LOG.info("Registering path-scoped SPA handlers",
          logPair("spaPath", spaPath),
@@ -258,8 +227,8 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       String pathPattern = spaPath + "/*";
       for(Handler handler : beforeHandlers)
       {
-         service.before(spaPath, onlyAtExactSpaPath(handler));
-         service.before(pathPattern, handler);
+         config.routes.before(spaPath, onlyAtExactSpaPath(handler));
+         config.routes.before(pathPattern, handler);
       }
 
       ///////////////////////////////////
@@ -267,8 +236,8 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       ///////////////////////////////////
       if(authenticator != null)
       {
-         service.before(spaPath, onlyAtExactSpaPath(this::authenticateRequest));
-         service.before(pathPattern, this::authenticateRequest);
+         config.routes.before(spaPath, onlyAtExactSpaPath(this::authenticateRequest));
+         config.routes.before(pathPattern, this::authenticateRequest);
       }
 
       /////////////////////////////
@@ -276,8 +245,8 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       /////////////////////////////
       for(Handler handler : afterHandlers)
       {
-         service.after(spaPath, onlyAtExactSpaPath(handler));
-         service.after(pathPattern, handler);
+         config.routes.after(spaPath, onlyAtExactSpaPath(handler));
+         config.routes.after(pathPattern, handler);
       }
 
       /////////////////////////////////////////////////////////////////
@@ -286,7 +255,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       /////////////////////////////////////////////////////////////////
       if(enableDeepLinking && StringUtils.hasContent(spaIndexFile))
       {
-         SpaNotFoundHandlerRegistry.getInstance().registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, true));
+         SpaNotFoundHandlerRegistry.getInstance(config).registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, true));
       }
    }
 
@@ -315,9 +284,9 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
     ** More complex than path-scoped SPAs because we need to exclude other SPA
     ** paths. Before/after handlers are wrapped to check exclusions before executing.
     **
-    ** @param service The Javalin service to register handlers with
+    ** @param config The Javalin configuration to register handlers with
     *******************************************************************************/
-   private void registerRootSpaHandlers(Javalin service)
+   private void registerRootSpaHandlers(JavalinConfig config)
    {
       LOG.info("Registering root SPA handlers",
          logPair("spaPath", spaPath),
@@ -329,7 +298,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       ////////////////////////////////////////////////
       for(Handler handler : beforeHandlers)
       {
-         service.before("/*", ctx ->
+         config.routes.before("/*", ctx ->
          {
             if(!isExcludedPath(ctx.path()))
             {
@@ -343,7 +312,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       ///////////////////////////////////
       if(authenticator != null)
       {
-         service.before("/*", ctx ->
+         config.routes.before("/*", ctx ->
          {
             if(!isExcludedPath(ctx.path()))
             {
@@ -357,7 +326,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       /////////////////////////////
       for(Handler handler : afterHandlers)
       {
-         service.after("/*", ctx ->
+         config.routes.after("/*", ctx ->
          {
             if(!isExcludedPath(ctx.path()))
             {
@@ -372,7 +341,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       /////////////////////////////////////////////////////////////////
       if(enableDeepLinking && StringUtils.hasContent(spaIndexFile))
       {
-         SpaNotFoundHandlerRegistry.getInstance().registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, true));
+         SpaNotFoundHandlerRegistry.getInstance(config).registerSpaHandler(spaPath, ctx -> handleNotFound(ctx, true));
       }
    }
 

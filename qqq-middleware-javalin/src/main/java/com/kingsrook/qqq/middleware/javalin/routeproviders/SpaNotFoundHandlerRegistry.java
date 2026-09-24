@@ -22,51 +22,28 @@
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import io.javalin.Javalin;
+import io.javalin.config.JavalinConfig;
+import io.javalin.config.Key;
 import io.javalin.http.Context;
-import io.javalin.http.HandlerType;
 import io.javalin.http.HttpStatus;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- ** Global registry for SPA 404 handlers.
- **
- ** PROBLEM:
- **   Javalin's error() handlers are GLOBAL - you can only register one 404 handler
- **   per Javalin instance. When multiple IsolatedSpaRouteProviders try to register
- **   404 handlers, they conflict, and only the last one wins.
- **
- ** SOLUTION:
- **   This registry maintains a list of path-scoped 404 handlers. Each
- **   IsolatedSpaRouteProvider registers its scope and handler function.
- **   The global 404 handler (registered once with Javalin) delegates to the
- **   appropriate provider based on path matching.
- **
- ** DESIGN:
- **   1. IsolatedSpaRouteProvider registers: registerHandler("/admin", handler)
- **   2. Global 404 occurs at /admin/Content/site
- **   3. Registry finds handler for "/admin" (longest prefix match)
- **   4. Calls the handler's callback
- **   5. Handler decides whether to serve SPA index or let it 404
- **
- ** PRIORITY:
- **   Handlers are matched by LONGEST PATH PREFIX first
- **   - More specific paths (e.g., /admin/api) take precedence over /admin
- **   - Root path ("/") is always last resort
+ ** Path-scoped SPA 404 handlers owned by one Javalin configuration.
+ ** A single error handler delegates by longest matching prefix, with root last.
+ ** Javalin app data keeps unrelated servers and their handler lists isolated.
  *******************************************************************************/
 public class SpaNotFoundHandlerRegistry
 {
    private static final QLogger LOG = QLogger.getLogger(SpaNotFoundHandlerRegistry.class);
 
-   private static final SpaNotFoundHandlerRegistry INSTANCE = new SpaNotFoundHandlerRegistry();
+   private static final Key<SpaNotFoundHandlerRegistry> KEY = new Key<>(SpaNotFoundHandlerRegistry.class.getName());
 
    ///////////////////////////////////////////////////////////////////////////
    // CopyOnWriteArrayList provides thread-safe iteration in handleNotFound //
@@ -74,18 +51,8 @@ public class SpaNotFoundHandlerRegistry
    ///////////////////////////////////////////////////////////////////////////
    private final List<SpaNotFoundHandler> handlers = new CopyOnWriteArrayList<>();
 
-   ///////////////////////////////////////////////////////////////////////////
-   // Track which Javalin instance has the global handler registered.       //
-   // Uses identity hash code to avoid holding a reference to the instance. //
-   // This allows re-registration when a new Javalin instance is created    //
-   // (common in tests where each test creates its own server).             //
-   ///////////////////////////////////////////////////////////////////////////
-   private int registeredJavalinInstanceId = 0;
-
-
-
    /*******************************************************************************
-    ** Private constructor for singleton
+    ** Instances are owned by Javalin application data.
     *******************************************************************************/
    private SpaNotFoundHandlerRegistry()
    {
@@ -94,36 +61,20 @@ public class SpaNotFoundHandlerRegistry
 
 
    /*******************************************************************************
-    ** Get the singleton instance of the registry.
-    **
-    ** @return The singleton SpaNotFoundHandlerRegistry instance
+    ** Get this configuration's registry and install its error handler once.
+    ** Called during Javalin configuration, before the server accepts requests.
     *******************************************************************************/
-   public static SpaNotFoundHandlerRegistry getInstance()
+   public static SpaNotFoundHandlerRegistry getInstance(JavalinConfig config)
    {
-      return INSTANCE;
-   }
-
-
-
-   /*******************************************************************************
-    ** Register the global 404 handler with Javalin (call once per Javalin instance).
-    **
-    ** This method is idempotent per Javalin instance - calling it multiple times
-    ** with the same instance has no effect. However, if a NEW Javalin instance is
-    ** passed, the handler is registered with that instance. This is important for
-    ** test isolation where each test may create its own Javalin server.
-    **
-    ** @param service The Javalin instance to register the global 404 handler with
-    *******************************************************************************/
-   public synchronized void registerGlobalHandler(Javalin service)
-   {
-      int currentInstanceId = System.identityHashCode(service);
-      if(registeredJavalinInstanceId != currentInstanceId)
+      SpaNotFoundHandlerRegistry candidate = new SpaNotFoundHandlerRegistry();
+      config.unsafe.appDataManager.registerIfAbsent(KEY, candidate);
+      SpaNotFoundHandlerRegistry registry = config.unsafe.appDataManager.get(KEY);
+      if(registry == candidate)
       {
-         service.error(HttpStatus.NOT_FOUND, this::handleNotFound);
-         registeredJavalinInstanceId = currentInstanceId;
-         LOG.info("Registered global SPA 404 handler", logPair("javalinInstanceId", currentInstanceId));
+         config.routes.error(HttpStatus.NOT_FOUND, registry::handleNotFound);
+         LOG.info("Registered application SPA 404 handler");
       }
+      return registry;
    }
 
 
@@ -159,14 +110,12 @@ public class SpaNotFoundHandlerRegistry
    /*******************************************************************************
     ** Clear all registered handlers (useful for testing)
     **
-    ** This resets the registry to its initial state, allowing a new Javalin
-    ** instance to register handlers. Call this in test cleanup (@AfterEach)
-    ** to ensure test isolation.
+    ** The configuration keeps its registered error handler. Other servers'
+    ** registries are unaffected.
     *******************************************************************************/
    public synchronized void clear()
    {
       handlers.clear();
-      registeredJavalinInstanceId = 0;
       LOG.info("Cleared all SPA 404 handlers");
    }
 
@@ -187,7 +136,7 @@ public class SpaNotFoundHandlerRegistry
       // A matched endpoint owns its response, including an explicit 404. //
       // SPA fallback applies only when no endpoint handled the request.  //
       /////////////////////////////////////////////////////////////////////
-      if(!HandlerType.BEFORE.equals(ctx.handlerType()) && StringUtils.hasContent(ctx.endpointHandlerPath()))
+      if(ctx.endpoints().lastHttpEndpoint() != null)
       {
          return;
       }

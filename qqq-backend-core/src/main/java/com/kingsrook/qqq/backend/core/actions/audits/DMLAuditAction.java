@@ -37,6 +37,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -184,7 +185,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
          }
          else if(auditLevel.equals(AuditLevel.FIELD))
          {
-            Map<Serializable, QRecord> oldRecordMap = buildOldRecordMap(table, oldRecordList);
+            Map<Object, QRecord> oldRecordMap = buildOldRecordMap(table, oldRecordList);
 
             ///////////////////////////////////////////////////////////////////
             // do many audits, all with field level details, for FIELD level //
@@ -204,7 +205,7 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
             //////////////////////////////////////////////
             for(QRecord record : recordList)
             {
-               QRecord oldRecord = oldRecordMap.get(ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(primaryKeyField.getName())));
+               QRecord oldRecord = oldRecordMap.get(AssociatedRecordUpdate.primaryKey(table, record));
 
                List<QRecord> details = new ArrayList<>();
                for(String fieldName : sortedFieldNames)
@@ -668,12 +669,12 @@ public class DMLAuditAction extends AbstractQActionFunction<DMLAuditInput, DMLAu
     ** @param oldRecordList the list of old records to index
     ** @return a map from primary key value to the corresponding old record
     *******************************************************************************/
-   private Map<Serializable, QRecord> buildOldRecordMap(QTableMetaData table, List<QRecord> oldRecordList)
+   private Map<Object, QRecord> buildOldRecordMap(QTableMetaData table, List<QRecord> oldRecordList) throws QException
    {
-      Map<Serializable, QRecord> rs = new HashMap<>();
+      Map<Object, QRecord> rs = new HashMap<>();
       for(QRecord record : CollectionUtils.nonNullList(oldRecordList))
       {
-         rs.put(record.getValue(table.getPrimaryKeyField()), record);
+         rs.put(AssociatedRecordUpdate.primaryKey(table, record), record);
       }
       return (rs);
    }

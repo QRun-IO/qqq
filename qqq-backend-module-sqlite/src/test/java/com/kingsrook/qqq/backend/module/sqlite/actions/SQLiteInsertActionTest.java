@@ -22,6 +22,9 @@
 package com.kingsrook.qqq.backend.module.sqlite.actions;
 
 
+import java.sql.Connection;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -29,15 +32,23 @@ import java.util.Objects;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
 import com.kingsrook.qqq.backend.module.sqlite.BaseTest;
 import com.kingsrook.qqq.backend.module.sqlite.TestUtils;
+import com.kingsrook.qqq.backend.module.sqlite.model.metadata.SQLiteTableBackendDetails;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -180,6 +191,188 @@ public class SQLiteInsertActionTest extends BaseTest
       assertTrue(lineItemExtrinsics.stream().anyMatch(r -> Objects.equals(r.getValue("key"), "LINE-EXT-1.1") && Objects.equals(r.getValue("value"), "LINE-VAL-1")));
       assertTrue(lineItemExtrinsics.stream().anyMatch(r -> Objects.equals(r.getValue("key"), "LINE-EXT-2.1") && Objects.equals(r.getValue("value"), "LINE-VAL-2")));
       assertTrue(lineItemExtrinsics.stream().anyMatch(r -> Objects.equals(r.getValue("key"), "LINE-EXT-2.2") && Objects.equals(r.getValue("value"), "LINE-VAL-3")));
+   }
+
+
+
+   /*******************************************************************************
+    ** Manual mapped keys and an ordinary id field retain their separate identities.
+    *******************************************************************************/
+   @Test
+   void testNaturalPrimaryKeyWithOrdinaryIdPreservesOwner() throws Exception
+   {
+      defineKeyTable("insert_key_natural", "businessKey", QFieldType.STRING, "business_key",
+         "CREATE TABLE insert_key_natural (business_key TEXT PRIMARY KEY NOT NULL, id TEXT, payload TEXT)",
+         new QFieldMetaData("id", QFieldType.STRING), new QFieldMetaData("payload", QFieldType.STRING));
+      QRecord owner = new QRecord().withValue("businessKey", "NATURAL/A#1").withValue("id", "ordinary-id").withValue("payload", "Owner");
+      InsertOutput output = new InsertAction().execute(new InsertInput("insert_key_natural").withRecord(owner));
+      assertEquals("NATURAL/A#1", output.getRecords().get(0).getValue("businessKey"));
+      assertTrue(output.getRecords().get(0).getErrors().isEmpty());
+      List<List<String>> before = List.of(List.of("NATURAL/A#1", "ordinary-id", "Owner"));
+      assertEquals(before, nativeRows("SELECT business_key, id, payload FROM insert_key_natural ORDER BY business_key"));
+
+      assertThrows(QException.class, () -> new InsertAction().execute(new InsertInput("insert_key_natural").withRecord(new QRecord()
+         .withValue("businessKey", "NATURAL/A#1").withValue("id", "replacement").withValue("payload", "Overwrite"))));
+      assertEquals(before, nativeRows("SELECT business_key, id, payload FROM insert_key_natural ORDER BY business_key"));
+      assertThrows(QException.class, () -> new InsertAction().execute(new InsertInput("insert_key_natural").withRecord(new QRecord()
+         .withValue("id", "missing-key").withValue("payload", "Missing"))));
+      assertEquals(before, nativeRows("SELECT business_key, id, payload FROM insert_key_natural ORDER BY business_key"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A primary-key field literally named id must not be omitted when it is supplied.
+    *******************************************************************************/
+   @Test
+   void testNaturalPrimaryKeyNamedIdUsesMappedColumn() throws Exception
+   {
+      defineKeyTable("insert_key_literal", "id", QFieldType.STRING, "business_key",
+         "CREATE TABLE insert_key_literal (business_key TEXT PRIMARY KEY NOT NULL, payload TEXT)",
+         new QFieldMetaData("payload", QFieldType.STRING));
+      InsertOutput output = new InsertAction().execute(new InsertInput("insert_key_literal").withRecord(new QRecord()
+         .withValue("id", "MANUAL/B#2").withValue("payload", "Literal id")));
+      assertEquals("MANUAL/B#2", output.getRecords().get(0).getValue("id"));
+      assertTrue(output.getRecords().get(0).getErrors().isEmpty());
+      assertEquals(List.of(List.of("MANUAL/B#2", "Literal id")), nativeRows("SELECT business_key, payload FROM insert_key_literal"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Homogeneous statement splits must retain the mapping across outer page boundaries.
+    *******************************************************************************/
+   @Test
+   void testMixedPrimaryKeysAcrossPagesKeepReturnedAndStoredMapping() throws Exception
+   {
+      defineKeyTable("insert_key_generated", "recordKey", QFieldType.INTEGER, "record_key",
+         "CREATE TABLE insert_key_generated (record_key INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT, payload TEXT)",
+         new QFieldMetaData("id", QFieldType.STRING), new QFieldMetaData("payload", QFieldType.STRING));
+      getBaseRDBMSActionStrategy().setPageSize(2);
+      List<QRecord> records = new ArrayList<>();
+      for(int index = 0; index < 7; index++)
+      {
+         records.add(new QRecord().withValue("id", "ordinary-" + index).withValue("payload", "Payload " + index));
+      }
+      records.get(2).setValue("recordKey", 41);
+      records.get(4).setValue("recordKey", 70);
+      records.get(5).setValue("recordKey", 71);
+      InsertOutput output = new InsertAction().execute(new InsertInput("insert_key_generated").withRecords(records));
+      List<Integer> expectedKeys = List.of(1, 2, 41, 42, 70, 71, 72);
+      List<List<String>> expectedRows = new ArrayList<>();
+      assertEquals(7, output.getRecords().size());
+      for(int index = 0; index < 7; index++)
+      {
+         QRecord returned = output.getRecords().get(index);
+         assertTrue(returned.getErrors().isEmpty());
+         assertEquals(expectedKeys.get(index), returned.getValue("recordKey"));
+         assertEquals("ordinary-" + index, returned.getValue("id"));
+         assertEquals("Payload " + index, returned.getValue("payload"));
+         expectedRows.add(List.of(expectedKeys.get(index).toString(), "ordinary-" + index, "Payload " + index));
+      }
+      assertEquals(expectedRows, nativeRows("SELECT record_key, id, payload FROM insert_key_generated ORDER BY record_key"));
+   }
+
+
+
+   /*******************************************************************************
+    ** DEFAULT VALUES must return actual native keys for numeric and text-only rows.
+    *******************************************************************************/
+   @Test
+   void testPrimaryKeyOnlyRowsUseNativeDefaults() throws Exception
+   {
+      defineKeyTable("insert_key_only", "key", QFieldType.INTEGER, "record_key",
+         "CREATE TABLE insert_key_only (record_key INTEGER PRIMARY KEY AUTOINCREMENT)");
+      getBaseRDBMSActionStrategy().setPageSize(2);
+      InsertOutput generated = new InsertAction().execute(new InsertInput("insert_key_only")
+         .withRecords(List.of(new QRecord(), new QRecord(), new QRecord())));
+      assertEquals(3, generated.getRecords().size());
+      for(int index = 0; index < 3; index++)
+      {
+         assertTrue(generated.getRecords().get(index).getErrors().isEmpty());
+         assertEquals(index + 1, generated.getRecords().get(index).getValue("key"));
+      }
+      assertEquals(List.of(List.of("1"), List.of("2"), List.of("3")), nativeRows("SELECT record_key FROM insert_key_only ORDER BY record_key"));
+
+      defineKeyTable("insert_key_text_default", "key", QFieldType.STRING, "business_key",
+         "CREATE TABLE insert_key_text_default (business_key TEXT PRIMARY KEY NOT NULL DEFAULT 'NATIVE/TEXT')");
+      InsertOutput text = new InsertAction().execute(new InsertInput("insert_key_text_default")
+         .withRecords(List.of(new QRecord(), new QRecord().withValue("key", "MANUAL/TEXT"))));
+      assertEquals(2, text.getRecords().size());
+      assertTrue(text.getRecords().stream().allMatch(record -> record.getErrors().isEmpty()));
+      assertEquals("NATIVE/TEXT", text.getRecords().get(0).getValue("key"));
+      assertEquals("MANUAL/TEXT", text.getRecords().get(1).getValue("key"));
+      assertEquals(List.of(List.of("MANUAL/TEXT"), List.of("NATIVE/TEXT")), nativeRows("SELECT business_key FROM insert_key_text_default ORDER BY business_key"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Each fixture owns only its additional tables in the existing test database.
+    *******************************************************************************/
+   @AfterEach
+   void cleanUpKeyTables() throws Exception
+   {
+      for(String table : List.of("insert_key_natural", "insert_key_literal", "insert_key_generated", "insert_key_only", "insert_key_text_default"))
+      {
+         executeKeySql("DROP TABLE IF EXISTS " + table);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void defineKeyTable(String tableName, String primaryKey, QFieldType type, String column, String ddl, QFieldMetaData... otherFields) throws Exception
+   {
+      executeKeySql("DROP TABLE IF EXISTS " + tableName);
+      executeKeySql(ddl);
+      QTableMetaData table = new QTableMetaData().withName(tableName).withBackendName(TestUtils.DEFAULT_BACKEND_NAME)
+         .withBackendDetails(new SQLiteTableBackendDetails().withTableName(tableName)).withPrimaryKeyField(primaryKey)
+         .withField(new QFieldMetaData(primaryKey, type).withBackendName(column));
+      for(QFieldMetaData field : otherFields)
+      {
+         table.withField(field);
+      }
+      QContext.getQInstance().addTable(table);
+      new QInstanceValidator().revalidate(QContext.getQInstance());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void executeKeySql(String sql) throws Exception
+   {
+      try(Connection connection = ConnectionManager.getConnection(TestUtils.defineBackend()); Statement statement = connection.createStatement())
+      {
+         statement.executeUpdate(sql);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private List<List<String>> nativeRows(String sql) throws Exception
+   {
+      List<List<String>> rows = new ArrayList<>();
+      runTestSql(sql, resultSet ->
+      {
+         while(resultSet.next())
+         {
+            List<String> row = new ArrayList<>();
+            for(int column = 1; column <= resultSet.getMetaData().getColumnCount(); column++)
+            {
+               row.add(resultSet.getString(column));
+            }
+            rows.add(row);
+         }
+      });
+      return rows;
    }
 
 

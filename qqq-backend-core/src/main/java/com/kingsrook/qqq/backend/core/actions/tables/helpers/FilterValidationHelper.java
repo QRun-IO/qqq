@@ -26,12 +26,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrCountInputInterface;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -81,17 +84,45 @@ public class FilterValidationHelper
    /***************************************************************************
     *
     ***************************************************************************/
-   private static void validateFieldNamesInFilterInner(QueryOrCountInputInterface queryOrCountInputInterface, QQueryFilter filter, QTableMetaData mainTable, Map<String, QTableMetaData> joinTables, List<String> unrecognizedFieldNames)
+   private static void validateFieldNamesInFilterInner(QueryOrCountInputInterface queryOrCountInputInterface, QQueryFilter filter, QTableMetaData mainTable, Map<String, QTableMetaData> joinTables, List<String> unrecognizedFieldNames) throws QException
    {
+      if(filter == null)
+      {
+         throw (new QUserFacingException("Query Filter contained a null subfilter"));
+      }
       for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
       {
+         if(criteria == null || !StringUtils.hasContent(criteria.getFieldName()) || criteria.getOperator() == null)
+         {
+            throw (new QUserFacingException("Query Filter criteria must specify a field name and operator"));
+         }
          validateFieldNameFromFilter(criteria.getFieldName(), queryOrCountInputInterface, mainTable, joinTables, unrecognizedFieldNames);
          validateFieldNameFromFilter(criteria.getOtherFieldName(), queryOrCountInputInterface, mainTable, joinTables, unrecognizedFieldNames);
       }
 
       for(QFilterOrderBy orderBy : CollectionUtils.nonNullList(filter.getOrderBys()))
       {
-         validateFieldNameFromFilter(orderBy.getFieldName(), queryOrCountInputInterface, mainTable, joinTables, unrecognizedFieldNames);
+         String fieldName = orderBy == null ? null : orderBy.getFieldName();
+         if(orderBy instanceof QFilterOrderByAggregate orderByAggregate)
+         {
+            fieldName = orderByAggregate.getAggregate() == null ? null : orderByAggregate.getAggregate().getFieldName();
+         }
+         else if(orderBy instanceof QFilterOrderByGroupBy orderByGroupBy)
+         {
+            fieldName = orderByGroupBy.getGroupBy() == null ? null : orderByGroupBy.getGroupBy().getFieldName();
+         }
+         if(!StringUtils.hasContent(fieldName))
+         {
+            throw (new QUserFacingException("Query Filter order by must specify a field name"));
+         }
+         if(orderBy instanceof QFilterOrderByAggregate || orderBy instanceof QFilterOrderByGroupBy)
+         {
+            unrecognizedFieldNames.addAll(SelectionValidationHelper.getUnrecognizedFieldNames(queryOrCountInputInterface, Set.of(fieldName)));
+         }
+         else
+         {
+            validateFieldNameFromFilter(fieldName, queryOrCountInputInterface, mainTable, joinTables, unrecognizedFieldNames);
+         }
       }
 
       for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
@@ -168,5 +199,7 @@ public class FilterValidationHelper
          return table.getFields().containsKey(field.getName());
       }
    }
+
+
 
 }

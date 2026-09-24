@@ -31,6 +31,12 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -57,6 +63,39 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  *******************************************************************************/
 class FilterValidationHelperTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** Aggregate sorts carry their field in a typed payload, not the base property.
+    *******************************************************************************/
+   @Test
+   void testAggregateOrderingValidatesActualFields()
+   {
+      AggregateInput input = new AggregateInput();
+      input.setTableName(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withVirtualField(new QVirtualFieldMetaData("firstNameLength", QFieldType.INTEGER)
+            .withIsQuerySelectable(true).withIsQueryCriteria(false)
+            .withFieldFunction(new FieldFunction().withFunctionTypeIdentifier(StringLengthFunction.IDENTIFIER).withFieldName("firstName")));
+      for(QFilterOrderBy orderBy : List.of(
+         new QFilterOrderByAggregate(new Aggregate("noOfShoes", AggregateOperator.SUM)),
+         new QFilterOrderByGroupBy(new GroupBy(QFieldType.STRING, "lastName")),
+         new QFilterOrderByAggregate(new Aggregate("firstNameLength", AggregateOperator.SUM)),
+         new QFilterOrderByGroupBy(new GroupBy(QFieldType.INTEGER, "firstNameLength"))))
+      {
+         input.setFilter(new QQueryFilter().withOrderBy(orderBy));
+         assertDoesNotThrow(() -> FilterValidationHelper.validateFieldNamesInFilter(input));
+      }
+      for(QFilterOrderBy orderBy : List.of(new QFilterOrderByAggregate(), new QFilterOrderByGroupBy(),
+         new QFilterOrderByAggregate().withFieldName("id"), new QFilterOrderByGroupBy().withFieldName("id"),
+         new QFilterOrderByAggregate(new Aggregate("missingAggregateField", AggregateOperator.SUM)),
+         new QFilterOrderByGroupBy(new GroupBy(QFieldType.STRING, "missingGroupByField"))))
+      {
+         input.setFilter(new QQueryFilter().withOrderBy(orderBy));
+         assertThrows(QException.class, () -> FilterValidationHelper.validateFieldNamesInFilter(input));
+      }
+   }
+
+
 
    /*******************************************************************************
     ** Failed personalization must not expose the original joined table's fields.

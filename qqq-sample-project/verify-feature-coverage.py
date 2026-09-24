@@ -8,9 +8,9 @@ import sys
 import xml.etree.ElementTree as ET
 
 
-# Reviewed 128-feature scope at 28d4e22fe; change only after reviewing the source
+# Reviewed 129-feature scope, including query statistics; change only after reviewing the source
 # inventory delta. The digest prevents accidental removal/renaming from passing.
-INVENTORY_IDS_SHA256 = 'b6fa55382bb7100e936a24aaf93d7f9398c290b8e46b06138a9a5e97558ed5aa'
+INVENTORY_IDS_SHA256 = '7ccabc35400e3c2231cbb4156db8c1af9c6d27c2a6ac18d3efb2acecf6b7f64c'
 PUBLISHED_FEATURES = {'train.bom'}
 UNSUPPORTED_FEATURES = {'core.widget.generic'}
 

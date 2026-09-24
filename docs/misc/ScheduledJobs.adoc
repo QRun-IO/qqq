@@ -5,6 +5,16 @@ QQQ has the ability to automatically run various types of jobs on schedules,
 either defined in your instance's meta-data,
 or optionally via data in your application, in a `scheduledJob` table.
 
+=== Execution failures [[ScheduledProcessFailures]]
+
+Scheduled execution retains its existing log-based failure handling. Quartz listeners do not reliably receive failures from the process runner; serial variants continue after a logged failure. Exception propagation and missing-process diagnostics are deferred in https://github.com/QRun-IO/qqq/issues/502[#502]. Scheduled saved reports still require an isolated authenticated owner session; see <<ScheduledReportExecution,scheduled report execution>>.
+
+=== Saved-report schedule lifecycle [[SavedReportScheduleLifecycle]]
+
+With the saved-report and scheduled-job providers and a running `QScheduleManager`, explicitly configured reports synchronize linked jobs and parameters. Configure the `schedulerName` input default on the `scheduledReportSyncToScheduledJob` process's `preview` step. Existing jobs retain their stored scheduler. Ordinary activation, cron/time-zone changes, deactivation and deletion remain supported.
+
+Automatic scheduler selection and per-record synchronization warnings are deferred in https://github.com/QRun-IO/qqq/issues/503[#503]. A source record may already be saved or deleted when a later synchronization or scheduler operation fails; inspect logs and linked job state. These operations do not provide database/scheduler atomicity, transactional scheduling, restart recovery or cancellation of running executions. The sample retains explicit-configuration lifecycle and actual local dispatch controls.
+
 === Schedulers and QSchedulerMetaData
 2 types of schedulers are included in QQQ by default (though an application can define its own schedulers):
 

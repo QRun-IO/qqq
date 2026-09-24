@@ -22,28 +22,14 @@
 package com.kingsrook.qqq.middleware.javalin;
 
 
-import java.io.InputStream;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.function.Supplier;
-import java.util.stream.Stream;
-import io.javalin.config.Key;
 import io.javalin.http.Context;
-import io.javalin.http.HandlerType;
-import io.javalin.http.HttpStatus;
-import io.javalin.json.JsonMapper;
-import io.javalin.plugin.ContextPlugin;
-import io.javalin.security.RouteRole;
-import jakarta.servlet.ServletOutputStream;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
@@ -58,27 +44,27 @@ class QJavalinUtilsTest
    @Test
    void test()
    {
-      ////////////////////////////////////////////////////////////////////////////////////////////////
-      // demonstrate that calling formParam or queryParam can throw (e.g., on our lame MockContext) //
-      ////////////////////////////////////////////////////////////////////////////////////////////////
-      assertThatThrownBy(() -> new MockContext(false, false).queryParam("foo"));
-      assertThatThrownBy(() -> new MockContext(false, false).formParam("foo"));
-      assertEquals("query:foo", new MockContext(true, false).queryParam("foo"));
-      assertEquals("form:foo", new MockContext(false, true).formParam("foo"));
+      ///////////////////////////////////////////////////////////////////////
+      // demonstrate that calling formParam or queryParam can throw        //
+      ///////////////////////////////////////////////////////////////////////
+      assertThatThrownBy(() -> mockContext(false, false).queryParam("foo"));
+      assertThatThrownBy(() -> mockContext(false, false).formParam("foo"));
+      assertEquals("query:foo", mockContext(true, false).queryParam("foo"));
+      assertEquals("form:foo", mockContext(false, true).formParam("foo"));
 
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // now demonstrate that calling these wrapping util methods avoid such exceptions (which was their intent.) //
       // and, that when the context can return values, that the right ones are used                               //
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      assertNull(QJavalinUtils.getQueryParamOrFormParam(new MockContext(false, false), "foo"));
-      assertEquals("query:foo", QJavalinUtils.getQueryParamOrFormParam(new MockContext(true, false), "foo"));
-      assertEquals("form:foo", QJavalinUtils.getQueryParamOrFormParam(new MockContext(false, true), "foo"));
-      assertEquals("query:foo", QJavalinUtils.getQueryParamOrFormParam(new MockContext(true, true), "foo"));
+      assertNull(QJavalinUtils.getQueryParamOrFormParam(mockContext(false, false), "foo"));
+      assertEquals("query:foo", QJavalinUtils.getQueryParamOrFormParam(mockContext(true, false), "foo"));
+      assertEquals("form:foo", QJavalinUtils.getQueryParamOrFormParam(mockContext(false, true), "foo"));
+      assertEquals("query:foo", QJavalinUtils.getQueryParamOrFormParam(mockContext(true, true), "foo"));
 
-      assertNull(QJavalinUtils.getFormParamOrQueryParam(new MockContext(false, false), "foo"));
-      assertEquals("form:foo", QJavalinUtils.getFormParamOrQueryParam(new MockContext(false, true), "foo"));
-      assertEquals("query:foo", QJavalinUtils.getFormParamOrQueryParam(new MockContext(true, false), "foo"));
-      assertEquals("form:foo", QJavalinUtils.getFormParamOrQueryParam(new MockContext(true, true), "foo"));
+      assertNull(QJavalinUtils.getFormParamOrQueryParam(mockContext(false, false), "foo"));
+      assertEquals("form:foo", QJavalinUtils.getFormParamOrQueryParam(mockContext(false, true), "foo"));
+      assertEquals("query:foo", QJavalinUtils.getFormParamOrQueryParam(mockContext(true, false), "foo"));
+      assertEquals("form:foo", QJavalinUtils.getFormParamOrQueryParam(mockContext(true, true), "foo"));
    }
 
 
@@ -86,261 +72,26 @@ class QJavalinUtilsTest
    /***************************************************************************
     **
     ***************************************************************************/
-   private static class MockContext implements Context
+   private static Context mockContext(Boolean returnsQueryParams, Boolean returnsFormParams)
    {
-      boolean returnsQueryParams;
-      boolean returnsFormParams;
-
-
-
-      /*******************************************************************************
-       ** Constructor
-       **
-       *******************************************************************************/
-      public MockContext(boolean returnsQueryParams, boolean returnsFormParams)
+      Context context = mock(Context.class);
+      if(returnsQueryParams)
       {
-         this.returnsQueryParams = returnsQueryParams;
-         this.returnsFormParams = returnsFormParams;
+         when(context.queryParam(anyString())).thenAnswer(invocation -> "query:" + invocation.getArgument(0));
+      }
+      else
+      {
+         when(context.queryParam(anyString())).thenThrow(new IllegalStateException("Query parameters are unavailable"));
       }
 
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Nullable
-      @Override
-      public String queryParam(@NotNull String key)
+      if(returnsFormParams)
       {
-         if(this.returnsQueryParams)
-         {
-            return ("query:" + key);
-         }
-
-         return Context.super.queryParam(key);
+         when(context.formParam(anyString())).thenAnswer(invocation -> "form:" + invocation.getArgument(0));
       }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Nullable
-      @Override
-      public String formParam(@NotNull String key)
+      else
       {
-         if(this.returnsFormParams)
-         {
-            return ("form:" + key);
-         }
-
-         return Context.super.formParam(key);
+         when(context.formParam(anyString())).thenThrow(new IllegalStateException("Form parameters are unavailable"));
       }
-
-
-
-      @Override
-      public boolean strictContentTypes()
-      {
-         return false;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public HttpServletRequest req()
-      {
-         return null;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public HttpServletResponse res()
-      {
-         return null;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public HandlerType handlerType()
-      {
-         return null;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public String matchedPath()
-      {
-         return "";
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public String endpointHandlerPath()
-      {
-         return "";
-      }
-
-
-
-      @Override
-      public <T> T appData(@NotNull Key<T> key)
-      {
-         return null;
-      }
-
-
-
-      @Override
-      public @NotNull JsonMapper jsonMapper()
-      {
-         return null;
-      }
-
-
-
-      @Override
-      public <T> T with(@NotNull Class<? extends ContextPlugin<?, T>> aClass)
-      {
-         return null;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public String pathParam(@NotNull String s)
-      {
-         return "";
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public Map<String, String> pathParamMap()
-      {
-         return Map.of();
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public ServletOutputStream outputStream()
-      {
-         return null;
-      }
-
-
-
-      @Override
-      public @NotNull Context minSizeForCompression(int i)
-      {
-         return null;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @NotNull
-      @Override
-      public Context result(@NotNull InputStream inputStream)
-      {
-         return null;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Nullable
-      @Override
-      public InputStream resultInputStream()
-      {
-         return null;
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Override
-      public void future(@NotNull Supplier<? extends CompletableFuture<?>> supplier)
-      {
-
-      }
-
-
-
-      /***************************************************************************
-       **
-       ***************************************************************************/
-      @Override
-      public void redirect(@NotNull String s, @NotNull HttpStatus httpStatus)
-      {
-
-      }
-
-
-
-      @Override
-      public void writeJsonStream(@NotNull Stream<?> stream)
-      {
-
-      }
-
-
-
-      @Override
-      public @NotNull Context skipRemainingHandlers()
-      {
-         return null;
-      }
-
-
-
-      @Override
-      public @NotNull Set<RouteRole> routeRoles()
-      {
-         return Set.of();
-      }
+      return context;
    }
 }

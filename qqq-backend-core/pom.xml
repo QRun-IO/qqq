@@ -264,10 +264,6 @@
 
       <!-- Common deps for all qqq modules -->
       <dependency>
-         <groupId>org.apache.maven.plugins</groupId>
-         <artifactId>maven-checkstyle-plugin</artifactId>
-      </dependency>
-      <dependency>
          <groupId>org.apache.logging.log4j</groupId>
          <artifactId>log4j-api</artifactId>
       </dependency>
@@ -306,7 +302,7 @@
       <!-- Security: Updated to fix commons-fileupload vulnerability (CVE in 1.5) -->
       <dependency>
          <groupId>org.wiremock</groupId>
-         <artifactId>wiremock</artifactId>
+         <artifactId>wiremock-jetty12</artifactId>
          <version>3.13.2</version>
          <scope>test</scope>
       </dependency>

@@ -144,6 +144,27 @@ _A quick word on terminology - this step is actually doing what we are more like
 Another distinction between StreamedELTWithFrontendProcess steps and general QQQ process backend steps, is that the list of records in the input & output objects is NOT shared for StreamedELTWithFrontendProcess steps.
 The direct implication of this is, that a Transform step MUST explicitly call `output.addRecord()` for any records that it wants to pass along to the Load step.
 
+==== Cancellation and transactions [[EtlCancellationTransactions]]
+
+Parent/child callback propagation, separate extraction inputs, preview callback preservation and new setup/transform/load/post-run/commit cancellation checks are deferred in https://github.com/QRun-IO/qqq/issues/480[#480]. Existing preview code can replace the caller input's callback with its extraction callback. Custom steps must manage cooperative cancellation and owned resource cleanup explicitly.
+
+The existing transaction modes remain. Supported process/page transactions commit successful work, roll back their open transaction on the existing exception path, and close in `finally`. A cancellation flag alone does not establish the proposed exception/rollback boundary. Earlier page commits, auto-committed rows and custom external effects remain; operations already in progress are not undone. Preview and validation do not invoke the load step, and custom transforms should not write data.
+
 ==== Source examples
 
 See {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/etl/streamedwithfrontend/AbstractTransformStep.java[AbstractTransformStep] for runOnePage() and getProcessSummary(), and {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/processes/implementations/etl/streamedwithfrontend/LoadViaInsertStep.java[LoadViaInsertStep] for writing the transformed records. The <<TableSyncProcess,table-sync walkthrough>> demonstrates a concrete transform. Override the lifecycle methods required by your use case and keep writes in the execution/load phase.
+
+[[ProcessDownloadGrants]]
+=== Downloading generated files
+
+A `DOWNLOAD_FORM` uses `downloadFileName` with either `serverFilePath` or `storageTableName` / `storageReference`. In 4.0, trusted backend code must explicitly authorize its output after generating the file. The built-in basic-report and saved-report steps do this automatically. Custom steps register local output with `com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload`:
+
+[source,java]
+----
+output.addValue("downloadFileName", "report.csv");
+output.addValue("serverFilePath", ProcessFileDownload.register(generatedFile));
+----
+
+For a storage-backed output, close its output stream, call `ProcessFileDownload.registerStorage(storageInput)`, and return the same `storageInput.getTableName()` and `storageInput.getReference()` as `storageTableName` and `storageReference`. Register only an output that the process has authorized for the caller. Never register an arbitrary path/reference copied from HTTP input or echoed process values. Table READ alone does not grant access to arbitrary storage objects.
+
+Grants belong to the application instance, originating authentication session and selected backend variants. They expire after 30 minutes, are limited to 10,000 cached outputs per JVM, and are lost on restart or eviction. Downloads must reach the JVM that generated the grant. Applications using multiple nodes must route process and download requests to the same node. Authentication modules must preserve `QSession.idReference` across requests (or `uuid` when no reference is supplied); credential renewal can require regenerating the report. Grants do not delete output files or replace the application's own cleanup policy. Local filesystem storage references must remain relative to the configured table directory, including when symbolic links are present.

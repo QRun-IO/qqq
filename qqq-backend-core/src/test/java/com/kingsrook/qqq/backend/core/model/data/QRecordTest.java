@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.model.data;
 
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,6 +30,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
@@ -37,9 +40,12 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static com.kingsrook.qqq.backend.core.model.data.QRecord.BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS;
 import static com.kingsrook.qqq.backend.core.model.data.QRecord.BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -47,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -311,4 +318,99 @@ class QRecordTest extends BaseTest
       assertEquals("Be Careful", order.getValue("orderInstructions.instructions"));
    }
 
+
+
+   /*******************************************************************************
+    ** Raw field values distinguish explicit null/empty content from absent fields.
+    *******************************************************************************/
+   @Test
+   void testJsonPreservesExplicitEmptyValues()
+   {
+      QRecord record = new QRecord().withValue("nullValue", null).withValue("emptyText", "")
+         .withValue("emptyArray", new ArrayList<>()).withValue("falseValue", false).withValue("zero", 0);
+      JSONObject values = JsonUtils.toJSONObject(JsonUtils.toJson(record)).getJSONObject("values");
+      assertTrue(values.has("nullValue"));
+      assertTrue(values.isNull("nullValue"));
+      assertEquals("", values.getString("emptyText"));
+      assertTrue(values.getJSONArray("emptyArray").isEmpty());
+      assertFalse(values.getBoolean("falseValue"));
+      assertEquals(0, values.getInt("zero"));
+      assertFalse(values.has("absent"));
+      assertTrue(JsonUtils.toJSONObject(JsonUtils.toJson(new QRecord())).getJSONObject("values").isEmpty());
+      assertFalse(JsonUtils.toJSONObject(JsonUtils.toJson(new QRecord())).has("errors"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Raw provider payload stays internal, including when records are nested and
+    ** a caller explicitly enables otherwise omitted JSON properties.
+    *******************************************************************************/
+   @ParameterizedTest
+   @ValueSource(booleans = { false, true })
+   void testJsonOmitsRawProviderPayloadButPreservesOtherBackendDetails(boolean includeAlways)
+   {
+      String parentPayload = "{\"password\":\"raw-parent-secret\",\"unmapped\":\"private-parent-data\"}";
+      String childPayload = "{\"password\":\"raw-child-secret\"}";
+      QRecord child = new QRecord().withValue("id", 2).withValue("password", "************")
+         .withBackendDetail(BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT, childPayload)
+         .withBackendDetail(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS, new HashMap<>(Map.of("attachment", 23)))
+         .withBackendDetail("providerReceipt", "safe-child-receipt");
+      QRecord parent = new QRecord().withValue("id", 1).withValue("password", "************")
+         .withBackendDetail(BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT, parentPayload)
+         .withBackendDetail(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS, new HashMap<>(Map.of("attachment", 17)))
+         .withBackendDetail("providerReceipt", "safe-parent-receipt")
+         .withAssociatedRecord("arbitraryChildren", child);
+      Map<String, Serializable> parentDetails = new LinkedHashMap<>(parent.getBackendDetails());
+      Map<String, Serializable> childDetails = new LinkedHashMap<>(child.getBackendDetails());
+      QRecord copy = new QRecord(parent);
+
+      String json = includeAlways
+         ? JsonUtils.toJsonCustomized(parent, builder -> builder.serializationInclusion(JsonInclude.Include.ALWAYS))
+         : JsonUtils.toJson(parent);
+      JSONObject output = new JSONObject(json);
+      JSONObject childOutput = output.getJSONObject("associatedRecords").getJSONArray("arbitraryChildren").getJSONObject(0);
+      JSONObject publicParentDetails = output.getJSONObject("backendDetails");
+      JSONObject publicChildDetails = childOutput.getJSONObject("backendDetails");
+      assertAll(
+         () -> assertEquals(Set.of(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS, "providerReceipt"), publicParentDetails.keySet()),
+         () -> assertEquals(Set.of(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS, "providerReceipt"), publicChildDetails.keySet()),
+         () -> assertFalse(json.contains("raw-parent-secret")),
+         () -> assertFalse(json.contains("private-parent-data")),
+         () -> assertFalse(json.contains("raw-child-secret")),
+         () -> assertEquals(17, publicParentDetails.getJSONObject(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS).getInt("attachment")),
+         () -> assertEquals(23, publicChildDetails.getJSONObject(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS).getInt("attachment")),
+         () -> assertEquals("safe-parent-receipt", publicParentDetails.getString("providerReceipt")),
+         () -> assertEquals("safe-child-receipt", publicChildDetails.getString("providerReceipt")),
+         () -> assertEquals("************", output.getJSONObject("values").getString("password")),
+         () -> assertEquals("************", childOutput.getJSONObject("values").getString("password")),
+         () -> assertEquals(parentDetails, parent.getBackendDetails()),
+         () -> assertEquals(childDetails, child.getBackendDetails()),
+         () -> assertEquals(parentDetails, copy.getBackendDetails()),
+         () -> assertEquals(childDetails, copy.getAssociatedRecords().get("arbitraryChildren").get(0).getBackendDetails()),
+         () -> assertEquals(parentPayload, parent.getBackendDetailString(BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT)),
+         () -> assertEquals(childPayload, child.getBackendDetailString(BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Serialization privacy must not remove the existing internal import contract.
+    *******************************************************************************/
+   @Test
+   void testJsonDeserializationRetainsInternalProviderPayload() throws Exception
+   {
+      String rawPayload = "{\"sourceKey\":\"internal-provider-value\"}";
+      JSONObject input = new JSONObject().put("values", new JSONObject().put("id", 1))
+         .put("backendDetails", new JSONObject()
+            .put(BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT, rawPayload)
+            .put(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS, new JSONObject().put("attachment", 17))
+            .put("providerReceipt", "safe-receipt"));
+      QRecord record = JsonUtils.toObject(input.toString(), QRecord.class);
+      assertEquals(1, record.getValueInteger("id"));
+      assertEquals(rawPayload, record.getBackendDetailString(BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT));
+      assertEquals(Map.of("attachment", 17), record.getBackendDetail(BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS));
+      assertEquals("safe-receipt", record.getBackendDetailString("providerReceipt"));
+      assertEquals(record.getBackendDetails(), new QRecord(record).getBackendDetails());
+   }
 }

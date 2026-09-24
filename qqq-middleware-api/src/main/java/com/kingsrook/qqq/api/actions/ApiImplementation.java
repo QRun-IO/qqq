@@ -60,6 +60,7 @@ import com.kingsrook.qqq.backend.core.actions.async.JobGoingAsyncException;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
@@ -1001,7 +1002,10 @@ public class ApiImplementation
       runProcessInput.setProcessUUID(processUUID);
       // todo i don't think runProcessInput.setAsyncJobCallback();
 
-      PermissionsHelper.checkProcessPermissionThrowing(runProcessInput, processName);
+      if(PermissionsHelper.getEffectivePermissionRules(process, QContext.getQInstance()).getCustomPermissionChecker() == null)
+      {
+         PermissionsHelper.checkProcessPermissionThrowing(runProcessInput, processName);
+      }
 
       //////////////////////
       // map input values //
@@ -1069,6 +1073,9 @@ public class ApiImplementation
          preRunCustomizer.preApiRun(runProcessInput);
       }
 
+      PermissionsHelper.checkProcessPermissionThrowing(runProcessInput, processName);
+      runProcessInput.getProcessState().setStateAccess(ProcessStateAccess.capture(processName, processUUID));
+
       boolean async = false;
       if(ApiProcessMetaData.AsyncMode.ALWAYS.equals(apiProcessMetaData.getAsyncMode())
          || (ApiProcessMetaData.AsyncMode.OPTIONAL.equals(apiProcessMetaData.getAsyncMode()) && "true".equalsIgnoreCase(paramMap.get("async"))))
@@ -1087,7 +1094,7 @@ public class ApiImplementation
             // manager use the process's uuid as the job uuid, and all will be revealed!                        //
             //////////////////////////////////////////////////////////////////////////////////////////////////////
             // todo?  to help w/ StreamedETLPreview "should i count?"  runProcessInput.setIsAsync(true);
-            new AsyncJobManager().withForcedJobUUID(processUUID).startJob(processName, 0, TimeUnit.MILLISECONDS, (callback) ->
+            new AsyncJobManager().withForcedJobUUID(processUUID).withProcessUUID(processUUID).startJob(processName, 0, TimeUnit.MILLISECONDS, (callback) ->
             {
                runProcessInput.setAsyncJobCallback(callback);
                return (new RunProcessAction().execute(runProcessInput));
@@ -1214,7 +1221,9 @@ public class ApiImplementation
     *******************************************************************************/
    public static HttpApiResponse getProcessStatus(ApiInstanceMetaData apiInstanceMetaData, String version, String apiProcessName, String jobUUID) throws QException
    {
-      Optional<AsyncJobStatus> optionalJobStatus = new AsyncJobManager().getJobStatus(jobUUID);
+      Pair<ApiProcessMetaData, QProcessMetaData> pair = ApiProcessUtils.getProcessMetaDataPair(apiInstanceMetaData, version, apiProcessName);
+      String processName = pair.getB().getName();
+      Optional<AsyncJobStatus> optionalJobStatus = new AsyncJobManager().getJobStatusForUser(jobUUID, processName, jobUUID);
       if(optionalJobStatus.isEmpty())
       {
          throw (new QException("Could not find status of process job: " + jobUUID));
@@ -1231,14 +1240,12 @@ public class ApiImplementation
          // if the job is complete, get the process result from state provider, and return it //
          // this output should look like it did if the job finished synchronously!!           //
          ///////////////////////////////////////////////////////////////////////////////////////
-         Optional<ProcessState> processState = RunProcessAction.getState(jobUUID);
+         Optional<ProcessState> processState = RunProcessAction.getStateForUser(jobUUID, processName);
          if(processState.isPresent())
          {
             RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());
             RunProcessInput  runProcessInput  = new RunProcessInput();
             runProcessInput.seedFromProcessState(processState.get());
-
-            Pair<ApiProcessMetaData, QProcessMetaData> pair = ApiProcessUtils.getProcessMetaDataPair(apiInstanceMetaData, version, apiProcessName);
 
             ApiProcessMetaData apiProcessMetaData = pair.getA();
             return (buildResponseAfterProcess(apiProcessMetaData, runProcessInput, runProcessOutput));

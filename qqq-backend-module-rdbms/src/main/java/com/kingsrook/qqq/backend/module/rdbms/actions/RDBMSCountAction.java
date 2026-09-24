@@ -66,7 +66,7 @@ public class RDBMSCountAction extends AbstractRDBMSAction implements CountInterf
          setBackendMetaData(countInput.getBackend());
 
          QQueryFilter                          filter                   = clonedOrNewFilter(countInput.getFilter());
-         JoinsContext                          joinsContext             = new JoinsContext(QContext.getQInstance(), countInput.getTableName(), countInput.getQueryJoins(), filter);
+         JoinsContext                          joinsContext             = new JoinsContext(QContext.getQInstance(), countInput, filter);
          JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(table.getPrimaryKeyField());
 
          boolean requiresDistinct = doesSelectClauseRequireDistinct(table);

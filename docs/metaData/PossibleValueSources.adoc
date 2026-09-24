@@ -21,3 +21,5 @@ QPossibleValueSource source = QPossibleValueSource.newForTable("customer");
 ----
 
 Use QPossibleValueSource.newForEnum(name, enumValues) for enums. See {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/possiblevalues/QPossibleValueSource.java[the source factories and properties] for the complete contract. Query/Get callers must request possible-value translation when they need labels in record display values.
+
+For TABLE sources, `overrideIdField` works for search results and direct label translation. Selected-value searches using `idList` currently still filter by the table primary key; an alternate string identifier over an integer primary key can fail conversion. This existing limitation is deferred under https://github.com/QRun-IO/qqq/issues/544[issue #544]. Use a primary-key-based possible-value source for selected-value lookup until it is resolved.

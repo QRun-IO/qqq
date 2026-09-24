@@ -56,19 +56,15 @@ include::actions/GetAction.adoc[leveloffset=+1]
 
 include::actions/CountAction.adoc[leveloffset=+1]
 
-=== AggregateAction
-
-This action is implemented; its detailed reference is available in {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/AggregateAction.java[AggregateAction source]. Use the matching input/output classes and the current QContext.
+include::actions/AggregateAction.adoc[leveloffset=+1]
 
 include::actions/InsertAction.adoc[leveloffset=+1]
 
-=== UpdateAction
+include::actions/UpdateAction.adoc[leveloffset=+1]
 
-This action is implemented; its detailed reference is available in {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/UpdateAction.java[UpdateAction source]. Use the matching input/output classes and the current QContext.
+include::actions/DeleteAction.adoc[leveloffset=+1]
 
-=== DeleteAction
-
-This action is implemented; its detailed reference is available in {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/DeleteAction.java[DeleteAction source]. Use the matching input/output classes and the current QContext.
+include::actions/ReplaceAction.adoc[leveloffset=+1]
 
 === AuditAction
 

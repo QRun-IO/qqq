@@ -11,7 +11,7 @@ For example, out-of-the-box, QQQ can connect to:
 * <<APIBackendMetaData,JSON Web APIs>> (_using a custom mapping class per-API backend_).
 * MongoDB document storage, via `MongoDBBackendMetaData`
 * PostgreSQL and SQLite through their dedicated RDBMS backend modules
-* In-Memory data stores
+* <<MemoryBackend,In-Memory data stores>>
 
 All {link-tables} in a QQQ instance must belong to a backend. As such, any instance using tables (which would be almost all instances) must define 1 or more backends.
 
@@ -28,6 +28,7 @@ These objects will have some common attributes, but many different attributes ba
 Basic rules that apply to all tables in the backend, describing what actions (such as Delete, or Count) are supported in the backend.
 ** By default, QQQ assumes that a backend supports _most_ capabilities, with one exception being `QUERY_STATS`.
 ** When the backend disables a capability, a table-level enabled entry overrides that exclusion. Otherwise, a table-level disabled entry disables it. Avoid contradictory enabled and disabled entries. A flag cannot add an operation that the selected backend implementation does not implement.
+** Capability flags control the operations exposed in frontend metadata. Direct table HTTP operations do not enforce these flags; use `permissionRules` to deny access. New runtime capability enforcement is deferred in https://github.com/QRun-IO/qqq/issues/546[issue #546].
 * `usesVariants` - *Boolean, default false* - Control whether or not the backend supports the concept of "Variants".
 ** Supporting variants means that tables within the backend can exist in alternative "variants" of the backend.
 For example, this might mean a sharded or multi-tenant database backend (perhaps a different server or database name per-client).
@@ -149,3 +150,14 @@ Assumes that an override of `protected void handleCustomAuthorization(HttpReques
 * `username` - *String, Conditional* - See `authorizationType` above for details.
 * `password` - *String, Conditional* - See `authorizationType` above for details.
 * `apiKeyQueryParamName` - *String, Conditional* - See `authorizationType` above for details.
+
+[#MemoryBackend]
+==== Memory backend
+
+The `memory` backend stores QRecords in the process. Its Query, Count and Aggregate paths use active personalized READ rules, including supported INNER and LEFT joins. Joined READ checks run before LEFT null extension. These operations do not imply SQL support for every operator, join type or value conversion.
+
+Query honors selected join aliases, `fieldNamesToInclude` and `shouldFetchHeavyFields`; see <<QueryInput>>. Supported joined virtual fields use alias-local function inputs, and Boolean subfilters retain the same execution context. Virtual selection, filtering, sorting and Aggregate operands retain their function-specific behavior. Unselected joined fields are not returned. Count can use a private key for distinct counting without restoring it to public metadata. Aggregate can read heavy operands internally; its computed results do not receive Query result masking.
+
+Memory Aggregate retains Java equality for groups/distinct values and double-based DECIMAL AVG. Decimal scale and array identity can distinguish values, and precision differs from native SQL. See <<AggregateAction>> for source-window, empty-result, type and provider boundaries.
+
+The legacy `MemoryRecordStore` setting `buildJoinCrossProductFromJoinContext=false` is no longer an executable query mode: reads fail with a checked `QException`. The getter, setter, fluent setter and `BUILD_JOIN_CROSS_PRODUCT_FROM_JOIN_CONTEXT_DEFAULT` field remain available. Keep the default true and remove any configuration that selects false; true uses the join plan that includes security rules.

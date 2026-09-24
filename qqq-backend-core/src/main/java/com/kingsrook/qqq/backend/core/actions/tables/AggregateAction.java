@@ -80,6 +80,10 @@ public class AggregateAction
       }
 
       table = TableMetaDataPersonalizerAction.execute(aggregateInput);
+      if(table == null)
+      {
+         throw (new QException("Table is not available for aggregate input"));
+      }
       aggregateInput.setTableMetaData(table);
 
       FilterValidationHelper.validateFieldNamesInFilter(aggregateInput);

@@ -36,6 +36,8 @@ import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -50,6 +52,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class QJavalinProcessHandlerTest extends QJavalinTestBase
 {
+   /*******************************************************************************
+    ** A process continuation must use the same explicit test session.
+    *******************************************************************************/
+   @BeforeEach
+   void setProcessClientSession()
+   {
+      Unirest.config().reset().setDefaultHeader("Cookie", "sessionId=" + UUID.randomUUID());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @AfterEach
+   void clearProcessClientSession()
+   {
+      Unirest.config().reset().getDefaultHeaders().remove("Cookie");
+   }
+
+
+
    private static final int MORE_THAN_TIMEOUT = 500;
    private static final int LESS_THAN_TIMEOUT = 50;
 
@@ -162,7 +186,7 @@ class QJavalinProcessHandlerTest extends QJavalinTestBase
       }
       else
       {
-         assertTrue(jsonObject.has("records"));
+         assertTrue(jsonObject.has("records"), jsonObject.toString());
          JSONArray records = jsonObject.getJSONArray("records");
          assertEquals(expectedNoOfRecords, records.length());
       }
@@ -579,8 +603,8 @@ class QJavalinProcessHandlerTest extends QJavalinTestBase
    public void test_downloadFile()
    {
       HttpResponse<String> response = Unirest.get(BASE_URL + "/download/myTestFile.txt?filePath=/dev/null").asString();
-      assertEquals(200, response.getStatus());
-      assertEquals("OK", response.getStatusText());
+      assertEquals(403, response.getStatus());
+      assertTrue(response.getBody().contains("not an authorized process download"));
    }
 
 

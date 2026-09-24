@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
@@ -45,6 +46,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -115,6 +117,8 @@ public class RunProcessAction
       {
          throw new QException("Process [" + runProcessInput.getProcessName() + "] is not defined in this instance.");
       }
+
+      validateUserInputValues(runProcessInput);
 
       RunProcessOutput runProcessOutput = new RunProcessOutput();
 
@@ -549,6 +553,10 @@ public class RunProcessAction
    ProcessState primeProcessState(RunProcessInput runProcessInput, UUIDAndTypeStateKey stateKey, QProcessMetaData process) throws QException
    {
       Optional<ProcessState> optionalProcessState = loadState(stateKey);
+      if(optionalProcessState.isPresent() && runProcessInput.getInputSource() == QInputSource.USER)
+      {
+         ProcessStateAccess.requireAccess(optionalProcessState.get().getStateAccess(), process.getName(), runProcessInput.getProcessUUID());
+      }
       if(optionalProcessState.isEmpty())
       {
          if(runProcessInput.getStartAfterStep() == null)
@@ -559,6 +567,10 @@ public class RunProcessAction
             // Go ahead and store the state that we have (e.g., w/ initial records & values) //
             ///////////////////////////////////////////////////////////////////////////////////
             ProcessState processState = runProcessInput.getProcessState();
+            if(runProcessInput.getInputSource() == QInputSource.USER)
+            {
+               processState.setStateAccess(ProcessStateAccess.capture(process.getName(), runProcessInput.getProcessUUID()));
+            }
             processState.setStepList(process.getStepList().stream().map(QStepMetaData::getName).toList());
             storeState(stateKey, processState);
             optionalProcessState = Optional.of(processState);
@@ -639,6 +651,7 @@ public class RunProcessAction
    RunBackendStepOutput runBackendStep(RunProcessInput runProcessInput, QProcessMetaData process, RunProcessOutput runProcessOutput, UUIDAndTypeStateKey stateKey, QBackendStepMetaData backendStep, QProcessMetaData qProcessMetaData, ProcessState processState) throws Exception
    {
       RunBackendStepInput runBackendStepInput = new RunBackendStepInput(processState);
+      runBackendStepInput.setInputSource(runProcessInput.getInputSource());
       runBackendStepInput.setProcessName(process.getName());
       runBackendStepInput.setStepName(backendStep.getName());
       runBackendStepInput.setCallback(runProcessInput.getCallback());
@@ -771,6 +784,21 @@ public class RunProcessAction
    public static Optional<ProcessState> getState(String processUUID)
    {
       return (getStateProvider().get(ProcessState.class, new UUIDAndTypeStateKey(UUID.fromString(processUUID), StateType.PROCESS_STATUS)));
+   }
+
+
+
+   /*******************************************************************************
+    ** External reads must verify ownership before exposing any stored values.
+    *******************************************************************************/
+   public static Optional<ProcessState> getStateForUser(String processUUID, String processName) throws QException
+   {
+      Optional<ProcessState> state = getState(processUUID);
+      if(state.isPresent())
+      {
+         ProcessStateAccess.requireAccess(state.get().getStateAccess(), processName, processUUID);
+      }
+      return state;
    }
 
 
@@ -1100,4 +1128,28 @@ public class RunProcessAction
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Validate external values before restoring trusted state or performing I/O.
+    *******************************************************************************/
+   public static void validateUserInputValues(RunProcessInput input) throws QBadRequestException
+   {
+      if(input.getInputSource() != QInputSource.USER)
+      {
+         return;
+      }
+      QProcessMetaData process = input.getProcessMetaData();
+      if(process == null)
+      {
+         throw new QBadRequestException("Unknown process");
+      }
+      for(QFieldMetaData field : process.getInputFields())
+      {
+         if(!field.getIsEditable() && input.getValues().containsKey(field.getName()))
+         {
+            throw new QBadRequestException("Process input [" + field.getName() + "] is configured by the server and cannot be supplied by a user.");
+         }
+      }
+   }
 }

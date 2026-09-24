@@ -88,6 +88,20 @@ INSERT INTO pet (id, name, species_id, person_id) VALUES (5, 'Toby', 1, 2);
 INSERT INTO pet (id, name, species_id, person_id) VALUES (6, 'Mae', 2, 3);
 
 
+DROP TABLE IF EXISTS pet_note;
+CREATE TABLE pet_note
+(
+   id INT AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT now(),
+   modify_date TIMESTAMP DEFAULT now(),
+   pet_id INTEGER NOT NULL,
+   note VARCHAR(80) NOT NULL
+);
+
+INSERT INTO pet_note (id, pet_id, note) VALUES (1, 1, 'Target note');
+INSERT INTO pet_note (id, pet_id, note) VALUES (2, 5, 'Other parent note');
+
+
 DROP TABLE IF EXISTS carrier;
 CREATE TABLE carrier
 (

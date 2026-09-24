@@ -26,6 +26,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
@@ -48,33 +49,34 @@ public class IsolatedSpaAuthenticationTest
    @Test
    void testRejectedAuthenticationStopsRequest() throws Exception
    {
-      SpaNotFoundHandlerRegistry.getInstance().clear();
       IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/restricted", "test-spa-admin")
          .withSpaIndexFile("test-spa-admin/index.html").withLoadFromJar(true)
          .withAuthenticator(new QCodeReference(HeaderAuthenticator.class));
       provider.setQInstance(TestUtils.defineInstance());
-      Javalin service = Javalin.create(provider::acceptJavalinConfig);
+      Javalin service = Javalin.create(config ->
+      {
+         provider.acceptJavalinConfig(config);
+         config.routes.get("/restricted/endpoint", ctx -> ctx.result("protected endpoint executed"));
+      });
       try
       {
-         provider.acceptJavalinService(service);
-         service.get("/restricted/endpoint", ctx -> ctx.result("protected endpoint executed"));
          service.start(0);
-         try(HttpClient client = HttpClient.newHttpClient())
+         try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
          {
             String base = "http://localhost:" + service.port();
             for(String path : new String[] { "/restricted/endpoint", "/restricted", "/restricted/", "/restricted/index.html", "/restricted/deep/link" })
             {
-               HttpResponse<String> response = client.send(HttpRequest.newBuilder(URI.create(base + path)).build(), HttpResponse.BodyHandlers.ofString());
+               HttpResponse<String> response = client.send(HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
                assertEquals(401, response.statusCode(), path + ": " + response.body());
                assertFalse(response.body().contains("protected endpoint executed"));
                assertFalse(response.body().contains("<html"));
             }
             HttpResponse<String> allowed = client.send(HttpRequest.newBuilder(URI.create(base + "/restricted/endpoint"))
-               .header("X-Test-Access", "allow").build(), HttpResponse.BodyHandlers.ofString());
+               .header("X-Test-Access", "allow").timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, allowed.statusCode());
             assertEquals("protected endpoint executed", allowed.body());
             HttpResponse<String> hidden = client.send(HttpRequest.newBuilder(URI.create(base + "/restricted/deep/link"))
-               .header("X-Test-Deny-Response", "not-found").build(), HttpResponse.BodyHandlers.ofString());
+               .header("X-Test-Deny-Response", "not-found").timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(404, hidden.statusCode());
             assertFalse(hidden.body().contains("<html"));
          }
@@ -82,7 +84,6 @@ public class IsolatedSpaAuthenticationTest
       finally
       {
          service.stop();
-         SpaNotFoundHandlerRegistry.getInstance().clear();
          QContext.clear();
       }
    }
@@ -95,27 +96,28 @@ public class IsolatedSpaAuthenticationTest
    @Test
    void testHooksRunOncePerRequest() throws Exception
    {
-      SpaNotFoundHandlerRegistry.getInstance().clear();
-      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/restricted", "test-spa-admin")
+      IsolatedSpaRouteProvider provider = new IsolatedSpaRouteProvider("/restricted", "test-spa-admin").withLoadFromJar(true)
          .withBeforeHandler(context -> countInvocation(context, "Before"))
          .withAfterHandler(context -> countInvocation(context, "After"))
          .withAuthenticator(new QCodeReference(HeaderAuthenticator.class));
       provider.setQInstance(TestUtils.defineInstance());
-      Javalin service = Javalin.create();
+      Javalin service = Javalin.create(config ->
+      {
+         provider.acceptJavalinConfig(config);
+         config.routes.get("/restricted", context -> context.result("protected endpoint"));
+         config.routes.get("/restricted/child", context -> context.result("protected endpoint"));
+         config.routes.get("/restricted-other", context -> context.result("public endpoint"));
+      });
       try
       {
-         provider.acceptJavalinService(service);
-         service.get("/restricted", context -> context.result("protected endpoint"));
-         service.get("/restricted/child", context -> context.result("protected endpoint"));
-         service.get("/restricted-other", context -> context.result("public endpoint"));
          service.start(0);
-         try(HttpClient client = HttpClient.newHttpClient())
+         try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
          {
             String base = "http://localhost:" + service.port();
             for(String path : new String[] { "/restricted", "/restricted/", "/restricted/child" })
             {
                HttpResponse<String> response = client.send(HttpRequest.newBuilder(URI.create(base + path))
-                  .header("X-Test-Access", "allow").build(), HttpResponse.BodyHandlers.ofString());
+                  .header("X-Test-Access", "allow").timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
                assertEquals(200, response.statusCode(), path);
                assertEquals("protected endpoint", response.body(), path);
                for(String hook : new String[] { "Before", "After", "Authentication" })
@@ -123,7 +125,7 @@ public class IsolatedSpaAuthenticationTest
                   assertEquals("1", response.headers().firstValue("X-" + hook).orElse("missing"), path + ": " + hook);
                }
             }
-            HttpResponse<String> outside = client.send(HttpRequest.newBuilder(URI.create(base + "/restricted-other")).build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> outside = client.send(HttpRequest.newBuilder(URI.create(base + "/restricted-other")).timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, outside.statusCode());
             for(String hook : new String[] { "Before", "After", "Authentication" })
             {
@@ -134,7 +136,6 @@ public class IsolatedSpaAuthenticationTest
       finally
       {
          service.stop();
-         SpaNotFoundHandlerRegistry.getInstance().clear();
          QContext.clear();
       }
    }

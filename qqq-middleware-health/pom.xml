@@ -34,7 +34,6 @@
    </parent>
 
    <properties>
-      <javalin.version>6.7.0</javalin.version>
       <!-- Override parent coverage requirements - this module has reasonable coverage -->
       <coverage.instructionCoveredRatioMinimum>0.70</coverage.instructionCoveredRatioMinimum>
       <coverage.classCoveredRatioMinimum>0.90</coverage.classCoveredRatioMinimum>
@@ -72,10 +71,6 @@
       </dependency>
 
       <!-- Common deps for all qqq modules -->
-      <dependency>
-         <groupId>org.apache.maven.plugins</groupId>
-         <artifactId>maven-checkstyle-plugin</artifactId>
-      </dependency>
       <dependency>
          <groupId>org.apache.logging.log4j</groupId>
          <artifactId>log4j-api</artifactId>

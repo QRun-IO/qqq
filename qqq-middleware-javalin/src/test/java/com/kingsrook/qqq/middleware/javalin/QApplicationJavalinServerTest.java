@@ -39,7 +39,6 @@ import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.Mem
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
-import com.kingsrook.qqq.middleware.javalin.routeproviders.SpaNotFoundHandlerRegistry;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.http.HttpStatus;
 import kong.unirest.HttpResponse;
@@ -48,6 +47,7 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -87,12 +87,7 @@ class QApplicationJavalinServerTest
       System.clearProperty("qqq.javalin.enableStaticFilesFromJar");
       Unirest.config().reset();
 
-      //////////////////////////////////////////////////////////////////////////
-      // Clear the SPA 404 handler registry to prevent test pollution.        //
-      // The registry is a singleton, so handlers from one test can leak into //
-      // subsequent tests if not cleared.                                     //
-      //////////////////////////////////////////////////////////////////////////
-      SpaNotFoundHandlerRegistry.getInstance().clear();
+
    }
 
 
@@ -1002,6 +997,64 @@ class QApplicationJavalinServerTest
 
 
    /*******************************************************************************
+    ** Configuration registers handlers before service observation and requests.
+    *******************************************************************************/
+   @Test
+   void testConfigCustomizerRegistersRoutesBeforeServiceObservation() throws QException
+   {
+      List<String> startupOrder = new java.util.ArrayList<>();
+      javalinServer = new QApplicationJavalinServer(createMinimalApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false)
+         .withServeLegacyUnversionedMiddlewareAPI(false)
+         .withMiddlewareVersionList(List.of())
+         .withJavalinConfigCustomizer(config ->
+         {
+            startupOrder.add("configuration");
+            config.routes.before("/config-probe", context -> context.attribute("phase", "before"));
+            config.routes.get("/config-probe", context -> context.result(context.attribute("phase") + ":handler"));
+            config.routes.after("/config-probe", context -> context.header("X-Handler-Order", context.result() + ":after"));
+         })
+         .withJavalinConfigurationCustomizer(service ->
+         {
+            assertEquals(List.of("configuration"), startupOrder);
+            startupOrder.add("service");
+         });
+      javalinServer.start();
+      assertEquals(List.of("configuration", "service"), startupOrder);
+      HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + "/config-probe").asString();
+      assertAll(
+         () -> assertEquals(200, response.getStatus()),
+         () -> assertEquals("before:handler", response.getBody()),
+         () -> assertEquals("before:handler:after", response.getHeaders().getFirst("X-Handler-Order")));
+   }
+
+
+
+   /*******************************************************************************
+    ** A dashboard-relative path is distinct from the server's middleware namespace.
+    *******************************************************************************/
+   @Test
+   void testBuiltInDashboardNamespaceAtNonRootPath() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(createMinimalApplication())
+         .withPort(PORT)
+         .withFrontendMaterialDashboardHostedPath("/portal");
+      javalinServer.start();
+
+      assertEquals(404, Unirest.get("http://localhost:" + PORT + "/qqq/v1/missing").asString().getStatus());
+      for(String path : List.of("/portal/people/person/1", "/portal/qqq/v1/help"))
+      {
+         HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + path).asString();
+         assertEquals(200, response.getStatus(), path);
+         assertThat(response.getBody()).containsIgnoringCase("<base href=\"/portal/\"");
+      }
+      assertEquals(404, Unirest.get("http://localhost:" + PORT + "/portal-other/person/1").asString().getStatus());
+   }
+
+
+
+   /*******************************************************************************
     * Serve material-dashboard as an isolated SPA, at a non-root path.
     *
     * This shows the <base href> tag being inserted in the index.html file when
@@ -1082,7 +1135,7 @@ class QApplicationJavalinServerTest
             <base""");
       }
 
-      List<String> pathsThatShouldIncludeBase = List.of("/someApp", "/someApp/someTable");
+      List<String> pathsThatShouldIncludeBase = List.of("/someApp", "/someApp/someTable", "/qqq/v2/custom-spa-path");
       for(String requestPath : pathsThatShouldIncludeBase)
       {
          HttpResponse<String> response = Unirest.get("http://localhost:" + PORT + requestPath).asString();

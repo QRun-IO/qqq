@@ -69,6 +69,7 @@ import com.kingsrook.qqq.backend.core.processes.implementations.savedviews.Store
  *******************************************************************************/
 public class SavedViewsMetaDataProvider
 {
+   public static final String SAVED_VIEW_JOIN_SHARED_SAVED_VIEW = "savedViewJoinSharedSavedView";
    public static final String SHARED_SAVED_VIEW_JOIN_SAVED_VIEW = "sharedSavedViewJoinSavedView";
    public static final String QUICK_SAVED_VIEW_JOIN_SAVED_VIEW = "quickSavedViewJoinSavedView";
 
@@ -93,6 +94,7 @@ public class SavedViewsMetaDataProvider
       {
          instance.addTable(defineSharedSavedViewTable(backendName, backendDetailEnricher));
          instance.addJoin(defineSharedSavedViewJoinSavedView());
+         instance.addJoin(defineSharedSavedViewJoinSavedView().flip().withName(SAVED_VIEW_JOIN_SHARED_SAVED_VIEW));
          instance.addWidget(defineSharedSavedViewJoinSavedViewWidget(instance));
          if(instance.getPossibleValueSource(ShareScopePossibleValueMetaDataProducer.NAME) == null)
          {
@@ -146,9 +148,10 @@ public class SavedViewsMetaDataProvider
       RecordSecurityLock lock = null;
       if(userLevelRecordSecurityLock != null)
       {
-         if(isShareSavedViewEnabled)
+         if(isShareSavedViewEnabled && !RecordSecurityLock.LockScope.WRITE.equals(userLevelRecordSecurityLock.getLockScope()))
          {
             RecordSecurityLock sharedUserIdLock = userLevelRecordSecurityLock.clone();
+            sharedUserIdLock.setLockScope(RecordSecurityLock.LockScope.READ);
             sharedUserIdLock.setFieldName(SharedSavedView.TABLE_NAME + ".userId");
             sharedUserIdLock.setJoinNameChain(List.of(SHARED_SAVED_VIEW_JOIN_SAVED_VIEW));
 
@@ -223,6 +226,14 @@ public class SavedViewsMetaDataProvider
     *******************************************************************************/
    public QTableMetaData defineSharedSavedViewTable(String backendName, Consumer<QTableMetaData> backendDetailEnricher) throws QException
    {
+      RecordSecurityLock ownerLock = null;
+      if(userLevelRecordSecurityLock != null)
+      {
+         ownerLock = userLevelRecordSecurityLock.clone()
+            .withFieldName(SavedView.TABLE_NAME + ".userId")
+            .withJoinNameChain(List.of(SAVED_VIEW_JOIN_SHARED_SAVED_VIEW));
+      }
+
       QTableMetaData table = new QTableMetaData()
          .withName(SharedSavedView.TABLE_NAME)
          .withLabel("Shared View")
@@ -233,7 +244,7 @@ public class SavedViewsMetaDataProvider
          .withUniqueKey(new UniqueKey("savedViewId", "userId"))
          .withPrimaryKeyField("id")
          .withFieldsFromEntity(SharedSavedView.class)
-         .withRecordSecurityLock(userLevelRecordSecurityLock)
+         .withRecordSecurityLock(ownerLock)
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD))
          .withSection(new QFieldSection("identity", new QIcon().withName("badge"), Tier.T1, List.of("id", "savedViewId", "userId")))
          .withSection(new QFieldSection("data", new QIcon().withName("text_snippet"), Tier.T2, List.of("scope")))

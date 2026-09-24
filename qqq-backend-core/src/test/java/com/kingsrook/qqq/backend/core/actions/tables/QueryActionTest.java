@@ -28,14 +28,21 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncRecordPipeLoop;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
+import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -46,8 +53,10 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
@@ -56,6 +65,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.tables.QQQTablesMetaDataProvider;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.mock.MockQueryAction;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,6 +73,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -206,6 +217,59 @@ class QueryActionTest extends BaseTest
       QRecord order1 = queryOutput.getRecords().get(1);
       assertEquals(1, order1.getAssociatedRecords().get("orderLine").size());
       assertEquals(1, order1.getAssociatedRecords().get("extrinsics").size());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testSelectedEmptyAssociationsRetainExactGroupNames() throws Exception
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      insert2OrdersWith3Lines3LineExtrinsicsAnd4OrderExtrinsicAssociations();
+      new InsertAction().execute(new InsertInput().withTableName(TestUtils.TABLE_NAME_ORDER)
+         .withRecords(List.of(new QRecord().withValue("storeId", 1).withValue("orderNo", "EMPTY"))));
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER).setAssociations(List.of(
+         new Association().withName("fulfillment-lines").withAssociatedTableName(TestUtils.TABLE_NAME_LINE_ITEM).withJoinName("orderLineItem"),
+         new Association().withName("auditLines").withAssociatedTableName(TestUtils.TABLE_NAME_LINE_ITEM).withJoinName("orderLineItem")));
+
+      QueryInput input = new QueryInput(TestUtils.TABLE_NAME_ORDER).withIncludeAssociations(true);
+      input.setAssociationNamesToInclude(List.of("fulfillment-lines", "auditLines", "fulfillment-lines.extrinsics"));
+      List<QRecord> orders = new QueryAction().execute(input).getRecords();
+      assertEquals(3, orders.size());
+      QRecord empty = orders.stream().filter(record -> "EMPTY".equals(record.getValueString("orderNo"))).findFirst().orElseThrow();
+      assertThat(empty.getAssociatedRecords()).containsOnlyKeys("fulfillment-lines", "auditLines");
+      assertThat(empty.getAssociatedRecords().get("fulfillment-lines")).isEmpty();
+      assertThat(empty.getAssociatedRecords().get("auditLines")).isEmpty();
+      JsonNode emptyJson = new ObjectMapper().readTree(JsonUtils.toJson(empty));
+      assertTrue(emptyJson.at("/associatedRecords/fulfillment-lines").isArray(), "Serialized successful empty groups must remain explicit arrays");
+      assertEquals(0, emptyJson.at("/associatedRecords/fulfillment-lines").size());
+      assertTrue(emptyJson.at("/associatedRecords/auditLines").isArray());
+      empty.withAssociatedRecords("notLoaded", null);
+      JsonNode withNullGroup = new ObjectMapper().readTree(JsonUtils.toJson(empty));
+      assertFalse(withNullGroup.get("associatedRecords").has("notLoaded"));
+      assertTrue(withNullGroup.at("/associatedRecords/fulfillment-lines").isArray());
+      QRecord populated = orders.stream().filter(record -> "ORD123".equals(record.getValueString("orderNo"))).findFirst().orElseThrow();
+      assertEquals(2, populated.getAssociatedRecords().get("fulfillment-lines").size());
+      assertEquals(2, populated.getAssociatedRecords().get("auditLines").size());
+      assertThat(populated.getAssociatedRecords().get("auditLines").get(0).getAssociatedRecords()).isNullOrEmpty();
+      QRecord last = orders.stream().filter(record -> "ORD124".equals(record.getValueString("orderNo"))).findFirst().orElseThrow();
+      assertThat(last.getAssociatedRecords().get("fulfillment-lines").get(0).getAssociatedRecords()).containsOnlyKeys("extrinsics");
+      assertThat(last.getAssociatedRecords().get("fulfillment-lines").get(0).getAssociatedRecords().get("extrinsics")).isEmpty();
+
+      QueryInput baseOnly = new QueryInput(TestUtils.TABLE_NAME_ORDER).withIncludeAssociations(false);
+      for(QRecord order : new QueryAction().execute(baseOnly).getRecords())
+      {
+         assertThat(order.getAssociatedRecords()).isNullOrEmpty();
+         assertFalse(new ObjectMapper().readTree(JsonUtils.toJson(order)).has("associatedRecords"));
+      }
+      input.setAssociationNamesToInclude(List.of("auditLines"));
+      for(QRecord order : new QueryAction().execute(input).getRecords())
+      {
+         assertThat(order.getAssociatedRecords()).containsOnlyKeys("auditLines");
+      }
    }
 
 
@@ -447,6 +511,27 @@ class QueryActionTest extends BaseTest
       QRecord order1 = queryOutput.getRecords().get(1);
       assertEquals(1, order1.getAssociatedRecords().get("orderLine").size());
       assertTrue(CollectionUtils.nullSafeIsEmpty(CollectionUtils.nonNullCollection(order1.getAssociatedRecords().get("extrinsics"))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Nested selection treats exact association names as text, not regular expressions.
+    *******************************************************************************/
+   @Test
+   void testLiteralAssociationNameInNestedSelection() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      insert2OrdersWith3Lines3LineExtrinsicsAnd4OrderExtrinsicAssociations();
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER).getAssociationByName("orderLine").orElseThrow().setName("order+Lines");
+      QueryInput input = new QueryInput(TestUtils.TABLE_NAME_ORDER).withIncludeAssociations(true);
+      input.setAssociationNamesToInclude(List.of("order+Lines", "order+Lines.extrinsics"));
+      List<QRecord> records = new QueryAction().execute(input).getRecords();
+      assertEquals(2, records.size());
+      List<QRecord> lines = records.stream().flatMap(record -> record.getAssociatedRecords().get("order+Lines").stream()).toList();
+      assertEquals(3, lines.size());
+      assertEquals(3, lines.stream().mapToInt(line -> line.getAssociatedRecords().get("extrinsics").size()).sum());
+      assertThat(records).allSatisfy(record -> assertThat(record.getAssociatedRecords()).containsOnlyKeys("order+Lines"));
    }
 
 
@@ -741,4 +826,175 @@ class QueryActionTest extends BaseTest
       assertEquals("DARIN", new QueryAction().execute(queryInput).getRecords().get(0).getValueString("firstName"));
    }
 
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFailedAssociationQueryDoesNotPublishAnEmptyGroup() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      insert2OrdersWith3Lines3LineExtrinsicsAnd4OrderExtrinsicAssociations();
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER).withCustomizer(TableCustomizers.POST_QUERY_RECORD.getRole(), new QCodeReference(CaptureParentRecords.class));
+      QContext.getQInstance().addSupplementalCustomizer(TableMetaDataPersonalizerInterface.CUSTOMIZER_TYPE, new QCodeReference(RejectExtrinsicRead.class));
+      try
+      {
+         QueryInput input = new QueryInput(TestUtils.TABLE_NAME_ORDER).withIncludeAssociations(true).withInputSource(QInputSource.USER);
+         input.setAssociationNamesToInclude(List.of("orderLine", "extrinsics"));
+         QException failure = assertThrows(QException.class, () -> new QueryAction().execute(input));
+         assertThat(failure).hasMessageContaining("extrinsic read unavailable");
+         assertEquals(2, CaptureParentRecords.records.size());
+         for(QRecord parent : CaptureParentRecords.records)
+         {
+            assertThat(parent.getAssociatedRecords()).containsOnlyKeys("orderLine");
+            assertThat(parent.getAssociatedRecords().get("orderLine")).isNotEmpty();
+         }
+      }
+      finally
+      {
+         CaptureParentRecords.records = null;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A malformed child result must not publish an empty or partial named group.
+    *******************************************************************************/
+   @Test
+   void testMissingChildRelationshipFieldDoesNotPublishAssociation() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      insert2OrdersWith3Lines3LineExtrinsicsAnd4OrderExtrinsicAssociations();
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER).withCustomizer(TableCustomizers.POST_QUERY_RECORD.getRole(), new QCodeReference(CaptureParentRecords.class));
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER_EXTRINSIC).withCustomizer(TableCustomizers.POST_QUERY_RECORD.getRole(), new QCodeReference(RemoveLastExtrinsicRelationshipField.class));
+      try
+      {
+         QueryInput input = new QueryInput(TestUtils.TABLE_NAME_ORDER).withIncludeAssociations(true).withInputSource(QInputSource.USER);
+         input.setAssociationNamesToInclude(List.of("orderLine", "extrinsics"));
+         QException failure = assertThrows(QException.class, () -> new QueryAction().execute(input));
+         assertThat(failure).hasMessageContaining("Association child relationship fields were not returned by the query");
+         assertEquals(2, CaptureParentRecords.records.size());
+         for(QRecord parent : CaptureParentRecords.records)
+         {
+            assertThat(parent.getAssociatedRecords()).containsOnlyKeys("orderLine");
+            assertThat(parent.getAssociatedRecords().get("orderLine")).isNotEmpty();
+         }
+      }
+      finally
+      {
+         CaptureParentRecords.records = null;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testPersonalizedAwayAssociationsRemainAbsent() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      new InsertAction().execute(new InsertInput().withTableName(TestUtils.TABLE_NAME_ORDER)
+         .withRecords(List.of(new QRecord().withValue("storeId", 1).withValue("orderNo", "EMPTY"))));
+      QContext.getQInstance().addSupplementalCustomizer(TableMetaDataPersonalizerInterface.CUSTOMIZER_TYPE, new QCodeReference(RemoveAssociationFromUser.class));
+      QueryInput userInput = new QueryInput(TestUtils.TABLE_NAME_ORDER).withIncludeAssociations(true).withInputSource(QInputSource.USER);
+      userInput.setAssociationNamesToInclude(List.of("orderLine", "extrinsics"));
+      QRecord userOrder = new QueryAction().execute(userInput).getRecords().get(0);
+      assertThat(userOrder.getAssociatedRecords()).containsOnlyKeys("orderLine");
+      assertThat(userOrder.getAssociatedRecords().get("orderLine")).isEmpty();
+
+      QueryInput systemInput = new QueryInput(TestUtils.TABLE_NAME_ORDER).withIncludeAssociations(true).withInputSource(QInputSource.SYSTEM);
+      QRecord systemOrder = new QueryAction().execute(systemInput).getRecords().get(0);
+      assertThat(systemOrder.getAssociatedRecords()).containsOnlyKeys("orderLine", "extrinsics");
+      assertThat(systemOrder.getAssociatedRecords().get("extrinsics")).isEmpty();
+      assertEquals(2, QContext.getQInstance().getTable(TestUtils.TABLE_NAME_ORDER).getAssociations().size());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static class RemoveAssociationFromUser implements TableMetaDataPersonalizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public QTableMetaData execute(TableMetaDataPersonalizerInput input)
+      {
+         if(TestUtils.TABLE_NAME_ORDER.equals(input.getTableName()) && QInputSource.USER.equals(input.getInputSource()))
+         {
+            QTableMetaData clone = input.getTable().clone();
+            clone.getAssociations().removeIf(association -> "extrinsics".equals(association.getName()));
+            return clone;
+         }
+         return input.getTable();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static class CaptureParentRecords implements TableCustomizerInterface
+   {
+      private static List<QRecord> records;
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public List<QRecord> postQuery(QueryOrGetInputInterface input, List<QRecord> records)
+      {
+         CaptureParentRecords.records = records;
+         return records;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public static class RejectExtrinsicRead implements TableMetaDataPersonalizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public QTableMetaData execute(TableMetaDataPersonalizerInput input) throws QException
+      {
+         if(TestUtils.TABLE_NAME_ORDER_EXTRINSIC.equals(input.getTableName()) && QInputSource.USER.equals(input.getInputSource()))
+         {
+            throw new QException("extrinsic read unavailable");
+         }
+         return input.getTable();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Earlier valid children must not be attached before the last child is checked.
+    *******************************************************************************/
+   public static class RemoveLastExtrinsicRelationshipField implements TableCustomizerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public List<QRecord> postQuery(QueryOrGetInputInterface input, List<QRecord> records)
+      {
+         records.get(records.size() - 1).getValues().remove("orderId");
+         return records;
+      }
+   }
 }

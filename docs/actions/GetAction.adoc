@@ -29,18 +29,21 @@ QRecord record = output.getRecord();
 ----
 
 === GetInput
-* `table` - *String, Required* - Name of the table being queried against.
+* `tableName` - *String, Required* - Name of the table being queried against.
 * `primaryKey` - *Serializable, Conditional* - Value for the primary key field of the table being queried.
 Type should match the table's primary key field's type.
 If a `primaryKey` is not given, then a `uniqueKey` must be given.
-* `uniqueKey` - *Map of String -> Serializable, Conditional* - Map of name-value pairs that define the record to be fetcheed.
+* `uniqueKey` - *Map of String -> Serializable, Conditional* - Map of name-value pairs that define the record to be fetched.
 Keys in the map must be field names from the table being queried.
-Values in the map should should be of types that correspond to the fields.
+Values in the map should be of types that correspond to the fields.
 If a `primaryKey` is not given, then a `uniqueKey` must be given.
-If both `primaryKey` and `uniqueKey` are given, then `uniqueKey` is ignored.
+The map's field names must exactly match a declared `UniqueKey`.
+Supplying both `primaryKey` and `uniqueKey` is rejected.
 * `transaction` - *QBackendTransaction object* - Optional transaction object.
 ** Behavior for this object is backend-dependant.
 In an RDBMS backend, this object is generally needed if you want your query to see data that may have been modified within the same transaction.
+* `queryHints` - *EnumSet of QueryHint* - Optional backend query hints.
+Hint handling is backend-dependent. The existing Get-to-Query conversion does not carry these hints, so RDBMS Get retains primary routing. Get does not commit or close a caller-owned transaction.
 
 * `shouldTranslatePossibleValues` - *boolean, default: false* - Controls whether any fields in the table with a *possibleValueSource* assigned to them should have those possible values looked up
 (e.g., to provide text translations in the generated records' `displayValues` map).
@@ -51,13 +54,17 @@ But if getting a record as part of a process, then this can generally be left as
 But if getting a record as part of a process, then this can generally be left as *false*.
 * `shouldFetchHeavyFields` - *boolean, default: true* - Controls whether or not fields marked as `isHeavy` should be fetched & returned or not.
 * `shouldOmitHiddenFields` - *boolean, default: true* - Controls whether or not fields marked as `isHidden` should be included in the result or not.
-* `shouldMaskPassword` - *boolean, default: true* - Controls whether or not fields with `type` = `PASSWORD` should be masked, or if their actual values should be returned.
+* `shouldMaskPasswords` - *boolean, default: true* - Controls whether or not fields with `type` = `PASSWORD` should be masked, or if their actual values should be returned.
 * `queryJoins` - *List of <<QueryJoin>> objects* - Optional list of tables to be joined with the main table being queried.
 See QueryJoin under <<QueryAction>> for further details.
 * `includeAssociations` - *boolean, default: false* - Control whether or not records from tables defined as `associations` under the table being queried should be included in the result or not.
 * `associationNamesToInclude` - *Collection of String* - If `includeAssociations` is true, then this field can be used to limit which associated tables are included.
 If this field is null, then all associated tables are included.
-Otherwise, a table is only included if its name is in this collection.
+Otherwise, use exact association names, including parent-prefixed names such as `pets.notes` for nested groups.
+
+Expanded Query/Get reads inherit heavy-field, hidden-field, password masking, possible-value and display-value options at each level. Root field selections and query joins are not applied to different child tables. Finite self-referencing trees terminate when no child records remain. Expansion beyond 64 child-record levels fails instead of returning a truncated tree; cyclic data therefore produces a bounded error.
+
+Hidden-field removal and password masking cover physical and virtual fields, selected joined values, and their display values. Password masking preserves the backend's projection instead of adding absent fields. Labels that depend on private fields are rebuilt from sanitized values, including labels supplied by a post-query customizer. Explicit read options and the `REVEAL` adornment retain their behavior. Native Get applies READ behaviors and privacy to the record returned by the customizer.
 
 === GetOutput
 * `record` - *QRecord* - The record that was specified by the input `primaryKey` or `uniqueKey`.

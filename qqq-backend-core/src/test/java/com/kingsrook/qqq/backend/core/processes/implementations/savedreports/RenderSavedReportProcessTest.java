@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
@@ -56,6 +57,10 @@ import com.kingsrook.qqq.backend.core.utils.LocalMacDevUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.apache.commons.io.IOUtils;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFPivotTable;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -249,8 +254,36 @@ class RenderSavedReportProcessTest extends BaseTest
       QRecord          savedReport      = insertBasicSavedPivotReport(label);
       RunProcessOutput runProcessOutput = runRenderReportProcess(savedReport, ReportFormatPossibleValueEnum.XLSX);
 
-      InputStream inputStream = getInputStream(runProcessOutput);
-      writeTmpFileAndOpen(inputStream, ".xlsx");
+      try(InputStream inputStream = getInputStream(runProcessOutput); XSSFWorkbook workbook = new XSSFWorkbook(inputStream))
+      {
+         assertEquals(2, workbook.getNumberOfSheets());
+         XSSFSheet data = workbook.getSheet(label);
+         assertEquals(7, data.getPhysicalNumberOfRows());
+         assertEquals(6, data.getRow(0).getLastCellNum());
+         assertEquals("Id", data.getRow(0).getCell(0).getStringCellValue());
+         assertEquals("First Name", data.getRow(0).getCell(1).getStringCellValue());
+
+         List<String> firstNames = List.of("Darin", "Darin", "Darin", "Trevor", "Trevor", "Kelly");
+         List<String> lastNames = List.of("Jonson", "Jones", "Kelly", "Keller", "Kelkhoff", "Kelkhoff");
+         List<String> birthDates = List.of("1980-01-31", "1980-01-31", "1979-12-30", "1980-01-07", "1980-02-15", "1980-03-20");
+         for(int index = 0; index < 6; index++)
+         {
+            Row row = data.getRow(index + 1);
+            assertEquals(index + 1, row.getCell(0).getNumericCellValue());
+            assertEquals(firstNames.get(index), row.getCell(1).getStringCellValue());
+            assertEquals(lastNames.get(index), row.getCell(2).getStringCellValue());
+            assertEquals(index < 3 ? 0.5 : 3.5, row.getCell(3).getNumericCellValue());
+            assertEquals(LocalDate.parse(birthDates.get(index)), row.getCell(4).getLocalDateTimeCellValue().toLocalDate());
+            assertEquals(index < 5 ? "IL" : "MO", row.getCell(5).getStringCellValue());
+         }
+
+         XSSFSheet pivotSheet = workbook.getSheet("Pivot Table");
+         assertEquals(1, pivotSheet.getPivotTables().size());
+         XSSFPivotTable pivot = pivotSheet.getPivotTables().get(0);
+         assertEquals(List.of(5, 1), pivot.getRowLabelColumns());
+         assertEquals(label, pivot.getPivotCacheDefinition().getCTPivotCacheDefinition().getCacheSource().getWorksheetSource().getSheet());
+         assertEquals("A1:F7", pivot.getPivotCacheDefinition().getCTPivotCacheDefinition().getCacheSource().getWorksheetSource().getRef());
+      }
    }
 
 
@@ -412,5 +445,8 @@ class RenderSavedReportProcessTest extends BaseTest
       RunProcessOutput runProcessOutput = new RunProcessAction().execute(input);
       return runProcessOutput;
    }
+
+
+
 
 }

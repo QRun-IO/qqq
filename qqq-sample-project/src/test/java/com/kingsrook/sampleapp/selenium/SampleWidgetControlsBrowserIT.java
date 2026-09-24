@@ -218,7 +218,7 @@ class SampleWidgetControlsBrowserIT
       wait.until(browser -> body().contains("Please select a Choice"));
       driver.findElement(By.cssSelector("#ownedControls input[role=combobox]")).click();
       wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//*[@role='option' and text()='Beta']"))).click();
-      wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#ownedControls button[aria-label^='Choose date']"))).click();
+      wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("#ownedControls [aria-label^='Choose date']"))).click();
       wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//button[text()='Today']"))).click();
       wait.until(browser -> driver.executeScript("return localStorage.getItem('qqq.widgets.dropdownData.ownedControls.ownedDate');") != null && body().contains("choice=beta; day="));
       String selectedDate = new JSONObject((String) driver.executeScript("return localStorage.getItem('qqq.widgets.dropdownData.ownedControls.ownedDate');")).getString("id");

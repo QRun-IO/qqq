@@ -116,15 +116,15 @@ To validate a separately built dashboard candidate, add `-Dqqq.frontend.material
 
 The checker pins the reviewed set of feature IDs and allows only `train.bom` to wait for published artifacts. Removing/renaming a feature or changing that boundary requires a source review and an explicit checker change. This prevents accidental scope shrinkage; it does not prove the inventory is exhaustive. Always run a clean Maven verification immediately before checking the ledger, because XML test reports alone do not identify the source revision they exercised.
 
-CI runs the sample for feature changes and before publication. RC/final/hotfix publication requires `--stage source` to pass; public-artifact resolution is checked after publication by the default `published` stage. A source-stage pass explicitly leaves those artifact checks deferred and never claims complete release acceptance. Run `python3 qqq-sample-project/test_feature_coverage.py` to check the gate itself.
+CI runs the complete sample test suite for feature changes and before publication. For 4.0, the maintainer deferred comprehensive feature coverage under [#534](https://github.com/QRun-IO/qqq/issues/534): CI reports source-stage gaps without making them publication blockers. Public-artifact acceptance still requires a clean-cache test run against the published versions. Run `python3 qqq-sample-project/test_feature_coverage.py` to check the ledger verifier itself.
 
 After committing the sample and publishing the candidate, validate those public artifacts using Python 3.12 or later:
 
 ```bash
-python3 qqq-sample-project/verify-published.py 4.0.0-RC.3
+python3 qqq-sample-project/verify-published.py 4.0.0-RC.3 --material-version 0.41.0-RC.1
 ```
 
-Supply the version actually published. This exports committed `HEAD`, resolves the literal parent from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and checks the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`; the complete feature gate remains open until every supported scenario is verified.
+Supply the core and dashboard versions actually published; the command above shows the planned candidate identities, not a claim of availability. This exports committed `HEAD`, resolves the literal parent and dashboard from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and reports the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`, including separate test-acceptance and feature-coverage results. Add `--require-complete-coverage` when the deferred comprehensive feature gate is required; without it, a successful run does not certify the deferred scenarios.
 
 ## Source entry points
 

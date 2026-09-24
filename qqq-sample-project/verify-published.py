@@ -15,9 +15,14 @@ import xml.etree.ElementTree as ET
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('version', help='Published release or RC version, for example 4.0.0-RC.3')
+    parser.add_argument('--material-version', help='Published Material dashboard version; defaults to the sample POM')
+    parser.add_argument('--require-complete-coverage', action='store_true',
+                        help='Require all recorded feature scenarios; otherwise report the deferred gaps')
     args = parser.parse_args()
     if not re.fullmatch(r'\d+\.\d+\.\d+(?:-RC\.\d+)?', args.version):
         parser.error('Use a literal release or RC version, not a SNAPSHOT or Maven expression')
+    if args.material_version and not re.fullmatch(r'\d+\.\d+\.\d+(?:-RC\.\d+)?', args.material_version):
+        parser.error('Use a literal published release or RC version for the Material dashboard')
 
     root = Path(__file__).resolve().parent.parent
     source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
@@ -45,6 +50,9 @@ def main():
     if revision is None:
         revision = ET.SubElement(properties, '{' + namespace['m'] + '}revision')
     revision.text = args.version
+    material_version = properties.find('m:qqq.frontend.material-dashboard.version', namespace)
+    if args.material_version:
+        material_version.text = args.material_version
     pom.write(sample / 'pom.xml', encoding='utf-8', xml_declaration=True)
     settings = work / 'settings.xml'
     settings.write_text('<settings/>\n')
@@ -56,6 +64,9 @@ def main():
         'started_at': datetime.now(timezone.utc).isoformat(), 'command': command,
         'source': 'git archive HEAD; working-tree changes are excluded',
         'cache': str(work / 'm2'), 'settings': 'empty user and global settings',
+        'material_version': material_version.text,
+        'feature_coverage_required': args.require_complete_coverage,
+        'feature_coverage_complete': False,
         'complete': False,
     }
     print('Published-artifact sample evidence: ' + str(work), flush=True)
@@ -63,8 +74,14 @@ def main():
         run = subprocess.run(command, cwd=work, stdout=log, stderr=subprocess.STDOUT)
     result['maven_exit_code'] = run.returncode
     if run.returncode == 0:
-        coverage = subprocess.run([sys.executable, str(sample / 'verify-feature-coverage.py')], cwd=work)
+        coverage_command = [sys.executable, str(sample / 'verify-feature-coverage.py'), '--stage', 'published']
+        if not args.require_complete_coverage:
+            coverage_command.append('--report-only')
+        coverage = subprocess.run(coverage_command, cwd=work)
         result['feature_coverage_exit_code'] = coverage.returncode
+        coverage_report = sample / 'target' / 'feature-coverage-result.json'
+        if coverage_report.exists():
+            result['feature_coverage_complete'] = json.loads(coverage_report.read_text())['complete']
         result['complete'] = coverage.returncode == 0
     result['finished_at'] = datetime.now(timezone.utc).isoformat()
     (work / 'acceptance.json').write_text(json.dumps(result, indent=2) + '\n')

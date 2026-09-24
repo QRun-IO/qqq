@@ -1,0 +1,94 @@
+[#DeleteAction]
+== DeleteAction
+include::../variables.adoc[]
+
+`DeleteAction` deletes selected records from a {link-table} through its configured backend.
+Initialize `QContext` with the intended instance and session before constructing the input.
+The configured table and declared primary-key type determine the target records.
+
+=== Example
+
+Use a disposable sample record and replace `1` with its primary key.
+Deleting a `person` also traverses its declared `pets` and their `notes` associations.
+
+[source,java]
+----
+DeleteInput input = new DeleteInput("person").withPrimaryKey(1);
+DeleteOutput output = new DeleteAction().execute(input);
+int deletedPeople = output.getDeletedRecordCount();
+List<QRecord> errors = output.getRecordsWithErrors();
+List<QRecord> warnings = output.getRecordsWithWarnings();
+----
+
+The count concerns the requested table, not the total number of deleted descendants.
+Error and warning lists are not input-aligned lists of successful records; handle null lists.
+
+=== Selection and filter validation
+
+Supply either nonempty `primaryKeys` or a `queryFilter`; supplying both rejects the request.
+Null or empty keys without a filter request no native deletion. Empty keys with a filter use that filter.
+An explicitly empty `QQueryFilter` selects all matching readable rows, subject to write validation and backend support.
+A zero-limit or unmatched filter selects no records. Use explicit criteria when limiting a destructive operation.
+
+The common key-selection path validates filter structure and field names and rejects negative skip/limit before dispatch. Native query-specific operand and type checks still apply.
+Malformed criteria, including nested missing fields/operators, must reject rather than disappear and broaden the selection.
+Declared filter value behaviors apply to a private filter; USER-removed fields cannot be used for selection.
+Supported ordering, skip and limit select keys before DML. Presentation customizers do not choose those native targets.
+
+Keys are converted to the declared type and deduplicated by typed identity before common validation and cascades.
+For prefetch-capable backends, explicit missing or READ-excluded keys produce `NotFoundStatusMessage` records.
+A hidden, heavy or password-masked key in the presentation snapshot does not by itself make an existing visible row missing; matching retains its native identity.
+A null key element is a missing target, not an absent selector. Invalid key conversion is an invocation error.
+Input key values and the original filter reference are restored on return or failure; list-object identity is not promised.
+MongoDB selection and prefetch follow the ObjectId requirements in the <<NativeWriteLookups,native write lookup>> contract; unsupported or disrupted selected keys reject before those records reach callbacks or cascades.
+
+=== Authorization, personalization and customizers
+
+Table permission grants and record-lock scopes are separate. Each HTTP operation retains its own permission checks.
+The active input source and personalized table metadata govern filter validation and presentation prefetch.
+USER-removed fields are excluded from that prefetch and its normal callback/error snapshots; SYSTEM retains its own metadata policy.
+The canonical association graph remains separate from presentation metadata.
+
+For supported native prefetch, stored DELETE owners are checked with the applicable WRITE/READ_AND_WRITE lock tree.
+Private stored authorization values include hidden/heavy/password fields without treating presentation values as ownership.
+They are not merged into the separate presentation snapshot, public error records or audit/customizer data.
+Ordinary READ visibility still bounds the visible targets; a private owner read does not reveal a READ-denied record.
+The native adapter's record representation remains trusted. API no-prefetch, filesystem security and other provider-specific contracts require separate validation.
+
+`PRE_DELETE_RECORD` may return a replacement list, including an immutable list, and mark records with errors or warnings.
+Use `new QRecord(record)` when copying a private snapshot. A replacement must still identify an original prefetched target; a lost identity, unrelated target or retargeted captured key rejects before deletion. Valid fresh replacements with an original target key remain supported. See <<QRecords>>.
+Errors exclude their keys from native deletion; warnings permit deletion. Customizers remain trusted and must preserve authorization and privacy.
+`performValidations(input, oldRecords, isPreview)` runs validation and the pre-delete hook without invoking native deletion.
+Its supplied records must describe the intended visible targets; it is not a replacement for normal selection or a public authorization endpoint.
+Respect `isPreview` in customizers and avoid persistent side effects during preview. An absent old-record list returns null.
+`POST_DELETE_RECORD` runs after DML and auditing when old records are available. Its errors cannot undo deletion; a thrown exception becomes warnings.
+If any post-delete replacement has a missing, unrelated or retargeted captured identity, the returned list is not merged. Warnings are returned on the original successful snapshots, and `deletedRecordCount` is retained.
+
+=== DeleteInput
+
+* `tableName` - *String, Required* - Name of an existing table with a supported delete operation.
+* `primaryKeys` - *List of Serializable, default: null* - Target identities; use `withPrimaryKey` or `withPrimaryKeys`.
+* `queryFilter` - *QQueryFilter, default: null* - Alternative selection; use `withQueryFilter`.
+* `inputSource` - *InputSource, default: QInputSource.SYSTEM* - Controls personalization and custom logic; HTTP callers retain their operation's USER semantics.
+* `transaction` - *QBackendTransaction, default: null* - Optional supported caller-owned transaction. RDBMS uses the supplied `RDBMSTransaction` connection without committing, rolling back or closing it.
+* `omitDmlAudit` - *boolean, default: false* - Suppresses the action's DML audit.
+* `auditContext` - *String, default: null* - Optional context for DML audit messages.
+* `flags` - *Set of ActionFlag, default: null* - Optional flags interpreted by supporting action/customizer code.
+* `asyncJobCallback` - *AsyncJobCallback, inherited* - A `NonPersistedAsyncJobCallback` is created on first access when none was supplied. Progress/cancellation behavior depends on the executing action/backend.
+
+=== Associations, results and transaction boundaries
+
+Cascade traversal uses the canonical declared association graph and complete native relationship membership.
+It does not depend on supplying child records or displaying their association groups in a UI.
+Declared join orientation and typed composite/non-primary-key tuples determine membership; a null tuple has no members.
+Descendants are deleted before ancestors. Cycles, rejected children or incomplete child deletion stop that parent mutation.
+Ancestor errors do not expose private descendant details. Input source, transaction, flags and audit options propagate to descendants.
+Unsupported structural discovery must fail before parent mutation; ordinary visibility-filtered queries cannot replace complete discovery.
+
+`DeleteOutput` provides `deletedRecordCount`, `recordsWithErrors` and `recordsWithWarnings`.
+The root count may coexist with errors, including errors added after deletion. Empty result lists can be absent from JSON.
+For hidden or masked primary keys, generated not-found and native system-error diagnostics use generic messages rather than repeating the raw key. Custom application messages remain the customizer's responsibility.
+Native failures may return per-key system errors or throw; an error does not prove the entire request left storage unchanged.
+Earlier pages, siblings or descendants may already have been deleted when a later operation fails.
+Delete does not create automatic batch/recursive rollback, distributed atomicity or concurrency isolation.
+Use a supported encompassing caller transaction and explicitly roll it back when all-or-nothing behavior is required.

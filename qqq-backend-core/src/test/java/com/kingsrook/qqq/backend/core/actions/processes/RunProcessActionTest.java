@@ -47,6 +47,7 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 
 /*******************************************************************************
@@ -454,6 +455,152 @@ class RunProcessActionTest extends BaseTest
    private void assertStepListNames(List<String> expectedNames, List<QStepMetaData> actualSteps)
    {
       assertEquals(expectedNames, actualSteps.stream().map(s -> s.getName()).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** Requesting a process name that is not registered in the QInstance must throw
+    ** a QException describing the missing process — not a NullPointerException.
+    *******************************************************************************/
+   @Test
+   void testExecute_undefinedProcess_throwsQException()
+   {
+      RunProcessInput input = new RunProcessInput();
+      input.setProcessName("doesNotExistProcess");
+      input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+
+      assertThatThrownBy(() -> new RunProcessAction().execute(input))
+         .isInstanceOf(QException.class)
+         .hasMessageContaining("doesNotExistProcess");
+   }
+
+
+
+   /*******************************************************************************
+    ** A LINEAR process whose steps all have code should run them in declared order,
+    ** with values written by one step visible to the next.
+    *******************************************************************************/
+   @Test
+   void testLinearStepFlow_stepsRunInOrderAndValuesFlow() throws QException
+   {
+      QProcessMetaData process = new QProcessMetaData()
+         .withName("linearTest")
+         .withStepFlow(ProcessStepFlow.LINEAR)
+         .withStep(new QBackendStepMetaData().withName("step1").withCode(
+            new QCodeReferenceLambda<BackendStep>((in, out) ->
+            {
+               log.add("step1");
+               out.addValue("fromStep1", "hello");
+            })))
+         .withStep(new QBackendStepMetaData().withName("step2").withCode(
+            new QCodeReferenceLambda<BackendStep>((in, out) ->
+            {
+               log.add("step2:" + in.getValue("fromStep1"));
+            })));
+
+      QContext.getQInstance().addProcess(process);
+
+      RunProcessInput input = new RunProcessInput();
+      input.setProcessName("linearTest");
+      input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+
+      RunProcessOutput output = new RunProcessAction().execute(input);
+
+      assertEquals(List.of("step1", "step2:hello"), log);
+      assertNotNull(output.getProcessState());
+      assertThat(output.getProcessState().getNextStepName()).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** When a backend step throws a QException the RunProcessAction must re-throw it
+    ** unchanged so callers can check the original message.
+    *******************************************************************************/
+   @Test
+   void testLinearStepFlow_stepThrowsQException_isRethrown()
+   {
+      QProcessMetaData process = new QProcessMetaData()
+         .withName("qExThrowingProcess")
+         .withStepFlow(ProcessStepFlow.LINEAR)
+         .withStep(new QBackendStepMetaData().withName("boom").withCode(
+            new QCodeReferenceLambda<BackendStep>((in, out) ->
+            {
+               throw new QException("specific domain error");
+            })));
+
+      QContext.getQInstance().addProcess(process);
+
+      RunProcessInput input = new RunProcessInput();
+      input.setProcessName("qExThrowingProcess");
+      input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+
+      assertThatThrownBy(() -> new RunProcessAction().execute(input))
+         .isInstanceOf(QException.class)
+         .hasMessageContaining("specific domain error");
+   }
+
+
+
+   /*******************************************************************************
+    ** When a backend step throws a plain (non-QException) RuntimeException the
+    ** RunProcessAction must wrap it in a QException("Error running process", cause)
+    ** rather than letting the raw exception escape.
+    *******************************************************************************/
+   @Test
+   void testLinearStepFlow_stepThrowsRuntimeException_isWrappedInQException()
+   {
+      QProcessMetaData process = new QProcessMetaData()
+         .withName("rteThrowingProcess")
+         .withStepFlow(ProcessStepFlow.LINEAR)
+         .withStep(new QBackendStepMetaData().withName("boom").withCode(
+            new QCodeReferenceLambda<BackendStep>((in, out) ->
+            {
+               throw new RuntimeException("raw runtime error");
+            })));
+
+      QContext.getQInstance().addProcess(process);
+
+      RunProcessInput input = new RunProcessInput();
+      input.setProcessName("rteThrowingProcess");
+      input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+
+      assertThatThrownBy(() -> new RunProcessAction().execute(input))
+         .isInstanceOf(QException.class)
+         .hasMessageContaining("Error running process")
+         .cause()
+         .isInstanceOf(RuntimeException.class)
+         .hasMessageContaining("raw runtime error");
+   }
+
+
+
+   /*******************************************************************************
+    ** In LINEAR flow, a frontend step with SKIP behavior should not pause execution;
+    ** the process should continue to the next backend step and complete.
+    *******************************************************************************/
+   @Test
+   void testLinearStepFlow_frontendStepWithSkipBehavior_doesNotPauseExecution() throws QException
+   {
+      QProcessMetaData process = new QProcessMetaData()
+         .withName("linearWithFrontend")
+         .withStepFlow(ProcessStepFlow.LINEAR)
+         .withStep(new QBackendStepMetaData().withName("before").withCode(
+            new QCodeReferenceLambda<BackendStep>((in, out) -> log.add("before"))))
+         .withStep(new QFrontendStepMetaData().withName("review"))
+         .withStep(new QBackendStepMetaData().withName("after").withCode(
+            new QCodeReferenceLambda<BackendStep>((in, out) -> log.add("after"))));
+
+      QContext.getQInstance().addProcess(process);
+
+      RunProcessInput input = new RunProcessInput();
+      input.setProcessName("linearWithFrontend");
+      input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+
+      new RunProcessAction().execute(input);
+
+      assertEquals(List.of("before", "after"), log);
    }
 
 }

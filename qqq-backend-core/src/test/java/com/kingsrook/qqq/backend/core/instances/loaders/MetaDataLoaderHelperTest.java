@@ -22,18 +22,23 @@
 package com.kingsrook.qqq.backend.core.instances.loaders;
 
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -97,6 +102,86 @@ class MetaDataLoaderHelperTest extends BaseTest
       QTableMetaData yourTable = qInstance.getTable("yourTable");
       assertEquals("Someone else's table", yourTable.getLabel());
       assertEquals(2, yourTable.getFields().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** A missing directory must not produce an apparently successful empty load.
+    *******************************************************************************/
+   @Test
+   void testMissingDirectoryFails() throws Exception
+   {
+      Path missing = Files.createTempDirectory(getClass().getSimpleName()).resolve("missing");
+      assertThrows(QException.class, () -> MetaDataLoaderHelper.processAllMetaDataFilesInDirectory(new QInstance(), missing.toString()));
+   }
+
+
+
+   /*******************************************************************************
+    ** A misspelled property must not silently become partial application metadata.
+    *******************************************************************************/
+   @Test
+   void testInvalidMetadataFailsWithFileAndProperty() throws Exception
+   {
+      Path directory = Files.createTempDirectory(getClass().getSimpleName());
+      writeFile("invalid-table", ".yaml", directory, "class: QTableMetaData\nname: person\nmisspelledProperty: true\n");
+      QException failure = assertThrows(QException.class,
+         () -> MetaDataLoaderHelper.processAllMetaDataFilesInDirectory(new QInstance(), directory.toString()));
+      assertTrue(failure.getMessage().contains("invalid-table"));
+      assertTrue(failure.getMessage().contains("misspelledProperty"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Problems from a registered nested loader must reach the stream boundary.
+    *******************************************************************************/
+   @Test
+   void testNestedStepProblemsFailLoading() throws Exception
+   {
+      String valid = "class: QProcessMetaData\nname: nested\nstepList:\n- name: start\n  stepType: backend\n  code:\n    name: example.BackendStep\n";
+      try(ByteArrayInputStream input = new ByteArrayInputStream(valid.getBytes(StandardCharsets.UTF_8)))
+      {
+         QProcessMetaData process = (QProcessMetaData) MetaDataLoaderHelper.readMetaDataFile(new QInstance(), input, "valid-process.yaml");
+         assertEquals("example.BackendStep", process.getBackendStep("start").getCode().getName());
+      }
+      String invalid = valid.replace("  stepType: backend", "  stepType: backend\n  misspelledProperty: true");
+      try(ByteArrayInputStream input = new ByteArrayInputStream(invalid.getBytes(StandardCharsets.UTF_8)))
+      {
+         QException failure = assertThrows(QException.class,
+            () -> MetaDataLoaderHelper.readMetaDataFile(new QInstance(), input, "invalid-process.yaml"));
+         assertTrue(failure.getMessage().contains("invalid-process.yaml"));
+         assertTrue(failure.getMessage().contains("stepList"));
+         assertTrue(failure.getMessage().contains("misspelledProperty"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Wrong collection/object shapes must not silently discard fields or elements.
+    *******************************************************************************/
+   @Test
+   void testWrongShapesFailLoading() throws Exception
+   {
+      String[][] cases = {
+         { "QAppMetaData", "sections", "not-a-list" },
+         { "QTableMetaData", "fields", "not-a-map" },
+         { "QTableMetaData", "icon", "not-an-object" },
+         { "QProcessMetaData", "stepList", "[not-a-step]" }
+      };
+      for(String[] item : cases)
+      {
+         String yaml = "class: " + item[0] + "\nname: badShape\n" + item[1] + ": " + item[2] + "\n";
+         try(ByteArrayInputStream input = new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)))
+         {
+            QException failure = assertThrows(QException.class,
+               () -> MetaDataLoaderHelper.readMetaDataFile(new QInstance(), input, "bad-shape.yaml"), item[1]);
+            assertTrue(failure.getMessage().contains("bad-shape.yaml"));
+            assertTrue(failure.getMessage().contains(item[1]));
+         }
+      }
    }
 
 

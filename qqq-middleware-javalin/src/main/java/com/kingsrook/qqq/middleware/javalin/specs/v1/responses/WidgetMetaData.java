@@ -22,9 +22,12 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 
 
+import java.io.Serializable;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
 
 
 /*******************************************************************************
@@ -87,6 +90,18 @@ public class WidgetMetaData
    public String getType()
    {
       return this.wrapped.getType();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @OpenAPIDescription("Frontend widget defaults, including explicit association bindings")
+   @OpenAPIHasAdditionalProperties
+   public Map<String, Serializable> getDefaultValues()
+   {
+      return (wrapped.getDefaultValues());
    }
 
 }

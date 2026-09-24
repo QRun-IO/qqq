@@ -1,31 +1,13 @@
 # QQQ OpenAPI
 
-OpenAPI/Swagger specification generator for QQQ applications.
+Legacy OpenAPI model classes, including `OpenAPI`, `Schema`, `Path`, `Parameter`, and `Server`. Application API specification generation is implemented by `GenerateOpenApiSpecAction` in [qqq-middleware-api](../qqq-middleware-api/README.md). Use that module for the current metadata-driven API generation flow.
 
-## Features
+QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md) and [4.0 migration guide](../docs/migration/4.0.adoc).
 
-- Automatic OpenAPI spec generation from QQQ metadata
-- Swagger UI integration
-- API documentation export
+## Source and examples
 
-## Usage
-
-```java
-QInstance instance = new QInstance();
-// ... configure instance ...
-
-OpenApiSpecGenerator generator = new OpenApiSpecGenerator(instance);
-String openApiSpec = generator.generate();
-```
-
-## Output
-
-Generates OpenAPI 3.0 specification including:
-- Table CRUD endpoints
-- Process endpoints
-- Request/response schemas
-- Authentication requirements
+- [Server](src/main/java/com/kingsrook/qqq/openapi/model/Server.java)
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

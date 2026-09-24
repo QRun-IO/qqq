@@ -23,12 +23,13 @@ package com.kingsrook.qqq.middleware.javalin;
 
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PipedOutputStream;
 import java.io.Serializable;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -48,6 +49,7 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.async.JobGoingAsyncException;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.CancelProcessAction;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
@@ -67,6 +69,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -87,9 +90,11 @@ import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeConsumer;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeFunction;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
+import io.javalin.http.HttpResponseException;
 import io.javalin.http.UploadedFile;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.NotImplementedException;
+import org.eclipse.jetty.http.BadMessageException;
 import org.eclipse.jetty.http.HttpStatus;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 import static io.javalin.apibuilder.ApiBuilder.get;
@@ -286,8 +291,6 @@ public class QJavalinProcessHandler
       try
       {
          QJavalinImplementation.setupSession(context, new AbstractActionInput());
-         // todo context.contentType(reportFormat.getMimeType());
-         context.header("Content-Disposition", "filename=" + context.pathParam("file"));
 
          String filePath         = context.queryParam("filePath");
          String storageTableName = context.queryParam("storageTableName");
@@ -295,11 +298,16 @@ public class QJavalinProcessHandler
 
          if(filePath != null)
          {
-            context.result(new FileInputStream(filePath));
+            context.result(ProcessFileDownload.open(filePath));
          }
          else if(storageTableName != null && reference != null)
          {
-            InputStream inputStream = new StorageAction().getInputStream(new StorageInput(storageTableName).withReference(reference));
+            StorageInput storageInput = new StorageInput(storageTableName).withReference(reference);
+            if(!ProcessFileDownload.isStorageRegistered(storageInput))
+            {
+               throw new QPermissionDeniedException("This file is not an authorized process download");
+            }
+            InputStream inputStream = new StorageAction().getInputStream(storageInput);
             context.result(inputStream);
          }
          else
@@ -307,6 +315,8 @@ public class QJavalinProcessHandler
             throw (new QBadRequestException("Missing query parameters to identify file to download"));
          }
 
+         context.contentType("application/octet-stream");
+         context.header("Content-Disposition", "attachment; filename*=UTF-8''" + URLEncoder.encode(context.pathParam("file"), StandardCharsets.UTF_8).replace("+", "%20"));
       }
       catch(Exception e)
       {
@@ -379,11 +389,20 @@ public class QJavalinProcessHandler
          RunProcessInput runProcessInput = new RunProcessInput();
          QJavalinImplementation.setupSession(context, runProcessInput);
 
+         runProcessInput.setInputSource(QInputSource.USER);
          runProcessInput.setProcessName(processName);
          runProcessInput.setFrontendStepBehavior(frontendStepBehavior);
          runProcessInput.setProcessUUID(processUUID);
          runProcessInput.setStartAfterStep(startAfterStep);
          runProcessInput.setStartAtStep(startAtStep);
+         QProcessMetaData process = QContext.getQInstance().getProcess(processName);
+         ////////////////////////////////////////////////////////////////////////
+         // Standard rules need no input values; custom checkers may need them. //
+         ////////////////////////////////////////////////////////////////////////
+         if(process == null || PermissionsHelper.getEffectivePermissionRules(process, QContext.getQInstance()).getCustomPermissionChecker() == null)
+         {
+            PermissionsHelper.checkProcessPermissionThrowing(runProcessInput, processName);
+         }
          populateRunProcessRequestWithValuesFromContext(context, runProcessInput);
 
          String reportName = ValueUtils.getValueAsString(runProcessInput.getValue("reportName"));
@@ -402,7 +421,7 @@ public class QJavalinProcessHandler
          // run the process as an async action //
          ////////////////////////////////////////
          Integer timeout = getTimeoutMillis(context);
-         RunProcessOutput runProcessOutput = new AsyncJobManager().startJob(processName, timeout, TimeUnit.MILLISECONDS, (callback) ->
+         RunProcessOutput runProcessOutput = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, timeout, TimeUnit.MILLISECONDS, (callback) ->
          {
             runProcessInput.setAsyncJobCallback(callback);
             return (new RunProcessAction().execute(runProcessInput));
@@ -428,12 +447,24 @@ public class QJavalinProcessHandler
       }
       catch(Exception e)
       {
-         //////////////////////////////////////////////////////////////////////////////
-         // our other actions in here would do: handleException(context, e);         //
-         // which would return a 500 to the client.                                  //
-         // but - other process-step actions, they always return a 200, just with an //
-         // optional error message - so - keep all of the processes consistent.      //
-         //////////////////////////////////////////////////////////////////////////////
+         ///////////////////////////////////////////////////////////////////////////////////////
+         // Preserve request-validation status while ordinary process errors retain HTTP 200. //
+         ///////////////////////////////////////////////////////////////////////////////////////
+         QBadRequestException badRequest = ExceptionUtils.findClassInRootChain(e, QBadRequestException.class);
+         BadMessageException badMessage = ExceptionUtils.findClassInRootChain(e, BadMessageException.class);
+         HttpResponseException httpResponse = ExceptionUtils.findClassInRootChain(e, HttpResponseException.class);
+         if(badRequest != null)
+         {
+            context.status(HttpStatus.BAD_REQUEST_400);
+         }
+         else if(badMessage != null)
+         {
+            context.status(badMessage.getCode());
+         }
+         else if(httpResponse != null)
+         {
+            context.status(httpResponse.getStatus());
+         }
          returningException = e;
          serializeRunProcessExceptionForCaller(resultForCaller, e);
       }
@@ -573,10 +604,28 @@ public class QJavalinProcessHandler
          }
       }
 
+      ////////////////////////////////////////////////////////////////////////
+      // Validate every filename before creating any persistent archive file. //
+      ////////////////////////////////////////////////////////////////////////
+      RunProcessAction.validateUserInputValues(runProcessInput);
+      Map<String, List<UploadedFile>> uploadedFileMap = context.uploadedFileMap();
+      for(List<UploadedFile> uploadedFiles : uploadedFileMap.values())
+      {
+         for(UploadedFile uploadedFile : uploadedFiles)
+         {
+            String filename = uploadedFile.filename();
+            if(filename.isBlank() || filename.equals(".") || filename.equals("..") || filename.contains("/") || filename.contains("\\")
+               || filename.contains(":") || filename.chars().anyMatch(Character::isISOControl))
+            {
+               throw new QBadRequestException("Uploaded filename must be a nonempty filename without directory separators, colons or control characters.");
+            }
+         }
+      }
+
       ////////////////////////////
       // process uploaded files //
       ////////////////////////////
-      for(Map.Entry<String, List<UploadedFile>> entry : context.uploadedFileMap().entrySet())
+      for(Map.Entry<String, List<UploadedFile>> entry : uploadedFileMap.entrySet())
       {
          String                  name          = entry.getKey();
          List<UploadedFile>      uploadedFiles = entry.getValue();
@@ -735,7 +784,7 @@ public class QJavalinProcessHandler
          resultForCaller.put("processUUID", processUUID);
 
          LOG.debug("Request for status of process " + processUUID + ", job " + jobUUID);
-         Optional<AsyncJobStatus> optionalJobStatus = new AsyncJobManager().getJobStatus(jobUUID);
+         Optional<AsyncJobStatus> optionalJobStatus = new AsyncJobManager().getJobStatusForUser(jobUUID, processName, processUUID);
          if(optionalJobStatus.isEmpty())
          {
             serializeRunProcessExceptionForCaller(resultForCaller, new RuntimeException("Could not find status of process step job"));
@@ -753,7 +802,7 @@ public class QJavalinProcessHandler
                // if the job is complete, get the process result from state provider, and return it //
                // this output should look like it did if the job finished synchronously!!           //
                ///////////////////////////////////////////////////////////////////////////////////////
-               Optional<ProcessState> processState = RunProcessAction.getState(processUUID);
+               Optional<ProcessState> processState = RunProcessAction.getStateForUser(processUUID, context.pathParam("processName"));
                if(processState.isPresent())
                {
                   RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());
@@ -781,7 +830,7 @@ public class QJavalinProcessHandler
       }
       catch(Exception e)
       {
-         serializeRunProcessExceptionForCaller(resultForCaller, e);
+         QJavalinImplementation.handleException(context, e);
       }
    }
 
@@ -804,7 +853,7 @@ public class QJavalinProcessHandler
 
          // todo - potential optimization - if a future state provider could take advantage of it,
          //  we might pass the skip & limit in to a method that fetch just those 'n' rows from state, rather than the whole thing?
-         Optional<ProcessState> optionalProcessState = RunProcessAction.getState(processUUID);
+         Optional<ProcessState> optionalProcessState = RunProcessAction.getStateForUser(processUUID, context.pathParam("processName"));
          if(optionalProcessState.isEmpty())
          {
             throw (new Exception("Could not find process results."));
@@ -846,6 +895,7 @@ public class QJavalinProcessHandler
          RunProcessInput runProcessInput = new RunProcessInput();
          QJavalinImplementation.setupSession(context, runProcessInput);
 
+         runProcessInput.setInputSource(QInputSource.USER);
          runProcessInput.setProcessName(context.pathParam("processName"));
          runProcessInput.setProcessUUID(context.pathParam("processUUID"));
 

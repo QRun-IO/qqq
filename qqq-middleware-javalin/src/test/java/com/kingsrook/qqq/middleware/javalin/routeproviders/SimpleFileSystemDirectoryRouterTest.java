@@ -40,6 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class SimpleFileSystemDirectoryRouterTest
 {
    private QInstance qInstance;
+   private boolean originalLoadStaticFilesFromJar;
+   private String originalStaticFilesProperty;
 
 
    /*******************************************************************************
@@ -48,6 +50,8 @@ class SimpleFileSystemDirectoryRouterTest
    @BeforeEach
    void setUp() throws Exception
    {
+      originalLoadStaticFilesFromJar = SimpleFileSystemDirectoryRouter.loadStaticFilesFromJar;
+      originalStaticFilesProperty = System.getProperty("qqq.javalin.enableStaticFilesFromJar");
       qInstance = TestUtils.defineInstance();
       // QContext not needed for these tests
    }
@@ -60,6 +64,15 @@ class SimpleFileSystemDirectoryRouterTest
    void tearDown()
    {
       QContext.clear();
+      SimpleFileSystemDirectoryRouter.loadStaticFilesFromJar = originalLoadStaticFilesFromJar;
+      if(originalStaticFilesProperty == null)
+      {
+         System.clearProperty("qqq.javalin.enableStaticFilesFromJar");
+      }
+      else
+      {
+         System.setProperty("qqq.javalin.enableStaticFilesFromJar", originalStaticFilesProperty);
+      }
    }
 
 
@@ -121,7 +134,7 @@ class SimpleFileSystemDirectoryRouterTest
    @Test
    void testAcceptJavalinConfig()
    {
-      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "src/test/resources");
+      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "public-site");
       router.setQInstance(qInstance);
 
       Javalin service = Javalin.create(config ->
@@ -141,18 +154,17 @@ class SimpleFileSystemDirectoryRouterTest
 
 
    /*******************************************************************************
-    ** Test acceptJavalinService
+    ** Test configuration-time handlers
     *******************************************************************************/
    @Test
-   void testAcceptJavalinService()
+   void testConfigureHandlers()
    {
-      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "src/test/resources");
+      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "public-site");
       router.setQInstance(qInstance);
 
-      Javalin service = Javalin.create();
+      Javalin service = Javalin.create(router::acceptJavalinConfig);
       try
       {
-         router.acceptJavalinService(service);
          // Should not throw
       }
       finally
@@ -163,20 +175,19 @@ class SimpleFileSystemDirectoryRouterTest
 
 
    /*******************************************************************************
-    ** Test acceptJavalinService with SPA configuration
+    ** Test configuration-time handlers with SPA configuration
     *******************************************************************************/
    @Test
-   void testAcceptJavalinServiceWithSpa()
+   void testConfigureHandlersWithSpa()
    {
-      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "src/test/resources/public-site/");
+      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "public-site");
       router.setQInstance(qInstance);
       router.withSpaRootPath("/static");
-      router.withSpaRootFile("index.html");
+      router.withSpaRootFile("public-site/index.html");
 
-      Javalin service = Javalin.create();
+      Javalin service = Javalin.create(router::acceptJavalinConfig);
       try
       {
-         router.acceptJavalinService(service);
          // Should register 404 handler for SPA
          assertNotNull(service);
       }
@@ -211,7 +222,7 @@ class SimpleFileSystemDirectoryRouterTest
    {
       System.setProperty("qqq.javalin.enableStaticFilesFromJar", "true");
       
-      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "src/test/resources/public-site/");
+      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/static", "public-site");
       router.setQInstance(qInstance);
 
       Javalin service = Javalin.create(config ->
@@ -236,7 +247,7 @@ class SimpleFileSystemDirectoryRouterTest
    @Test
    void testAcceptJavalinConfig_PathWithoutLeadingSlash()
    {
-      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("static", "src/test/resources");
+      SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("static", "public-site");
       router.setQInstance(qInstance);
 
       Javalin service = Javalin.create(config ->

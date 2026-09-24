@@ -19,12 +19,20 @@
   ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
   -->
 
+<!DOCTYPE html>
 <html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <title>QQQ private sample SPA</title>
+   <script src="app.js" defer></script>
+</head>
 <body>
 <h1>Welcome to the private site</h1>
+<p>This is the restricted local demonstration. Its public sample credentials are not production authentication.</p>
+<p>Current route: <output id="current-route"></output></p>
 <ul>
+   <li><a href="details" data-route>Open the private details route without reloading.</a></li>
    <li><a href="/public/">Return to the public site.</a></li>
 </ul>
 </body>
 </html>
-

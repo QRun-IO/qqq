@@ -15,37 +15,52 @@ A Widget is defined in a QQQ Instance in a `*QWidgetMetaData*` object.
 *QWidgetMetaData Properties:*
 
 * `name` - *String, Required* - Unique name for the widget within the QQQ Instance.
-* `type` - *String, Required* - Specifies the UI & data type for the widget.
+* `type` - *String, Required* - Specifies the UI & data type for the widget. Use a `WidgetType` enum value's `getType()` method.
 * `label` - *String* - User-facing header or title for a widget.
 * `tooltip` - *String* - Text contents to be placed in a tooltip associated with the widget's label in the UI.
-** Values should come from the `WidgetType` enum's `getType()` method (e.g., `WidgetType.BAR_CHART.getType()`)
 * `gridColumns` - *Integer* - for a desktop-sized screen, in a 12-based grid,
 how many columns the widget should consume.
 * `codeReference` - *QCodeReference, Required* - Reference to the custom code,
 a subclass of `AbstractWidgetRenderer`, which is responsible for loading data to render the widget.
 * `footerHTML` - *String* - HTML String, which, if present, will be displayed in the
 footer of the widget (not supported by all widget types).
-* `isCard` - *boolean, default false* #TODO#
-* `showReloadButton` - *boolean, default true* #TODO#
-* `showExportButton` - *boolean, default false* #TODO#
-* `dropdowns` - #TODO#
-* `storeDropdownSelections` - *boolean* #TODO#
-* `icons` - *Map<String, QIcon>* #TODO#
-* `defaultValues` - *Map<String, Serializable>* #TODO#
+* `isCard` - *boolean, default false* - Requests card styling in frontends that support it.
+* `showReloadButton` - *boolean, default true* - Requests a control to reload the widget data.
+* `showExportButton` - *boolean, default false* - Requests an export control for widget types/frontends that support export.
+* `dropdowns` - *List<WidgetDropdownData>* - Selection controls whose values are passed to the renderer.
+* `storeDropdownSelections` - *boolean, default false* - Requests that the frontend retain dropdown selections. Material currently forwards this setting through parent widgets; ordinary HTML widgets do not save selections across refresh. This limitation is deferred under https://github.com/QRun-IO/qqq/issues/554[#554].
+* `collapsible` - Declares widget collapse behavior, but the native frontend widget metadata response currently omits it. Material therefore cannot enable the declared collapse controls through that response; https://github.com/QRun-IO/qqq/issues/555[#555] is deferred.
+* `icons` - *Map<String, QIcon>* - Named icons used by the selected widget type.
+* `defaultValues` - *Map<String, Serializable>* - Default named values available to widget rendering.
+
+`ChartData` is a reusable backend payload for concrete chart widgets. The `CHART` enum value does not have a standalone Material renderer; choose a concrete metadata type such as `barChart`, `lineChart` or `pieChart`.
+
+`LocationData` serializes image, title, description, location and footer values; the `LOCATION` enum has no standalone Material renderer. The US map currently displays fixed demo markers rather than supplied marker values; https://github.com/QRun-IO/qqq/issues/560[#560] tracks this deferred limitation.
+
+A `customComponent` widget names its JavaScript bundle with `defaultValues.componentSourceUrl` and its global export with `defaultValues.componentName`. The bundle registers `window.ComponentName.ComponentName`; the component receives an envelope containing `props.widgetMetaData`, `props.widgetData` and `props.record`, plus the frontend bridge/context. An unavailable bundle displays a loading error. Only load application-owned, trusted component code.
+
+A `process` widget rendered by `ProcessWidgetRenderer` sets `defaultValues.processName`. Query parameters become default process values; running the process still requires its own permissions. The sample's widget browser fixture demonstrates both execution and denial.
+
+Child-record widgets use `ChildRecordListRenderer.widgetMetaDataBuilder(join)`. User requests require READ on the parent, child and queried join tables; paginated totals use the same personalized visibility as the child query. The configured join remains authoritative over a request's `joinName`. Empty parents and create-screen metadata can render without child rows.
+
+`CronUIWidgetRenderer.buildWidgetMetaData` configures a record's cron-expression field and optional time zone. Rendering an existing record requires source-table READ permission and uses the caller's personalized visibility; describing a supplied `cronExpression` without an `id` does not read a record. Missing or invisible records return not-found. On record edit screens, place the editor in a widget section without `fieldNames`; fields still need declarations in another section (which may be hidden). A section containing `fieldNames` renders ordinary form inputs. This also applies to `dynamicForm` widget sections.
 
 There are also some subclasses of `QWidgetMetaData`, for some specific widget types:
 
 *ParentWidgetMetaData Properties:*
 
-* `title` - *String* #TODO - how does this differ from label?#
-* `childWidgetNameList` - *List<String>, Required*
-* `childProcessNameList` - *List<String>* #TODO appears unused - check, and delete#
-* `laytoutType` - *enum of GRID or TABS, default GRID*
+* `title` - *String* - A metadata property retained by this subclass. The standard ParentWidgetRenderer does not copy it to its output; use the widget label or explicitly set the label in a custom renderer.
+* `childWidgetNameList` - *List<String>* - Names of child widgets. Empty lists render no children; Material omits children absent from the current user's permitted widget metadata.
+* `childProcessNameList` - *List<String>* - Retained metadata property; the standard ParentWidgetRenderer does not render this list. Use process widgets in `childWidgetNameList` to show processes.
+* `layoutType` - *enum of GRID or TABS, default GRID* - Both layouts render permitted children. Restoring a saved tab selection after refresh is currently limited by https://github.com/QRun-IO/qqq/issues/559[#559] (deferred).
 
 *QNoCodeWidgetMetaData Properties:*
 
-* `values` - *List<AbstractWidgetValueSource>* #TODO#
-* `outputs` - *List<AbstractWidgetOutput>* #TODO#
+* `values` - *List<AbstractWidgetValueSource>* - Definitions of the data values to obtain while rendering.
+* `outputs` - *List<AbstractWidgetOutput>* - Definitions of the output widgets built from those values.
 
-#TODO - Examples#
+No-code value sources support query fields, counts, aggregates, named Java ad-hoc functions and calculations. HTTP query/count/aggregate sources preserve the caller's access context and enforce READ permissions on source tables and joined filter tables. A failed value source leaves that value unavailable while other outputs can still render.
 
+`WidgetHtmlLine` emits authored HTML through Velocity; escape untrusted text in the value provider before inserting it into the template. Ad-hoc values use a named Java class implementing `java.util.function.Function` with a public no-argument constructor.
+
+See <<Rendering Widgets>> for complete pie and composite renderers. The {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/dashboard/widgets/NoCodeWidgetRenderer.java[NoCodeWidgetRenderer] and {qqq-tree-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/metadata/dashboard/nocode[no-code metadata classes] define the supported declarative value/output combinations.

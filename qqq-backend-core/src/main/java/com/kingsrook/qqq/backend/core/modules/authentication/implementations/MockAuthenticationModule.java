@@ -22,8 +22,8 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 
+import java.io.Serializable;
 import java.util.Map;
-import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -68,7 +69,11 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
       qUser.setFullName("John Smith");
 
       QSession qSession = new QSession();
-      qSession.setIdReference("Session:" + UUID.randomUUID());
+      if(StringUtils.hasContent(context.get("sessionId")))
+      {
+         qSession.setUuid(context.get("sessionId"));
+      }
+      qSession.setIdReference(qSession.getUuid());
       qSession.setUser(qUser);
 
       if(getCustomizer() != null)
@@ -77,6 +82,33 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
       }
 
       return (qSession);
+   }
+
+
+
+   /*******************************************************************************
+    ** Establish automation grants through the owner's configured session customizer.
+    *******************************************************************************/
+   @Override
+   public QSession createAutomatedSessionForUser(QInstance qInstance, Serializable userId) throws QAuthenticationException
+   {
+      QSession session = QAuthenticationModuleInterface.super.createAutomatedSessionForUser(qInstance, userId);
+      if(getCustomizer() != null)
+      {
+         getCustomizer().customizeAutomatedSessionForUser(qInstance, session, userId);
+      }
+      return session;
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep development sessions stable across browser requests.
+    *******************************************************************************/
+   @Override
+   public boolean usesSessionIdCookie()
+   {
+      return true;
    }
 
 

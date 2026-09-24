@@ -25,9 +25,11 @@ package com.kingsrook.qqq.backend.core.actions.tables;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
@@ -199,7 +201,7 @@ public class GetAction
                for(FieldFilterBehavior<?> fieldFilterBehavior : CollectionUtils.nonNullList(fieldFilterBehaviors))
                {
                   QFilterCriteria ukeyCriteria    = new QFilterCriteria(fieldName, QCriteriaOperator.EQUALS, updatedUniqueKey.get(fieldName));
-                  QFilterCriteria updatedCriteria = ValueBehaviorApplier.apply(ukeyCriteria, QContext.getQInstance(), table, table.getField(table.getPrimaryKeyField()), fieldFilterBehavior);
+                  QFilterCriteria updatedCriteria = ValueBehaviorApplier.apply(ukeyCriteria, QContext.getQInstance(), table, table.getField(fieldName), fieldFilterBehavior);
                   updatedUniqueKey.put(fieldName, updatedCriteria.getValues().get(0));
                }
             }
@@ -369,7 +371,7 @@ public class GetAction
          returnRecord = postGetRecordCustomizer.get().postQuery(getInput, List.of(record)).get(0);
       }
 
-      ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.READ, QContext.getQInstance(), getInput.getTable(), List.of(record), null);
+      ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.READ, QContext.getQInstance(), getInput.getTable(), List.of(returnRecord), null);
 
       if(getInput.getShouldTranslatePossibleValues())
       {
@@ -387,27 +389,44 @@ public class GetAction
 
       if(getInput.getShouldOmitHiddenFields() || getInput.getShouldMaskPasswords())
       {
-         Map<String, QFieldMetaData> fields = getInput.getTable().getFields();
+         Set<String> privateFields = new HashSet<>();
+         Map<String, QFieldMetaData> fields = new HashMap<>(getInput.getTable().getFields());
+         fields.putAll(CollectionUtils.nonNullMap(getInput.getTable().getVirtualFields()));
          for(String fieldName : fields.keySet())
          {
             QFieldMetaData field = fields.get(fieldName);
             if(getInput.getShouldOmitHiddenFields() && field.getIsHidden())
             {
+               privateFields.add(fieldName);
                returnRecord.removeValue(fieldName);
             }
             else if(getInput.getShouldMaskPasswords() && field.getType() != null && field.getType().needsMasked() && !field.hasAdornmentType(AdornmentType.REVEAL))
             {
+               privateFields.add(fieldName);
                //////////////////////////////////////////////////////////////////////
                // empty out the value completely first (which will remove from     //
                // display fields as well) then update display value if flag is set //
                //////////////////////////////////////////////////////////////////////
+               boolean hasValue = returnRecord.getValues().containsKey(fieldName);
                returnRecord.removeValue(fieldName);
-               returnRecord.setValue(fieldName, "************");
-               if(getInput.getShouldGenerateDisplayValues())
+               if(hasValue)
                {
-                  returnRecord.setDisplayValue(fieldName, record.getValueString(fieldName));
+                  returnRecord.setValue(fieldName, "************");
+                  if(getInput.getShouldGenerateDisplayValues())
+                  {
+                     returnRecord.setDisplayValue(fieldName, returnRecord.getValueString(fieldName));
+                  }
                }
             }
+         }
+         if(returnRecord.getRecordLabel() != null && (privateFields.contains(getInput.getTable().getPrimaryKeyField())
+            || CollectionUtils.nonNullList(getInput.getTable().getRecordLabelFields()).stream().anyMatch(privateFields::contains)))
+         {
+            ///////////////////////////////////////////////////////////////////////
+            // A failed label format must not fall back to the old private label. //
+            ///////////////////////////////////////////////////////////////////////
+            returnRecord.setRecordLabel(null);
+            returnRecord.setRecordLabel(QValueFormatter.formatRecordLabel(getInput.getTable(), returnRecord));
          }
       }
 

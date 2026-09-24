@@ -21,7 +21,7 @@ QTableMetaData table = new QTableMetaData()
    .withBackendName("main-db")
    .withPrimaryKeyField("id")
    .withField(new QFieldMetaData("id", QFieldType.INTEGER))
-   .withField(new QFieldMetaData("customer_id", QFieldType.INTEGER))
+   .withField(new QFieldMetaData("customerId", QFieldType.INTEGER))
    .withField(new QFieldMetaData("total", QFieldType.DECIMAL));
 
 instance.addTable(table);
@@ -29,4 +29,4 @@ instance.addTable(table);
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

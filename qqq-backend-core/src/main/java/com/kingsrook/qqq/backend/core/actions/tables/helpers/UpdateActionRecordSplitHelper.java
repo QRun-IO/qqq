@@ -64,7 +64,7 @@ public class UpdateActionRecordSplitHelper
             .map(QFieldMetaData::getName)
             // todo - intent here is to avoid non-updateable fields - but this
             //  should be like based on field.isUpdatable once that attribute exists
-            .filter(name -> !name.equals("id"))
+            .filter(name -> !name.equals(table.getPrimaryKeyField()))
             .filter(name -> record.getValues().containsKey(name))
             .toList();
          recordsByFieldBeingUpdated.add(updatableFields, record);

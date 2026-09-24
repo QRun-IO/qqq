@@ -45,7 +45,7 @@ public class EnumerationCountAction implements CountInterface
    {
       QueryInput queryInput = new QueryInput();
       queryInput.setTableName(countInput.getTableName());
-      queryInput.setFilter(countInput.getFilter());
+      queryInput.setFilter(countInput.getFilter() == null ? null : countInput.getFilter().clone().withSkip(null).withLimit(null));
       QueryOutput queryOutput = new QueryAction().execute(queryInput);
 
       CountOutput countOutput = new CountOutput();

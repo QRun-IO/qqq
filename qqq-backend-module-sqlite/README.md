@@ -1,31 +1,15 @@
 # QQQ Backend Module - SQLite
 
-Backend module for SQLite embedded databases.
+SQLite backend built on the shared RDBMS actions. Configure a file path with `SQLiteBackendMetaData.withPath`; the backend builds a `jdbc:sqlite:` connection string. SQLite SQL behavior is supplied by `SQLiteRDBMSActionStrategy`.
 
-## Features
+QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md) and [4.0 migration guide](../docs/migration/4.0.adoc).
 
-- Embedded database support
-- File-based or in-memory databases
-- No external database server required
-- Good for testing and small applications
+## Source and examples
 
-## Usage
-
-```java
-SQLiteBackendMetaData backend = new SQLiteBackendMetaData()
-   .withName("local-db")
-   .withDatabasePath("/data/app.db");
-
-// In-memory database
-SQLiteBackendMetaData memoryBackend = new SQLiteBackendMetaData()
-   .withName("test-db")
-   .withInMemory(true);
-```
-
-## Requirements
-
-- Java 17+
+- [SQLiteBackendMetaData](src/main/java/com/kingsrook/qqq/backend/module/sqlite/model/metadata/SQLiteBackendMetaData.java)
+- [SQLiteRDBMSActionStrategy](src/main/java/com/kingsrook/qqq/backend/module/sqlite/strategy/SQLiteRDBMSActionStrategy.java)
+- [Module tests](src/test/java/)
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

@@ -33,7 +33,9 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -95,4 +97,21 @@ class MockAuthenticationModuleTest extends BaseTest
       assertNotNull(session.getUser(), "Session user must not be null");
    }
 
+
+
+   /*******************************************************************************
+    ** Browser requests retain the session used for server-generated downloads.
+    *******************************************************************************/
+   @Test
+   void testSessionCookieRestoresIdentity() throws Exception
+   {
+      MockAuthenticationModule module = new MockAuthenticationModule();
+      QInstance instance = QContext.getQInstance();
+      QSession first = module.createSession(instance, Map.of());
+      QSession restored = module.createSession(instance, Map.of("sessionId", first.getUuid()));
+      assertTrue(module.usesSessionIdCookie());
+      assertEquals(first.getUuid(), restored.getUuid());
+      assertEquals(first.getIdReference(), restored.getIdReference());
+      assertNotEquals(first.getIdReference(), module.createSession(instance, Map.of()).getIdReference());
+   }
 }

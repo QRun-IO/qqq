@@ -16,7 +16,7 @@ The keys in the `values` map are names from the {link-fields} in the {link-table
 The values in `values` map are declared as `Serializable` (to help ensure the serializability of the `QRecord` as a whole).
 In practice, their types will be based on the `QFieldType` of the {link-field} that they correspond to.
 That will typically be one of: `String`, `Integer`, `Boolean`, `BigDecimal`, `Instant`, `LocalDate`, `LocalTime`, or `byte[]`.
-Be aware that `null` values may be in the `values` map, especially/per if the backend/table support `null`.
+Be aware that `null` values may be in the `values` map, especially/per if the backend/table support `null`. JSON serialization preserves explicit nulls, empty strings and empty arrays in this map. An absent field remains absent; display formatting and hidden/password rules are applied separately before serialization.
 
 To work with the `values` map, the following methods are provided:
 
@@ -26,7 +26,7 @@ In this overload, if the value is `null` or `Serializable`, the primary version 
 Otherwise, the `value` is passed through `String::valueOf`, and the result is stored.
 ** Overloaded as `setValue(QFieldMetaData field, Serializable value)` - which simply defers to the primary version of `setValue`, passing `field.getName()` as the first parameter.
 * `removeValue(String fieldName)` - Remove the given field from the `values` map.
-** Note that in some situations this is an important distinction from having a `null` value in the map (See <<UpdateAction)>>).
+** Note that in some situations this is an important distinction from having a `null` value in the map (See {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/tables/UpdateAction.java[UpdateAction]).
 * `setValues(Map<String, Serializable> values)` - Sets the full map of `values`.
 * `getValues()` - Returns the full map of `values`.
 * `getValue(String fieldName)` - Returns the value for the named field - possibly `null` - as a `Serializable`.
@@ -51,7 +51,7 @@ By default, a `QRecord` will not have its `displayValues` populated.
 To populate `displayValues`, the <<QueryAction>> and <<GetAction>> classes take a property in their inputs called `shouldGenerateDisplayValues`, which must be set to `true` to generate `displayValues`.
 In addition, these two actions also have a property `shouldTranslatePossibleValues` in their inputs, which needs to be set to `true` if possible-value lookups are to be performed.
 
-As an alternative to the `shouldGenerateDisplayValues` and `shouldTranslatePossibleValues` inputs to <<QueryAction>> and <<GetAction>>, one can directly call the `QValueFormatter.setDisplayValuesInRecords` and/or `qPossibleValueTranslator.translatePossibleValuesInRecords` methods.
+As an alternative to the `shouldGenerateDisplayValues` and `shouldTranslatePossibleValues` inputs to <<QueryAction>> and <<GetAction>>, one can directly call the `QValueFormatter.setDisplayValuesInRecords` and/or `QPossibleValueTranslator.translatePossibleValuesInRecords` methods.
 Or, for special cases, `setDisplayValue(String fieldName, String displayValue)` or `setDisplayValues(Map<String, String> displayValues)` can be called directly.
 
 === Backend Details
@@ -61,8 +61,34 @@ To do this, the `Map<String, Serializable> backendDetails` member is used.
 For example, an API backend may store the full JSON `String` that came from the API as a backend detail in a `QRecord`.
 Or fields that are marked as `isHeavy`, if the full (heavy) value of the field hasn't been fetched, then the lengths of any such heavy fields may be stored in `backendDetails`.
 
+QQQ's Jackson serialization of a `QRecord` excludes the API provider's raw `jsonSourceObject` backend-detail entry, including on associated records. That internal payload can contain fields omitted or masked in the record's public values. Other details, including heavy-field lengths, remain serialized. The internal map, record copies and deserialization retain the payload; explicitly serializing the raw map bypasses the `QRecord` serialization boundary.
+
+=== Copies used in write callbacks
+
+Update/Delete old-record prefetch can retain row identity separately from visible field values. A hidden, heavy or masked primary key remains subject to its presentation rules. Use `new QRecord(record)` to preserve that identity when returning copied snapshots, including copies placed in immutable or reordered lists.
+
+A captured record cannot be retargeted by changing its public key. During write prefetch, post-query replacements must identify rows in the native result; pre-delete replacements must identify original prefetched targets. A fresh replacement with a valid original key can work, but reconstruction from a sanitized map may lose the identity needed for matching and reject before DML.
+
+The internal identity is absent from `values`, `displayValues`, `backendDetails`, QQQ JSON and Java serialization. Deserialization does not restore it, so a JSON or Java serialization round trip is not a substitute for the copy constructor in these callbacks. This bookkeeping does not change ordinary Query/Get field loading, masking or public serialization.
+
 === Errors and Warnings
-#todo#
+
+A QRecord can carry QErrorMessage and QWarningMessage lists, accessed through getErrors()/getWarnings() and populated with addError()/addWarning(). Inspect the records returned by an action for row-level validation results; a returned record alone does not imply that a write succeeded. getErrorsAsString() and getWarningsAsString() provide text summaries. The action determines how errors and warnings affect processing.
 
 === Associated Records
-#todo#
+
+The associatedRecords map holds named lists of related QRecords. Use withAssociatedRecords(name, records) or withAssociatedRecord(name, record) to populate it. Retrieval actions include associations only when requested and supported by the table metadata. This map is separate from flattened fields selected through a QueryJoin. See {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/data/QRecord.java[QRecord].
+
+
+==== Recursive legacy HTTP forms
+
+For legacy `/data/{table}` INSERT and UPDATE forms, send `X-QQQ-Association-Format: record-v1` and one `associations` form field containing a JSON object. Each exact association name maps to an array of child envelopes. The child table is inferred from active metadata. A field named `values` belongs inside the envelope's `values` object:
+
+[source,json]
+----
+{"pets":[{"values":{"name":"Charlie","speciesId":1},"associatedRecords":{"notes":[{"values":{"note":"Copied note"}}]}}]}
+----
+
+The only envelope properties are `values` (required object) and `associatedRecords` (optional object). Scalar field values, null and flat scalar arrays are preserved. A BLOB uses `{"base64":"AAH/gEEA"}`; other object-shaped field values are rejected. Named empty arrays remain explicit replacements during UPDATE, while omitted groups remain untouched. The tree may contain at most 64 child-record levels. Unknown/inactive names, malformed JSON, invalid binary or unsupported format declarations return HTTP 400 before DML. The version header is for form requests, not JSON request bodies. Forms without it retain their flat child-record format.
+
+These requests run ordinary INSERT/UPDATE validation, normalization, defaults and customizers. Supplied primary keys are data; a client preparing a copy must remove inherited keys and provide any required new manual keys. Inspect nested returned errors as well as parent errors. A successful earlier write can remain after a later native or business-validation failure without a supported caller transaction and rollback.

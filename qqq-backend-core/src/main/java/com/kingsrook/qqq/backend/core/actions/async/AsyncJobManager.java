@@ -33,6 +33,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -70,6 +71,7 @@ public class AsyncJobManager
 
 
    private String forcedJobUUID = null;
+   private String processUUID;
 
 
 
@@ -94,6 +96,10 @@ public class AsyncJobManager
       UUIDAndTypeStateKey uuidAndTypeStateKey = new UUIDAndTypeStateKey(jobUUID, StateType.ASYNC_JOB_STATUS);
       AsyncJobStatus      asyncJobStatus      = new AsyncJobStatus();
       asyncJobStatus.setState(AsyncJobState.RUNNING);
+      if(processUUID != null)
+      {
+         asyncJobStatus.setStateAccess(ProcessStateAccess.capture(jobName, processUUID));
+      }
       getStateProvider().put(uuidAndTypeStateKey, asyncJobStatus);
 
       try
@@ -206,6 +212,32 @@ public class AsyncJobManager
    {
       UUIDAndTypeStateKey uuidAndTypeStateKey = new UUIDAndTypeStateKey(UUID.fromString(uuid), StateType.ASYNC_JOB_STATUS);
       return (getStateProvider().get(AsyncJobStatus.class, uuidAndTypeStateKey));
+   }
+
+
+
+   /*******************************************************************************
+    ** Bind a user-facing job to the process whose state it produces.
+    *******************************************************************************/
+   public AsyncJobManager withProcessUUID(String processUUID)
+   {
+      this.processUUID = processUUID;
+      return this;
+   }
+
+
+
+   /*******************************************************************************
+    ** Check ownership even while the process has not produced any state yet.
+    *******************************************************************************/
+   public Optional<AsyncJobStatus> getJobStatusForUser(String uuid, String processName, String processUUID) throws QException
+   {
+      Optional<AsyncJobStatus> status = getJobStatus(uuid);
+      if(status.isPresent())
+      {
+         ProcessStateAccess.requireAccess(status.get().getStateAccess(), processName, processUUID);
+      }
+      return status;
    }
 
 

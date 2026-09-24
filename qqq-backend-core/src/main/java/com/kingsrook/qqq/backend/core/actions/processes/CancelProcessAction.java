@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.state.StateType;
 import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
@@ -67,7 +68,8 @@ public class CancelProcessAction extends RunProcessAction
       }
 
       UUIDAndTypeStateKey    stateKey     = new UUIDAndTypeStateKey(UUID.fromString(runProcessInput.getProcessUUID()), StateType.PROCESS_STATUS);
-      Optional<ProcessState> processState = getState(runProcessInput.getProcessUUID());
+      Optional<ProcessState> processState = runProcessInput.getInputSource() == QInputSource.USER
+         ? getStateForUser(runProcessInput.getProcessUUID(), runProcessInput.getProcessName()) : getState(runProcessInput.getProcessUUID());
       if(processState.isEmpty())
       {
          throw (new QBadRequestException("Cannot cancel process - State for process UUID [" + runProcessInput.getProcessUUID() + "] was not found."));

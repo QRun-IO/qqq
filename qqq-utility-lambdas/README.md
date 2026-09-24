@@ -1,28 +1,13 @@
 # QQQ Utility Lambdas
 
-Lightweight AWS Lambda utilities for QQQ applications. Simple functions that integrate with QQQ without running the full framework.
+`QPostToSQSLambda` forwards the incoming Lambda request body to the SQS queue named by the `QUEUE_URL` environment variable, using the AWS default credential provider. Configure its execution role for that queue. The current handler logs the incoming body; review payload sensitivity and log retention before deployment.
 
-## Features
+QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md) and [4.0 migration guide](../docs/migration/4.0.adoc).
 
-- S3 event handlers
-- SQS message processors
-- Scheduled task utilities
-- Lightweight QQQ integrations
+## Source and examples
 
-## Usage
-
-```java
-public class S3EventHandler implements RequestHandler<S3Event, String>
-{
-   @Override
-   public String handleRequest(S3Event event, Context context)
-   {
-      // Process S3 events and integrate with QQQ
-      return "OK";
-   }
-}
-```
+- [QPostToSQSLambda](src/main/java/com/kingsrook/qqq/utilitylambdas/QPostToSQSLambda.java)
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

@@ -9,19 +9,19 @@ PostgreSQL backend module for the QQQ framework.
 - Transaction management
 - Batch operations
 - Generated key retrieval using RETURNING clause
-- PostgreSQL 12+ support
 
 ## Usage
 
 ```java
 // Define backend
-PostgreSQLBackendMetaData backend = new PostgreSQLBackendMetaData()
+PostgreSQLBackendMetaData backend = new PostgreSQLBackendMetaData();
+backend
    .withName("postgres-main")
    .withHostName("localhost")
    .withPort(5432)
    .withDatabaseName("myapp")
-   .withUsername("user")
-   .withPassword("password");
+   .withUsername(System.getenv("DB_USERNAME"))
+   .withPassword(System.getenv("DB_PASSWORD"));
 
 // Add to QInstance
 QInstance instance = new QInstance();
@@ -43,12 +43,13 @@ instance.addTable(table);
 ## Connection Pooling
 
 ```java
-PostgreSQLBackendMetaData backend = new PostgreSQLBackendMetaData()
+PostgreSQLBackendMetaData backend = new PostgreSQLBackendMetaData();
+backend
    .withName("postgres-main")
    .withHostName("localhost")
    .withDatabaseName("myapp")
-   .withUsername("user")
-   .withPassword("password")
+   .withUsername(System.getenv("DB_USERNAME"))
+   .withPassword(System.getenv("DB_PASSWORD"))
    .withConnectionProvider(new QCodeReference(C3P0PooledConnectionProvider.class))
    .withConnectionPoolSettings(new ConnectionPoolSettings()
       .withMinPoolSize(5)
@@ -57,9 +58,9 @@ PostgreSQLBackendMetaData backend = new PostgreSQLBackendMetaData()
 
 ## Requirements
 
-- PostgreSQL 12+
-- Java 17+
+- A configured PostgreSQL database; validate your server version with your application
+- Java 21
 
 ## License
 
-GNU Affero General Public License v3.0
+See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

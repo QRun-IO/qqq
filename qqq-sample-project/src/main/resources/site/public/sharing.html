@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QQQ sharing demo</title>
+<style>body{font:18px system-ui,sans-serif;margin:4rem auto;padding:0 1.5rem;max-width:42rem;color:#19324b;background:#f5f7fa}h1{font-size:2rem}button{font:inherit;background:#2459a8;color:white;border:0;border-radius:.4rem;padding:.8rem 1.2rem;margin:.3rem;cursor:pointer}button:focus-visible{outline:3px solid #111;outline-offset:3px}p{line-height:1.6}</style></head>
+<body><h1>Try sharing in QQQ</h1><p>Choose a synthetic user. Alice owns the sample report and saved view. Share either with Bob, switch to Bob to open it, then return to Alice and remove the share. Casey can verify that unrelated users have no access.</p>
+<div><button data-session="11111111-1111-4111-8111-111111111111">Use Alice</button><button data-session="22222222-2222-4222-8222-222222222222">Use Bob</button><button data-session="33333333-3333-4333-8333-333333333333">Use Casey</button></div>
+<p>This local demo requires the sample's sharing and mock-authentication options. Restarting the sample resets the synthetic database.</p>
+<script>document.querySelectorAll('button[data-session]').forEach(button=>button.addEventListener('click',()=>{document.cookie='sessionId='+button.dataset.session+'; Path=/; SameSite=Lax';location.assign('/sharing/savedReport');}));</script></body></html>

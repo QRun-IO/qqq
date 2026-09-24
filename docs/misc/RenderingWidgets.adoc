@@ -12,6 +12,7 @@ The only method required in a subclass of `AbstractWidgetRenderer` is:
 
 The fields available in `RenderWidgetInput` are:
 
+- `InputSource inputSource` - Defaults to `QInputSource.SYSTEM` for direct Java calls. Javalin and Slack widget entry points set `QInputSource.USER`. Custom renderers should carry this source into data actions and enforce the table permissions they require; client query parameters do not set it.
 - `Map<String, String> queryParams` - These are parameters supplied by the frontend, for example,
 if a user selected values from dropdowns to control a dimension of your widget, those name/value
 pairs would be in this map.  Similarly, if your widget is being included on a record view screen, then
@@ -48,7 +49,7 @@ e.g., "Orders" for a pie showing orders of different statuses.
 .Pie chart widget example
 ----
 // meta data
-new QWidgetMetaData()
+QWidgetMetaData widget = new QWidgetMetaData()
     .withName("pieChartExample")
     .withType(WidgetType.PIE_CHART.getType())
     .withGridColumns(4)
@@ -56,71 +57,36 @@ new QWidgetMetaData()
     .withLabel("Pie Chart Example")
     .withCodeReference(new QCodeReference(PieChartExampleRenderer.class));
 
-// renderer
-private List<String> labels = new ArrayList<>();
-private List<String> colors = new ArrayList<>();
-private List<Number> data   = new ArrayList<>();
-
-/*******************************************************************************
-** helper method - to add values for a slice to the lists
-*******************************************************************************/
-private void addSlice(String label, String color, Number datum)
-{
-    labels.add(label);
-    colors.add(color);
-    data.add(datum);
-}
-
-/*******************************************************************************
-** main method of the widget renderer
-*******************************************************************************/
-@Override
-public RenderWidgetOutput render(RenderWidgetInput input) throws QException
-{
-   addSlice("Apple", "#FF0000", 100);
-   addSlice("Orange", "#FF8000", 150);
-   addSlice("Banana", "#FFFF00", 75);
-   addSlice("Lime", "#00FF00", 100);
-   addSlice("Blueberry", "#0000FF", 200);
-
-   ChartData chartData = new ChartData()
-      .withChartData(new ChartData.Data()
-         .withLabels(labels)
-         .withDatasets(List.of(
-            new ChartData.Data.Dataset()
-               .withLabel("Flavor")
-               .withData(data)
-               .withBackgroundColors(colors)
-               .withUrls(urls))));
-
-   return (new RenderWidgetOutput(chartData));
-}
-
 ----
 
-===== Bar Chart
-#todo#
+[source,java]
+.PieChartExampleRenderer implementation
+----
+public class PieChartExampleRenderer extends AbstractWidgetRenderer
+{
+   /*******************************************************************************
+   ** main method of the widget renderer
+   *******************************************************************************/
+   @Override
+   public RenderWidgetOutput render(RenderWidgetInput input) throws QException
+   {
+      List<String> labels = List.of("Apple", "Orange", "Banana", "Lime", "Blueberry");
+      List<String> colors = List.of("#FF0000", "#FF8000", "#FFFF00", "#00FF00", "#0000FF");
+      List<Number> data = List.of(100, 150, 75, 100, 200);
 
-===== Stacked Bar Chart
-#todo#
+      ChartData chartData = new ChartData()
+         .withChartData(new ChartData.Data()
+            .withLabels(labels)
+            .withDatasets(List.of(
+               new ChartData.Data.Dataset()
+                  .withLabel("Flavor")
+                  .withData(data)
+                  .withBackgroundColors(colors))));
 
-===== Horizontal Bar Chart
-#todo#
-
-===== Child Record List
-#todo#
-
-===== Line Chart
-#todo#
-
-===== Small Line Chart
-#todo#
-
-===== Statistics
-#todo#
-
-===== Parent Widget
-#todo#
+      return (new RenderWidgetOutput(chartData));
+   }
+}
+----
 
 ===== Composite
 A `WidgetType.COMPOSITE` is built by using one or more smaller elements, known as `Blocks`.
@@ -143,7 +109,7 @@ Look for matching names, such as `Layout.BADGES_WRAPPER` to go with `NumberIconB
 .Composite widget example - consisting of 3 Progress Bar Blocks, and one Divider Block
 ----
 // meta data
-new QWidgetMetaData()
+QWidgetMetaData widget = new QWidgetMetaData()
     .withName("compositeExample")
     .withType(WidgetType.COMPOSITE.getType())
     .withGridColumns(4)
@@ -151,54 +117,61 @@ new QWidgetMetaData()
     .withLabel("Composite Example")
     .withCodeReference(new QCodeReference(CompositeExampleRenderer.class));
 
-// renderer
-public RenderWidgetOutput render(RenderWidgetInput input) throws QException
+----
+
+[source,java]
+.CompositeExampleRenderer implementation
+----
+public class CompositeExampleRenderer extends AbstractWidgetRenderer
 {
-   CompositeWidgetData data = new CompositeWidgetData();
+   @Override
+   public RenderWidgetOutput render(RenderWidgetInput input) throws QException
+   {
+      CompositeWidgetData data = new CompositeWidgetData();
 
-   data.addBlock(new ProgressBarBlockData()
-      .withValues(new ProgressBarValues()
-         .withHeading("Blocks")
-         .withPercent(new BigDecimal("78.5"))));
+      data.addBlock(new ProgressBarBlockData()
+         .withValues(new ProgressBarValues()
+            .withHeading("Blocks")
+            .withPercent(new BigDecimal("78.5"))));
 
-   data.addBlock(new ProgressBarBlockData()
-      .withValues(new ProgressBarValues()
-         .withHeading("Progress")
-         .withPercent(new BigDecimal(0))));
+      data.addBlock(new ProgressBarBlockData()
+         .withValues(new ProgressBarValues()
+            .withHeading("Progress")
+            .withPercent(new BigDecimal(0))));
 
-   data.addBlock(new DividerBlockData());
+      data.addBlock(new DividerBlockData());
 
-   data.addBlock(new ProgressBarBlockData()
-      .withStyles(new ProgressBarStyles().withBarColor("#C0C000"))
-      .withValues(new ProgressBarValues()
-         .withHeading("Custom Color")
-         .withPercent(new BigDecimal("75.3"))));
+      data.addBlock(new ProgressBarBlockData()
+         .withStyles(new ProgressBarStyles().withBarColor("#C0C000"))
+         .withValues(new ProgressBarValues()
+            .withHeading("Custom Color")
+            .withPercent(new BigDecimal("75.3"))));
 
-   return (new RenderWidgetOutput(data));
+      return (new RenderWidgetOutput(data));
+   }
 }
 ----
 
 
-===== Table
-#todo#
+===== Additional widget contracts
 
-===== HTML
-#todo#
+Use the matching data class when implementing another widget type. The frontend determines how each type is displayed.
 
-===== Divider
-#todo#
+[cols="1,2",options="header"]
+|===
+|Widget |Data reference
+|Charts |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/ChartData.java[ChartData]
+|Child record list |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/ChildRecordListData.java[ChildRecordListData]
+|Statistics |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/StatisticsData.java[StatisticsData]
+|Parent widget |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/ParentWidgetData.java[ParentWidgetData]
+|Table |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/TableData.java[TableData]
+|HTML |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/RawHTML.java[RawHTML]
+|Divider |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/DividerWidgetData.java[DividerWidgetData]
+|Process |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/ProcessWidgetData.java[ProcessWidgetData]
+|Stepper |{qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/StepperData.java[StepperData]
+|===
 
-===== Process
-#todo#
-
-===== Stepper
-#todo#
-
-===== Data Bag Viewer
-#todo#
-
-===== Script Viewer
-#todo#
+For the complete set, see {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/model/dashboard/widgets/WidgetType.java[WidgetType] and the {qqq-tree-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/dashboard/widgets[built-in renderers].
 
 === Block-type Specific Rendering Details
 For Composite-type widgets (or other widgets which can include blocks),
@@ -213,7 +186,7 @@ that can have Tooltips and/or Links applied to them.
 * `SX` - an implementation of `BlockStylesInterface` - to define the types of style customizations that the block supports.
 
 These type parameters are designed to ensure type-safety for the application developer,
-to ensure that only
+so that a block accepts its matching values, slot identifiers and style configuration.
 
 === Additional Tips
 

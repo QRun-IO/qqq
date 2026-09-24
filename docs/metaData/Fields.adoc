@@ -18,9 +18,9 @@ QQQ Fields define
 Used to set values in the `displayValues` map within a `QRecord`.
 ** Recommended values for `displayFormat` come from the `DisplayFormat` interface, such as `DisplayFormat.CURRENCY`, `DisplayFormat.COMMAS`, or `DisplayFormat.DECIMAL2_COMMAS`.
 * `defaultValue` - Value to use for the field if no other value is given.  Type is based on the field's `type`.
-* `possibleValueSourceName` - *String* - Reference to a {link-pvs} to be used for this field.
+* `possibleValueSourceName` - *String* - Reference to a {link-possibleValueSource} to be used for this field.
 Values in this field should correspond to ids from the referenced Possible Value Source.
-* `maxLength` - *Integer* - Maximum length (number of characters) allowed for values in this field.
+* `maxLength` - *Integer* - Maximum string length in Java UTF-16 units. A supplementary Unicode character occupies two units.
 Only applicable for fields with `type=STRING`.  Needs to be used with a `FieldBehavior` of type `ValueTooLongBehavior`.
 
 ==== Field Behaviors
@@ -38,8 +38,8 @@ Used on String fields.  Requires the field to have a `maxLength` set.
 Depending on the chosen instance of this enum, before a record is Inserted or Updated,
 if the value in the field is longer than the `maxLength`, then one of the following actions can occur:
 
-* `TRUNCATE` - The value will be simply truncated to the `maxLength`.
-* `TRUNCATE_ELLIPSIS` - The value will be truncated to 3 characters less than the `maxLength`, and three periods (an ellipsis) will be placed at the end.
+* `TRUNCATE` - Truncate to at most `maxLength` UTF-16 units, keeping surrogate pairs intact.
+* `TRUNCATE_ELLIPSIS` - Reserve three units for `...` and truncate the value without splitting a surrogate pair. For a nonnegative maximum shorter than three, return only the periods that fit. The result can be shorter than `maxLength` to preserve a complete pair.
 * `ERROR` - An error will be reported, and the record will not be inserted or updated.
 * `PASS_THROUGH` - Nothing will happen.  This is the same as not having a `ValueTooLongBehavior` on the field.
 
@@ -47,12 +47,12 @@ if the value in the field is longer than the `maxLength`, then one of the follow
 .Examples of using ValueTooLongBehavior
 ----
    new QFieldMetaData("sku", QFieldType.STRING)
-      .withMaxLength(40),
-      .withBehavior(ValueTooLongBehavior.ERROR),
+      .withMaxLength(40)
+      .withBehavior(ValueTooLongBehavior.ERROR);
 
    new QFieldMetaData("reason", QFieldType.STRING)
-      .withMaxLength(250),
-      .withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS),
+      .withMaxLength(250)
+      .withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS);
 
 ----
 
@@ -75,15 +75,15 @@ not allowEqualTo).
     new QFieldMetaData("noOfShoes", QFieldType.INTEGER)
       .withBehavior(new ValueRangeBehavior().withMinValue(0));
 
-    new QFieldMetaData("price", QFieldType.BIG_DECIMAL)
+    new QFieldMetaData("price", QFieldType.DECIMAL)
       .withBehavior(new ValueRangeBehavior()
          // set the min value to be >= 0, and an error if an input is < 0.
          .withMinValue(BigDecimal.ZERO)
          .withMinAllowEqualTo(true)
-         .withMinBehavior(ERROR)
+         .withMinBehavior(ValueRangeBehavior.Behavior.ERROR)
          // set the max value to be < 100 - but effectively, clip larger values to 99.99
          // here we use the .withMax() method that takes 4 params vs. calling 4 .withMax*() methods.
-         .withMax(new BigDecimal("100.00"), false, CLIP, new BigDecimal("0.01"))
+         .withMax(new BigDecimal("100.00"), false, ValueRangeBehavior.Behavior.CLIP, new BigDecimal("0.01"))
     );
 ----
 
@@ -92,26 +92,26 @@ Used to set a dynamic default value to a field when it is being inserted or upda
 For example, instead of having a hard-coded `defaultValue` specified in the field meta-data,
 and instead of having to add, for example, a pre-insert custom action.
 
-* `CREATE_DATE` - On inserts, sets the field's value to the current time.
-* `MODIFY_DATE` - On inserts and updates, sets the field's value to the current time.
-* `USER_ID` - On inserts and updates, sets the field's value to the current user's id (but only if the value is currently null).
+* `CREATE_DATE` - On inserts, replaces the input value with the current `Instant` for `DATE_TIME` fields or the server's current local calendar date for `DATE` fields. Updates preserve the supplied or stored creation value.
+* `MODIFY_DATE` - On inserts and updates, replaces the input value using the same `DATE_TIME`/`DATE` rules. `UpdateInput.withOmitModifyDateUpdate(true)` suppresses automatic modification-date assignment for that update.
+* `USER_ID` - On inserts and updates, sets missing or blank input fields to the current user's nonblank ID. Blank follows `StringUtils.hasContent` (null, empty or trim-empty strings). An omitted field in a sparse update receives this default; an explicit nonblank value is preserved. Reads preserve stored values and never substitute the reader's ID.
+* `NONE` - Disables this behavior on the field, including automatic inference for fields named `createDate` and `modifyDate`.
 
 _Note that the `QInstanceEnricher` will, by default, add the `CREATE_DATE` and `MODIFY_DATE` `DynamicDefaultValueBehavior`
 options to any fields named `"createDate"` or `"modifyDate"`.
-This behavior can be disabled by setting the `configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate` property
-on the `QInstanceEnricher` instance used by the application to `false`._
+Setting `configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate=false` affects only that `QInstanceEnricher` instance. Normal validation can run another enricher with its defaults, so use an explicit `DynamicDefaultValueBehavior.NONE` on a field when the opt-out must survive validation._
 
 [source,java]
 .Examples of using DynamicDefaultValueBehavior
 ----
    new QFieldMetaData("createDate", QFieldType.DATE_TIME)
-      .withBehavior(DynamicDefaultValueBehavior.CREATE_DATE),
+      .withBehavior(DynamicDefaultValueBehavior.CREATE_DATE);
 
    new QFieldMetaData("modifyDate", QFieldType.DATE_TIME)
-      .withBehavior(DynamicDefaultValueBehavior.MODIFY_DATE),
+      .withBehavior(DynamicDefaultValueBehavior.MODIFY_DATE);
 
    new QFieldMetaData("createdByUserId", QFieldType.STRING)
-      .withBehavior(DynamicDefaultValueBehavior.USER_ID),
+      .withBehavior(DynamicDefaultValueBehavior.USER_ID);
 ----
 
 ===== DateTimeDisplayValueBehavior
@@ -132,9 +132,8 @@ Or, it can be set up to get the time zone to use from another field in the table
 .Examples of using DateTimeDisplayValueBehavior
 ----
 new QTableMetaData().withName("flights").withFields(List.of(
-   ...
    new QFieldMetaData("departureTimeZoneId", QFieldType.STRING),
-   new QFieldMetaData("arrivaTimeZoneId", QFieldType.STRING),
+   new QFieldMetaData("arrivalTimeZoneId", QFieldType.STRING),
 
    new QFieldMetaData("departureTime", QFieldType.DATE_TIME)
       .withBehavior(new DateTimeDisplayValueBehavior()
@@ -142,16 +141,18 @@ new QTableMetaData().withName("flights").withFields(List.of(
 
    new QFieldMetaData("arrivalTime", QFieldType.DATE_TIME)
       .withBehavior(new DateTimeDisplayValueBehavior()
-         .withZoneIdFromFieldName("arrivalTimeZoneId"))
+         .withZoneIdFromFieldName("arrivalTimeZoneId")),
 
    new QFieldMetaData("ticketSaleStartDateTime", QFieldType.DATE_TIME)
       .withBehavior(new DateTimeDisplayValueBehavior()
-         .withDefaultZoneId("UTC"))
+         .withDefaultZoneId("UTC"))));
 ----
 
 ===== CaseChangeBehavior
 A field can be made to always go through a toUpperCase or toLowerCase transformation, both before it is stored in a backend,
 and after it is read from a backend, by adding a CaseChangeBehavior to it:
+
+The behavior also normalizes string filter operands, including unique-key and primary-key lookups. It uses Java's default-locale case conversion. Read normalization changes the returned value without rewriting storage; caller-owned filters are preserved. Active normalization requires a string-like field (`STRING`, `TEXT`, `HTML` or `PASSWORD`). `NONE` preserves the value.
 
 [source,java]
 .Examples of using CaseChangeBehavior
@@ -159,8 +160,12 @@ and after it is read from a backend, by adding a CaseChangeBehavior to it:
 new QTableMetaData().withName("item").withFields(List.of(
 
    new QFieldMetaData("sku", QFieldType.STRING)
-      .withBehavior(CaseChangeBehavior.TO_UPPER_CASE)),
+      .withBehavior(CaseChangeBehavior.TO_UPPER_CASE),
 
    new QFieldMetaData("username", QFieldType.STRING)
-      .withBehavior(CaseChangeBehavior.TO_LOWER_CASE)),
+      .withBehavior(CaseChangeBehavior.TO_LOWER_CASE)));
 ----
+
+===== WhiteSpaceBehavior
+
+Whitespace policies apply on writes, reads and string filter operands, with the same string-like field requirement. `TRIM` uses Java `String.trim`, `TRIM_LEFT` and `TRIM_RIGHT` use `stripLeading` and `stripTrailing`, and `REMOVE_ALL_WHITESPACE` removes characters for which `Character.isWhitespace` is true. These Java operations have different Unicode whitespace rules. `NONE` preserves the value. Whitespace and case behaviors can be combined on a field; read normalization does not modify stored values.

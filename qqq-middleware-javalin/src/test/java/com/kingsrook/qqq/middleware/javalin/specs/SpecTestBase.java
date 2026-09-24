@@ -139,12 +139,12 @@ public abstract class SpecTestBase
                spec.setQInstance(serverQInstance);
 
                String versionBasePath = middlewareVersion.getVersionBasePath();
-               config.router.apiBuilder(() -> spec.defineRoute(middlewareVersion, versionBasePath));
+               config.routes.apiBuilder(() -> spec.defineRoute(middlewareVersion, versionBasePath));
 
                for(AbstractEndpointSpec<?, ?, ?> additionalSpec : getAdditionalSpecs())
                {
                   additionalSpec.setQInstance(serverQInstance);
-                  config.router.apiBuilder(() -> additionalSpec.defineRoute(middlewareVersion, versionBasePath));
+                  config.routes.apiBuilder(() -> additionalSpec.defineRoute(middlewareVersion, versionBasePath));
                }
             }
          ).start(PORT);

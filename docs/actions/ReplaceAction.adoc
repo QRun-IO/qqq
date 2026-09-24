@@ -1,0 +1,94 @@
+[#ReplaceAction]
+== ReplaceAction
+include::../variables.adoc[]
+
+`ReplaceAction` matches desired records by a caller-provided `UniqueKey`, inserts unmatched records, updates matches and optionally deletes omitted rows from a {link-table}.
+Initialize `QContext` with the intended instance and session before constructing the input.
+
+=== Example
+
+This sample matches people by email and explicitly preserves omitted people.
+
+[source,java]
+----
+QRecord desired = new QRecord()
+   .withValue("firstName", "Alex")
+   .withValue("lastName", "Example")
+   .withValue("email", "alex@example.invalid");
+ReplaceInput input = new ReplaceInput()
+   .withKey(new UniqueKey("email"))
+   .withRecords(List.of(desired))
+   .withPerformDeletes(false);
+input.setTableName("person");
+input.setInputSource(QInputSource.USER);
+ReplaceOutput output = new ReplaceAction().execute(input);
+----
+
+=== Matching and privacy
+
+Use distinct physical matching fields available in the active metadata; virtual or USER-removed fields cannot be matching keys.
+Supply an explicit record list with no null records, repeated record objects or existing record errors.
+Matching privately applies the fields' filter-value normalization and declared type conversion to desired key values, without running dynamic defaults, READ transformations or query customizers.
+Native matching retains applicable READ/READ_AND_WRITE locks and uses the input source, active metadata and transaction. Ordinary child write validation still applies.
+MongoDB matching uses the <<NativeWriteLookups,native write lookup>> contract, including refusal of selected native String keys or changed decoded primary keys.
+
+Comparable duplicate desired tuples are rejected across the entire request, including page boundaries.
+Typed tuple/primary-key equality includes decimal value and binary content; ambiguous stored owners are rejected before child writes.
+Null components are distinct by default and do not match existing rows. `allowNullKeyValuesToEqual=true` enables null matching and duplicate detection for those tuples, including a single-column null lookup.
+This does not add a database uniqueness constraint or emulate arbitrary database collations/coercions. Native representation and READ enforcement remain the selected adapter's responsibility.
+
+Physical matching values are not copied into public records. Newly discovered hidden/heavy primary keys remain omitted, and unrevealed password keys remain masked; explicit caller-supplied keys retain their ordinary write semantics.
+Matched input records can receive an existing public key, so input objects are not immutable snapshots. Internal private identity is not serialized into QQQ JSON or Java serialization. Reusing or copying a masked/private record does not make that identity an explicit caller-supplied key or grant READ/WRITE authority.
+
+=== Deletion scope
+
+`filter` limits deletion only; matching and updates may affect rows outside its predicate.
+When deletion is enabled, retained keys are excluded before applying the original filter's top-level ordering, skip and limit to omission candidates that satisfy its predicate. Ordinary Delete authorization still applies.
+For native-supported root `UNION`, `UNION_ALL`, `INTERSECT` or `EXCEPT`, retained keys are excluded from each operand; the root set operator and its ordering/window remain in effect.
+This preserves supported root set queries, without adding nested-set support or ordering by unselected fields.
+An explicitly empty desired list can remove the deletion scope; with no filter, Replace adds no predicate restricting that scope.
+Use `performDeletes=false` when omitted rows must remain.
+
+=== INSERT callbacks and generated keys
+
+With `setPrimaryKeyInInsertedRecords=true`, PRE_INSERT must retain one record per original INSERT candidate. Reordering is supported; use `new QRecord(record)` when replacing records so generated keys can reach the correct originals.
+Fresh reconstructed PRE_INSERT records are supported when this option is false. They cannot provide original-input correlation when it is true.
+POST_INSERT may reorder or copy records, but its result must contain exactly the native inserted primary-key set: missing, duplicate, unrelated or retargeted identities fail Replace.
+Use the QRecord copy constructor to retain private keys in callback snapshots; reconstruction from a sanitized values map can lose required identity.
+The native inserted rows determine which keys survive omission deletion. Generated-key publication uses input/copy identity rather than output position, occurs after successful child phases, and preserves private-key presentation.
+
+=== Phase failures and transactions
+
+Replace executes INSERT, then UPDATE, then optional DELETE, with ordinary validation, customizers and associations.
+Child record errors, including nested association errors, cause `QException`, stop later phases and prevent an owned transaction's commit. Warnings alone do not fail a phase.
+Within Replace, recursive INSERT/UPDATE results are checked before POST callbacks can erase failed validation/PRE or native outcomes, and returned POST errors also fail the operation. Ordinary standalone INSERT/UPDATE keep their own result contracts.
+Child exceptions also fail Replace; failure does not return a partial `ReplaceOutput`.
+
+* Without a supplied transaction, Replace opens one through the backend, commits only after successful phases, rolls back on failure and closes it.
+* With a supplied transaction, Replace never commits, rolls back or closes it. Earlier successful work may remain pending; the caller decides whether to roll it back.
+
+Rollback requires actual backend support; no-op or provider-specific transaction modes cannot guarantee restoration.
+A database rollback does not restore mutated Java input records or undo external customizer effects. These boundaries do not promise distributed atomicity, concurrency isolation or uniform provider behavior.
+
+=== ReplaceInput
+
+* `tableName` - *String, Required* - Table whose native matching and child DML actions are used.
+* `key` - *UniqueKey, Required* - Distinct available physical fields used to match desired records.
+* `records` - *List of QRecord, Required* - Explicit desired records; an empty list can be destructive with deletes enabled.
+* `filter` - *QQueryFilter, default: null* - Deletion predicate and supported top-level ordering/window; retained keys are excluded before that window.
+* `performDeletes` - *boolean, default: true* - Enables deletion of omitted rows in scope.
+* `allowNullKeyValuesToEqual` - *boolean, default: false* - Allows null matching-key components to compare equal.
+* `setPrimaryKeyInInsertedRecords` - *boolean, default: false* - Publishes generated keys to the corresponding original input records after successful child phases, subject to callback identity and privacy rules above.
+* `transaction` - *QBackendTransaction, default: null* - Optional caller-owned transaction.
+* `inputSource` - *InputSource, inherited default: QInputSource.SYSTEM* - Propagated with active personalized metadata into matching and child actions; USER and SYSTEM retain their respective policies.
+* `omitDmlAudit` - *boolean, default: false* - Propagated to the child DML actions.
+* `flags` - *Set of ActionFlag, default: null* - Propagated to supporting child action/customizer code.
+
+=== ReplaceOutput
+
+* `insertOutput` - *InsertOutput* - The completed INSERT phase's result.
+* `updateOutput` - *UpdateOutput* - The completed UPDATE phase's result.
+* `deleteOutput` - *DeleteOutput* - The completed DELETE phase's result, or null when deletion is disabled.
+
+Inspect child warnings and results using their normal contracts; there is no aggregate atomicity flag.
+Calling the core action does not create HTTP table-permission grants.

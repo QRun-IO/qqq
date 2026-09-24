@@ -47,6 +47,17 @@ import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
 public class SQLiteRDBMSActionStrategy extends BaseRDBMSActionStrategy
 {
 
+   /*******************************************************************************
+    ** SQLite requires DEFAULT VALUES when no columns are supplied.
+    *******************************************************************************/
+   @Override
+   public String getInsertDefaultValuesClause()
+   {
+      return "DEFAULT VALUES";
+   }
+
+
+
    /***************************************************************************
     ** deal with sqlite not having temporal types... so temporal values
     ** i guess are stored as strings, as that's how they come back to us - so

@@ -35,7 +35,8 @@ include::misc/Javalin.adoc[leveloffset=+1]
 include::misc/ScheduledJobs.adoc[leveloffset=+1]
 
 === API server (OpenAPI)
-#todo#
+
+See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs[endpoint specification API] and the https://www.qrun.io/docs[hosted framework documentation]. Endpoint tags are optional.
 
 == Custom Application Code
 include::misc/QContext.adoc[leveloffset=+1]
@@ -45,33 +46,33 @@ include::misc/ProcessBackendSteps.adoc[leveloffset=+1]
 include::misc/RenderingWidgets.adoc[leveloffset=+1]
 
 === Table Customizers
-#todo#
+
+Register a QCodeReference under a supported TableCustomizers key on the table metadata. See {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/customizers/TableCustomizers.java[customizer keys] and {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/customizers/TableCustomizerInterface.java[the customizer contract].
 
 == QQQ Core Actions
 include::actions/QueryAction.adoc[leveloffset=+1]
 
 include::actions/GetAction.adoc[leveloffset=+1]
 
-=== CountAction
-#todo#
+include::actions/CountAction.adoc[leveloffset=+1]
 
-=== AggregateAction
-#todo#
+include::actions/AggregateAction.adoc[leveloffset=+1]
 
 include::actions/InsertAction.adoc[leveloffset=+1]
 
-=== UpdateAction
-#todo#
+include::actions/UpdateAction.adoc[leveloffset=+1]
 
-=== DeleteAction
-#todo#
+include::actions/DeleteAction.adoc[leveloffset=+1]
+
+include::actions/ReplaceAction.adoc[leveloffset=+1]
 
 === AuditAction
-#todo#
+
+This action is implemented; its detailed reference is available in {qqq-source-url}/qqq-backend-core/src/main/java/com/kingsrook/qqq/backend/core/actions/audits/AuditAction.java[AuditAction source]. Use the matching input/output classes and the current QContext.
 
 == QQQ Default Implementations
 include::implementations/TableSync.adoc[leveloffset=+1]
-// later... include::actions/RenderTemplateAction.adoc[leveloffset=+1]
+include::actions/RenderTemplateAction.adoc[leveloffset=+1]
 
 == QQQ Utility Classes
 include::utilities/RecordLookupHelper.adoc[leveloffset=+1]

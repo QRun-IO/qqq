@@ -22,6 +22,10 @@
 package com.kingsrook.qqq.backend.core.actions.tables;
 
 
+import java.io.Serializable;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,16 +37,20 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.replace.ReplaceInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.replace.ReplaceOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
+import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -428,6 +436,189 @@ class ReplaceActionTest extends BaseTest
       //////////////////////////////
       assertEquals(1, countByFirstName("Lisa"));
       assertEquals(5, getNoOfShoes("Lisa", "Simpson"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNullMatchingKeepsEmptyStringMemoryDecoy() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      List<QRecord> inserted = new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("firstName", "Null owner").withValue("lastName", null),
+         new QRecord().withValue("firstName", "Empty decoy").withValue("lastName", "")
+      ))).getRecords();
+      Serializable ownerKey = inserted.get(0).getValue("id");
+      QueryInput all = new QueryInput(tableName);
+      Map<Serializable, Map<String, Serializable>> expected = new HashMap<>();
+      for(QRecord record : MemoryRecordStore.getInstance().query(all))
+      {
+         expected.put(record.getValue("id"), new HashMap<>(record.getValues()));
+      }
+      assertEquals(2, MemoryRecordStore.getInstance().query(new QueryInput(tableName)
+         .withFilter(new QQueryFilter(new QFilterCriteria("lastName", QCriteriaOperator.IS_NULL_OR_IN, List.of())))).size());
+      expected.get(ownerKey).put("firstName", "Updated null owner");
+      expected.get(ownerKey).put("lastName", null);
+      QRecord desired = new QRecord().withValue("firstName", "Updated null owner").withValue("lastName", null);
+      ReplaceInput input = new ReplaceInput().withKey(new UniqueKey("lastName")).withRecords(List.of(desired))
+         .withAllowNullKeyValuesToEqual(true).withPerformDeletes(false).withOmitDmlAudit(true);
+      input.setTableName(tableName);
+      ReplaceOutput output = new ReplaceAction().execute(input);
+      assertEquals(0, output.getInsertOutput().getRecords().size());
+      assertEquals(1, output.getUpdateOutput().getRecords().size());
+      assertEquals(ownerKey, desired.getValue("id"));
+      Map<Serializable, Map<String, Serializable>> actual = new HashMap<>();
+      for(QRecord record : MemoryRecordStore.getInstance().query(all))
+      {
+         actual.put(record.getValue("id"), record.getValues());
+      }
+      assertThat((Instant) actual.get(ownerKey).get("modifyDate")).isAfterOrEqualTo((Instant) expected.get(ownerKey).get("modifyDate")).isBeforeOrEqualTo(Instant.now());
+      expected.get(ownerKey).put("modifyDate", actual.get(ownerKey).get("modifyDate"));
+      assertEquals(expected, actual);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testSingleKeyMatchingKeepsUnmatchedRowsWhenDeletesDisabled() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("firstName", "Homer").withValue("lastName", "Simpson").withValue("noOfShoes", 1),
+         new QRecord().withValue("firstName", "Ned").withValue("lastName", "Flanders").withValue("noOfShoes", 3))));
+      ReplaceInput input = new ReplaceInput().withKey(new UniqueKey("firstName")).withPerformDeletes(false).withOmitDmlAudit(true)
+         .withRecords(List.of(new QRecord().withValue("firstName", "Homer").withValue("lastName", "Simpson").withValue("noOfShoes", 2),
+            new QRecord().withValue("firstName", "Marge").withValue("lastName", "Simpson")));
+      input.setTableName(tableName);
+      ReplaceOutput output = new ReplaceAction().execute(input);
+      assertEquals(1, output.getInsertOutput().getRecords().size());
+      assertEquals(1, output.getUpdateOutput().getRecords().size());
+      assertEquals(2, getNoOfShoes("Homer", "Simpson"));
+      assertEquals(3, getNoOfShoes("Ned", "Flanders"));
+      assertEquals(3, storedPeople().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Ambiguous stored owners must stop the entire replacement before any write.
+    *******************************************************************************/
+   @Test
+   void testAmbiguousStoredKeyDoesNotMutateAnyRow() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("firstName", "Duplicate").withValue("lastName", "One"),
+         new QRecord().withValue("firstName", "Duplicate").withValue("lastName", "Two"))));
+      Map<Serializable, Map<String, Serializable>> before = storedPeople();
+      ReplaceInput input = new ReplaceInput().withKey(new UniqueKey("firstName")).withOmitDmlAudit(true)
+         .withRecords(List.of(new QRecord().withValue("firstName", "New").withValue("lastName", "Insert"),
+            new QRecord().withValue("firstName", "Duplicate").withValue("lastName", "Changed")));
+      input.setTableName(tableName);
+      QException failure = assertThrows(QException.class, () -> new ReplaceAction().execute(input));
+      assertThat(failure).hasStackTraceContaining("Replace matching is ambiguous");
+      assertEquals(before, storedPeople());
+   }
+
+
+
+   /*******************************************************************************
+    ** Duplicate requested keys cannot select competing writes for the same owner.
+    *******************************************************************************/
+   @Test
+   void testDuplicateRequestedKeyDoesNotMutateAnyRow() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("firstName", "Owner").withValue("lastName", "Original"),
+         new QRecord().withValue("firstName", "Unrelated").withValue("lastName", "Preserved"))));
+      Map<Serializable, Map<String, Serializable>> before = storedPeople();
+      ReplaceInput input = new ReplaceInput().withKey(new UniqueKey("firstName")).withOmitDmlAudit(true)
+         .withRecords(List.of(new QRecord().withValue("firstName", "Owner").withValue("lastName", "First"),
+            new QRecord().withValue("firstName", "Owner").withValue("lastName", "Second")));
+      input.setTableName(tableName);
+      QException failure = assertThrows(QException.class, () -> new ReplaceAction().execute(input));
+      assertThat(failure).hasStackTraceContaining("Replace contains duplicate matching keys");
+      assertEquals(before, storedPeople());
+   }
+
+
+
+   /*******************************************************************************
+    ** An empty desired set deletes rows only when the caller explicitly permits it.
+    *******************************************************************************/
+   @Test
+   void testEmptyDesiredSetHonorsDeleteOption() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("firstName", "Homer").withValue("lastName", "Simpson"),
+         new QRecord().withValue("firstName", "Ned").withValue("lastName", "Flanders"))));
+      Map<Serializable, Map<String, Serializable>> before = storedPeople();
+      for(boolean performDeletes : new boolean[] { false, true })
+      {
+         ReplaceInput input = new ReplaceInput().withKey(new UniqueKey("firstName")).withRecords(List.of())
+            .withPerformDeletes(performDeletes).withOmitDmlAudit(true);
+         input.setTableName(tableName);
+         ReplaceOutput output = new ReplaceAction().execute(input);
+         assertThat(output.getInsertOutput().getRecords()).isEmpty();
+         assertThat(output.getUpdateOutput().getRecords()).isEmpty();
+         if(performDeletes)
+         {
+            assertEquals(2, output.getDeleteOutput().getDeletedRecordCount());
+            assertThat(storedPeople()).isEmpty();
+         }
+         else
+         {
+            assertEquals(before, storedPeople());
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Malformed record batches must not reach INSERT, UPDATE or DELETE.
+    *******************************************************************************/
+   @Test
+   void testInvalidReplacementBatchDoesNotMutateAnyRow() throws QException
+   {
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new InsertAction().execute(new InsertInput(tableName).withRecord(
+         new QRecord().withValue("firstName", "Owner").withValue("lastName", "Original")));
+      Map<Serializable, Map<String, Serializable>> before = storedPeople();
+      QRecord repeated = new QRecord().withValue("firstName", "Owner").withValue("lastName", "Changed");
+      QRecord rejected = new QRecord(repeated).withError(new BadInputStatusMessage("Rejected by caller validation"));
+      List<List<QRecord>> requests = List.of(Collections.singletonList(null), List.of(rejected), List.of(repeated, repeated));
+      for(List<QRecord> records : requests)
+      {
+         ReplaceInput input = new ReplaceInput().withKey(new UniqueKey("firstName")).withRecords(records).withOmitDmlAudit(true);
+         input.setTableName(tableName);
+         QException failure = assertThrows(QException.class, () -> new ReplaceAction().execute(input));
+         assertThat(failure).hasStackTraceContaining("Replace requires distinct records without errors");
+         assertEquals(before, storedPeople());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Read raw storage so matching or presentation logic cannot mask a mutation.
+    *******************************************************************************/
+   private static Map<Serializable, Map<String, Serializable>> storedPeople() throws QException
+   {
+      Map<Serializable, Map<String, Serializable>> result = new HashMap<>();
+      for(QRecord record : MemoryRecordStore.getInstance().query(new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY)))
+      {
+         result.put(record.getValue("id"), new HashMap<>(record.getValues()));
+      }
+      return result;
    }
 
 

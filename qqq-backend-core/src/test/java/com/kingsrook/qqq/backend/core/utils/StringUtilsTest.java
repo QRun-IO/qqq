@@ -119,6 +119,10 @@ class StringUtilsTest extends BaseTest
       assertNull(StringUtils.safeTruncate(null, 5));
       assertEquals("123", StringUtils.safeTruncate("123", 5));
       assertEquals("12345", StringUtils.safeTruncate("1234567", 5));
+      assertEquals("1234567", StringUtils.safeTruncate("1234567\uD834\uDD1EX", 8)); // Preserve the supplementary character at the UTF-16 boundary.
+      assertEquals("1234567\uD834\uDD1E", StringUtils.safeTruncate("1234567\uD834\uDD1EX", 9)); // Preserve the supplementary character at the UTF-16 boundary.
+      assertEquals("", StringUtils.safeTruncate("\uD834\uDD1E", 1)); // Preserve the supplementary character at the UTF-16 boundary.
+      assertEquals("", StringUtils.safeTruncate("abc", 0));
    }
 
 
@@ -134,6 +138,12 @@ class StringUtilsTest extends BaseTest
       assertEquals("12345", StringUtils.safeTruncate("12345", 5, "..."));
       assertEquals("12...", StringUtils.safeTruncate("123456", 5, "..."));
       assertEquals("12...", StringUtils.safeTruncate("1234567890", 5, "..."));
+      assertEquals("\uD834\uDD1E\uD834\uDD1E...", StringUtils.safeTruncate("\uD834\uDD1E\uD834\uDD1E\uD834\uDD1E\uD834\uDD1E\uD834\uDD1E", 8, "...")); // Preserve the supplementary character at the UTF-16 boundary.
+      assertEquals("", StringUtils.safeTruncate("abcd", 0, "..."));
+      assertEquals(".", StringUtils.safeTruncate("abcd", 1, "..."));
+      assertEquals("..", StringUtils.safeTruncate("abcd", 2, "..."));
+      assertEquals("...", StringUtils.safeTruncate("abcd", 3, "..."));
+      assertEquals("", StringUtils.safeTruncate("abcd", 1, "\uD834\uDD1E")); // Preserve the supplementary character at the UTF-16 boundary.
    }
 
 

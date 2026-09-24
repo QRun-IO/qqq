@@ -23,11 +23,19 @@ package com.kingsrook.qqq.backend.core.model.savedreports;
 
 
 import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.pivottable.PivotTableDefinition;
@@ -35,13 +43,17 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.pivottable.PivotTa
 import com.kingsrook.qqq.backend.core.model.actions.reporting.pivottable.PivotTableValue;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.PermissionDeniedMessage;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.processes.implementations.savedreports.SavedReportToReportMetaDataAdapter;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -72,8 +84,27 @@ public class SavedReportTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preUpdate(UpdateInput updateInput, List<QRecord> records, boolean isPreview, Optional<List<QRecord>> oldRecordList) throws QException
    {
-      validateOwner(records, SavedReport.TABLE_NAME, "edit");
-      return (preInsertOrUpdate(records));
+      Map<Serializable, QRecord> storedRecords = validateStoredOwner(records, updateInput.getTable(), updateInput.getTransaction(), "edit", true);
+      for(QRecord record : records)
+      {
+         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            if(!storedRecords.containsKey(record.resolvePrimaryKey(updateInput.getTable())))
+            {
+               preValidateRecord(record);
+            }
+            continue;
+         }
+         QRecord validationRecord = new QRecord(storedRecords.get(record.resolvePrimaryKey(updateInput.getTable())));
+         validationRecord.getValues().putAll(record.getValues());
+         preValidateRecord(validationRecord);
+         CollectionUtils.nonNullList(validationRecord.getErrors()).forEach(record::addError);
+         if(record.getValues().containsKey("queryFilterJson"))
+         {
+            record.setValue("queryFilterJson", validationRecord.getValue("queryFilterJson"));
+         }
+      }
+      return records;
    }
 
 
@@ -84,8 +115,75 @@ public class SavedReportTableCustomizer implements TableCustomizerInterface
    @Override
    public List<QRecord> preDelete(DeleteInput deleteInput, List<QRecord> records, boolean isPreview) throws QException
    {
-      validateOwner(records, SavedReport.TABLE_NAME, "delete");
-      return (preInsertOrUpdate(records));
+      validateStoredOwner(records, deleteInput.getTable(), deleteInput.getTransaction(), "delete", false);
+      return records;
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate saved-asset ownership using a private native snapshot. Returned
+    ** read records can have hidden/transformed ownership and report content.
+    ** These snapshots are only for authorization/validation, never responses.
+    *******************************************************************************/
+   public static Map<Serializable, QRecord> validateStoredOwner(List<QRecord> records, QTableMetaData table,
+      QBackendTransaction transaction, String verb, boolean isUpdate) throws QException
+   {
+      QTableMetaData physicalTable = AssociatedRecordDiscovery.physicalParentTable(table);
+      Set<Serializable> primaryKeys = new LinkedHashSet<>();
+      for(QRecord record : records)
+      {
+         if(!CollectionUtils.nullSafeHasContents(record.getErrors()) && record.resolvePrimaryKey(table) != null)
+         {
+            primaryKeys.add(record.resolvePrimaryKey(table));
+         }
+      }
+      Map<Serializable, QRecord> storedRecords = new HashMap<>();
+      if(!primaryKeys.isEmpty())
+      {
+         QueryInput queryInput = new QueryInput(table.getName()).withTransaction(transaction)
+            .withFilter(new QQueryFilter(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, new ArrayList<>(primaryKeys))))
+            .withShouldFetchHeavyFields(true).withShouldOmitHiddenFields(false).withShouldMaskPasswords(false)
+            .withFieldNamesToInclude(new HashSet<>(physicalTable.getFields().keySet()));
+         queryInput.setTableMetaData(physicalTable);
+         var output = new QBackendModuleDispatcher().getQBackendModule(queryInput.getBackend()).getQueryInterface().executeForDml(queryInput);
+         if(output == null || output.getRecords() == null)
+         {
+            throw new QException("Unable to read stored saved-asset ownership.");
+         }
+         for(QRecord stored : output.getRecords())
+         {
+            if(stored == null || CollectionUtils.nullSafeHasContents(stored.getErrors()) || !stored.getValues().containsKey("userId")
+               || !primaryKeys.contains(stored.resolvePrimaryKey(physicalTable)))
+            {
+               throw new QException("Unable to read stored saved-asset ownership.");
+            }
+            storedRecords.put(stored.resolvePrimaryKey(physicalTable), new QRecord(stored));
+         }
+      }
+
+      String currentUserId = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
+      for(QRecord record : records)
+      {
+         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         {
+            continue;
+         }
+         QRecord stored = storedRecords.get(record.resolvePrimaryKey(table));
+         Serializable storedOwner = stored == null ? null : stored.getValue("userId");
+         boolean denied = stored == null || (storedOwner != null && !Objects.equals(storedOwner, currentUserId));
+         if(isUpdate && record.getValues().containsKey("userId"))
+         {
+            Serializable submittedOwner = record.getValue("userId");
+            denied |= (storedOwner != null && !Objects.equals(storedOwner, submittedOwner))
+               || (submittedOwner != null && !Objects.equals(submittedOwner, currentUserId));
+         }
+         if(denied)
+         {
+            record.addError(new PermissionDeniedMessage("Only the owner of a " + table.getLabel() + " may " + verb + " it."));
+         }
+      }
+      return storedRecords;
    }
 
 

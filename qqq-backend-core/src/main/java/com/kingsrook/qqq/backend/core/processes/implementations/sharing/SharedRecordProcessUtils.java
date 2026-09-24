@@ -24,11 +24,14 @@ package com.kingsrook.qqq.backend.core.processes.implementations.sharing;
 
 import java.io.Serializable;
 import java.util.Arrays;
-import java.util.Objects;
+import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.sharing.ShareableTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -86,18 +89,39 @@ public class SharedRecordProcessUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   static void assertRecordOwnership(ShareableTableMetaData shareableTableMetaData, QRecord assetRecord, String verbClause) throws QException
+   static void assertRecordOwnership(AssetTableAndRecord asset, String verbClause) throws QException
    {
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // if the shareable meta-data says this-table's owner id, then validate that the current user own the record //
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      if(StringUtils.hasContent(shareableTableMetaData.getThisTableOwnerIdFieldName()))
+      String ownerField = asset.shareableTableMetaData().getThisTableOwnerIdFieldName();
+      if(StringUtils.hasContent(ownerField))
       {
-         Serializable ownerId = assetRecord.getValue(shareableTableMetaData.getThisTableOwnerIdFieldName());
-         if(!Objects.equals(ownerId, QContext.getQSession().getUser().getIdReference()))
+         Serializable userId = QContext.getQSession().getUser().getIdReference();
+         QQueryFilter filter = new QQueryFilter(
+            new QFilterCriteria(asset.table().getPrimaryKeyField(), QCriteriaOperator.EQUALS, asset.recordId()),
+            new QFilterCriteria(ownerField, QCriteriaOperator.EQUALS, userId));
+         if(userId == null || CountAction.execute(asset.table().getName(), filter) != 1)
          {
             throw (new QException("You are not the owner of this record, so you may not " + verbClause + " it."));
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Check the stored relationship before either mutation. A filtered count
+    ** avoids presentation customizers and hidden-field omission on returned rows.
+    *******************************************************************************/
+   static void assertShareBelongsToAsset(AssetTableAndRecord asset, Integer shareId, String operation) throws QException
+   {
+      ShareableTableMetaData sharing = asset.shareableTableMetaData();
+      QTableMetaData shareTable = QContext.getQInstance().getTable(sharing.getSharedRecordTableName());
+      QQueryFilter filter = new QQueryFilter(
+         new QFilterCriteria(shareTable.getPrimaryKeyField(), QCriteriaOperator.EQUALS, shareId),
+         new QFilterCriteria(sharing.getAssetIdFieldName(), QCriteriaOperator.EQUALS, asset.recordId()));
+      if(CountAction.execute(sharing.getSharedRecordTableName(), filter) != 1)
+      {
+         throw new QException("Error " + ("update".equals(operation) ? "editing" : "deleting")
+            + " shared record: No record was found to " + operation + " for the specified asset and share.");
       }
    }
 
@@ -119,7 +143,7 @@ public class SharedRecordProcessUtils
       }
       catch(IllegalArgumentException e)
       {
-         throw (new QException("[" + shareScope + "] is not a recognized value for shareScope.  Allowed values are: " + Arrays.toString(ShareScope.values())));
+         throw (new QException("[" + scopeId + "] is not a recognized value for shareScope.  Allowed values are: " + Arrays.toString(ShareScope.values())));
       }
    }
 

@@ -24,6 +24,8 @@ package com.kingsrook.qqq.backend.core.processes.implementations.savedreports;
 
 import java.io.OutputStream;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -35,6 +37,7 @@ import java.util.Map;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.messaging.SendMessageAction;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
@@ -63,10 +66,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.savedreports.RenderedReport;
 import com.kingsrook.qqq.backend.core.model.savedreports.RenderedReportStatus;
 import com.kingsrook.qqq.backend.core.model.savedreports.SavedReport;
-import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValidationUtils;
+import org.jsoup.nodes.Element;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -119,7 +122,6 @@ public class RenderSavedReportExecuteStep implements BackendStep
 
          StorageAction storageAction = new StorageAction();
          StorageInput  storageInput  = new StorageInput(storageTableName).withReference(storageReference);
-         OutputStream  outputStream  = storageAction.createOutputStream(storageInput);
 
          LOG.info("Starting to render a report", logPair("savedReportId", savedReport.getId()), logPair("tableName", savedReport.getTableName()), logPair("storageReference", storageReference));
          runBackendStepInput.getAsyncJobCallback().updateStatus("Generating Report");
@@ -148,8 +150,7 @@ public class RenderSavedReportExecuteStep implements BackendStep
          reportInput.setAsyncJobCallback(runBackendStepInput.getAsyncJobCallback());
          reportInput.setReportMetaData(reportMetaData);
          reportInput.setReportDestination(new ReportDestination()
-            .withReportFormat(reportFormat)
-            .withReportOutputStream(outputStream));
+            .withReportFormat(reportFormat));
 
          //////////////////////////////////////////////////////////
          // todo variable-values                                 //
@@ -158,7 +159,8 @@ public class RenderSavedReportExecuteStep implements BackendStep
          Map<String, Serializable> values = runBackendStepInput.getValues();
          reportInput.setInputValues(values);
 
-         ReportOutput reportOutput = new GenerateReportAction().execute(reportInput);
+         ReportOutput reportOutput = generateAndStoreReport(reportInput, storageInput);
+
 
          ///////////////////////////////////
          // update record to show success //
@@ -172,12 +174,13 @@ public class RenderSavedReportExecuteStep implements BackendStep
          ));
 
          String downloadFileName = downloadFileBaseName + "." + reportFormat.getExtension();
+         ProcessFileDownload.registerStorage(storageInput);
          runBackendStepOutput.addValue("downloadFileName", downloadFileName);
          runBackendStepOutput.addValue("storageTableName", storageTableName);
          runBackendStepOutput.addValue("storageReference", storageReference);
          LOG.info("Completed rendering a report", logPair("savedReportId", savedReport.getId()), logPair("tableName", savedReport.getTableName()), logPair("storageReference", storageReference), logPair("rowCount", reportOutput.getTotalRecordCount()));
 
-         if(!toEmailAddressList.isEmpty() && CollectionUtils.nullSafeHasContents(QContext.getQInstance().getMessagingProviders()))
+         if(!toEmailAddressList.isEmpty())
          {
             ///////////////////////////////////////////
             // error if no from address was provided //
@@ -189,9 +192,15 @@ public class RenderSavedReportExecuteStep implements BackendStep
                throw (new QException(message));
             }
 
+            if(!StringUtils.hasContent(sesProviderName) || QContext.getQInstance().getMessagingProvider(sesProviderName) == null)
+            {
+               throw new QException("No messaging provider is configured for report delivery.");
+            }
+
             ///////////////////////////////////////////////////////////
             // since sending email, make s3 file publicly accessible //
             ///////////////////////////////////////////////////////////
+
             storageAction.makePublic(storageInput);
 
             ////////////////////////////////////////////////
@@ -214,13 +223,14 @@ public class RenderSavedReportExecuteStep implements BackendStep
             }
 
             String downloadURL = storageAction.getDownloadURL(storageInput);
+
             new SendMessageAction().execute(new SendMessageInput()
                .withMessagingProviderName(sesProviderName)
                .withTo(recipients)
                .withFrom(froms)
                .withSubject(StringUtils.hasContent(emailSubject) ? emailSubject : downloadFileBaseName)
                .withContent(new Content().withContentRole(EmailContentRole.TEXT).withBody("To download your report, open this URL in your browser: " + downloadURL))
-               .withContent(new Content().withContentRole(EmailContentRole.HTML).withBody("Link: <a target=\"_blank\" href=\"" + downloadURL + "\" download>" + downloadFileName + "</a>"))
+               .withContent(new Content().withContentRole(EmailContentRole.HTML).withBody("Link: " + new Element("a").attr("target", "_blank").attr("href", downloadURL).attr("download", "").text(downloadFileName).outerHtml()))
             );
          }
       }
@@ -237,7 +247,37 @@ public class RenderSavedReportExecuteStep implements BackendStep
          }
 
          LOG.warn("Error rendering saved report", e);
-         throw (e);
+         if(e instanceof QException qException)
+         {
+            throw qException;
+         }
+         throw new QException("Error rendering saved report", e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Generate locally before touching archive storage. Resource cleanup also runs
+    ** after generation or publication failure, preserving the original exception.
+    *******************************************************************************/
+   private ReportOutput generateAndStoreReport(ReportInput reportInput, StorageInput storageInput) throws Exception
+   {
+      Path temporaryFile = Files.createTempFile("qqq-saved-report-", "." + reportInput.getReportDestination().getReportFormat().getExtension());
+      try(AutoCloseable cleanup = () -> Files.deleteIfExists(temporaryFile))
+      {
+         ReportOutput reportOutput;
+         try(OutputStream output = Files.newOutputStream(temporaryFile))
+         {
+            reportInput.getReportDestination().setReportOutputStream(output);
+            reportOutput = new GenerateReportAction().execute(reportInput);
+         }
+
+         try(OutputStream output = new StorageAction().createOutputStream(storageInput))
+         {
+            Files.copy(temporaryFile, output);
+         }
+         return reportOutput;
       }
    }
 

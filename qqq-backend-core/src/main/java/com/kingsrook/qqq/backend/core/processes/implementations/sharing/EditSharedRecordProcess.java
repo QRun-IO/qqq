@@ -106,17 +106,18 @@ public class EditSharedRecordProcess implements BackendStep, MetaDataProducerInt
          SharedRecordProcessUtils.AssetTableAndRecord assetTableAndRecord = SharedRecordProcessUtils.getAssetTableAndRecord(tableName, recordIdString);
 
          ShareableTableMetaData shareableTableMetaData = assetTableAndRecord.shareableTableMetaData();
-         QRecord                assetRecord            = assetTableAndRecord.record();
          QTableMetaData         shareTable             = QContext.getQInstance().getTable(shareableTableMetaData.getSharedRecordTableName());
 
-         SharedRecordProcessUtils.assertRecordOwnership(shareableTableMetaData, assetRecord, "edit shares of");
+         SharedRecordProcessUtils.assertRecordOwnership(assetTableAndRecord, "edit shares of");
+         SharedRecordProcessUtils.assertShareBelongsToAsset(assetTableAndRecord, shareId, "update");
          ShareScope shareScope = SharedRecordProcessUtils.validateScopeId(scopeId);
 
          ///////////////////
-         // do the insert //
+         // do the update //
          ///////////////////
          UpdateOutput updateOutput = new UpdateAction().execute(new UpdateInput(shareableTableMetaData.getSharedRecordTableName()).withRecord(new QRecord()
             .withValue(shareTable.getPrimaryKeyField(), shareId)
+            .withValue(shareableTableMetaData.getAssetIdFieldName(), assetTableAndRecord.recordId())
             .withValue(shareableTableMetaData.getScopeFieldName(), shareScope.getPossibleValueId())));
 
          //////////////////////

@@ -51,6 +51,7 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportOutput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -530,6 +531,7 @@ public class QSlackImplementation
          QWidgetMetaDataInterface widgetMetaData = qInstance.getWidget(widgetName);
 
          RenderWidgetInput input = new RenderWidgetInput()
+            .withInputSource(QInputSource.USER)
             .withWidgetMetaData(widgetMetaData);
          setupSession(context, input);
          RenderWidgetOutput output = new RenderWidgetAction().execute(input);

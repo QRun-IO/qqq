@@ -61,11 +61,11 @@ CREATE TABLE person
    days_worked INTEGER
 );
 
-INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (1, 'Darin', 'Kelkhoff', '1980-05-31', 'darin.kelkhoff@gmail.com', 1, 75003.50, 1001);
-INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (2, 'James', 'Maes', '1980-05-15', 'jmaes@mmltholdings.com', 1, 150000, 10100);
-INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (3, 'Tim', 'Chamberlain', '1976-05-28', 'tchamberlain@mmltholdings.com', 1, 300000, 100100);
-INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (4, 'Tyler', 'Samples', NULL, 'tsamples@mmltholdings.com', 1, 950000, 75);
-INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (5, 'Garret', 'Richardson', '1981-01-01', 'grichardson@mmltholdings.com', 0, 1500000, 1);
+INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (1, 'Avery', 'Sample', '1990-01-15', 'avery@example.invalid', 1, 75003.50, 1001);
+INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (2, 'Blair', 'Sample', '1991-02-16', 'blair@example.invalid', 1, 150000, 10100);
+INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (3, 'Casey', 'Sample', '1992-03-17', 'casey@example.invalid', 1, 300000, 100100);
+INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (4, 'Drew', 'Sample', NULL, 'drew@example.invalid', 1, 950000, 75);
+INSERT INTO person (id, first_name, last_name, birth_date, email, is_employed, annual_salary, days_worked) VALUES (5, 'Morgan', 'Sample', '1993-04-18', 'morgan@example.invalid', 0, 1500000, 1);
 
 DROP TABLE IF EXISTS pet;
 CREATE TABLE pet
@@ -88,6 +88,20 @@ INSERT INTO pet (id, name, species_id, person_id) VALUES (5, 'Toby', 1, 2);
 INSERT INTO pet (id, name, species_id, person_id) VALUES (6, 'Mae', 2, 3);
 
 
+DROP TABLE IF EXISTS pet_note;
+CREATE TABLE pet_note
+(
+   id INT AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT now(),
+   modify_date TIMESTAMP DEFAULT now(),
+   pet_id INTEGER NOT NULL,
+   note VARCHAR(80) NOT NULL
+);
+
+INSERT INTO pet_note (id, pet_id, note) VALUES (1, 1, 'Target note');
+INSERT INTO pet_note (id, pet_id, note) VALUES (2, 5, 'Other parent note');
+
+
 DROP TABLE IF EXISTS carrier;
 CREATE TABLE carrier
 (
@@ -108,3 +122,45 @@ INSERT INTO carrier (id, name, company_code, service_level) VALUES (8, 'USPS Sup
 INSERT INTO carrier (id, name, company_code, service_level) VALUES (9, 'USPS Super Fast', 'USPS', '0');
 INSERT INTO carrier (id, name, company_code, service_level) VALUES (10, 'DHL International', 'DHL', 'I');
 INSERT INTO carrier (id, name, company_code, service_level) VALUES (11, 'GSO', 'GSO', 'G');
+
+DROP TABLE IF EXISTS field_lab;
+CREATE TABLE field_lab
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   name VARCHAR(80) NOT NULL UNIQUE,
+   long_value BIGINT,
+   decimal_value DECIMAL(20, 4),
+   boolean_value BOOLEAN,
+   date_value DATE,
+   time_value TIME,
+   date_time_value TIMESTAMP,
+   fixed_zone_date_time TIMESTAMP,
+   record_zone_date_time TIMESTAMP,
+   time_zone VARCHAR(80),
+   user_id_value VARCHAR(255),
+   create_date TIMESTAMP,
+   modify_date TIMESTAMP,
+   created_day DATE,
+   modified_day DATE,
+   manual_date_time TIMESTAMP,
+   text_value TEXT,
+   html_value TEXT,
+   password_value VARCHAR(255),
+   blob_value BLOB,
+   truncate_value VARCHAR(255),
+   ellipsis_value VARCHAR(255),
+   reject_long_value VARCHAR(255),
+   pass_through_value VARCHAR(255),
+   upper_value VARCHAR(255),
+   lower_value VARCHAR(255),
+   unchanged_value VARCHAR(255),
+   trim_value VARCHAR(255),
+   trim_left_value VARCHAR(255),
+   trim_right_value VARCHAR(255),
+   remove_space_value VARCHAR(255),
+   normalized_key VARCHAR(255) UNIQUE,
+   bounded_value DECIMAL(10, 2),
+   exclusive_bounded_value DECIMAL(10, 2),
+   inclusive_clipped_value DECIMAL(10, 2),
+   clipped_value DECIMAL(10, 2)
+);

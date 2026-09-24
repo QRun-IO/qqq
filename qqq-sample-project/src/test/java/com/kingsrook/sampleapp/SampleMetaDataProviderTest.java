@@ -24,10 +24,7 @@ package com.kingsrook.sampleapp;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.sql.Connection;
-import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -43,15 +40,10 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.mock.MockBackendStep;
 import com.kingsrook.qqq.backend.module.filesystem.local.actions.FilesystemQueryAction;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemTableBackendDetails;
-import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
-import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -64,17 +56,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 public class SampleMetaDataProviderTest
 {
-   private static boolean originalUseMysqlValue = false;
-
-
-
    /*******************************************************************************
     **
     *******************************************************************************/
    @BeforeEach
    void beforeEach() throws Exception
    {
-      primeTestDatabase("prime-test-database.sql");
+      SampleMetaDataProvider.primeTestDatabase("prime-test-database.sql");
       QContext.init(SampleMetaDataProvider.defineTestInstance(), new QSession());
    }
 
@@ -87,52 +75,6 @@ public class SampleMetaDataProviderTest
    void afterEach()
    {
       QContext.clear();
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   @BeforeAll
-   static void beforeAll() throws Exception
-   {
-      originalUseMysqlValue = SampleMetaDataProvider.USE_MYSQL;
-      SampleMetaDataProvider.USE_MYSQL = false;
-      SampleMetaDataProviderTest.primeTestDatabase("prime-test-database.sql");
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   @AfterAll
-   static void afterAll()
-   {
-      SampleMetaDataProvider.USE_MYSQL = originalUseMysqlValue;
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   public static void primeTestDatabase(String sqlFileName) throws Exception
-   {
-      ConnectionManager connectionManager = new ConnectionManager();
-      try(Connection connection = connectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend()))
-      {
-         InputStream primeTestDatabaseSqlStream = SampleMetaDataProviderTest.class.getResourceAsStream("/" + sqlFileName);
-         assertNotNull(primeTestDatabaseSqlStream);
-         List<String> lines = IOUtils.readLines(primeTestDatabaseSqlStream, StandardCharsets.UTF_8);
-         lines = lines.stream().filter(line -> !line.startsWith("-- ")).toList();
-         String joinedSQL = String.join("\n", lines);
-         for(String sql : joinedSQL.split(";"))
-         {
-            QueryManager.executeUpdate(connection, sql);
-         }
-      }
    }
 
 

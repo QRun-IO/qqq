@@ -23,11 +23,14 @@ package com.kingsrook.qqq.backend.core.modules.authentication;
 
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.commons.lang3.NotImplementedException;
 
@@ -56,19 +59,19 @@ public interface QAuthenticationModuleInterface
     *******************************************************************************/
    default QSession createAutomatedSessionForUser(QInstance qInstance, Serializable userId) throws QAuthenticationException
    {
-      try
+      String ownerId = ValueUtils.getValueAsString(userId);
+      if(!StringUtils.hasContent(ownerId))
       {
-         QSession clone = QContext.getQSession().clone();
-         if(clone.getUser() != null)
-         {
-            clone.getUser().setIdReference(ValueUtils.getValueAsString(userId));
-         }
-         return clone;
+         throw new QAuthenticationException("An automated session requires a user ID.");
       }
-      catch(CloneNotSupportedException e)
+
+      QSession session = new QSession().withUser(new QUser().withIdReference(ownerId));
+      Map<String, Serializable> backendVariants = QContext.getQSession().getBackendVariants();
+      if(backendVariants != null)
       {
-         throw (new QAuthenticationException("Cloning session failed", e));
+         session.setBackendVariants(new HashMap<>(backendVariants));
       }
+      return session;
    }
 
 

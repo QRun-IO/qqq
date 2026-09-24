@@ -98,6 +98,7 @@ import org.junit.jupiter.api.Test;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.OutputType;
+import org.openqa.selenium.Platform;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -371,10 +372,11 @@ class SampleDisplayWidgetsBrowserIT
       try
       {
          wait.until(browser -> !browser.findElements(By.id("owner")).isEmpty());
-         driver.findElement(By.id("owner")).sendKeys(Keys.chord(Keys.COMMAND, "a"), "Updated owned form");
+         Keys selectAllModifier = Platform.MAC.is(driver.getCapabilities().getPlatformName()) ? Keys.COMMAND : Keys.CONTROL;
+         driver.findElement(By.id("owner")).sendKeys(Keys.chord(selectAllModifier, "a"), "Updated owned form");
          driver.findElement(By.xpath("//button[normalize-space()='Advanced']")).click();
          wait.until(browser -> !browser.findElements(By.name("cronExpression")).isEmpty());
-         driver.findElement(By.name("cronExpression")).sendKeys(Keys.chord(Keys.COMMAND, "a"), "0 30 10 * * ?");
+         driver.findElement(By.name("cronExpression")).sendKeys(Keys.chord(selectAllModifier, "a"), "0 30 10 * * ?");
          wait.until(browser -> body().contains("10:30 am"));
          driver.findElement(By.cssSelector("[data-qqq-id='save']")).click();
          wait.until(browser -> !browser.getCurrentUrl().endsWith("/edit") && body().contains("Updated owned form") && body().contains("10:30 am"));

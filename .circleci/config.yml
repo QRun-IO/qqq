@@ -69,12 +69,24 @@ jobs:
             - run:
                 name: Require complete supported-feature coverage before publication
                 command: python3 qqq-sample-project/verify-feature-coverage.py --stage source
+      - run:
+          name: Collect JUnit test reports
+          when: always
+          command: |
+            mkdir -p qqq-sample-project/target/junit-results
+            for report in qqq-sample-project/target/surefire-reports/TEST-*.xml qqq-sample-project/target/failsafe-reports/TEST-*.xml; do
+              if [ -f "$report" ]; then
+                cp "$report" qqq-sample-project/target/junit-results/
+              fi
+            done
       - store_test_results:
-          path: qqq-sample-project/target/surefire-reports
-      - store_test_results:
-          path: qqq-sample-project/target/failsafe-reports
+          path: qqq-sample-project/target/junit-results
       - store_artifacts:
           path: qqq-sample-project/target/browser-acceptance
+      - store_artifacts:
+          path: qqq-sample-project/target/display-widgets
+      - store_artifacts:
+          path: qqq-sample-project/target/widget-controls
       - store_artifacts:
           path: qqq-sample-project/target/feature-coverage-result.json
 

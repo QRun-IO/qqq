@@ -18,15 +18,22 @@ Write Java for custom behavior while sharing metadata across the configured back
 - **Metadata-driven tables** - Define entities once, get API + UI + validation
 - **Backend modules** - RDBMS, filesystem, MongoDB, S3 out of the box
 - **Business processes** - Multi-step workflows with state management
-- **React dashboard** - Material-UI admin interface, zero frontend code required
+- **Metadata-driven dashboards** - Next for the local quickstart, plus the existing Material UI dashboard
 - **Multiple interfaces** - REST API, CLI, Lambda handlers from same codebase
 - **Extensible** - Custom actions, widgets, and integrations when needed
 
 ## Quick Start
 
-**Prerequisites:** Java 21+, Maven 3.8+
+**Prerequisites:** JDK 21+, Git, curl, unzip, and Docker installed and running; Bash on macOS, Linux, or Windows WSL. Maven is downloaded automatically by the checked-in Maven Wrapper.
 
-Use the 4.0.0 BOM below to align framework modules. Build the QRun-owned reference application using the [sample instructions](qqq-sample-project/README.md). Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
+```bash
+curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.0.0/quickstart.sh
+bash quickstart.sh
+```
+
+The script checks prerequisites, clones editable sample source into `qqq-sample`, compiles it against published QQQ 4.0.0, and opens the Next dashboard at <http://localhost:3000/app/person>. Seeded H2 data needs no external database or account. Ports 8000 and 3000 must be free. Press Ctrl+C to stop; edit the Java source and run `./quickstart.sh` inside the checkout to rebuild and restart. Data resets on restart. See the [sample instructions](qqq-sample-project/README.md) for the walkthrough, logs, existing Material option, and current Next limitations.
+
+Use the 4.0.0 BOM below to align modules in your own application. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
 
 ```xml
 <dependencyManagement>

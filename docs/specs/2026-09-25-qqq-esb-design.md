@@ -1,6 +1,6 @@
 # QQQ ESB — Design Spec (4.1)
 
-Status: Draft for review · 2026-09-25
+Status: Approved by James · 2026-09-25
 
 ## 1. Goal
 

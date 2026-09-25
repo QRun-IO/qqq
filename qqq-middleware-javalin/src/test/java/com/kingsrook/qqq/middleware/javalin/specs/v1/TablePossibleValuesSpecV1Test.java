@@ -200,4 +200,28 @@ class TablePossibleValuesSpecV1Test extends SpecTestBase
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Ids may be sent as numbers or as a comma-separated string (the legacy form);
+    ** each form returns exactly the requested options.
+    *******************************************************************************/
+   @Test
+   void testSearchByNumericAndCommaSeparatedIds()
+   {
+      for(Object ids : List.of(List.of(1, 2), "1,2"))
+      {
+         HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/possibleValues/partnerPersonId")
+            .contentType(ContentType.APPLICATION_JSON.getMimeType())
+            .body(JsonUtils.toJson(Map.of("ids", ids)))
+            .asString();
+
+         assertEquals(200, response.getStatus(), "ids given as " + ids);
+         JSONArray options = JsonUtils.toJSONObject(response.getBody()).getJSONArray("options");
+         assertEquals(2, options.length(), "ids given as " + ids);
+         assertEquals(1, options.getJSONObject(0).getInt("id"));
+         assertEquals(2, options.getJSONObject(1).getInt("id"));
+      }
+   }
+
 }

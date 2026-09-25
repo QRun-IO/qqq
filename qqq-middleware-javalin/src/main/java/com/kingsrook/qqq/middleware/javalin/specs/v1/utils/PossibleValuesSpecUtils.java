@@ -24,9 +24,11 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.utils;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
@@ -106,41 +108,56 @@ public class PossibleValuesSpecUtils
 
 
    /***************************************************************************
-    ** Extract the id list from the JSON request body.
+    ** Extract the id list from the JSON request body.  Accepts an array of
+    ** strings or numbers, or a comma-separated string (like the legacy query
+    ** parameter).
     ***************************************************************************/
    public static List<String> extractIdList(JSONObject requestBody)
    {
-      if(requestBody != null && requestBody.has("ids") && !requestBody.isNull("ids"))
-      {
-         JSONArray idsArray = requestBody.getJSONArray("ids");
-         List<String> idList = new ArrayList<>();
-         for(int i = 0; i < idsArray.length(); i++)
-         {
-            idList.add(idsArray.getString(i));
-         }
-         return idList;
-      }
-      return (null);
+      return (extractStringList(requestBody, "ids"));
    }
 
 
 
    /***************************************************************************
-    ** Extract the label list from the JSON request body.
+    ** Extract the label list from the JSON request body (an array, or a
+    ** comma-separated string).
     ***************************************************************************/
    public static List<String> extractLabelList(JSONObject requestBody)
    {
-      if(requestBody != null && requestBody.has("labels") && !requestBody.isNull("labels"))
+      return (extractStringList(requestBody, "labels"));
+   }
+
+
+
+   /***************************************************************************
+    ** Read a list of strings from an array (of strings or numbers) or from a
+    ** comma-separated string.
+    ***************************************************************************/
+   private static List<String> extractStringList(JSONObject requestBody, String fieldName)
+   {
+      if(requestBody == null || !requestBody.has(fieldName) || requestBody.isNull(fieldName))
       {
-         JSONArray labelsArray = requestBody.getJSONArray("labels");
-         List<String> labelList = new ArrayList<>();
-         for(int i = 0; i < labelsArray.length(); i++)
-         {
-            labelList.add(labelsArray.getString(i));
-         }
-         return labelList;
+         return (null);
       }
-      return (null);
+
+      List<String> list  = new ArrayList<>();
+      Object       value = requestBody.get(fieldName);
+      if(value instanceof JSONArray array)
+      {
+         for(int i = 0; i < array.length(); i++)
+         {
+            if(!array.isNull(i))
+            {
+               list.add(String.valueOf(array.get(i)));
+            }
+         }
+      }
+      else if(StringUtils.hasContent(String.valueOf(value)))
+      {
+         list.addAll(Arrays.asList(String.valueOf(value).split(",")));
+      }
+      return (list);
    }
 
 

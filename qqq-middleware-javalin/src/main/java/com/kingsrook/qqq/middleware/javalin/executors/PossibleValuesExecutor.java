@@ -23,8 +23,11 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 
 
 import java.util.ArrayList;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceOutput;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -34,8 +37,9 @@ import com.kingsrook.qqq.middleware.javalin.executors.io.PossibleValuesOutputInt
 
 /*******************************************************************************
  ** Executor for searching possible value sources.  The spec's buildInput method
- ** handles filter cloning and interpretation; this executor simply passes
- ** the prepared input through to the SearchPossibleValueSourceAction.
+ ** handles filter cloning and interpretation; this executor checks that the
+ ** user may use the table or process the field belongs to, then passes the
+ ** prepared input through to the SearchPossibleValueSourceAction.
  *******************************************************************************/
 public class PossibleValuesExecutor extends AbstractMiddlewareExecutor<PossibleValuesInput, PossibleValuesOutputInterface>
 {
@@ -47,6 +51,8 @@ public class PossibleValuesExecutor extends AbstractMiddlewareExecutor<PossibleV
    public void execute(PossibleValuesInput input, PossibleValuesOutputInterface output) throws QException
    {
       SearchPossibleValueSourceInput searchInput = new SearchPossibleValueSourceInput();
+      checkPermissions(input, searchInput);
+
       searchInput.setPossibleValueSourceName(input.getPossibleValueSourceName());
       searchInput.setSearchTerm(input.getSearchTerm());
       searchInput.setDefaultQueryFilter(input.getDefaultFilter());
@@ -74,6 +80,33 @@ public class PossibleValuesExecutor extends AbstractMiddlewareExecutor<PossibleV
 
       SearchPossibleValueSourceOutput searchOutput = new SearchPossibleValueSourceAction().execute(searchInput);
       output.setOptions(searchOutput.getResults());
+   }
+
+
+
+   /***************************************************************************
+    ** A table field's values are for users who can read, insert or edit that
+    ** table (queries, filters and forms); a process field's values are for
+    ** users who may run the process.  Standalone sources are not tied to a
+    ** table or process and are not checked here.
+    ***************************************************************************/
+   private static void checkPermissions(PossibleValuesInput input, SearchPossibleValueSourceInput searchInput) throws QPermissionDeniedException
+   {
+      if(input.getTableName() != null)
+      {
+         String  tableName = input.getTableName();
+         boolean mayUse    = PermissionsHelper.hasTablePermission(searchInput, tableName, TablePermissionSubType.READ)
+            || PermissionsHelper.hasTablePermission(searchInput, tableName, TablePermissionSubType.INSERT)
+            || PermissionsHelper.hasTablePermission(searchInput, tableName, TablePermissionSubType.EDIT);
+         if(!mayUse)
+         {
+            throw (new QPermissionDeniedException("Permission denied."));
+         }
+      }
+      else if(input.getProcessName() != null)
+      {
+         PermissionsHelper.checkProcessPermissionThrowing(searchInput, input.getProcessName());
+      }
    }
 
 }

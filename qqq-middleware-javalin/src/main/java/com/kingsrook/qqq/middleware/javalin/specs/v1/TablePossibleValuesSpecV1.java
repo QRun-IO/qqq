@@ -133,7 +133,7 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
       QFieldMetaData field;
       try
       {
-         field = table.getField(fieldName);
+         field = table.getFieldOrVirtualField(fieldName);
       }
       catch(Exception e)
       {

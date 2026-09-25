@@ -354,13 +354,23 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
          {
             complete.processMetaDataAdjustment = new ProcessMetaDataAdjustment();
 
-            Map<String, FieldMetaData> updatedFields = processMetaDataAdjustment.getUpdatedFields().entrySet()
-               .stream().collect(Collectors.toMap(e -> e.getKey(), f -> new FieldMetaData(f.getValue())));
-            complete.processMetaDataAdjustment.setUpdatedFields(updatedFields);
+            ////////////////////////////////////////////////////////////////////////////
+            // an adjustment may carry only fields or only steps (a route change sets //
+            // just the step list) - the other part is absent, not an error            //
+            ////////////////////////////////////////////////////////////////////////////
+            if(processMetaDataAdjustment.getUpdatedFields() != null)
+            {
+               Map<String, FieldMetaData> updatedFields = processMetaDataAdjustment.getUpdatedFields().entrySet()
+                  .stream().collect(Collectors.toMap(e -> e.getKey(), f -> new FieldMetaData(f.getValue())));
+               complete.processMetaDataAdjustment.setUpdatedFields(updatedFields);
+            }
 
-            List<FrontendStep> updatedFrontendSteps = processMetaDataAdjustment.getUpdatedFrontendStepList()
-               .stream().map(f -> new FrontendStep(f)).toList();
-            complete.processMetaDataAdjustment.setUpdatedFrontendStepList(updatedFrontendSteps);
+            if(processMetaDataAdjustment.getUpdatedFrontendStepList() != null)
+            {
+               List<FrontendStep> updatedFrontendSteps = processMetaDataAdjustment.getUpdatedFrontendStepList()
+                  .stream().map(f -> new FrontendStep(f)).toList();
+               complete.processMetaDataAdjustment.setUpdatedFrontendStepList(updatedFrontendSteps);
+            }
          }
       }
    }

@@ -90,6 +90,36 @@ components:
           description: "The type of node (table, process, report, app)"
           type: "string"
       type: "object"
+    Association:
+      properties:
+        associatedTableName:
+          description: "Name of the associated table; its permissions remain independent"
+          type: "string"
+        join:
+          description: "The named join and field pairs defining this association"
+          properties:
+            joinOns:
+              type: "array"
+            leftTable:
+              type: "string"
+            name:
+              type: "string"
+            orderBys:
+              type: "array"
+            rightTable:
+              type: "string"
+            type:
+              enum:
+              - "ONE_TO_ONE"
+              - "ONE_TO_MANY"
+              - "MANY_TO_ONE"
+              - "MANY_TO_MANY"
+              type: "string"
+          type: "object"
+        name:
+          description: "Exact name used for this group in associatedRecords"
+          type: "string"
+      type: "object"
     AuthenticationMetaDataResponseV1:
       properties:
         name:
@@ -123,11 +153,77 @@ components:
                 description: "ClientId for auth0"
                 type: "string"
             type: "object"
+          - description: "Additional values used by the OAuth2 type authentication\
+              \ provider."
+            properties:
+              baseUrl:
+                description: "BaseUrl for OAuth2 provider"
+                type: "string"
+              clientId:
+                description: "ClientId for OAuth2 provider"
+                type: "string"
+              scopes:
+                description: "OAuth2 scopes to request (space-separated)"
+                type: "string"
+            type: "object"
+      type: "object"
+    BackChannelLogoutResponseV1:
       type: "object"
     BasicErrorResponseV1:
       properties:
         error:
           description: "Description of the error"
+          type: "string"
+      type: "object"
+    Branding:
+      properties:
+        accentColor:
+          description: "Primary accent color, as a CSS color value."
+          type: "string"
+        accentColorLight:
+          description: "Light variant of the accent color, as a CSS color value."
+          type: "string"
+        appName:
+          description: "Name of this application, for display to users."
+          type: "string"
+        banners:
+          additionalProperties:
+            $ref: "#/components/schemas/BrandingBanner"
+          description: "Banners to display, keyed by the slot where each is shown."
+          type: "object"
+        companyName:
+          description: "Name of the company that operates this application."
+          type: "string"
+        companyUrl:
+          description: "URL for the company's web site."
+          type: "string"
+        icon:
+          description: "Path or URL of the application's small icon image."
+          type: "string"
+        logo:
+          description: "Path or URL of the application's logo image."
+          type: "string"
+      type: "object"
+    BrandingBanner:
+      properties:
+        additionalStyles:
+          description: "Additional CSS style properties for the banner."
+          type: "object"
+        backgroundColor:
+          description: "Background color, as a CSS color value."
+          type: "string"
+        messageHTML:
+          description: "HTML message, used instead of the plain-text message when\
+            \ set."
+          type: "string"
+        messageText:
+          description: "Plain-text message."
+          type: "string"
+        severity:
+          description: "Severity of the message: INFO, WARNING, ERROR or SUCCESS."
+          type: "string"
+        textColor:
+          description: "Text color, as a CSS color value."
           type: "string"
       type: "object"
     ExposedJoin:
@@ -178,6 +274,7 @@ components:
           - "RENDER_HTML"
           - "REVEAL"
           - "FILE_DOWNLOAD"
+          - "WIDGET"
           - "ERROR"
           type: "string"
         values:
@@ -384,6 +481,8 @@ components:
             \ to serve as the icon image instead of a material UI icon."
           type: "string"
       type: "object"
+    LogoutResponseV1:
+      type: "object"
     ManageSessionResponseV1:
       properties:
         uuid:
@@ -408,6 +507,37 @@ components:
             $ref: "#/components/schemas/AppMetaData"
           description: "Map of all apps within the QQQ Instance (that the user has\
             \ permission to see that they exist)."
+          type: "object"
+        branding:
+          description: "Application identity (names, logo, icon, accent colors and\
+            \ banners), when the instance defines it."
+          properties:
+            accentColor:
+              description: "Primary accent color, as a CSS color value."
+              type: "string"
+            accentColorLight:
+              description: "Light variant of the accent color, as a CSS color value."
+              type: "string"
+            appName:
+              description: "Name of this application, for display to users."
+              type: "string"
+            banners:
+              additionalProperties:
+                $ref: "#/components/schemas/BrandingBanner"
+              description: "Banners to display, keyed by the slot where each is shown."
+              type: "object"
+            companyName:
+              description: "Name of the company that operates this application."
+              type: "string"
+            companyUrl:
+              description: "URL for the company's web site."
+              type: "string"
+            icon:
+              description: "Path or URL of the application's small icon image."
+              type: "string"
+            logo:
+              description: "Path or URL of the application's logo image."
+              type: "string"
           type: "object"
         processes:
           additionalProperties:
@@ -887,6 +1017,12 @@ components:
       type: "object"
     TableMetaData:
       properties:
+        associations:
+          description: "Named record associations and their joins, without child record\
+            \ access"
+          items:
+            $ref: "#/components/schemas/Association"
+          type: "array"
         capabilities:
           description: "List of strings describing actions that are supported by the\
             \ backend application for the table."
@@ -973,6 +1109,11 @@ components:
           description: "If the table uses variants, this is the user-facing label\
             \ for the table that supplies variants for this table."
           type: "string"
+        virtualFields:
+          additionalProperties:
+            $ref: "#/components/schemas/VirtualFieldMetaData"
+          description: "Virtual fields in this table"
+          type: "object"
       type: "object"
     TableMetaDataLight:
       properties:
@@ -1021,6 +1162,12 @@ components:
       type: "object"
     TableMetaDataResponseV1:
       properties:
+        associations:
+          description: "Named record associations and their joins, without child record\
+            \ access"
+          items:
+            $ref: "#/components/schemas/Association"
+          type: "array"
         capabilities:
           description: "List of strings describing actions that are supported by the\
             \ backend application for the table."
@@ -1118,6 +1265,11 @@ components:
           description: "If the table uses variants, this is the user-facing label\
             \ for the table that supplies variants for this table."
           type: "string"
+        virtualFields:
+          additionalProperties:
+            $ref: "#/components/schemas/VirtualFieldMetaData"
+          description: "Virtual fields in this table"
+          type: "object"
       type: "object"
     TableQueryResponseV1:
       properties:
@@ -1168,6 +1320,58 @@ components:
         type:
           description: "Specification for the variant type (variantTypeKey from QQQ\
             \ BackendVariantsConfig)"
+          type: "string"
+      type: "object"
+    VirtualFieldMetaData:
+      properties:
+        adornments:
+          description: "Special UI dressings to add to the field."
+          items:
+            $ref: "#/components/schemas/FieldAdornment"
+          type: "array"
+        defaultValue:
+          description: "Default value to use in this field."
+          type: "string"
+        displayFormat:
+          description: "C-style format specifier for displaying values in this field."
+          type: "string"
+        isEditable:
+          description: "Indicate if user may edit the value in this field."
+          type: "boolean"
+        isHeavy:
+          description: "Indicator of 'heavy' fields, which are not loaded by default.\
+            \  e.g., some blobs or long-texts"
+          type: "boolean"
+        isHidden:
+          description: "Indicate if this field should be hidden from users"
+          type: "boolean"
+        isQueryCriteria:
+          description: "Indicator of whether or not this virtual field can be included\
+            \ as a query filter criteria"
+          type: "boolean"
+        isQuerySelectable:
+          description: "Indicator of whether or not this virtual field can be included\
+            \ in query outputs (e.g., if it can be selected, in the SQL sense)"
+          type: "boolean"
+        isRequired:
+          description: "Indicate if a value in this field is required."
+          type: "boolean"
+        label:
+          description: "User-facing name for this field"
+          type: "string"
+        maxLength:
+          description: "For String fields, the max length the field supports."
+          type: "number"
+        name:
+          description: "Unique name for this field within its container (table or\
+            \ process)"
+          type: "string"
+        possibleValueSourceName:
+          description: "If this field's values should come from a possible value source,\
+            \ then that PVS is named here."
+          type: "string"
+        type:
+          description: "Data-type for this field"
           type: "string"
       type: "object"
     WidgetBlock:
@@ -1746,6 +1950,45 @@ paths:
       summary: "Create a session"
       tags:
       - "Authentication"
+  /qqq/v1/logout:
+    post:
+      description: "Invalidates the current session server-side, deleting it from\
+        \ the session store\nand clearing any cached data. The session cookie is also\
+        \ removed.\n\nFrontends should call this endpoint before performing client-side\
+        \ logout\n(clearing localStorage, redirecting to IdP logout, etc.) to ensure\
+        \ the\nsession cannot be resumed."
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                Successful logout: {}
+              schema:
+                $ref: "#/components/schemas/LogoutResponseV1"
+          description: "Session has been invalidated"
+      summary: "Logout and invalidate session"
+      tags:
+      - "Authentication"
+  /qqq/v1/oidc/backchannel-logout:
+    post:
+      description: "Receives logout notifications from the Identity Provider (IdP)\
+        \ when a user\nlogs out from the IdP or another application in the SSO ecosystem.\n\
+        \nThe IdP sends a POST request with a 'logout_token' JWT parameter containing\n\
+        either a 'sub' (subject) or 'sid' (session ID) claim. QQQ finds and deletes\n\
+        all matching sessions.\n\nThis endpoint should be registered with your IdP\
+        \ as the back-channel logout URI."
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                Successful logout: {}
+              schema:
+                $ref: "#/components/schemas/BackChannelLogoutResponseV1"
+          description: "Back-channel logout processed successfully"
+      summary: "OIDC Back-Channel Logout"
+      tags:
+      - "Authentication"
   /qqq/v1/metaData:
     get:
       description: "Load the overall metadata, as is relevant to a frontend, for the\
@@ -1926,6 +2169,7 @@ paths:
                         - "TABLE_INSERT"
                         - "TABLE_UPDATE"
                         - "TABLE_DELETE"
+                        - "TABLE_EXPORT"
                         deletePermission: true
                         editPermission: true
                         icon:
@@ -1972,6 +2216,7 @@ paths:
                       - "TABLE_INSERT"
                       - "TABLE_UPDATE"
                       - "TABLE_DELETE"
+                      - "TABLE_EXPORT"
                       deletePermission: true
                       editPermission: true
                       fields:
@@ -2262,8 +2507,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -2274,8 +2519,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -2393,8 +2638,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -2405,8 +2650,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -2495,8 +2740,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -2507,8 +2752,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"

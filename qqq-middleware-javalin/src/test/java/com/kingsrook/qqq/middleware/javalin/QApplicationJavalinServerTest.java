@@ -50,6 +50,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -776,6 +779,79 @@ class QApplicationJavalinServerTest
       assertEquals(404, missingTableResponse.getStatus());
       assertThat(missingTableResponse.getBody()).contains("\"error\"").contains("not found");
       assertThat(missingTableResponse.getBody()).doesNotContainIgnoringCase("<!doctype html");
+   }
+
+
+
+   /*******************************************************************************
+    ** Dashboard selection: explicit settings win, then qqq.javalin.frontend, then
+    ** the classpath (the Next export is not on this module's test classpath).
+    *******************************************************************************/
+   @Test
+   void testFrontendSelection()
+   {
+      String original = System.getProperty("qqq.javalin.frontend");
+      try
+      {
+         System.clearProperty("qqq.javalin.frontend");
+         QApplicationJavalinServer server = new QApplicationJavalinServer(getQqqApplication());
+         assertFalse(server.getServeFrontendNext());
+         assertTrue(server.getServeFrontendMaterialDashboard());
+
+         server.setServeFrontendNext(true);
+         assertTrue(server.getServeFrontendNext());
+         assertFalse(server.getServeFrontendMaterialDashboard());
+
+         server.setServeFrontendMaterialDashboard(true);
+         assertTrue(server.getServeFrontendMaterialDashboard());
+
+         System.setProperty("qqq.javalin.frontend", "next");
+         QApplicationJavalinServer byProperty = new QApplicationJavalinServer(getQqqApplication());
+         assertTrue(byProperty.getServeFrontendNext());
+         assertFalse(byProperty.getServeFrontendMaterialDashboard());
+         assertFalse(byProperty.withServeFrontendMaterialDashboard(true).getServeFrontendNext());
+
+         System.setProperty("qqq.javalin.frontend", "Material");
+         byProperty = new QApplicationJavalinServer(getQqqApplication());
+         assertFalse(byProperty.getServeFrontendNext());
+         assertTrue(byProperty.getServeFrontendMaterialDashboard());
+
+         System.setProperty("qqq.javalin.frontend", "none");
+         byProperty = new QApplicationJavalinServer(getQqqApplication());
+         assertFalse(byProperty.getServeFrontendNext());
+         assertFalse(byProperty.getServeFrontendMaterialDashboard());
+
+         System.setProperty("qqq.javalin.frontend", "angular");
+         QApplicationJavalinServer invalid = new QApplicationJavalinServer(getQqqApplication());
+         assertThrows(IllegalArgumentException.class, invalid::getServeFrontendNext);
+      }
+      finally
+      {
+         if(original == null)
+         {
+            System.clearProperty("qqq.javalin.frontend");
+         }
+         else
+         {
+            System.setProperty("qqq.javalin.frontend", original);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Both dashboards cannot share the root path.
+    *******************************************************************************/
+   @Test
+   void testBothDashboardsAtRootRejected()
+   {
+      QApplicationJavalinServer server = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendNext(true)
+         .withServeFrontendMaterialDashboard(true);
+      QException exception = assertThrows(QException.class, server::start);
+      assertThat(exception.getMessage()).contains("withFrontendMaterialDashboardHostedPath");
    }
 
 

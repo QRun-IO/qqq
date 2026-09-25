@@ -25,6 +25,7 @@ package com.kingsrook.qqq.middleware.javalin;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
@@ -43,8 +44,10 @@ import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.ProcessBasedRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.SpaPathUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
@@ -72,6 +75,12 @@ import org.apache.commons.lang3.BooleanUtils;
  ** System property `qqq.javalin.hotSwapInstance` (defaults to false), causes the
  ** QInstance to be re-loaded every X millis, to avoid some server restarts while
  ** doing dev.
+ **
+ ** Admin dashboard selection: when the qqq-frontend-next jar is on the classpath
+ ** its dashboard is served at "/" by default; otherwise the Material Dashboard is.
+ ** Choose explicitly with withServeFrontendNext / withServeFrontendMaterialDashboard,
+ ** or, when neither is set in code, with system property `qqq.javalin.frontend`
+ ** set to `next`, `material` or `none`.
  *******************************************************************************/
 public class QApplicationJavalinServer
 {
@@ -80,7 +89,8 @@ public class QApplicationJavalinServer
    private final AbstractQQQApplication application;
 
    private Integer                              port                                = 8000;
-   private boolean                              serveFrontendMaterialDashboard      = true;
+   private Boolean                              serveFrontendMaterialDashboard      = null;
+   private Boolean                              serveFrontendNext                   = null;
    private String                               frontendMaterialDashboardHostedPath = "/";
    private boolean                              serveLegacyUnversionedMiddlewareAPI = true;
    private List<AbstractMiddlewareVersion>      middlewareVersionList               = List.of(new MiddlewareVersionV1());
@@ -129,7 +139,14 @@ public class QApplicationJavalinServer
       // Note: This must be added BEFORE Javalin.create() so that acceptJavalinConfig() is called //
       // during the configuration phase, setting up static file serving with the correct paths.   //
       //////////////////////////////////////////////////////////////////////////////////////////////
-      if(serveFrontendMaterialDashboard)
+      boolean serveMaterial = getServeFrontendMaterialDashboard();
+      boolean serveNext     = getServeFrontendNext();
+      if(serveMaterial && serveNext && "/".equals(SpaPathUtils.normalizePath(frontendMaterialDashboardHostedPath)))
+      {
+         throw (new QException("The Next dashboard is served at \"/\"; host the Material Dashboard at another path (withFrontendMaterialDashboardHostedPath) to serve both."));
+      }
+
+      if(serveMaterial)
       {
          if(getClass().getResource("/material-dashboard/index.html") == null)
          {
@@ -147,9 +164,16 @@ public class QApplicationJavalinServer
          addRouteProvider(materialDashboardProvider);
       }
 
+      if(serveNext)
+      {
+         addRouteProvider(new NextDashboardRouteProvider());
+      }
+
+      LOG.info("Admin dashboard selection", LogUtils.logPair("next", serveNext), LogUtils.logPair("materialDashboard", serveMaterial));
+
       service = Javalin.create(config ->
       {
-         if(serveFrontendMaterialDashboard && getClass().getResource("/material-dashboard-overlay") != null)
+         if((serveMaterial || serveNext) && getClass().getResource("/material-dashboard-overlay") != null)
          {
             config.staticFiles.add("/material-dashboard-overlay");
          }
@@ -596,11 +620,22 @@ public class QApplicationJavalinServer
 
 
    /*******************************************************************************
-    ** Getter for serveFrontendMaterialDashboard
+    ** Whether the Material Dashboard is served: the explicit setting, else the
+    ** `qqq.javalin.frontend` system property, else only when the Next dashboard
+    ** is not being served.
     *******************************************************************************/
    public boolean getServeFrontendMaterialDashboard()
    {
-      return (this.serveFrontendMaterialDashboard);
+      if(serveFrontendMaterialDashboard != null)
+      {
+         return (serveFrontendMaterialDashboard);
+      }
+      String selection = getFrontendSelectionProperty();
+      if(selection != null && serveFrontendNext == null)
+      {
+         return ("material".equals(selection));
+      }
+      return (!getServeFrontendNext());
    }
 
 
@@ -622,6 +657,68 @@ public class QApplicationJavalinServer
    {
       this.serveFrontendMaterialDashboard = serveFrontendMaterialDashboard;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the Next dashboard is served at "/": the explicit setting, else the
+    ** `qqq.javalin.frontend` system property, else when its jar is on the classpath
+    ** and the Material Dashboard was not explicitly requested.
+    *******************************************************************************/
+   public boolean getServeFrontendNext()
+   {
+      if(serveFrontendNext != null)
+      {
+         return (serveFrontendNext);
+      }
+      String selection = getFrontendSelectionProperty();
+      if(selection != null && serveFrontendMaterialDashboard == null)
+      {
+         return ("next".equals(selection));
+      }
+      return (!Boolean.TRUE.equals(serveFrontendMaterialDashboard) && NextDashboardRouteProvider.isAvailable());
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for serveFrontendNext
+    *******************************************************************************/
+   public void setServeFrontendNext(boolean serveFrontendNext)
+   {
+      this.serveFrontendNext = serveFrontendNext;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for serveFrontendNext
+    *******************************************************************************/
+   public QApplicationJavalinServer withServeFrontendNext(boolean serveFrontendNext)
+   {
+      this.serveFrontendNext = serveFrontendNext;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Normalized `qqq.javalin.frontend` value (next, material or none), or null.
+    *******************************************************************************/
+   private static String getFrontendSelectionProperty()
+   {
+      String value = System.getProperty("qqq.javalin.frontend");
+      if(value == null || value.isBlank())
+      {
+         return (null);
+      }
+      String normalized = value.trim().toLowerCase(Locale.ROOT);
+      if(!List.of("next", "material", "none").contains(normalized))
+      {
+         throw (new IllegalArgumentException("qqq.javalin.frontend must be next, material or none, not: " + value));
+      }
+      return (normalized);
    }
 
 

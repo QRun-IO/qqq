@@ -22,8 +22,10 @@
 package com.kingsrook.qqq.backend.core.modules.backend.implementations.enumeration;
 
 
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
@@ -83,6 +85,17 @@ public class EnumerationBackendModule implements QBackendModuleInterface
    public CountInterface getCountInterface()
    {
       return new EnumerationCountAction();
+   }
+
+
+
+   /*******************************************************************************
+    ** An enum cannot be modified, so tables on this backend are read-only.
+    *******************************************************************************/
+   @Override
+   public Set<Capability> getUnsupportedCapabilities()
+   {
+      return (Set.of(Capability.TABLE_INSERT, Capability.TABLE_UPDATE, Capability.TABLE_DELETE));
    }
 
 }

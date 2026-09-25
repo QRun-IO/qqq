@@ -45,6 +45,7 @@ import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
 import com.kingsrook.qqq.backend.core.actions.permissions.BulkTableActionProcessPermissionChecker;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.instances.enrichment.plugins.QInstanceEnricherPluginInterface;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -93,6 +94,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QSupplementalTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.delete.BulkDeleteLoadStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.delete.BulkDeleteTransformStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.edit.BulkEditLoadStep;
@@ -177,6 +180,10 @@ public class QInstanceEnricher
 
       if(qInstance.getTables() != null)
       {
+         if(qInstance.getBackends() != null)
+         {
+            qInstance.getBackends().values().forEach(this::disableCapabilitiesUnsupportedByModule);
+         }
          qInstance.getTables().values().forEach(this::enrichTable);
          defineTableBulkProcesses(qInstance);
       }
@@ -355,6 +362,38 @@ public class QInstanceEnricher
    {
       enrichPermissionRules(widgetMetaData);
       runPlugins(QWidgetMetaDataInterface.class, widgetMetaData, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private void disableCapabilitiesUnsupportedByModule(QBackendMetaData backend)
+   {
+      if(backend == null || backend.getBackendType() == null)
+      {
+         return;
+      }
+
+      try
+      {
+         QBackendModuleInterface module = new QBackendModuleDispatcher().getQBackendModule(backend);
+         for(Capability capability : CollectionUtils.nonNullCollection(module.getUnsupportedCapabilities()))
+         {
+            if(!CollectionUtils.nonNullCollection(backend.getEnabledCapabilities()).contains(capability))
+            {
+               backend.withoutCapability(capability);
+            }
+         }
+      }
+      catch(QModuleDispatchException e)
+      {
+         ///////////////////////////////////////////////////////////
+         // unknown backend types are reported by the validator //
+         ///////////////////////////////////////////////////////////
+         LOG.debug("Could not dispatch backend module while checking its capabilities", e, logPair("backendName", backend.getName()));
+      }
    }
 
 

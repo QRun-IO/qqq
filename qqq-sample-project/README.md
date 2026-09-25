@@ -1,23 +1,23 @@
 # QQQ Sample Project
 
-QRun-owned reference application for QQQ 4.0: tables, related records, processes, widgets, the Next quickstart dashboard, Material Dashboard 0.41.0, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
+QRun-owned reference application for QQQ 4.1: tables, related records, processes, widgets, the default Next dashboard, the optional Material Dashboard 0.41.0, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
 
 ## Quickstart with Next
 
-Requires JDK 21+, Git, curl, unzip, and a running Docker daemon, using Bash on macOS, Linux, or Windows WSL. No Maven or Node.js installation is needed. From a directory where you want the editable sample checkout:
+Requires JDK 21+, Git, curl and unzip, using Bash on macOS, Linux, or Windows WSL. No Maven, Node.js or Docker installation is needed. From a directory where you want the editable sample checkout:
 
 ```bash
-curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.0.0/quickstart.sh
+curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.1.0/quickstart.sh
 bash quickstart.sh
 ```
 
-The script checks prerequisites and ports, clones into `qqq-sample`, compiles only this application against released QQQ 4.0.0, and opens <http://localhost:3000/app/person>. Docker supplies the versioned Next dashboard; Java runs the sample on port 8000. Local mock authentication and seeded H2 records require no provider account or database setup. Use this sample with local synthetic data.
+The script checks prerequisites and the port, clones into `qqq-sample`, compiles only this application against released QQQ 4.1.0, and opens <http://localhost:8000/app/person>. The sample depends on the `qqq-frontend-next` jar, so one Java process serves the API and the Next dashboard on port 8000. Local mock authentication and seeded H2 records require no provider account or database setup. Use this sample with local synthetic data.
 
-Create a Person, edit and refresh it, then choose **Actions → Greet Interactive** from the record. Enter a greeting prefix and suffix and advance through the process. The existing Next limitations, including widget parity [#550](https://github.com/QRun-IO/qqq/issues/550), remain deferred; this quickstart does not certify every framework feature.
+Create a Person, edit and refresh it, then choose **Actions → Greet Interactive** from the record. Enter a greeting prefix and suffix and advance through the process. The Next dashboard's feature coverage is certified by the real-backend acceptance matrix in [qqq-frontend-next](https://github.com/QRun-IO/qqq-frontend-next/tree/main/docs/acceptance) ([#649](https://github.com/QRun-IO/qqq/issues/649)).
 
-Press Ctrl+C to stop the owned application and dashboard container. Edit Java files under `qqq-sample/qqq-sample-project/src/main/java`, then run `./quickstart.sh` from `qqq-sample` to recompile and restart. Seeded data resets on each launch. Build and application output is in `qqq-sample/quickstart.log`. Use `bash quickstart.sh my-directory` for another destination; an existing destination is never overwritten. The script prints prerequisite installation links and reports occupied ports before downloading or starting anything.
+Press Ctrl+C to stop the application. Edit Java files under `qqq-sample/qqq-sample-project/src/main/java`, then run `./quickstart.sh` from `qqq-sample` to recompile and restart. Seeded data resets on each launch. Build and application output is in `qqq-sample/quickstart.log`. Use `bash quickstart.sh my-directory` for another destination; an existing destination is never overwritten. The script prints prerequisite installation links and reports an occupied port before downloading or starting anything. Run `QQQ_FRONTEND=material bash quickstart.sh` to open the Material Dashboard instead.
 
-## Framework development and Material dashboard
+## Framework development
 
 Requires Java 21 and Maven 3.8 or later. This separate path builds the framework and runs its acceptance tests.
 
@@ -31,7 +31,7 @@ mvn -f qqq-sample-project/pom.xml exec:java \
   -Dqqq.sample.mockAuthentication=true
 ```
 
-Open <http://localhost:8000/>. Expand **People App**, open **Greetings App**, and select **Person**. Open a record and choose **Actions → Greet Interactive** to try the local mock process. Stop the server with Ctrl+C; restarting it recreates the sample database. The explicit `qqq.sample.mockAuthentication` option selects bundled mock authentication for local exploration. Without it, configure `OAUTH2_BASE_URL`, `OAUTH2_CLIENT_ID`, `OAUTH2_CLIENT_SECRET`, and `OAUTH2_SCOPES` in the process environment or a `.env` file. Mock authentication is for local sample data only.
+Open <http://localhost:8000/> for the Next dashboard. Add `-Dqqq.javalin.frontend=material` to the `exec:java` command to serve the Material Dashboard instead; the Material browser suites (`-Pacceptance-tests`) select it that way. Expand **People App**, open **Greetings App**, and select **Person**. Open a record and choose **Actions → Greet Interactive** to try the local mock process. Stop the server with Ctrl+C; restarting it recreates the sample database. The explicit `qqq.sample.mockAuthentication` option selects bundled mock authentication for local exploration. Without it, configure `OAUTH2_BASE_URL`, `OAUTH2_CLIENT_ID`, `OAUTH2_CLIENT_SECRET`, and `OAUTH2_SCOPES` in the process environment or a `.env` file. Mock authentication is for local sample data only.
 
 The runnable association graph is **Person → pets → Pet → notes → Pet Note**. **Greetings App → Pet Note** lists the seeded notes for Charlie and Toby, and lets you add a note using its Pet selector. An expanded read such as `curl 'http://localhost:8000/data/person/1?includeAssociations=true'` uses the exact group names `pets` and `notes`, including `notes: []` for pets with no notes.
 

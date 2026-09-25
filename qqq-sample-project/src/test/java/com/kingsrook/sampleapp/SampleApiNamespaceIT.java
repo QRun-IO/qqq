@@ -47,7 +47,8 @@ class SampleApiNamespaceIT
 
 
    /*******************************************************************************
-    ** Real data and neighboring SPA paths work in the packaged application.
+    ** Real data and neighboring SPA paths work in the packaged application with
+    ** the Material Dashboard (selected by the acceptance profile).
     *******************************************************************************/
    @Test
    void testPackagedApiAndDashboardRoutes() throws Exception
@@ -69,6 +70,36 @@ class SampleApiNamespaceIT
             assertEquals(200, dashboard.statusCode(), path);
             assertTrue(dashboard.body().contains("<html"), path);
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Without an explicit selection the packaged sample serves the Next dashboard:
+    ** its own deep links render, other paths get its not-found page, and API
+    ** routes keep their JSON responses.
+    *******************************************************************************/
+   @Test
+   void testPackagedNextDashboardRoutes() throws Exception
+   {
+      try(PackagedSampleServer server = PackagedSampleServer.start(SampleJavalinServer.class, directory, List.of(), List.of("-Dqqq.javalin.frontend=next"));
+          HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         URI base = server.awaitReady();
+         for(String path : List.of("/", "/app", "/app/person", "/app/person/1", "/app/person/1/edit"))
+         {
+            HttpResponse<String> dashboard = get(client, base, path);
+            assertEquals(200, dashboard.statusCode(), path);
+            assertTrue(dashboard.body().contains("/_next/static/"), path);
+         }
+
+         HttpResponse<String> unknown = get(client, base, "/qqq-tools/help");
+         assertEquals(404, unknown.statusCode());
+
+         HttpResponse<String> missingTable = get(client, base, "/metaData/table/noSuchTable");
+         assertEquals(404, missingTable.statusCode());
+         assertTrue(missingTable.body().contains("\"error\""));
       }
    }
 

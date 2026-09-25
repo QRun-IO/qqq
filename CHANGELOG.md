@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Next dashboard by default ([#649](https://github.com/QRun-IO/qqq/issues/649))** — `QApplicationJavalinServer`
+  serves the `com.kingsrook.qqq:qqq-frontend-next` dashboard at `/` when its jar is on the classpath
+  (`NextDashboardRouteProvider`; API routes and their own 404 responses are never shadowed). `qqq-bom-pom`
+  manages `qqq-frontend-next`. New `withServeFrontendNext(boolean)` and JVM property
+  `qqq.javalin.frontend` (`next`, `material` or `none`).
+- **v1 branding ([#539](https://github.com/QRun-IO/qqq/issues/539))** — `GET /qqq/v1/metaData` includes the
+  instance `branding` (names, logo, icon, accent colors, banners). The published v1 OpenAPI document was
+  regenerated, which also brings in previously unpublished schema additions (associations, OAuth2
+  authentication values, back-channel logout).
+
+### Changed
+- The sample application and quickstart serve the Next dashboard from the sample itself on port 8000;
+  the quickstart no longer needs Docker. `QQQ_FRONTEND=material bash quickstart.sh` opens the Material
+  Dashboard. The sample's branding icon now lives in its overlay folder.
+
+### Compatibility
+- Applications that depend only on `qqq-frontend-material-dashboard` keep serving it at its configured
+  path, unchanged. With both dashboard jars present, Next is served unless Material is selected
+  explicitly; `withServeFrontendMaterialDashboard(true)` alone keeps Material (Next is then not served
+  at the same root). Hosting both requires Material at another path. Deep links differ: Material uses
+  `/<app>/<table>/<id>`, Next uses `/app/<table>/<id>`.
+
 ## [4.0.0] - 2026-09-24
 
 ### Breaking Changes

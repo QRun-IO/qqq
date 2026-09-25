@@ -17,6 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('version', help='Published release or RC version, for example 4.0.0-RC.3')
     parser.add_argument('--material-version', help='Published Material dashboard version; defaults to the sample POM')
+    parser.add_argument('--next-version', help='Published Next dashboard version; defaults to the sample POM')
     parser.add_argument('--require-complete-coverage', action='store_true',
                         help='Require all recorded feature scenarios; otherwise report the deferred gaps')
     args = parser.parse_args()
@@ -24,6 +25,8 @@ def main():
         parser.error('Use a literal release or RC version, not a SNAPSHOT or Maven expression')
     if args.material_version and not re.fullmatch(r'\d+\.\d+\.\d+(?:-RC\.\d+)?', args.material_version):
         parser.error('Use a literal published release or RC version for the Material dashboard')
+    if args.next_version and not re.fullmatch(r'\d+\.\d+\.\d+(?:-RC\.\d+)?', args.next_version):
+        parser.error('Use a literal published release or RC version for the Next dashboard')
 
     root = Path(__file__).resolve().parent.parent
     source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
@@ -57,6 +60,11 @@ def main():
     material_version = properties.find('m:qqq.frontend.material-dashboard.version', namespace)
     if args.material_version:
         material_version.text = args.material_version
+    next_version = properties.find('m:qqq.frontend.next.version', namespace)
+    if args.next_version:
+        next_version.text = args.next_version
+    if not re.fullmatch(r'\d+\.\d+\.\d+(?:-RC\.\d+)?', next_version.text or ''):
+        raise SystemExit('The Next dashboard version must be a published release or RC; pass --next-version')
     pom.write(sample / 'pom.xml', encoding='utf-8', xml_declaration=True)
     settings = work / 'settings.xml'
     settings.write_text('<settings/>\n')
@@ -69,6 +77,7 @@ def main():
         'source': 'git archive HEAD; working-tree changes are excluded',
         'cache': str(work / 'm2'), 'settings': 'empty user and global settings',
         'material_version': material_version.text,
+        'next_version': next_version.text,
         'feature_coverage_required': args.require_complete_coverage,
         'feature_coverage_complete': False,
         'complete': False,

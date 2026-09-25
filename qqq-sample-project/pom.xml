@@ -211,6 +211,10 @@
                   <version>3.5.4</version>
                   <configuration>
                      <argLine>@{jaCoCoArgLine}</argLine>
+                     <!-- The Selenium browser suites exercise the Material Dashboard, selected explicitly. -->
+                     <systemPropertyVariables>
+                        <qqq.javalin.frontend>material</qqq.javalin.frontend>
+                     </systemPropertyVariables>
                   </configuration>
                   <executions>
                      <execution>

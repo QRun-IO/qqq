@@ -28,7 +28,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest.CapturingListener;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest.NoPrefetchMemoryModule;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest.ThrowingListener;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
@@ -43,9 +50,11 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QErrorMessage;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.ListBuilder;
@@ -56,6 +65,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -904,6 +914,110 @@ class UpdateActionTest extends BaseTest
       new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("id", id).withValue("cost", new BigDecimal("3.50"))).withInputSource(QInputSource.USER));
       QRecord updatedRecord = new GetAction().executeForRecord(new GetInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withPrimaryKey(id));
       assertNull(updatedRecord.getValue("cost"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Record change listeners hear about updated records, each paired with its
+    ** old record, but not about records that failed, and they get the caller's
+    ** transaction.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerReceivesUpdatedAndOldRecords() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(List.of(
+         new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff"),
+         new QRecord().withValue("firstName", "Tim").withValue("lastName", "Chamberlain"))));
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      QBackendTransaction transaction = new QBackendTransaction();
+      UpdateOutput updateOutput = new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withTransaction(transaction).withRecords(List.of(
+         new QRecord().withValue("id", 2).withValue("firstName", "Timothy"),
+         new QRecord().withValue("id", 47).withValue("firstName", "Nobody"),
+         new QRecord().withValue("id", 1).withValue("firstName", "Dude"))));
+      assertThat(updateOutput.getRecords().get(1).getErrors()).isNotEmpty();
+
+      assertThat(CapturingListener.events).hasSize(1);
+      RecordChangeEvent event = CapturingListener.events.get(0);
+      assertEquals(TestUtils.TABLE_NAME_PERSON_MEMORY, event.getTableName());
+      assertEquals(RecordChangeType.UPDATE, event.getType());
+      assertThat(event.getRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Timothy", "Dude");
+      assertThat(event.getOldRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Tim", "Darin");
+      assertThat(event.getOldRecords()).extracting(r -> r.getValueInteger("id")).containsExactly(2, 1);
+      assertSame(transaction, event.getTransaction());
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener that throws does not fail the update.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerExceptionDoesNotFailUpdate() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("firstName", "Darin")));
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(ThrowingListener.class));
+
+      UpdateOutput updateOutput = new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("id", 1).withValue("firstName", "Dude")));
+
+      assertThat(updateOutput.getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(ThrowingListener.events).hasSize(1);
+      assertEquals("Dude", TestUtils.queryTable(TestUtils.TABLE_NAME_PERSON_MEMORY).get(0).getValueString("firstName"));
+   }
+
+
+
+   /*******************************************************************************
+    ** On a backend that does not pre-fetch old records, the update queries for
+    ** them only when a listener applies, and a failed fetch leaves the old record
+    ** null instead of failing the update.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerOldRecordFetchOnlyWhenApplying() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      String tableName = RecordChangeListenerHelperTest.defineNoPrefetchTable();
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("id", 1).withValue("name", "one"),
+         new QRecord().withValue("id", 2).withValue("name", "two"))));
+      MemoryRecordStore.setCollectStatistics(true);
+
+      ///////////////////////////////////////////////////////////////////
+      // no listeners, then only a listener for another table: nothing //
+      // extra is queried, and nothing is heard                        //
+      ///////////////////////////////////////////////////////////////////
+      new UpdateAction().execute(new UpdateInput(tableName).withRecord(new QRecord().withValue("id", 1).withValue("name", "uno")));
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+      CapturingListener.appliesToTableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      new UpdateAction().execute(new UpdateInput(tableName).withRecord(new QRecord().withValue("id", 1).withValue("name", "eins")));
+      assertEquals(0, RecordChangeListenerHelperTest.getMemoryQueryCount());
+      assertThat(CapturingListener.events).isEmpty();
+
+      /////////////////////////////////////////////////////////////////
+      // once a listener applies, one query fetches the old records //
+      /////////////////////////////////////////////////////////////////
+      CapturingListener.appliesToTableName = tableName;
+      new UpdateAction().execute(new UpdateInput(tableName).withRecord(new QRecord().withValue("id", 2).withValue("name", "dos")));
+      assertEquals(1, RecordChangeListenerHelperTest.getMemoryQueryCount());
+      assertThat(CapturingListener.events).hasSize(1);
+      assertEquals("dos", CapturingListener.events.get(0).getRecords().get(0).getValueString("name"));
+      assertEquals("two", CapturingListener.events.get(0).getOldRecords().get(0).getValueString("name"));
+
+      ////////////////////////////////////////////////////////////////
+      // if that fetch fails, the update still works, and the event //
+      // carries a null old record for it                           //
+      ////////////////////////////////////////////////////////////////
+      NoPrefetchMemoryModule.failQueries = true;
+      UpdateOutput updateOutput = new UpdateAction().execute(new UpdateInput(tableName).withRecord(new QRecord().withValue("id", 2).withValue("name", "deux")));
+      NoPrefetchMemoryModule.failQueries = false;
+      assertThat(updateOutput.getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(CapturingListener.events).hasSize(2);
+      assertThat(CapturingListener.events.get(1).getOldRecords()).hasSize(1);
+      assertNull(CapturingListener.events.get(1).getOldRecords().get(0));
+      assertEquals("deux", TestUtils.queryTable(tableName).get(1).getValueString("name"));
    }
 
 }

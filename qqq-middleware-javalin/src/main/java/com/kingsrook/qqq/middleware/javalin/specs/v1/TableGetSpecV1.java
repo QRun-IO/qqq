@@ -36,6 +36,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.TableGetResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Example;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
@@ -106,6 +107,14 @@ public class TableGetSpecV1 extends AbstractEndpointSpec<TableGetInput, TableGet
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("""
                [{"joinTable":"orderLine","select":true}]""")
+            .withIn(In.QUERY),
+         new Parameter()
+            .withName("tableVariant")
+            .withDescription("For tables that use variant backends, JSON object naming the variant to read from (the same `type` and `id` as in query requests).")
+            .withRequired(false)
+            .withSchema(new Schema().withType(Type.STRING))
+            .withExample("""
+               {"type":"store","id":"1"}""")
             .withIn(In.QUERY)
       );
    }
@@ -126,6 +135,13 @@ public class TableGetSpecV1 extends AbstractEndpointSpec<TableGetInput, TableGet
       if("true".equals(includeAssociations))
       {
          input.setIncludeAssociations(true);
+      }
+
+      String tableVariantParam = getRequestParam(context, "tableVariant");
+      if(StringUtils.hasContent(tableVariantParam))
+      {
+         JSONObject variant = new JSONObject(tableVariantParam);
+         input.setTableVariant(new TableVariant().withType(variant.optString("type", null)).withId(variant.has("id") ? String.valueOf(variant.get("id")) : null));
       }
 
       String queryJoinsParam = getRequestParam(context, "queryJoins");

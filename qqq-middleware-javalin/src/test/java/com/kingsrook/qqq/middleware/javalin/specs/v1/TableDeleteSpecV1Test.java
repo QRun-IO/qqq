@@ -113,6 +113,8 @@ class TableDeleteSpecV1Test extends SpecTestBase
       assertEquals(200, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertEquals(0, jsonObject.getInt("deletedRecordCount"));
+      assertEquals(1, jsonObject.getJSONArray("errors").length());
+      assertThat(jsonObject.getJSONArray("errors").getString(0)).contains("No record was found to delete");
    }
 
 }

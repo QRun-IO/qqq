@@ -22,10 +22,8 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
@@ -41,9 +39,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
-import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.AssociatedWritePermissions;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableUpdateInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableUpdateOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.TableWriteUtils;
 
 
 /*******************************************************************************
@@ -56,7 +55,9 @@ public class TableUpdateExecutor extends AbstractMiddlewareExecutor<TableUpdateI
 
 
    /***************************************************************************
-    **
+    ** Update the record (and any associated records), checking the edit
+    ** permission and the write permissions of every association, as the legacy
+    ** update route does.
     ***************************************************************************/
    @Override
    public void execute(TableUpdateInput input, TableUpdateOutputInterface output) throws QException
@@ -70,33 +71,14 @@ public class TableUpdateExecutor extends AbstractMiddlewareExecutor<TableUpdateI
          PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
 
          QTableMetaData tableMetaData = QContext.getQInstance().getTable(input.getTableName());
-
-         QRecord record = new QRecord();
-         record.setTableName(input.getTableName());
+         QRecord        record        = TableWriteUtils.recordToWrite(input.getTableName(), input.getRecord(), input.getRecordValues());
          record.setValue(tableMetaData.getPrimaryKeyField(), input.getPrimaryKey());
-
-         Map<String, Serializable> recordValues = input.getRecordValues();
-         if(recordValues != null)
-         {
-            for(Map.Entry<String, Serializable> entry : recordValues.entrySet())
-            {
-               record.setValue(entry.getKey(), entry.getValue());
-            }
-         }
-
-         List<QRecord> recordList = new ArrayList<>();
-         recordList.add(record);
-         updateInput.setRecords(recordList);
+         updateInput.setRecords(new ArrayList<>(List.of(record)));
+         AssociatedWritePermissions.check(updateInput);
 
          UpdateOutput updateOutput = new UpdateAction().execute(updateInput);
          QRecord      outputRecord = updateOutput.getRecords().get(0);
-
-         if(CollectionUtils.nullSafeHasContents(outputRecord.getErrors()))
-         {
-            String tableLabel = tableMetaData != null ? tableMetaData.getLabel() : input.getTableName();
-            throw (new QUserFacingException("Error updating " + tableLabel + ": "
-               + StringUtils.joinWithCommasAndAnd(outputRecord.getErrors().stream().map(QStatusMessage::getMessage).toList())));
-         }
+         TableWriteUtils.throwIfRecordErrors("updating", input.getTableName(), outputRecord);
 
          if(CollectionUtils.nullSafeHasContents(outputRecord.getWarnings()))
          {

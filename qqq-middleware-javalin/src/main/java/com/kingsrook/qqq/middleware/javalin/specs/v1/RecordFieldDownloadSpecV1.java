@@ -169,9 +169,14 @@ public class RecordFieldDownloadSpecV1 extends AbstractEndpointSpec<RecordFieldD
          context.contentType(output.getContentType());
       }
 
+      ////////////////////////////////////////////////////////////////////////////////////
+      // like the legacy route: inline unless the `download` query parameter is given //
+      ////////////////////////////////////////////////////////////////////////////////////
       if(StringUtils.hasContent(output.getFilename()))
       {
-         context.header("Content-Disposition", "attachment; filename=\"" + output.getFilename() + "\"");
+         String disposition = context.queryParamMap().containsKey("download") ? "attachment" : "inline";
+         String filename    = output.getFilename().replaceAll("[\"\\\\\\p{Cntrl}]", "_");
+         context.header("Content-Disposition", disposition + "; filename=\"" + filename + "\"");
       }
 
       if(output.getBytes() != null)

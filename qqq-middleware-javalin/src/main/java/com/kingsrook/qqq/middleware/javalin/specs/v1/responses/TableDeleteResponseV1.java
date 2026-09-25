@@ -22,9 +22,11 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 
 
+import java.util.List;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableDeleteOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 
 
 /*******************************************************************************
@@ -34,6 +36,10 @@ public class TableDeleteResponseV1 implements TableDeleteOutputInterface, ToSche
 {
    @OpenAPIDescription("Number of records that were deleted")
    private Integer deletedRecordCount;
+
+   @OpenAPIDescription("Why records were not deleted (for example, a record that was not found).  Omitted when every record was deleted.")
+   @OpenAPIListItems(value = String.class)
+   private List<String> errors;
 
 
 
@@ -64,6 +70,38 @@ public class TableDeleteResponseV1 implements TableDeleteOutputInterface, ToSche
    public TableDeleteResponseV1 withDeletedRecordCount(Integer deletedRecordCount)
    {
       this.deletedRecordCount = deletedRecordCount;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for errors
+    *******************************************************************************/
+   public List<String> getErrors()
+   {
+      return (errors);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for errors
+    *******************************************************************************/
+   @Override
+   public void setErrors(List<String> errors)
+   {
+      this.errors = errors;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for errors
+    *******************************************************************************/
+   public TableDeleteResponseV1 withErrors(List<String> errors)
+   {
+      this.errors = errors;
       return (this);
    }
 

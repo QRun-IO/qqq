@@ -23,11 +23,17 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.io.Serializable;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 
 
 /***************************************************************************
@@ -105,6 +111,64 @@ public class OutputRecord implements ToSchema
    public Map<String, String> getDisplayValues()
    {
       return this.wrapped.getDisplayValues();
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for associatedRecords - only present when associations were requested
+    ** (record get with includeAssociations) or written (insert/update).
+    *******************************************************************************/
+   @OpenAPIDescription("Records associated with this record, keyed by association name.  Each value is a list of records with the same shape as this one.  Only present when associations were requested or written.")
+   @OpenAPIMapValueType(value = List.class)
+   public Map<String, List<OutputRecord>> getAssociatedRecords()
+   {
+      if(CollectionUtils.nullSafeIsEmpty(this.wrapped.getAssociatedRecords()))
+      {
+         return (null);
+      }
+
+      Map<String, List<OutputRecord>> associatedRecords = new LinkedHashMap<>();
+      this.wrapped.getAssociatedRecords().forEach((name, records) -> associatedRecords.put(name, CollectionUtils.nonNullList(records).stream().map(OutputRecord::new).toList()));
+      return (associatedRecords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for errors
+    *******************************************************************************/
+   @OpenAPIDescription("Messages for errors on this record (for example on an associated record that could not be written).  Omitted when there are none.")
+   @OpenAPIListItems(value = String.class)
+   public List<String> getErrors()
+   {
+      return (messages(this.wrapped.getErrors()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for warnings
+    *******************************************************************************/
+   @OpenAPIDescription("Messages for warnings on this record.  Omitted when there are none.")
+   @OpenAPIListItems(value = String.class)
+   public List<String> getWarnings()
+   {
+      return (messages(this.wrapped.getWarnings()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Status messages as text, or null for none (so the property is omitted).
+    *******************************************************************************/
+   private static List<String> messages(List<? extends QStatusMessage> statusMessages)
+   {
+      if(CollectionUtils.nullSafeIsEmpty(statusMessages))
+      {
+         return (null);
+      }
+      return (statusMessages.stream().map(QStatusMessage::getMessage).toList());
    }
 
 }

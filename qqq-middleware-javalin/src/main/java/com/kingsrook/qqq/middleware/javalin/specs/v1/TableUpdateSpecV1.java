@@ -22,11 +22,16 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
-import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.executors.TableUpdateExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableUpdateInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -44,7 +49,6 @@ import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
-import org.json.JSONObject;
 
 
 /*******************************************************************************
@@ -112,42 +116,50 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
          .withDescription("JSON object with field names as keys and field values as values.")
          .withProperties(properties);
 
+      Schema multipartSchema = new Schema()
+         .withType(Type.OBJECT)
+         .withDescription("""
+            Form fields named for the record's fields (an empty field clears the value), a file for each blob field to set, and \
+            optionally an `associations` field: JSON of association name to a list of associated records.  With the request header \
+            `X-QQQ-Association-Format: record-v1`, each associated record is `{"values": {...}, "associations": {...}}`, nested to any \
+            depth, and exactly one `associations` field is required.""")
+         .withProperties(Map.of(
+            "fieldName", new Schema()
+               .withDescription("Value for a field in the record. Repeat for each field to set.")
+               .withType(Type.STRING),
+            "associations", new Schema()
+               .withDescription("JSON object of association name to a list of associated records.")
+               .withType(Type.STRING)));
+
       return new RequestBody()
-         .withContent(Map.of(ContentType.APPLICATION_JSON.getMimeType(), new Content()
-            .withSchema(bodySchema)));
+         .withContent(Map.of(
+            ContentType.APPLICATION_JSON.getMimeType(), new Content().withSchema(bodySchema),
+            ContentType.MULTIPART_FORM_DATA.getMimeType(), new Content().withSchema(multipartSchema)));
    }
 
 
 
    /***************************************************************************
-    **
+    ** Read the changed values from a JSON object body, or from multipart form
+    ** fields (uploaded files for blob fields, and an `associations` field), the
+    ** same way the legacy update route does - after the edit permission check,
+    ** so a refused request is not read (an unknown table is refused the same way).
     ***************************************************************************/
    @Override
    public TableUpdateInput buildInput(Context context) throws Exception
    {
-      TableUpdateInput input = new TableUpdateInput();
-      input.setTableName(getRequestParam(context, "tableName"));
+      TableUpdateInput input     = new TableUpdateInput();
+      String           tableName = getRequestParam(context, "tableName");
+      input.setTableName(tableName);
       input.setPrimaryKey(getRequestParam(context, "primaryKey"));
 
-      JSONObject requestBody = getRequestBodyAsJsonObject(context);
-      if(requestBody != null)
-      {
-         Map<String, Serializable> recordValues = new LinkedHashMap<>();
-         for(String key : requestBody.keySet())
-         {
-            Object value = requestBody.get(key);
-            if(JSONObject.NULL.equals(value) || "".equals(value))
-            {
-               recordValues.put(key, null);
-            }
-            else if(value instanceof Serializable s)
-            {
-               recordValues.put(key, s);
-            }
-         }
-         input.setRecordValues(recordValues);
-      }
+      UpdateInput updateInput = new UpdateInput(tableName).withInputSource(QInputSource.USER);
+      PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
 
+      QRecord record = new QRecord();
+      record.setTableName(tableName);
+      QJavalinImplementation.setRecordValuesForInsertOrUpdate(context, QContext.getQInstance().getTable(tableName), record, updateInput);
+      input.setRecord(record);
       return (input);
    }
 

@@ -71,9 +71,17 @@ class RecordFieldDownloadSpecV1Test extends SpecTestBase
          .asString();
 
       assertEquals(200, response.getStatus());
-      assertThat(response.getHeaders().getFirst("Content-Disposition")).contains("darin-photo.png");
+      assertEquals("inline; filename=\"darin-photo.png\"", response.getHeaders().getFirst("Content-Disposition"));
       assertThat(response.getHeaders().getFirst("Content-Type")).contains("image");
       assertThat(response.getBody()).isNotEmpty();
+
+      ///////////////////////////////////////////////////////////////
+      // with the download parameter, the file is an attachment //
+      ///////////////////////////////////////////////////////////////
+      HttpResponse<String> download = Unirest.get(getBaseUrlAndPath() + "/table/person/1/photo/darin-photo.png?download=1")
+         .asString();
+      assertEquals(200, download.getStatus());
+      assertEquals("attachment; filename=\"darin-photo.png\"", download.getHeaders().getFirst("Content-Disposition"));
    }
 
 

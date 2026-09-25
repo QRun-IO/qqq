@@ -22,6 +22,9 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import java.util.List;
+
+
 /*******************************************************************************
  **
  *******************************************************************************/
@@ -31,4 +34,9 @@ public interface TableDeleteOutputInterface extends AbstractMiddlewareOutputInte
     **
     ***************************************************************************/
    void setDeletedRecordCount(Integer count);
+
+   /***************************************************************************
+    ** Why records were not deleted (for example a record that was not found).
+    ***************************************************************************/
+   void setErrors(List<String> errors);
 }

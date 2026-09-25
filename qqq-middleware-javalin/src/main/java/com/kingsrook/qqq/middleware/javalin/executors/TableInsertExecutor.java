@@ -22,14 +22,11 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
-import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -37,13 +34,13 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
-import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
-import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.AssociatedWritePermissions;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableInsertInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableInsertOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.TableWriteUtils;
 
 
 /*******************************************************************************
@@ -56,7 +53,9 @@ public class TableInsertExecutor extends AbstractMiddlewareExecutor<TableInsertI
 
 
    /***************************************************************************
-    **
+    ** Insert the record (with any associated records), checking the insert
+    ** permission and the write permissions of every association, as the legacy
+    ** insert route does.
     ***************************************************************************/
    @Override
    public void execute(TableInsertInput input, TableInsertOutputInterface output) throws QException
@@ -69,32 +68,13 @@ public class TableInsertExecutor extends AbstractMiddlewareExecutor<TableInsertI
 
          PermissionsHelper.checkTablePermissionThrowing(insertInput, TablePermissionSubType.INSERT);
 
-         QRecord record = new QRecord();
-         record.setTableName(input.getTableName());
-
-         Map<String, Serializable> recordValues = input.getRecordValues();
-         if(recordValues != null)
-         {
-            for(Map.Entry<String, Serializable> entry : recordValues.entrySet())
-            {
-               record.setValue(entry.getKey(), entry.getValue());
-            }
-         }
-
-         List<QRecord> recordList = new ArrayList<>();
-         recordList.add(record);
-         insertInput.setRecords(recordList);
+         QRecord record = TableWriteUtils.recordToWrite(input.getTableName(), input.getRecord(), input.getRecordValues());
+         insertInput.setRecords(new ArrayList<>(List.of(record)));
+         AssociatedWritePermissions.check(insertInput);
 
          InsertOutput insertOutput = new InsertAction().execute(insertInput);
          QRecord      outputRecord = insertOutput.getRecords().get(0);
-
-         if(CollectionUtils.nullSafeHasContents(outputRecord.getErrors()))
-         {
-            QTableMetaData table = QContext.getQInstance().getTable(input.getTableName());
-            String tableLabel = table != null ? table.getLabel() : input.getTableName();
-            throw (new QUserFacingException("Error inserting " + tableLabel + ": "
-               + StringUtils.joinWithCommasAndAnd(outputRecord.getErrors().stream().map(QStatusMessage::getMessage).toList())));
-         }
+         TableWriteUtils.throwIfRecordErrors("inserting", input.getTableName(), outputRecord);
 
          if(CollectionUtils.nullSafeHasContents(outputRecord.getWarnings()))
          {

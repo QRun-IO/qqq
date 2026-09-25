@@ -22,6 +22,8 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -30,6 +32,7 @@ import io.javalin.http.ContentType;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.eclipse.jetty.http.HttpStatus;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -144,6 +147,72 @@ class TableInsertSpecV1Test extends SpecTestBase
       assertThat(record.getJSONObject("values").getString("firstName")).isEqualTo("NullTest");
       assertThat(record.getJSONObject("values").isNull("birthDate")).isTrue();
       assertThat(record.getJSONObject("values").isNull("partnerPersonId")).isTrue();
+   }
+
+
+
+   /*******************************************************************************
+    ** A multipart insert reads form fields and a blob file, like the legacy route.
+    *******************************************************************************/
+   @Test
+   void testMultipartInsertWithFile()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person")
+         .field("firstName", "Multi")
+         .field("lastName", "Part")
+         .field("email", "multi.part@example.com")
+         .field("photo", new ByteArrayInputStream("photo-bytes".getBytes(StandardCharsets.UTF_8)), "photo.png")
+         .asString();
+
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject values = JsonUtils.toJSONObject(response.getBody()).getJSONObject("record").getJSONObject("values");
+      assertEquals("Multi", values.getString("firstName"));
+      assertEquals("Part", values.getString("lastName"));
+      assertThat(values.getInt("id")).isGreaterThan(0);
+   }
+
+
+
+   /*******************************************************************************
+    ** Associated records in the record-v1 format are inserted with the parent and
+    ** returned under associatedRecords.
+    *******************************************************************************/
+   @Test
+   void testInsertWithRecordV1Associations()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person")
+         .header("X-QQQ-Association-Format", "record-v1")
+         .field("firstName", "Pet")
+         .field("lastName", "Owner")
+         .field("email", "pet.owner@example.com")
+         .field("associations", """
+            {"pets": [{"values": {"name": "Rex", "species": "dog"}}]}""")
+         .asString();
+
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject record = JsonUtils.toJSONObject(response.getBody()).getJSONObject("record");
+      JSONArray  pets   = record.getJSONObject("associatedRecords").getJSONArray("pets");
+      assertEquals(1, pets.length());
+      assertEquals("Rex", pets.getJSONObject(0).getJSONObject("values").getString("name"));
+      assertEquals(record.getJSONObject("values").getInt("id"), pets.getJSONObject(0).getJSONObject("values").getInt("ownerPersonId"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The record-v1 association format requires exactly one associations field.
+    *******************************************************************************/
+   @Test
+   void testRecordV1AssociationsRequireTheField()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person")
+         .header("X-QQQ-Association-Format", "record-v1")
+         .field("firstName", "No")
+         .field("lastName", "Associations")
+         .asString();
+
+      assertEquals(HttpStatus.BAD_REQUEST_400, response.getStatus(), response.getBody());
+      assertThat(JsonUtils.toJSONObject(response.getBody()).getString("error")).contains("record-v1 requires exactly one associations form field");
    }
 
 }

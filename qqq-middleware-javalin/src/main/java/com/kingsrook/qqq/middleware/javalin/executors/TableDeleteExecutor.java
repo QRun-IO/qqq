@@ -34,7 +34,10 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
+import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
+import com.kingsrook.qqq.middleware.javalin.AssociatedWritePermissions;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableDeleteInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableDeleteOutputInterface;
 
@@ -65,10 +68,20 @@ public class TableDeleteExecutor extends AbstractMiddlewareExecutor<TableDeleteI
          deleteInput.setPrimaryKeys(primaryKeys);
 
          PermissionsHelper.checkTablePermissionThrowing(deleteInput, TablePermissionSubType.DELETE);
+         AssociatedWritePermissions.check(deleteInput);
 
          DeleteOutput deleteOutput = new DeleteAction().execute(deleteInput);
 
          output.setDeletedRecordCount(deleteOutput.getDeletedRecordCount());
+
+         List<String> errors = CollectionUtils.nonNullList(deleteOutput.getRecordsWithErrors()).stream()
+            .flatMap(record -> CollectionUtils.nonNullList(record.getErrors()).stream())
+            .map(QStatusMessage::getMessage)
+            .toList();
+         if(!errors.isEmpty())
+         {
+            output.setErrors(errors);
+         }
       }
       catch(QException e)
       {

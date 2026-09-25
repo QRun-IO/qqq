@@ -24,6 +24,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 import java.io.Serializable;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
 
 /*******************************************************************************
@@ -34,6 +35,7 @@ public class TableUpdateInput extends AbstractMiddlewareInput
    private String                    tableName;
    private String                    primaryKey;
    private Map<String, Serializable> recordValues;
+   private QRecord record;
 
 
 
@@ -134,6 +136,37 @@ public class TableUpdateInput extends AbstractMiddlewareInput
    public TableUpdateInput withRecordValues(Map<String, Serializable> recordValues)
    {
       this.recordValues = recordValues;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for record
+    *******************************************************************************/
+   public QRecord getRecord()
+   {
+      return (record);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for record
+    *******************************************************************************/
+   public void setRecord(QRecord record)
+   {
+      this.record = record;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for record
+    *******************************************************************************/
+   public TableUpdateInput withRecord(QRecord record)
+   {
+      this.record = record;
       return (this);
    }
 

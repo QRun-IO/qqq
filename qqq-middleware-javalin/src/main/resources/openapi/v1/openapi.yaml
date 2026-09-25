@@ -572,11 +572,24 @@ components:
       type: "object"
     OutputRecord:
       properties:
+        associatedRecords:
+          additionalProperties:
+            type: "array"
+          description: "Records associated with this record, keyed by association\
+            \ name.  Each value is a list of records with the same shape as this one.\
+            \  Only present when associations were requested or written."
+          type: "object"
         displayValues:
           description: "Formatted string versions of the values that make up the record.\
             \  Keys are Strings, which match the table's field names. Values are all\
             \ Strings."
           type: "object"
+        errors:
+          description: "Messages for errors on this record (for example on an associated\
+            \ record that could not be written).  Omitted when there are none."
+          items:
+            type: "string"
+          type: "array"
         recordLabel:
           description: "Label to identify the record to a user."
           type: "string"
@@ -588,6 +601,12 @@ components:
             \ match the table's field names. Values can be any type, as per the table's\
             \ fields."
           type: "object"
+        warnings:
+          description: "Messages for warnings on this record.  Omitted when there\
+            \ are none."
+          items:
+            type: "string"
+          type: "array"
       type: "object"
     PossibleValueOption:
       properties:
@@ -1053,17 +1072,37 @@ components:
         deletedRecordCount:
           description: "Number of records that were deleted"
           type: "number"
+        errors:
+          description: "Why records were not deleted (for example, a record that was\
+            \ not found).  Omitted when every record was deleted."
+          items:
+            type: "string"
+          type: "array"
       type: "object"
     TableGetResponseV1:
       properties:
         record:
           description: "The record that was fetched"
           properties:
+            associatedRecords:
+              additionalProperties:
+                type: "array"
+              description: "Records associated with this record, keyed by association\
+                \ name.  Each value is a list of records with the same shape as this\
+                \ one.  Only present when associations were requested or written."
+              type: "object"
             displayValues:
               description: "Formatted string versions of the values that make up the\
                 \ record.  Keys are Strings, which match the table's field names.\
                 \ Values are all Strings."
               type: "object"
+            errors:
+              description: "Messages for errors on this record (for example on an\
+                \ associated record that could not be written).  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
             recordLabel:
               description: "Label to identify the record to a user."
               type: "string"
@@ -1075,6 +1114,12 @@ components:
                 \ which match the table's field names. Values can be any type, as\
                 \ per the table's fields."
               type: "object"
+            warnings:
+              description: "Messages for warnings on this record.  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
           type: "object"
       type: "object"
     TableInsertResponseV1:
@@ -1082,11 +1127,25 @@ components:
         record:
           description: "The record that was inserted"
           properties:
+            associatedRecords:
+              additionalProperties:
+                type: "array"
+              description: "Records associated with this record, keyed by association\
+                \ name.  Each value is a list of records with the same shape as this\
+                \ one.  Only present when associations were requested or written."
+              type: "object"
             displayValues:
               description: "Formatted string versions of the values that make up the\
                 \ record.  Keys are Strings, which match the table's field names.\
                 \ Values are all Strings."
               type: "object"
+            errors:
+              description: "Messages for errors on this record (for example on an\
+                \ associated record that could not be written).  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
             recordLabel:
               description: "Label to identify the record to a user."
               type: "string"
@@ -1098,6 +1157,12 @@ components:
                 \ which match the table's field names. Values can be any type, as\
                 \ per the table's fields."
               type: "object"
+            warnings:
+              description: "Messages for warnings on this record.  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
           type: "object"
         warnings:
           description: "Any warnings that occurred during the insert"
@@ -1403,11 +1468,25 @@ components:
         record:
           description: "The record that was updated"
           properties:
+            associatedRecords:
+              additionalProperties:
+                type: "array"
+              description: "Records associated with this record, keyed by association\
+                \ name.  Each value is a list of records with the same shape as this\
+                \ one.  Only present when associations were requested or written."
+              type: "object"
             displayValues:
               description: "Formatted string versions of the values that make up the\
                 \ record.  Keys are Strings, which match the table's field names.\
                 \ Values are all Strings."
               type: "object"
+            errors:
+              description: "Messages for errors on this record (for example on an\
+                \ associated record that could not be written).  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
             recordLabel:
               description: "Label to identify the record to a user."
               type: "string"
@@ -1419,6 +1498,12 @@ components:
                 \ which match the table's field names. Values can be any type, as\
                 \ per the table's fields."
               type: "object"
+            warnings:
+              description: "Messages for warnings on this record.  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
           type: "object"
         warnings:
           description: "Any warnings that occurred during the update"
@@ -2573,6 +2658,14 @@ paths:
         required: false
         schema:
           type: "string"
+      - description: "For tables that use variant backends, JSON object naming the\
+          \ variant to read from (the same `type` and `id` as in query requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
+        schema:
+          type: "string"
       responses:
         200:
           content:
@@ -2620,6 +2713,25 @@ paths:
           type: "string"
       requestBody:
         content:
+          multipart/form-data:
+            schema:
+              description: "Form fields named for the record's fields (an empty field\
+                \ clears the value), a file for each blob field to set, and optionally\
+                \ an `associations` field: JSON of association name to a list of associated\
+                \ records.  With the request header `X-QQQ-Association-Format: record-v1`,\
+                \ each associated record is `{\"values\": {...}, \"associations\"\
+                : {...}}`, nested to any depth, and exactly one `associations` field\
+                \ is required."
+              properties:
+                fieldName:
+                  description: "Value for a field in the record. Repeat for each field\
+                    \ to set."
+                  type: "string"
+                associations:
+                  description: "JSON object of association name to a list of associated\
+                    \ records."
+                  type: "string"
+              type: "object"
           application/json:
             schema:
               description: "JSON object with field names as keys and field values\
@@ -2672,6 +2784,25 @@ paths:
           type: "string"
       requestBody:
         content:
+          multipart/form-data:
+            schema:
+              description: "Form fields named for the record's fields (an empty field\
+                \ clears the value), a file for each blob field to set, and optionally\
+                \ an `associations` field: JSON of association name to a list of associated\
+                \ records.  With the request header `X-QQQ-Association-Format: record-v1`,\
+                \ each associated record is `{\"values\": {...}, \"associations\"\
+                : {...}}`, nested to any depth, and exactly one `associations` field\
+                \ is required."
+              properties:
+                fieldName:
+                  description: "Value for a field in the record. Repeat for each field\
+                    \ to set."
+                  type: "string"
+                associations:
+                  description: "JSON object of association name to a list of associated\
+                    \ records."
+                  type: "string"
+              type: "object"
           application/json:
             schema:
               description: "JSON object with field names as keys and field values\

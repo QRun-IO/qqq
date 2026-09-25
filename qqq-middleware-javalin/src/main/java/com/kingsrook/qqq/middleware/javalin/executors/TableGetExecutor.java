@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
+import com.kingsrook.qqq.middleware.javalin.JoinedTablePermissions;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableGetInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableGetOutputInterface;
 import org.apache.commons.lang3.BooleanUtils;
@@ -74,7 +75,11 @@ public class TableGetExecutor extends AbstractMiddlewareExecutor<TableGetInput, 
             getInput.setIncludeAssociations(true);
          }
 
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
+         JoinedTablePermissions.checkReadPermissions(getInput, getInput.getQueryJoins(), null);
+         JoinedTablePermissions.checkAssociationReadPermissions(getInput);
 
          GetOutput getOutput = new GetAction().execute(getInput);
 

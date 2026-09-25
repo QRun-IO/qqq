@@ -19,8 +19,8 @@ An Enterprise Service Bus for QQQ. Tables and processes publish events to queues
 - Supported: ActiveMQ Artemis, ActiveMQ Classic 6.x, RabbitMQ 4.x (via `com.rabbitmq.jms:rabbitmq-jms` 3.x).
 - The provider type selects the `ConnectionFactory` class, loaded reflectively. Each app adds its broker's client jar.
 - Availability is the broker's job. Services that need HA run HA brokers.
-- RabbitMQ: destinations are declared as quorum queues (needed for delivery counts).
-- Retry backoff uses JMS delivery delay. RabbitMQ needs the `rabbitmq_delayed_message_exchange` plugin; ActiveMQ Classic needs `schedulerSupport="true"`. Without them, QQQ logs a warning on the first delayed send and retries immediately.
+- RabbitMQ: queues and durable subscription queues are declared as quorum queues (needed for delivery counts).
+- No broker plugins or special broker settings are required. QQQ's `maxAttempts` must stay below the broker's own redelivery limit (defaults: Artemis 10, RabbitMQ quorum 20; QQQ disables Classic's client-side limit).
 
 ## 3. Metadata
 
@@ -65,7 +65,7 @@ Supplemental ESB metadata is **not** included in frontend metadata; the UI reads
 - `id` (UUID), `source` (`qqq://<instance>/table/<name>` or `.../process/<name>`), `type`, `time`, `subject` (record primary key, table events only), `datacontenttype: application/json`, `data`.
 - Types: `qqq.table.<table>.inserted|updated|deleted`, `qqq.process.<process>.started|completed|failed`, or caller-supplied for explicit publishes.
 - Table `data`: `{ record }` for insert, `{ record, oldRecord }` for update, `{ oldRecord }` for delete. Record values use the `/qqq/v1` record JSON form.
-- JMS properties mirror `ce_id`, `ce_type`, `ce_source`, and carry `qqqAttempt`.
+- JMS properties mirror `ce_id`, `ce_type`, `ce_source`.
 - One message per record. A multi-record insert publishes all its messages on one JMS session.
 
 ## 5. Publishing
@@ -91,7 +91,11 @@ Supplemental ESB metadata is **not** included in frontend metadata; the UI reads
   - `esbMessages` — list of CloudEvents (size 1 in `SINGLE` mode).
   - If the process's `tableName` matches the event's table, a `QProcessCallback` filter on the event records' primary keys, so existing table-bound processes run on changed records unchanged.
 - Success: commit (acknowledge).
-- Failure (exception or timeout): if `qqqAttempt < maxAttempts`, re-send a copy with `qqqAttempt + 1` and the backoff delivery delay, then commit. Otherwise dead-letter (or discard), then commit. Both happen in the same transacted session. Crash redeliveries are capped by `JMSXDeliveryCount` the same way.
+- Failure (exception or timeout): the attempt number is the broker's `JMSXDeliveryCount`.
+  - Below `maxAttempts`: the consumer waits the backoff delay, then rolls back, and the broker redelivers to the same queue or subscription. Other subscribers are never affected. While waiting, that consumer is busy (with `concurrency` 1 the queue pauses during backoff).
+  - At `maxAttempts`: send to the dead-letter queue (or discard), then commit, in the same transacted session.
+  - Crash redeliveries count the same way.
+  - (Amended 2026-09-25: re-sending a copy would re-broadcast topic messages to every subscriber.)
 - Dead letters carry the original event plus `qqqError`, `qqqFailedTrigger`, `qqqAttempts`, `qqqFailedAt` properties.
 - Batch mode: one run per batch; commit or fail the batch as a unit.
 - Pause/resume: sent over an internal non-durable control topic so every node applies it. Runtime pause state is not persisted; `startPaused` is the restart default.

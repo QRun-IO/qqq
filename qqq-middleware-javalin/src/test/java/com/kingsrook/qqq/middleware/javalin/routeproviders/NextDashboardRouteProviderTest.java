@@ -26,6 +26,19 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
+import java.util.List;
+import java.util.Set;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
+import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import io.javalin.Javalin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -142,5 +155,251 @@ class NextDashboardRouteProviderTest
       HttpResponse<String> post = client.send(HttpRequest.newBuilder(URI.create(base + "/app/person")).POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
       assertEquals(404, post.statusCode());
       assertThat(post.body()).doesNotContain("<html>");
+   }
+
+
+
+   /*******************************************************************************
+    ** Documents get the strict policy with the hashes of their own inline scripts;
+    ** every served file gets the other security headers (QRun-IO/qqq#695).
+    *******************************************************************************/
+   @Test
+   void testSecurityHeaders() throws Exception
+   {
+      NextDashboardRouteProvider provider = new NextDashboardRouteProvider("test-next-dashboard");
+      String                     base     = start(provider);
+
+      HttpResponse<String> login = get(base + "/login/");
+      assertEquals(200, login.statusCode());
+      String expectedPolicy = "default-src 'self'; "
+         + "script-src 'self' " + sha256("(self.__next_f=self.__next_f||[]).push([0])") + " " + sha256("self.__next_f.push([1,\"login\"])") + "; "
+         + "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; "
+         + "worker-src 'self' blob:; manifest-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'self'; "
+         + "form-action 'self'; frame-ancestors 'none'";
+      assertEquals(expectedPolicy, header(login, "Content-Security-Policy"));
+      assertEquals("DENY", header(login, "X-Frame-Options"));
+      assertEquals("strict-origin-when-cross-origin", header(login, "Referrer-Policy"));
+      assertEquals(NextDashboardSecurityHeaders.DEFAULT_PERMISSIONS_POLICY, header(login, "Permissions-Policy"));
+      assertThat(header(login, "Permissions-Policy")).contains("camera=()", "microphone=()", "geolocation=()", "payment=()");
+      assertEquals("nosniff", header(login, "X-Content-Type-Options"));
+      assertNull(header(login, "Content-Security-Policy-Report-Only"));
+
+      /////////////////////////////////////////////////////////////////
+      // a page without inline scripts allows none; the 404 page is  //
+      // a document too                                              //
+      /////////////////////////////////////////////////////////////////
+      assertThat(header(get(base + "/app/person/1"), "Content-Security-Policy")).contains("script-src 'self'; ").doesNotContain("sha256");
+      HttpResponse<String> notFound = get(base + "/app/person/1/unknown/deeper");
+      assertEquals(404, notFound.statusCode());
+      assertThat(header(notFound, "Content-Security-Policy")).contains("frame-ancestors 'none'");
+      assertEquals("DENY", header(notFound, "X-Frame-Options"));
+
+      HttpResponse<String> asset = get(base + "/_next/static/chunks/main.js");
+      assertNull(header(asset, "Content-Security-Policy"));
+      assertEquals("nosniff", header(asset, "X-Content-Type-Options"));
+      assertEquals("strict-origin-when-cross-origin", header(asset, "Referrer-Policy"));
+
+      HttpResponse<String> payload = get(base + "/app/person/__next._tree.txt");
+      assertNull(header(payload, "Content-Security-Policy"));
+      assertEquals("DENY", header(payload, "X-Frame-Options"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The configured identity providers may be called from the browser, and a
+    ** QuickSight widget may be framed; nothing else is added.
+    *******************************************************************************/
+   @Test
+   void testInstanceOrigins() throws Exception
+   {
+      QInstance qInstance = new QInstance();
+      qInstance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData().withBaseUrl("https://IdP.example.com/realms/qqq/").withName("oauth2"));
+      qInstance.registerAuthenticationProvider(AuthScope.api("reports"), new Auth0AuthenticationMetaData().withBaseUrl("https://tenant.auth0.example:8443").withName("auth0"));
+      qInstance.registerAuthenticationProvider(AuthScope.api("other"), new Auth0AuthenticationMetaData().withBaseUrl("not a url").withName("broken"));
+
+      NextDashboardRouteProvider provider = new NextDashboardRouteProvider("test-next-dashboard");
+      provider.setQInstance(qInstance);
+      assertEquals(Set.of("'self'", "https://idp.example.com", "https://tenant.auth0.example:8443"), provider.getSecurityHeaders().getSources("connect-src"));
+      assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("frame-src"));
+
+      qInstance.addWidget(new QWidgetMetaData().withName("sales").withType(WidgetType.QUICK_SIGHT_CHART.getType()));
+      qInstance.addWidget(new QWidgetMetaData().withName("extension").withType(WidgetType.CUSTOM_COMPONENT.getType())
+         .withDefaultValue("componentName", "Extension").withDefaultValue("componentSourceUrl", "https://cdn.example.com/extensions/v1.js"));
+      qInstance.addWidget(new QWidgetMetaData().withName("local").withType(WidgetType.CUSTOM_COMPONENT.getType())
+         .withDefaultValue("componentName", "Local").withDefaultValue("componentSourceUrl", "/extensions/local.js"));
+      qInstance.addWidget(new QWidgetMetaData().withName("unconfigured").withType(WidgetType.CUSTOM_COMPONENT.getType()));
+      qInstance.addWidget(new QWidgetMetaData().withName("html").withType(WidgetType.HTML.getType()).withDefaultValue("componentSourceUrl", "https://ignored.example.com/x.js"));
+      provider.setQInstance(qInstance);
+      assertEquals(Set.of("'self'", NextDashboardRouteProvider.QUICKSIGHT_FRAME_SOURCE), provider.getSecurityHeaders().getSources("frame-src"));
+      assertEquals(Set.of("'self'", "https://cdn.example.com"), provider.getSecurityHeaders().getSources("script-src"));
+
+      String base = start(provider);
+      assertThat(header(get(base + "/login/"), "Content-Security-Policy"))
+         .contains("script-src 'self' https://cdn.example.com 'sha256-")
+         .contains("connect-src 'self' https://idp.example.com https://tenant.auth0.example:8443;")
+         .contains("frame-src 'self' https://*.quicksight.aws.amazon.com;");
+
+      QInstance mock = new QInstance();
+      mock.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
+      provider.setQInstance(mock);
+      assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("connect-src"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The application override hook sees the instance additions, may change any
+    ** directive or header, and is re-applied after a hot swap.
+    *******************************************************************************/
+   @Test
+   void testCustomizer() throws Exception
+   {
+      QInstance qInstance = new QInstance();
+      qInstance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData().withBaseUrl("https://idp.example.com").withName("oauth2"));
+
+      NextDashboardRouteProvider provider = new NextDashboardRouteProvider("test-next-dashboard").withSecurityHeadersCustomizer(headers ->
+         headers.withSources("img-src", "https://cdn.example.com")
+            .withoutSources("img-src", "https:")
+            .withDirective("frame-ancestors", "'self'")
+            .withHeader("X-Frame-Options", "SAMEORIGIN")
+            .withHeader("Permissions-Policy", null)
+            .withHeader("Cross-Origin-Opener-Policy", "same-origin"));
+      provider.setQInstance(qInstance);
+
+      String               base  = start(provider);
+      HttpResponse<String> login = get(base + "/login/");
+      assertThat(header(login, "Content-Security-Policy"))
+         .contains("img-src 'self' data: blob: https://cdn.example.com;")
+         .contains("connect-src 'self' https://idp.example.com;")
+         .endsWith("frame-ancestors 'self'");
+      assertEquals("SAMEORIGIN", header(login, "X-Frame-Options"));
+      assertNull(header(login, "Permissions-Policy"));
+      assertEquals("same-origin", header(login, "Cross-Origin-Opener-Policy"));
+
+      qInstance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData().withBaseUrl("https://idp2.example.com").withName("oauth2"));
+      provider.setQInstance(qInstance);
+      assertThat(header(get(base + "/login/"), "Content-Security-Policy"))
+         .contains("connect-src 'self' https://idp2.example.com;")
+         .contains("https://cdn.example.com")
+         .endsWith("frame-ancestors 'self'");
+   }
+
+
+
+   /*******************************************************************************
+    ** Report-only and disabled policies; the other headers stay.
+    *******************************************************************************/
+   @Test
+   void testReportOnlyAndDisabled() throws Exception
+   {
+      NextDashboardRouteProvider provider = new NextDashboardRouteProvider("test-next-dashboard").withSecurityHeadersCustomizer(headers -> headers.withReportOnly(true));
+      String                     base     = start(provider);
+      HttpResponse<String>       login    = get(base + "/login/");
+      assertNull(header(login, "Content-Security-Policy"));
+      assertThat(header(login, "Content-Security-Policy-Report-Only")).startsWith("default-src 'self'; script-src 'self' 'sha256-");
+
+      provider.withSecurityHeadersCustomizer(headers -> headers.withContentSecurityPolicyEnabled(false));
+      login = get(base + "/login/");
+      assertNull(header(login, "Content-Security-Policy"));
+      assertNull(header(login, "Content-Security-Policy-Report-Only"));
+      assertEquals("DENY", header(login, "X-Frame-Options"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Values that would break or inject into the headers are refused.
+    *******************************************************************************/
+   @Test
+   void testInvalidCustomizationsRejected()
+   {
+      NextDashboardSecurityHeaders headers = new NextDashboardSecurityHeaders();
+      assertThrows(IllegalArgumentException.class, () -> headers.withSources("img-src", "https://a.example; script-src *"));
+      assertThrows(IllegalArgumentException.class, () -> headers.withSources("img-src", "https://a.example,https://b.example"));
+      assertThrows(IllegalArgumentException.class, () -> headers.withSources("img-src", (String) null));
+      assertThrows(IllegalArgumentException.class, () -> headers.withDirective("Script-Src", "'self'"));
+      assertThrows(IllegalArgumentException.class, () -> headers.withoutDirective("img src"));
+      assertThrows(IllegalArgumentException.class, () -> headers.withHeader("X-Test", "a\r\nSet-Cookie: x=1"));
+      assertThrows(IllegalArgumentException.class, () -> headers.withHeader("Bad Header", "x"));
+      assertThrows(IllegalArgumentException.class, () -> headers.withHeader("content-security-policy", "default-src *"));
+      assertThrows(IllegalArgumentException.class, () -> headers.withHeader(null, "x"));
+
+      headers.withoutDirective("frame-src").withDirective("upgrade-insecure-requests").withoutSources("no-such-directive", "'self'");
+      assertThat(headers.buildContentSecurityPolicy(List.of())).doesNotContain("frame-src").endsWith("; upgrade-insecure-requests");
+      assertEquals("DENY", headers.getHeaders().get("X-Frame-Options"));
+      assertThat(headers.getSources("no-such-directive")).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Hashes cover exactly the inline scripts, as the browser hashes them.
+    *******************************************************************************/
+   @Test
+   void testInlineScriptHashes() throws Exception
+   {
+      String html = "<script src=\"/a.js\"></script><SCRIPT type=\"text/javascript\">a()\r\nb()</SCRIPT >"
+         + "<script id=\"x\" async>c()</script><script>c()</script><script>\n</script><noscript>d()</noscript>";
+      assertEquals(List.of(sha256("a()\nb()"), sha256("c()"), sha256("\n")), NextDashboardRouteProvider.inlineScriptHashes(html));
+      assertEquals(List.of(), NextDashboardRouteProvider.inlineScriptHashes("<html>no scripts</html>"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testOriginOf()
+   {
+      assertEquals("https://idp.example.com", NextDashboardSecurityHeaders.originOf(" https://IDP.example.com/realms/x?y=1 "));
+      assertEquals("http://127.0.0.1:18831", NextDashboardSecurityHeaders.originOf("http://127.0.0.1:18831/"));
+      assertNull(NextDashboardSecurityHeaders.originOf(null));
+      assertNull(NextDashboardSecurityHeaders.originOf(" "));
+      assertNull(NextDashboardSecurityHeaders.originOf("/relative"));
+      assertNull(NextDashboardSecurityHeaders.originOf("javascript:alert(1)"));
+      assertNull(NextDashboardSecurityHeaders.originOf("https://bad host"));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private String start(NextDashboardRouteProvider provider)
+   {
+      service = Javalin.create(provider::acceptJavalinConfig).start(0);
+      return ("http://localhost:" + service.port());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static HttpResponse<String> get(String url) throws Exception
+   {
+      return (HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(url)).build(), HttpResponse.BodyHandlers.ofString()));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static String header(HttpResponse<String> response, String name)
+   {
+      return (response.headers().firstValue(name).orElse(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** The CSP hash source of a script, computed independently of the provider.
+    *******************************************************************************/
+   private static String sha256(String script) throws Exception
+   {
+      return ("'sha256-" + Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(script.getBytes(StandardCharsets.UTF_8))) + "'");
    }
 }

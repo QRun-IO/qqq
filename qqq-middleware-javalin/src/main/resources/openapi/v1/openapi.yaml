@@ -589,6 +589,25 @@ components:
             \ fields."
           type: "object"
       type: "object"
+    PossibleValueOption:
+      properties:
+        id:
+          description: "Unique identifier for this possible value option"
+          type: "object"
+        label:
+          description: "Human-readable label for this possible value option"
+          type: "string"
+      type: "object"
+    PossibleValuesResponseV1:
+      properties:
+        options:
+          description: "List of possible value options matching the search request"
+          items:
+            $ref: "#/components/schemas/PossibleValueOption"
+          type: "array"
+      type: "object"
+    ProcessCancelResponseV1:
+      type: "object"
     ProcessMetaData:
       properties:
         frontendSteps:
@@ -705,6 +724,17 @@ components:
           description: "If this process is associated with a table, the table name\
             \ is given here"
           type: "string"
+      type: "object"
+    ProcessRecordsResponseV1:
+      properties:
+        records:
+          description: "List of records from the process state"
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        totalRecords:
+          description: "Total number of records in the process state (before pagination)"
+          type: "number"
       type: "object"
     ProcessStepComplete:
       description: "Data returned after the job is complete (whether it was synchronous,\
@@ -1018,6 +1048,63 @@ components:
             \ request.  Only included if requested."
           type: "number"
       type: "object"
+    TableDeleteResponseV1:
+      properties:
+        deletedRecordCount:
+          description: "Number of records that were deleted"
+          type: "number"
+      type: "object"
+    TableGetResponseV1:
+      properties:
+        record:
+          description: "The record that was fetched"
+          properties:
+            displayValues:
+              description: "Formatted string versions of the values that make up the\
+                \ record.  Keys are Strings, which match the table's field names.\
+                \ Values are all Strings."
+              type: "object"
+            recordLabel:
+              description: "Label to identify the record to a user."
+              type: "string"
+            tableName:
+              description: "Name of the table that the record is from."
+              type: "string"
+            values:
+              description: "Raw values that make up the record.  Keys are Strings,\
+                \ which match the table's field names. Values can be any type, as\
+                \ per the table's fields."
+              type: "object"
+          type: "object"
+      type: "object"
+    TableInsertResponseV1:
+      properties:
+        record:
+          description: "The record that was inserted"
+          properties:
+            displayValues:
+              description: "Formatted string versions of the values that make up the\
+                \ record.  Keys are Strings, which match the table's field names.\
+                \ Values are all Strings."
+              type: "object"
+            recordLabel:
+              description: "Label to identify the record to a user."
+              type: "string"
+            tableName:
+              description: "Name of the table that the record is from."
+              type: "string"
+            values:
+              description: "Raw values that make up the record.  Keys are Strings,\
+                \ which match the table's field names. Values can be any type, as\
+                \ per the table's fields."
+              type: "object"
+          type: "object"
+        warnings:
+          description: "Any warnings that occurred during the insert"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
     TableMetaData:
       properties:
         associations:
@@ -1311,6 +1398,34 @@ components:
             \ (instead of fields)."
           type: "string"
       type: "object"
+    TableUpdateResponseV1:
+      properties:
+        record:
+          description: "The record that was updated"
+          properties:
+            displayValues:
+              description: "Formatted string versions of the values that make up the\
+                \ record.  Keys are Strings, which match the table's field names.\
+                \ Values are all Strings."
+              type: "object"
+            recordLabel:
+              description: "Label to identify the record to a user."
+              type: "string"
+            tableName:
+              description: "Name of the table that the record is from."
+              type: "string"
+            values:
+              description: "Raw values that make up the record.  Keys are Strings,\
+                \ which match the table's field names. Values can be any type, as\
+                \ per the table's fields."
+              type: "object"
+          type: "object"
+        warnings:
+          description: "Any warnings that occurred during the update"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
     TableVariant:
       properties:
         id:
@@ -1338,6 +1453,9 @@ components:
         displayFormat:
           description: "C-style format specifier for displaying values in this field."
           type: "string"
+        helpContents:
+          description: "Help Contents for this field."
+          type: "array"
         isEditable:
           description: "Indicate if user may edit the value in this field."
           type: "boolean"
@@ -1841,6 +1959,12 @@ components:
           type: "string"
       type: "object"
     WidgetBlockValues:
+      type: "object"
+    WidgetResponseV1:
+      properties:
+        widgetData:
+          description: "Widget data object, whose shape varies by widget type."
+          type: "object"
       type: "object"
   securitySchemes:
     sessionUuidCookie:
@@ -2380,6 +2504,451 @@ paths:
       summary: "Count records in a table"
       tags:
       - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}:
+    delete:
+      description: "Delete a single record from a table, identified by its primary\
+        \ key value."
+      parameters:
+      - description: "Name of the table to delete from."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record to delete."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    deletedRecordCount: 1
+              schema:
+                $ref: "#/components/schemas/TableDeleteResponseV1"
+          description: "The number of records that were deleted"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Delete a record from a table"
+      tags:
+      - "Tables"
+    get:
+      description: "Fetch a single record from a table, identified by its primary\
+        \ key value."
+      parameters:
+      - description: "Name of the table to get the record from."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record to get."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      - description: "Whether or not to include associated records."
+        example: "true"
+        in: "query"
+        name: "includeAssociations"
+        required: false
+        schema:
+          type: "boolean"
+      - description: "JSON array of QueryJoin objects specifying tables to join into\
+          \ the get."
+        example: "[{\"joinTable\":\"orderLine\",\"select\":true}]"
+        in: "query"
+        name: "queryJoins"
+        required: false
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    record:
+                      displayValues:
+                        id: "1"
+                        firstName: "Darin"
+                        lastName: "Kelkhoff"
+                      recordLabel: "Darin Kelkhoff"
+                      tableName: "person"
+                      values:
+                        id: 1
+                        firstName: "Darin"
+                        lastName: "Kelkhoff"
+              schema:
+                $ref: "#/components/schemas/TableGetResponseV1"
+          description: "The record matching the given primary key"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get a record from a table by primary key"
+      tags:
+      - "Tables"
+    patch:
+      description: "Update an existing record in a table, identified by its primary\
+        \ key. The request body should contain the field values to update."
+      parameters:
+      - description: "Name of the table containing the record to update."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record to update."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "JSON object with field names as keys and field values\
+                \ as values."
+              properties:
+                fieldName:
+                  description: "Value for a field in the record. Repeat for each field\
+                    \ to update."
+                  type: "string"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    record:
+                      displayValues:
+                        id: "1"
+                        firstName: "Darin"
+                        lastName: "Kelkhoff"
+                      recordLabel: "Darin Kelkhoff"
+                      tableName: "person"
+                      values:
+                        id: 1
+                        firstName: "Darin"
+                        lastName: "Kelkhoff"
+              schema:
+                $ref: "#/components/schemas/TableUpdateResponseV1"
+          description: "The record that was updated"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Update a record in a table"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}:
+    post:
+      description: "Insert a new record into a table. The request body should contain\
+        \ the field values for the new record."
+      parameters:
+      - description: "Name of the table to insert into."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "JSON object with field names as keys and field values\
+                \ as values."
+              properties:
+                fieldName:
+                  description: "Value for a field in the record. Repeat for each field\
+                    \ to set."
+                  type: "string"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    record:
+                      displayValues:
+                        id: "47"
+                        firstName: "New"
+                        lastName: "Person"
+                      recordLabel: "New Person"
+                      tableName: "person"
+                      values:
+                        id: 47
+                        firstName: "New"
+                        lastName: "Person"
+              schema:
+                $ref: "#/components/schemas/TableInsertResponseV1"
+          description: "The record that was inserted"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Insert a record into a table"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/possibleValues/{fieldName}:
+    post:
+      description: "Search for possible values associated with a field on a table.\n\
+        Returns a list of id/label pairs that match the given search criteria."
+      parameters:
+      - description: "Name of the table containing the field."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the field whose possible values should be searched."
+        example: "partnerPersonId"
+        in: "path"
+        name: "fieldName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                searchTerm:
+                  description: "Text to search for within possible value labels"
+                  type: "string"
+                ids:
+                  description: "List of specific ids to look up"
+                  items:
+                    type: "string"
+                  type: "array"
+                values:
+                  description: "Map of other field values, used for filter interpolation\
+                    \ on possible value source filters"
+                  type: "object"
+                useCase:
+                  description: "Use case for possible value search filtering. Controls\
+                    \ behavior when filter values are missing."
+                  enum:
+                  - "FORM"
+                  - "FILTER"
+                  type: "string"
+                labels:
+                  description: "List of specific labels to look up"
+                  items:
+                    type: "string"
+                  type: "array"
+                processValues:
+                  description: "Map of field values from the current process step,\
+                    \ used for filter interpolation"
+                  type: "object"
+                filter:
+                  $ref: "#/components/schemas/QueryFilter"
+                  description: "Optional default filter to apply to the possible value\
+                    \ search"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PossibleValuesResponseV1"
+          description: "List of possible value options matching the search criteria."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Search possible values for a table field"
+      tags:
+      - "Tables"
+  /qqq/v1/processes/{processName}/possibleValues/{fieldName}:
+    post:
+      description: "Search for possible values associated with an input field on a\
+        \ process.\nReturns a list of id/label pairs that match the given search criteria."
+      parameters:
+      - description: "Name of the process containing the field."
+        example: "greetInteractive"
+        in: "path"
+        name: "processName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the field whose possible values should be searched."
+        example: "partnerPersonId"
+        in: "path"
+        name: "fieldName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                searchTerm:
+                  description: "Text to search for within possible value labels"
+                  type: "string"
+                ids:
+                  description: "List of specific ids to look up"
+                  items:
+                    type: "string"
+                  type: "array"
+                values:
+                  description: "Map of other field values, used for filter interpolation\
+                    \ on possible value source filters"
+                  type: "object"
+                useCase:
+                  description: "Use case for possible value search filtering. Controls\
+                    \ behavior when filter values are missing."
+                  enum:
+                  - "FORM"
+                  - "FILTER"
+                  type: "string"
+                labels:
+                  description: "List of specific labels to look up"
+                  items:
+                    type: "string"
+                  type: "array"
+                processValues:
+                  description: "Map of field values from the current process step,\
+                    \ used for filter interpolation"
+                  type: "object"
+                filter:
+                  $ref: "#/components/schemas/QueryFilter"
+                  description: "Optional default filter to apply to the possible value\
+                    \ search"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PossibleValuesResponseV1"
+          description: "List of possible value options matching the search criteria."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Search possible values for a process field"
+      tags:
+      - "Processes"
+  /qqq/v1/possibleValues/{possibleValueSourceName}:
+    post:
+      description: "Search for possible values from a standalone possible value source\n\
+        (not associated with a specific table or process field).\nReturns a list of\
+        \ id/label pairs that match the given search criteria."
+      parameters:
+      - description: "Name of the possible value source to search."
+        example: "person"
+        in: "path"
+        name: "possibleValueSourceName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                searchTerm:
+                  description: "Text to search for within possible value labels"
+                  type: "string"
+                ids:
+                  description: "List of specific ids to look up"
+                  items:
+                    type: "string"
+                  type: "array"
+                values:
+                  description: "Map of other field values, used for filter interpolation\
+                    \ on possible value source filters"
+                  type: "object"
+                useCase:
+                  description: "Use case for possible value search filtering. Controls\
+                    \ behavior when filter values are missing."
+                  enum:
+                  - "FORM"
+                  - "FILTER"
+                  type: "string"
+                labels:
+                  description: "List of specific labels to look up"
+                  items:
+                    type: "string"
+                  type: "array"
+                processValues:
+                  description: "Map of field values from the current process step,\
+                    \ used for filter interpolation"
+                  type: "object"
+                filter:
+                  $ref: "#/components/schemas/QueryFilter"
+                  description: "Optional default filter to apply to the possible value\
+                    \ search"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PossibleValuesResponseV1"
+          description: "List of possible value options matching the search criteria."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Search a standalone possible value source"
+      tags:
+      - "General"
+  /qqq/v1/widget/{widgetName}:
+    post:
+      description: "Render a widget by name, passing in query parameters as a JSON\
+        \ object in the request body.\nThe response shape varies by widget type."
+      parameters:
+      - description: "Name of the widget to render."
+        example: "myWidget"
+        in: "path"
+        name: "widgetName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: "Dynamic query parameters to pass to the widget renderer."
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WidgetResponseV1"
+          description: "The rendered widget data, whose shape varies by widget type."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Render a widget"
+      tags:
+      - "Widgets"
   /qqq/v1/metaData/process/{processName}:
     get:
       description: "Load the full metadata for a single process, including all screens\
@@ -2791,3 +3360,226 @@ paths:
       summary: "Get job status"
       tags:
       - "Processes"
+  /qqq/v1/processes/{processName}/{processUUID}/records:
+    get:
+      description: "Retrieve the records associated with a running or completed process,\
+        \ with support\nfor pagination via skip and limit query parameters."
+      parameters:
+      - description: "Name of the process"
+        example: "samplePersonProcess"
+        in: "path"
+        name: "processName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Unique identifier for this run of the process"
+        example: "01234567-89AB-CDEF-0123-456789ABCDEF"
+        in: "path"
+        name: "processUUID"
+        required: true
+        schema:
+          format: "uuid"
+          type: "string"
+      - description: "Number of records to skip (default 0)"
+        example: "0"
+        in: "query"
+        name: "skip"
+        required: false
+        schema:
+          type: "integer"
+      - description: "Maximum number of records to return (default 20)"
+        example: "20"
+        in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessRecordsResponseV1"
+          description: "Paginated list of records from the process state."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get records from a process"
+      tags:
+      - "Processes"
+  /qqq/v1/processes/{processName}/{processUUID}/cancel:
+    post:
+      description: "Cancel a running process. If the process defines a cancel step,\
+        \ it will be executed."
+      parameters:
+      - description: "Name of the process to cancel"
+        example: "samplePersonProcess"
+        in: "path"
+        name: "processName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Unique identifier for this run of the process"
+        example: "01234567-89AB-CDEF-0123-456789ABCDEF"
+        in: "path"
+        name: "processUUID"
+        required: true
+        schema:
+          format: "uuid"
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessCancelResponseV1"
+          description: "Empty JSON object indicating successful cancellation."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Cancel a running process"
+      tags:
+      - "Processes"
+  /qqq/v1/table/{tableName}/export:
+    post:
+      description: "Export records from a table as a downloadable file in the specified\
+        \ format (CSV, XLSX, JSON, TSV)."
+      parameters:
+      - description: "Name of the table to export."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                format:
+                  description: "Export format: csv, xlsx, json, tsv"
+                  type: "string"
+                filename:
+                  description: "Optional filename for the download. Generated if absent."
+                  type: "string"
+                filter:
+                  $ref: "#/components/schemas/QueryFilter"
+                  description: "QueryFilter to specify matching records to export"
+                fieldNames:
+                  description: "Optional subset of field names to include in the export"
+                  items:
+                    type: "string"
+                  type: "array"
+                limit:
+                  description: "Optional maximum number of records to export"
+                  type: "integer"
+                includeHeaderRow:
+                  description: "Whether to include a header row (default true)"
+                  type: "boolean"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/octet-stream:
+              schema:
+                format: "binary"
+                type: "string"
+          description: "Binary file content in the requested export format"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Export records from a table"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}/{fieldName}/{filename}:
+    get:
+      description: "Download the binary content of a blob field from a specific record."
+      parameters:
+      - description: "Name of the table containing the record."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the field to download."
+        example: "photo"
+        in: "path"
+        name: "fieldName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Filename for the downloaded content."
+        example: "photo.jpg"
+        in: "path"
+        name: "filename"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/octet-stream:
+              schema:
+                format: "binary"
+                type: "string"
+          description: "Binary file content"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Download a field value from a record"
+      tags:
+      - "Tables"
+  /qqq/v1/download/{file}:
+    get:
+      description: "Download a file from server-side storage by file path or storage\
+        \ table reference."
+      parameters:
+      - description: "Filename for the download."
+        example: "report.csv"
+        in: "path"
+        name: "file"
+        required: true
+        schema:
+          type: "string"
+      - description: "Server-side file path to download from."
+        in: "query"
+        name: "filePath"
+        required: false
+        schema:
+          type: "string"
+      - description: "Name of the storage table to download from."
+        in: "query"
+        name: "storageTableName"
+        required: false
+        schema:
+          type: "string"
+      - description: "Storage reference key for the file."
+        in: "query"
+        name: "storageReference"
+        required: false
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/octet-stream:
+              schema:
+                format: "binary"
+                type: "string"
+          description: "Binary file content"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Download a file"
+      tags:
+      - "General"

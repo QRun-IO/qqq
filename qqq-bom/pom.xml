@@ -113,6 +113,11 @@
          </dependency>
          <dependency>
             <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-esb</artifactId>
+            <version>${revision}</version>
+         </dependency>
+         <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
             <artifactId>qqq-utility-lambdas</artifactId>
             <version>${revision}</version>
          </dependency>

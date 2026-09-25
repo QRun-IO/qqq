@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.util.List;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
@@ -139,6 +140,28 @@ public class FrontendStep implements ToSchema
    public List<FieldMetaData> getRecordListFields()
    {
       return (CollectionUtils.nonNullList(this.wrapped.getRecordListFields()).stream().map(f -> new FieldMetaData(f)).toList());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Name of the step a user can go back to from this step (step with isStepBack=true), when there is one.")
+   public String getBackStepName()
+   {
+      return (this.wrapped.getBackStepName());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Help content shown on the step/screen.")
+   public List<QHelpContent> getHelpContents()
+   {
+      return (this.wrapped.getHelpContents());
    }
 
 }

@@ -23,8 +23,10 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 
 
 import com.kingsrook.qqq.backend.core.actions.processes.CancelProcessAction;
+import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.middleware.javalin.executors.io.EmptyMiddlewareOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessCancelInput;
 
@@ -41,7 +43,14 @@ public class ProcessCancelExecutor extends AbstractMiddlewareExecutor<ProcessCan
    @Override
    public void execute(ProcessCancelInput input, EmptyMiddlewareOutputInterface output) throws QException
    {
+      //////////////////////////////////////////////////////////////////////
+      // only the session that ran the process may cancel it: another    //
+      // user's process state is refused before its cancel step can run //
+      //////////////////////////////////////////////////////////////////////
+      RunProcessAction.getStateForUser(input.getProcessUUID(), input.getProcessName());
+
       RunProcessInput runProcessInput = new RunProcessInput();
+      runProcessInput.setInputSource(QInputSource.USER);
       runProcessInput.setProcessName(input.getProcessName());
       runProcessInput.setProcessUUID(input.getProcessUUID());
 

@@ -87,6 +87,7 @@ class ProcessRecordsSpecV1Test extends SpecTestBase
       // the "greet" process operates on the person table.                     //
       ///////////////////////////////////////////////////////////////////////////
       HttpResponse<String> initResponse = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .cookie("sessionId", "v1-process-session")
          .multiPartContent()
          .field("recordsParam", "recordIds")
          .field("recordIds", "1,2,3")
@@ -101,6 +102,7 @@ class ProcessRecordsSpecV1Test extends SpecTestBase
       // now fetch the records from that process state via the records spec. //
       /////////////////////////////////////////////////////////////////////////
       HttpResponse<String> recordsResponse = Unirest.get(getBaseUrlAndPath() + "/processes/greet/" + processUUID + "/records")
+         .cookie("sessionId", "v1-process-session")
          .asString();
 
       assertEquals(200, recordsResponse.getStatus());
@@ -127,6 +129,7 @@ class ProcessRecordsSpecV1Test extends SpecTestBase
       // first, init a process that will produce records in its process state. //
       ///////////////////////////////////////////////////////////////////////////
       HttpResponse<String> initResponse = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .cookie("sessionId", "v1-process-session")
          .multiPartContent()
          .field("recordsParam", "recordIds")
          .field("recordIds", "1,2,3")
@@ -142,6 +145,7 @@ class ProcessRecordsSpecV1Test extends SpecTestBase
       // 1 record back, but totalRecords should be >= 3.   //
       ///////////////////////////////////////////////////////
       HttpResponse<String> recordsResponse = Unirest.get(getBaseUrlAndPath() + "/processes/greet/" + processUUID + "/records?skip=0&limit=1")
+         .cookie("sessionId", "v1-process-session")
          .asString();
 
       assertEquals(200, recordsResponse.getStatus());
@@ -166,6 +170,7 @@ class ProcessRecordsSpecV1Test extends SpecTestBase
       String fakeUUID = UUID.randomUUID().toString();
 
       HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/processes/greet/" + fakeUUID + "/records")
+         .cookie("sessionId", "v1-process-session")
          .asString();
 
       assertEquals(500, response.getStatus());

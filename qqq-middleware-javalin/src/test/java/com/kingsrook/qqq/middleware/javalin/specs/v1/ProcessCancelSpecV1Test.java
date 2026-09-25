@@ -87,6 +87,7 @@ class ProcessCancelSpecV1Test extends SpecTestBase
       // use the greet process since it completes synchronously. //
       /////////////////////////////////////////////////////////////
       HttpResponse<String> initResponse = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .cookie("sessionId", "v1-process-session")
          .multiPartContent()
          .field("recordsParam", "recordIds")
          .field("recordIds", "1,2")
@@ -101,10 +102,34 @@ class ProcessCancelSpecV1Test extends SpecTestBase
       // now cancel it via the cancel endpoint.   //
       //////////////////////////////////////////////
       HttpResponse<String> cancelResponse = Unirest.post(getBaseUrlAndPath() + "/processes/greet/" + processUUID + "/cancel")
+         .cookie("sessionId", "v1-process-session")
          .asString();
 
       assertEquals(200, cancelResponse.getStatus());
       assertEquals("{}", cancelResponse.getBody());
+   }
+
+
+
+   /*******************************************************************************
+    ** Another session cannot cancel (run the cancel step of) a process it did
+    ** not run.
+    *******************************************************************************/
+   @Test
+   void testCancelAnotherSessionsProcessIsRefused()
+   {
+      HttpResponse<String> initResponse = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .cookie("sessionId", "v1-process-owner")
+         .multiPartContent()
+         .field("recordsParam", "recordIds")
+         .field("recordIds", "1,2")
+         .asString();
+      String processUUID = JsonUtils.toJSONObject(initResponse.getBody()).getString("processUUID");
+
+      HttpResponse<String> cancelResponse = Unirest.post(getBaseUrlAndPath() + "/processes/greet/" + processUUID + "/cancel")
+         .cookie("sessionId", "v1-process-intruder")
+         .asString();
+      assertEquals(403, cancelResponse.getStatus(), cancelResponse.getBody());
    }
 
 
@@ -118,6 +143,7 @@ class ProcessCancelSpecV1Test extends SpecTestBase
       String fakeUUID = UUID.randomUUID().toString();
 
       HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/" + fakeUUID + "/cancel")
+         .cookie("sessionId", "v1-process-session")
          .asString();
 
       assertThat(response.getStatus()).isIn(400, 500);

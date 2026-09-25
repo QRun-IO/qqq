@@ -58,7 +58,10 @@ public interface ProcessInitOrStepOrStatusOutputInterface extends AbstractMiddle
     *******************************************************************************/
    void setNextStep(String nextStep);
 
-   // todo - add (in next version?) backStep
+   /*******************************************************************************
+    ** Setter for backStep - the step a frontend may go back to (restart at).
+    *******************************************************************************/
+   void setBackStep(String backStep);
 
    /*******************************************************************************
     ** Setter for values

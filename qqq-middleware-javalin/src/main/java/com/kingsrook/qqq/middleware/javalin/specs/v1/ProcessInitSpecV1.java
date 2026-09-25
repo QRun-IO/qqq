@@ -25,6 +25,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -193,8 +194,14 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
       QQueryFilter initialRecordsFilter = buildProcessInitRecordsFilter(recordsParam, recordIds, filterJSON, processInitOrStepInput);
       processInitOrStepInput.setRecordsFilter(initialRecordsFilter);
 
-      // todo - uploaded files
-      // todo - archive uploaded files?
+      /////////////////////////////////////////////////////////////////////////
+      // uploaded files are stored and referenced from their process values //
+      /////////////////////////////////////////////////////////////////////////
+      if(processInitOrStepInput.getValues() == null)
+      {
+         processInitOrStepInput.setValues(new LinkedHashMap<>());
+      }
+      ProcessSpecUtilsV1.addUploadedFiles(context, processInitOrStepInput);
 
       return (processInitOrStepInput);
    }

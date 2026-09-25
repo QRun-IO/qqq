@@ -439,6 +439,10 @@ components:
       type: "object"
     FrontendStep:
       properties:
+        backStepName:
+          description: "Name of the step a user can go back to from this step (step\
+            \ with isStepBack=true), when there is one."
+          type: "string"
         components:
           description: "The components that make up this screen"
           items:
@@ -454,6 +458,9 @@ components:
             \ application to be used for this screen.  Different frontends may support\
             \ different formats, and implement them differently."
           type: "string"
+        helpContents:
+          description: "Help content shown on the step/screen."
+          type: "array"
         label:
           description: "The user-facing name for this step"
           type: "string"
@@ -720,6 +727,9 @@ components:
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
+        iconName:
+          description: "Name of the process's icon."
+          type: "string"
         isHidden:
           description: "Boolean indicator of whether the process should be shown to\
             \ users or not"
@@ -727,6 +737,13 @@ components:
         label:
           description: "User-facing name for this process"
           type: "string"
+        maxInputRecords:
+          description: "Most input records the process runs with, when it has a maximum."
+          type: "number"
+        minInputRecords:
+          description: "Fewest input records the process runs with (for processes\
+            \ on a table's records)."
+          type: "number"
         name:
           description: "Unique name for this process within the QQQ Instance"
           type: "string"
@@ -762,6 +779,9 @@ components:
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
+        iconName:
+          description: "Name of the process's icon."
+          type: "string"
         isHidden:
           description: "Boolean indicator of whether the process should be shown to\
             \ users or not"
@@ -769,6 +789,13 @@ components:
         label:
           description: "User-facing name for this process"
           type: "string"
+        maxInputRecords:
+          description: "Most input records the process runs with, when it has a maximum."
+          type: "number"
+        minInputRecords:
+          description: "Fewest input records the process runs with (for processes\
+            \ on a table's records)."
+          type: "number"
         name:
           description: "Unique name for this process within the QQQ Instance"
           type: "string"
@@ -805,6 +832,9 @@ components:
                 \ server, to serve as the icon image instead of a material UI icon."
               type: "string"
           type: "object"
+        iconName:
+          description: "Name of the process's icon."
+          type: "string"
         isHidden:
           description: "Boolean indicator of whether the process should be shown to\
             \ users or not"
@@ -812,6 +842,13 @@ components:
         label:
           description: "User-facing name for this process"
           type: "string"
+        maxInputRecords:
+          description: "Most input records the process runs with, when it has a maximum."
+          type: "number"
+        minInputRecords:
+          description: "Fewest input records the process runs with (for processes\
+            \ on a table's records)."
+          type: "number"
         name:
           description: "Unique name for this process within the QQQ Instance"
           type: "string"
@@ -839,6 +876,11 @@ components:
       description: "Data returned after the job is complete (whether it was synchronous,\
         \ or asynchronous)"
       properties:
+        backStep:
+          description: "Name of the step the process can go back to (restart at, by\
+            \ stepping with isStepBack=true), when the process declares one.  Omitted\
+            \ otherwise."
+          type: "string"
         nextStep:
           description: "Name of the next process step that needs to run (a frontend\
             \ step).  If there are no more steps in the process, this field will not\
@@ -858,6 +900,10 @@ components:
                 \ it will be set in this field."
               items:
                 properties:
+                  backStepName:
+                    description: "Name of the step a user can go back to from this\
+                      \ step (step with isStepBack=true), when there is one."
+                    type: "string"
                   components:
                     description: "The components that make up this screen"
                     items:
@@ -874,6 +920,9 @@ components:
                       \ frontends may support different formats, and implement them\
                       \ differently."
                     type: "string"
+                  helpContents:
+                    description: "Help content shown on the step/screen."
+                    type: "array"
                   label:
                     description: "The user-facing name for this step"
                     type: "string"
@@ -944,6 +993,11 @@ components:
       - description: "Data returned after the job is complete (whether it was synchronous,\
           \ or asynchronous)"
         properties:
+          backStep:
+            description: "Name of the step the process can go back to (restart at,\
+              \ by stepping with isStepBack=true), when the process declares one.\
+              \  Omitted otherwise."
+            type: "string"
           nextStep:
             description: "Name of the next process step that needs to run (a frontend\
               \ step).  If there are no more steps in the process, this field will\
@@ -963,6 +1017,10 @@ components:
                   \ steps, it will be set in this field."
                 items:
                   properties:
+                    backStepName:
+                      description: "Name of the step a user can go back to from this\
+                        \ step (step with isStepBack=true), when there is one."
+                      type: "string"
                     components:
                       description: "The components that make up this screen"
                       items:
@@ -979,6 +1037,9 @@ components:
                         \ frontends may support different formats, and implement them\
                         \ differently."
                       type: "string"
+                    helpContents:
+                      description: "Help content shown on the step/screen."
+                      type: "array"
                     label:
                       description: "The user-facing name for this step"
                       type: "string"
@@ -1703,6 +1764,10 @@ components:
           - "TABLE_SUB_ROW_DETAIL_ROW"
           - "TEXT"
           - "UP_OR_DOWN_NUMBER"
+          type: "string"
+        blockTypeName:
+          description: "Name of the block's type, as the backend declares it (including\
+            \ types this API version does not enumerate in blockType)."
           type: "string"
         conditional:
           description: "Optional field name (e.g,. from a process's set of fields)\
@@ -2441,6 +2506,7 @@ paths:
                         hasPermission: true
                         icon:
                           name: "library_add"
+                        iconName: "library_add"
                         isHidden: true
                         label: "Person Bulk Insert"
                         name: "person.bulkInsert"
@@ -2457,6 +2523,7 @@ paths:
                         hasPermission: true
                         icon:
                           name: "person_add"
+                        iconName: "person_add"
                         isHidden: false
                         label: "Sample Person Process"
                         name: "samplePersonProcess"

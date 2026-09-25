@@ -95,6 +95,9 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
       @OpenAPIDescription("Name of the next process step that needs to run (a frontend step).  If there are no more steps in the process, this field will not be included.  ")
       private String nextStep;
 
+      @OpenAPIDescription("Name of the step the process can go back to (restart at, by stepping with isStepBack=true), when the process declares one.  Omitted otherwise.")
+      private String backStep;
+
       @OpenAPIDescription("Current values for fields used by the process.Keys are Strings, values can be any type, as determined by the application & process.")
       private Map<String, Serializable> values;
 
@@ -110,6 +113,17 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
       public String getNextStep()
       {
          return nextStep;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for backStep
+       **
+       *******************************************************************************/
+      public String getBackStep()
+      {
+         return backStep;
       }
 
 
@@ -291,6 +305,20 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
       if(this.typedResponse instanceof ProcessStepComplete complete)
       {
          complete.nextStep = nextStep;
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public void setBackStep(String backStep)
+   {
+      if(this.typedResponse instanceof ProcessStepComplete complete)
+      {
+         complete.backStep = backStep;
       }
    }
 

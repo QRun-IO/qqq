@@ -46,7 +46,10 @@ public class ProcessRecordsExecutor extends AbstractMiddlewareExecutor<ProcessRe
    @Override
    public void execute(ProcessRecordsInput input, ProcessRecordsOutputInterface output) throws QException
    {
-      Optional<ProcessState> optionalProcessState = RunProcessAction.getState(input.getProcessUUID());
+      ////////////////////////////////////////////////////////////////////////////
+      // only the session that ran the process may read its records (as legacy) //
+      ////////////////////////////////////////////////////////////////////////////
+      Optional<ProcessState> optionalProcessState = RunProcessAction.getStateForUser(input.getProcessUUID(), input.getProcessName());
       if(optionalProcessState.isEmpty())
       {
          throw (new QException("Could not find process results."));

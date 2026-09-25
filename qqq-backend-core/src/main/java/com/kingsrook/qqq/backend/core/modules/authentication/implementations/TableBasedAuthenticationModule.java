@@ -31,10 +31,12 @@ import java.security.spec.InvalidKeySpecException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
@@ -42,10 +44,14 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -58,6 +64,7 @@ import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.state.StateProviderInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -72,8 +79,9 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
    public static final int ID_TOKEN_VALIDATION_INTERVAL_SECONDS = 1800;
 
-   public static final String SESSION_ID_KEY = "sessionId";
-   public static final String BASIC_AUTH_KEY = "basicAuthString";
+   public static final String SESSION_ID_KEY   = "sessionId";
+   public static final String SESSION_UUID_KEY = "sessionUUID";
+   public static final String BASIC_AUTH_KEY   = "basicAuthString";
 
    public static final String SESSION_ID_NOT_PROVIDED_ERROR = "Session ID was not provided";
 
@@ -108,6 +116,15 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
       TableBasedAuthenticationMetaData metaData    = (TableBasedAuthenticationMetaData) qInstance.getAuthentication();
       String                           sessionUuid = context.get(SESSION_ID_KEY);
 
+      //////////////////////////////////////////////////////////////////////////////////
+      // a session created by manageSession is identified by the sessionUUID cookie, //
+      // which carries the same id as the sessionId cookie secured routes set.       //
+      //////////////////////////////////////////////////////////////////////////////////
+      if(!StringUtils.hasContent(sessionUuid))
+      {
+         sessionUuid = context.get(SESSION_UUID_KEY);
+      }
+
       ///////////////////////////////////////////////////////////
       // check if we are processing a Basic Auth Session first //
       ///////////////////////////////////////////////////////////
@@ -125,24 +142,44 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
             byte[] credDecoded       = Base64.getDecoder().decode(base64Credentials);
             String credentials       = new String(credDecoded, StandardCharsets.UTF_8);
 
+            ////////////////////////////////////////////////////////////////////////////
+            // user-id and password are split at the first colon: a password may     //
+            // contain colons, a user-id may not (RFC 7617).                          //
+            ////////////////////////////////////////////////////////////////////////////
+            int colon = credentials.indexOf(':');
+            if(colon < 1)
+            {
+               throw (new QAuthenticationException("Incorrect username or password."));
+            }
+            String username = credentials.substring(0, colon);
+
             ///////////////////////////
             // fetch the user record //
             ///////////////////////////
             GetInput getInput = new GetInput();
             getInput.setTableName(metaData.getUserTableName());
-            getInput.setUniqueKey(Map.of(metaData.getUserTableUsernameField(), credentials.split(":")[0]));
-            GetOutput getOutput = new GetAction().execute(getInput);
+            getInput.setUniqueKey(Map.of(metaData.getUserTableUsernameField(), username));
+            GetOutput getOutput     = new GetAction().execute(getInput);
+            String    inputPassword = credentials.substring(colon + 1);
             if(getOutput.getRecord() == null)
             {
+               ///////////////////////////////////////////////////////////////////////
+               // hash anyway, so an unknown username takes as long to refuse as a //
+               // wrong password (the response must not reveal which users exist)  //
+               ///////////////////////////////////////////////////////////////////////
+               PasswordHasher.validatePassword(inputPassword, PasswordHasher.getUnknownUserHash());
                throw (new QAuthenticationException("Incorrect username or password."));
             }
 
             //////////////////////////////////////////////////////////
             // compare the hashed input password to the stored hash //
             //////////////////////////////////////////////////////////
-            QRecord user          = getOutput.getRecord();
-            String  inputPassword = credentials.split(":")[1];
-            String  storedHash    = user.getValueString(metaData.getUserTablePasswordHashField());
+            QRecord user       = getOutput.getRecord();
+            String  storedHash = user.getValueString(metaData.getUserTablePasswordHashField());
+            if(!StringUtils.hasContent(storedHash))
+            {
+               throw (new QAuthenticationException("Incorrect username or password."));
+            }
 
             // if(!inputHash.equals(storedHash))
             if(!PasswordHasher.validatePassword(inputPassword, storedHash))
@@ -410,7 +447,50 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
          qSession.setIdReference(sessionUuid);
          qSession.setUser(qUser);
 
+         //////////////////////////////////////////////////////////////////
+         // identify the user to frontends (manageSession values.user), //
+         // as the OAuth2 module does - never the password hash         //
+         //////////////////////////////////////////////////////////////////
+         String                  username = userRecord.getValueString(metaData.getUserTableUsernameField());
+         String                  fullName = userRecord.getValueString(metaData.getUserTableFullNameField());
+         HashMap<String, String> user     = new HashMap<>();
+         user.put("name", StringUtils.hasContent(fullName) ? fullName : username);
+         user.put("username", username);
+         qSession.withValueForFrontend("user", user);
+
          return (qSession);
+      }
+      finally
+      {
+         QContext.setQSession(contextSessionBefore);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** End a session: delete its row from the session table, so neither cookie
+    ** can resume it, and forget its last validation time.
+    *******************************************************************************/
+   @Override
+   public void logout(QInstance qInstance, String sessionUUID)
+   {
+      if(!StringUtils.hasContent(sessionUUID) || !(qInstance.getAuthentication() instanceof TableBasedAuthenticationMetaData metaData))
+      {
+         return;
+      }
+
+      QSession contextSessionBefore = QContext.getQSession();
+      try
+      {
+         QContext.setQSession(chickenAndEggSession);
+         new DeleteAction().execute(new DeleteInput(metaData.getSessionTableName())
+            .withQueryFilter(new QQueryFilter(new QFilterCriteria(metaData.getSessionTableUuidField(), QCriteriaOperator.EQUALS, sessionUUID))));
+         getStateProvider().remove(new SimpleStateKey<>(sessionUUID));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error deleting session at logout", e);
       }
       finally
       {
@@ -443,6 +523,23 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
       private static final int SALT_BYTE_SIZE        = 32;
       private static final int HASH_BYTE_SIZE        = 32;
       private static final int PBKDF2_ITERATIONS     = 100000; // OWASP recommended minimum for SHA256
+
+      private static String unknownUserHash;
+
+
+
+      /*******************************************************************************
+       ** A hash of a random password, checked when a username is not found so that
+       ** refusing it costs the same as refusing a wrong password.
+       *******************************************************************************/
+      static synchronized String getUnknownUserHash() throws NoSuchAlgorithmException, InvalidKeySpecException
+      {
+         if(unknownUserHash == null)
+         {
+            unknownUserHash = createHashedPassword(UUID.randomUUID().toString());
+         }
+         return (unknownUserHash);
+      }
 
 
 

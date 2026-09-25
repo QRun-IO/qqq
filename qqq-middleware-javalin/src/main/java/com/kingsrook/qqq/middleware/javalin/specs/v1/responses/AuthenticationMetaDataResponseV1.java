@@ -25,11 +25,13 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.PublicBranding;
 
 
 /*******************************************************************************
@@ -56,6 +58,11 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       """)
    @OpenAPIOneOf()
    private Values values;
+
+   @OpenAPIDescription("""
+      The application's branding that is safe to show before sign-in (names, logo, icon and accent colors; never
+      banners), so a login page can look like the application.  Absent when the instance defines no branding.""")
+   private PublicBranding branding;
 
 
 
@@ -360,6 +367,27 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
          }
       }
       */
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public void setBranding(QBrandingMetaData branding)
+   {
+      this.branding = branding == null ? null : new PublicBranding(branding);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for branding
+    *******************************************************************************/
+   public PublicBranding getBranding()
+   {
+      return (this.branding);
    }
 
 

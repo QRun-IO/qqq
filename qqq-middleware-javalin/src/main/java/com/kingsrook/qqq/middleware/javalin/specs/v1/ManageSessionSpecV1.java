@@ -41,6 +41,8 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
+import com.kingsrook.qqq.openapi.model.In;
+import com.kingsrook.qqq.openapi.model.Parameter;
 import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
@@ -54,6 +56,7 @@ import io.javalin.http.HttpStatus;
  *******************************************************************************/
 public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput, ManageSessionResponseV1, ManageSessionExecutor>
 {
+   private static final String BASIC_PREFIX = "Basic ";
 
 
    /***************************************************************************
@@ -72,7 +75,11 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
             `type` field in the `metaData/authentication` response, data from that authentication provider should be posted
             to this endpoint, to create a session within the QQQ application.
             
-            The response object will include a session identifier (`uuid`) to authenticate the user in subsequent API calls.""");
+            The response object will include a session identifier (`uuid`) to authenticate the user in subsequent API calls.
+            
+            For the `TABLE_BASED` type, send the user's credentials in an `Authorization: Basic` header (base64 of
+            `username:password`, UTF-8); the body may be empty.  The password is verified against the user table and a
+            session row is stored; a `401` response means the credentials were refused.""");
    }
 
 
@@ -130,10 +137,35 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
     **
     ***************************************************************************/
    @Override
+   public List<Parameter> defineRequestParameters()
+   {
+      return List.of(new Parameter()
+         .withName("Authorization")
+         .withDescription("""
+            For `TABLE_BASED` authentication: `Basic ` followed by the base64 encoding of `username:password` (UTF-8).
+            Not used by other authentication types.""")
+         .withIn(In.HEADER)
+         .withSchema(new Schema().withType(Type.STRING))
+         .withExample("Basic dXNlcm5hbWU6cGFzc3dvcmQ="));
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
    public ManageSessionInput buildInput(Context context) throws Exception
    {
       ManageSessionInput manageSessionInput = new ManageSessionInput();
       manageSessionInput.setAccessToken(getRequestParam(context, "accessToken"));
+
+      String authorization = context.header("Authorization");
+      if(authorization != null && authorization.startsWith(BASIC_PREFIX))
+      {
+         manageSessionInput.setBasicAuthString(authorization.substring(BASIC_PREFIX.length()).trim());
+      }
+
       return (manageSessionInput);
    }
 

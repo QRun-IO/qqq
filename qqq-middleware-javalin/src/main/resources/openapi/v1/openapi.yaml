@@ -122,6 +122,31 @@ components:
       type: "object"
     AuthenticationMetaDataResponseV1:
       properties:
+        branding:
+          description: "The application's branding that is safe to show before sign-in\
+            \ (names, logo, icon and accent colors; never\nbanners), so a login page\
+            \ can look like the application.  Absent when the instance defines no\
+            \ branding."
+          properties:
+            accentColor:
+              description: "Primary accent color, as a CSS color value."
+              type: "string"
+            accentColorLight:
+              description: "Light variant of the accent color, as a CSS color value."
+              type: "string"
+            appName:
+              description: "Name of this application, for display to users."
+              type: "string"
+            companyName:
+              description: "Name of the company that operates this application."
+              type: "string"
+            icon:
+              description: "Path or URL of the application's small icon image."
+              type: "string"
+            logo:
+              description: "Path or URL of the application's logo image."
+              type: "string"
+          type: "object"
         name:
           description: "Unique name for the authentication metaData object within\
             \ the QInstance.\n"
@@ -954,6 +979,27 @@ components:
         type:
           description: "What kind of response has been received.  Determines what\
             \ additional fields will be set."
+          type: "string"
+      type: "object"
+    PublicBranding:
+      properties:
+        accentColor:
+          description: "Primary accent color, as a CSS color value."
+          type: "string"
+        accentColorLight:
+          description: "Light variant of the accent color, as a CSS color value."
+          type: "string"
+        appName:
+          description: "Name of this application, for display to users."
+          type: "string"
+        companyName:
+          description: "Name of the company that operates this application."
+          type: "string"
+        icon:
+          description: "Path or URL of the application's small icon image."
+          type: "string"
+        logo:
+          description: "Path or URL of the application's logo image."
           type: "string"
       type: "object"
     QueryFilter:
@@ -1961,7 +2007,20 @@ paths:
         \ response, data from that authentication provider should be posted\nto this\
         \ endpoint, to create a session within the QQQ application.\n\nThe response\
         \ object will include a session identifier (`uuid`) to authenticate the user\
-        \ in subsequent API calls."
+        \ in subsequent API calls.\n\nFor the `TABLE_BASED` type, send the user's\
+        \ credentials in an `Authorization: Basic` header (base64 of\n`username:password`,\
+        \ UTF-8); the body may be empty.  The password is verified against the user\
+        \ table and a\nsession row is stored; a `401` response means the credentials\
+        \ were refused."
+      parameters:
+      - description: "For `TABLE_BASED` authentication: `Basic ` followed by the base64\
+          \ encoding of `username:password` (UTF-8).\nNot used by other authentication\
+          \ types."
+        example: "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
+        in: "header"
+        name: "Authorization"
+        schema:
+          type: "string"
       requestBody:
         content:
           application/json:

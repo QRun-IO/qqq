@@ -56,6 +56,7 @@ import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
@@ -440,10 +441,14 @@ public class QJavalinProcessHandler
       {
          resultForCaller.put("jobUUID", jgae.getJobUUID());
       }
-      catch(QPermissionDeniedException pde)
+      catch(QPermissionDeniedException | QAuthenticationException e)
       {
-         returningException = pde;
-         QJavalinImplementation.handleException(context, pde);
+         //////////////////////////////////////////////////////////////////////////////
+         // permission and authentication failures get their HTTP status (403 / 401) //
+         // so frontends can refuse or send the user to sign in                      //
+         //////////////////////////////////////////////////////////////////////////////
+         returningException = e;
+         QJavalinImplementation.handleException(context, e);
       }
       catch(Exception e)
       {

@@ -45,6 +45,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -182,6 +183,26 @@ public class QJavalinImplementationAuthenticationTest extends QJavalinTestBase
       assertEquals(401, response.getStatus());
       JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertEquals("Session not found.", jsonObject.getString("error"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Process init and step authenticate like every other route: a missing or
+    ** unknown session is a 401, not a process error with HTTP 200.
+    *******************************************************************************/
+   @Test
+   void testAuthentication_processInitAndStepRequireSession()
+   {
+      HttpResponse<String> init = Unirest.post(BASE_URL + "/processes/" + TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE + "/init").asString();
+      assertEquals(401, init.getStatus());
+      assertFalse(init.getBody().contains("Error message:"));
+
+      HttpResponse<String> step = Unirest.post(BASE_URL + "/processes/" + TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE + "/some-uuid/step/setup")
+         .cookie(new Cookie("sessionId", "not-a-sessionId"))
+         .asString();
+      assertEquals(401, step.getStatus());
+      assertFalse(step.getBody().contains("Error message:"));
    }
 
 

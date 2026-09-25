@@ -144,6 +144,8 @@ import com.kingsrook.qqq.middleware.javalin.misc.DownloadFileSupplementalAction;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
+import io.javalin.http.Cookie;
+import io.javalin.http.SameSite;
 import io.javalin.http.UploadedFile;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jetty.http.HttpStatus;
@@ -186,6 +188,36 @@ public class QJavalinImplementation
    private static List<EndpointGroup> endpointGroups;
 
    private static long startTime = 0;
+
+
+
+   /*******************************************************************************
+    ** Set a session cookie (sessionUUID, sessionId) for the whole site with
+    ** SameSite=Lax, so other sites cannot send it with cross-site POSTs, and
+    ** Secure when the request arrived over HTTPS (directly or through a proxy
+    ** that sets X-Forwarded-Proto). The cookie stays readable by the dashboards,
+    ** which resume sessions from sessionUUID (QRun-IO/qqq#696).
+    **
+    ** @param context the request whose response sets the cookie
+    ** @param name cookie name
+    ** @param value session value
+    *******************************************************************************/
+   public static void setSessionCookie(Context context, String name, String value)
+   {
+      context.cookie(new Cookie(name, value, "/", SESSION_COOKIE_AGE, isSecureRequest(context), false, null, SameSite.LAX));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the request came over HTTPS (the connection, or X-Forwarded-Proto).
+    *******************************************************************************/
+   static boolean isSecureRequest(Context context)
+   {
+      String forwardedProto = context.header("X-Forwarded-Proto");
+      String firstProto     = StringUtils.hasContent(forwardedProto) ? forwardedProto.split(",")[0].trim() : "";
+      return ("https".equalsIgnoreCase(context.scheme()) || "https".equalsIgnoreCase(firstProto));
+   }
 
 
 
@@ -360,7 +392,7 @@ public class QJavalinImplementation
          QContext.init(qInstance, null);
          QSession session = authenticationModule.createSession(qInstance, authContext);
 
-         context.cookie(SESSION_UUID_COOKIE_NAME, session.getUuid(), SESSION_COOKIE_AGE);
+         setSessionCookie(context, SESSION_UUID_COOKIE_NAME, session.getUuid());
 
          Map<String, Serializable> resultMap = new HashMap<>();
          resultMap.put("uuid", session.getUuid());
@@ -523,7 +555,7 @@ public class QJavalinImplementation
          /////////////////////////////////////////////////////////////////////////////////
          if(authenticationModule.usesSessionIdCookie())
          {
-            context.cookie(SESSION_ID_COOKIE_NAME, session.getUuid(), SESSION_COOKIE_AGE);
+            setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getUuid());
          }
 
          setUserTimezoneOffsetMinutesInSession(context, session);

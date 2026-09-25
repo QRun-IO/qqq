@@ -122,6 +122,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendVariant;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueSearchFilterUseCase;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
@@ -1216,6 +1217,7 @@ public class QJavalinImplementation
          QJavalinAccessLogger.logStartSilent("count");
 
          PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
+         TableCapabilities.checkCapabilityThrowing(table, Capability.TABLE_COUNT);
 
          filter = QJavalinUtils.getQueryParamOrFormParam(context, "filter");
          if(filter != null)
@@ -1592,6 +1594,7 @@ public class QJavalinImplementation
          exportInput.setLimit(limit);
 
          PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ);
+         TableCapabilities.checkCapabilityThrowing(tableName, Capability.TABLE_EXPORT);
 
          String fields = QJavalinUtils.getQueryParamOrFormParam(context, "fields");
          if(StringUtils.hasContent(fields))

@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.modules.backend;
 
 
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
@@ -34,6 +35,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
 
 
@@ -57,6 +59,19 @@ public interface QBackendModuleInterface
    default Class<? extends QBackendMetaData> getBackendMetaDataClass()
    {
       return (QBackendMetaData.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** Capabilities this module can never provide (for example, writes on a
+    ** read-only module).  The instance enricher disables them on every backend of
+    ** this type, unless the backend explicitly enables them, so tables, their
+    ** generated bulk processes, permissions and frontends all agree.
+    *******************************************************************************/
+   default Set<Capability> getUnsupportedCapabilities()
+   {
+      return (Set.of());
    }
 
    /*******************************************************************************

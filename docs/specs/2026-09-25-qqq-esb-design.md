@@ -29,7 +29,7 @@ All new metadata is validated at boot by `QInstanceValidator` (unknown provider,
 
 **`QEsbProviderMetaData`** (top-level)
 - `name`, `type` (`ACTIVEMQ_ARTEMIS` | `RABBITMQ`)
-- `url` (or `host`/`port`/`virtualHost` for RabbitMQ), `username`, `password` — `${env.*}` interpolated
+- `url` (Artemis URL, or AMQP URI for RabbitMQ including host, port, vhost), `username`, `password` — `${env.*}` interpolated
 - `managementUrl`, `managementUsername`, `managementPassword` — optional; enables queue depth and consumer counts
 
 **`QEsbDestinationMetaData`** (top-level)

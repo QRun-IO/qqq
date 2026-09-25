@@ -159,18 +159,23 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
             GetInput getInput = new GetInput();
             getInput.setTableName(metaData.getUserTableName());
             getInput.setUniqueKey(Map.of(metaData.getUserTableUsernameField(), username));
-            GetOutput getOutput = new GetAction().execute(getInput);
+            GetOutput getOutput     = new GetAction().execute(getInput);
+            String    inputPassword = credentials.substring(colon + 1);
             if(getOutput.getRecord() == null)
             {
+               ///////////////////////////////////////////////////////////////////////
+               // hash anyway, so an unknown username takes as long to refuse as a //
+               // wrong password (the response must not reveal which users exist)  //
+               ///////////////////////////////////////////////////////////////////////
+               PasswordHasher.validatePassword(inputPassword, PasswordHasher.getUnknownUserHash());
                throw (new QAuthenticationException("Incorrect username or password."));
             }
 
             //////////////////////////////////////////////////////////
             // compare the hashed input password to the stored hash //
             //////////////////////////////////////////////////////////
-            QRecord user          = getOutput.getRecord();
-            String  inputPassword = credentials.substring(colon + 1);
-            String  storedHash    = user.getValueString(metaData.getUserTablePasswordHashField());
+            QRecord user       = getOutput.getRecord();
+            String  storedHash = user.getValueString(metaData.getUserTablePasswordHashField());
             if(!StringUtils.hasContent(storedHash))
             {
                throw (new QAuthenticationException("Incorrect username or password."));
@@ -518,6 +523,23 @@ public class TableBasedAuthenticationModule implements QAuthenticationModuleInte
       private static final int SALT_BYTE_SIZE        = 32;
       private static final int HASH_BYTE_SIZE        = 32;
       private static final int PBKDF2_ITERATIONS     = 100000; // OWASP recommended minimum for SHA256
+
+      private static String unknownUserHash;
+
+
+
+      /*******************************************************************************
+       ** A hash of a random password, checked when a username is not found so that
+       ** refusing it costs the same as refusing a wrong password.
+       *******************************************************************************/
+      static synchronized String getUnknownUserHash() throws NoSuchAlgorithmException, InvalidKeySpecException
+      {
+         if(unknownUserHash == null)
+         {
+            unknownUserHash = createHashedPassword(UUID.randomUUID().toString());
+         }
+         return (unknownUserHash);
+      }
 
 
 

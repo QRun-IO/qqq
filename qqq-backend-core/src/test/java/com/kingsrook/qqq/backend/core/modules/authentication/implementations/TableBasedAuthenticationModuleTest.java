@@ -384,6 +384,26 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
 
 
    /*******************************************************************************
+    ** An unknown username is refused only after hashing the given password against
+    ** a stand-in hash, like a wrong password, so timing does not reveal users.
+    *******************************************************************************/
+   @Test
+   void testUnknownUserIsHashedLikeAWrongPassword() throws Exception
+   {
+      String unknownUserHash = TableBasedAuthenticationModule.PasswordHasher.getUnknownUserHash();
+      assertTrue(unknownUserHash.startsWith("sha256:100000:"));
+      assertEquals(unknownUserHash, TableBasedAuthenticationModule.PasswordHasher.getUnknownUserHash());
+
+      QInstance qInstance = getQInstance();
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+      assertThatThrownBy(() -> new TableBasedAuthenticationModule().createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth("nobody", PASSWORD))))
+         .isInstanceOf(QAuthenticationException.class)
+         .hasMessage("Incorrect username or password.");
+   }
+
+
+
+   /*******************************************************************************
     ** A session is identified to frontends by name and username (never the hash),
     ** and resumes from the sessionUUID key that manageSession's cookie supplies.
     *******************************************************************************/

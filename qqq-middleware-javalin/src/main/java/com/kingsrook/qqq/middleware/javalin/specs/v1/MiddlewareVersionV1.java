@@ -70,6 +70,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new RecordFieldDownloadSpecV1());
       list.add(new GeneralDownloadSpecV1());
       list.add(new ReportRunSpecV1());
+      list.add(new TableVariantsSpecV1());
    }
 
    /***************************************************************************

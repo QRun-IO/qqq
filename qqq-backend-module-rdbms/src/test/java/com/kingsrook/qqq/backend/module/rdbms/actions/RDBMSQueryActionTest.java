@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
@@ -307,6 +308,38 @@ public class RDBMSQueryActionTest extends RDBMSActionTest
       QueryOutput queryOutput = new RDBMSQueryAction().execute(queryInput);
       assertEquals(1, queryOutput.getRecords().size(), "Expected # of rows");
       assertTrue(queryOutput.getRecords().stream().allMatch(r -> r.getValueString("email").matches(".*kelkhoff.*")), "Should find matching email address");
+   }
+
+
+
+   /*******************************************************************************
+    ** CASE_INSENSITIVE compares lower-cased values (H2 LIKE is case-sensitive).
+    *******************************************************************************/
+   @Test
+   public void testCaseInsensitiveOption() throws QException
+   {
+      QueryInput queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("lastName", QCriteriaOperator.CONTAINS, "KELK")));
+      assertEquals(0, new RDBMSQueryAction().execute(queryInput).getRecords().size(), "Without the option, case must match");
+
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("lastName", QCriteriaOperator.CONTAINS, "KELK").withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueString("lastName")).containsExactly("Kelkhoff");
+
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("firstName", QCriteriaOperator.STARTS_WITH, "ti").withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Tim");
+
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("email", QCriteriaOperator.EQUALS, "DARIN.KELKHOFF@GMAIL.COM").withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueInteger("id")).containsExactly(1);
+
+      //////////////////////////////////////////////////////////////
+      // the option has no effect on a non-string (integer) field //
+      //////////////////////////////////////////////////////////////
+      queryInput = initQueryRequest();
+      queryInput.setFilter(new QQueryFilter().withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 2).withOption(CriteriaOption.CASE_INSENSITIVE)));
+      assertThat(new RDBMSQueryAction().execute(queryInput).getRecords()).extracting(r -> r.getValueInteger("id")).containsExactly(2);
    }
 
 

@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -50,6 +51,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrde
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
@@ -626,6 +628,7 @@ public abstract class AbstractRDBMSAction
          // if the field specifies an action strategy, then use it (to overwrite the one that comes from the backend). //
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          RDBMSActionStrategyInterface actionStrategy = getActionStrategy();
+         boolean usesFieldActionStrategy = false;
          RDBMSFieldMetaData rdbmsFieldMetaData = RDBMSFieldMetaData.of(field);
          if(rdbmsFieldMetaData != null)
          {
@@ -633,6 +636,7 @@ public abstract class AbstractRDBMSAction
             if(fieldActionStrategy != null)
             {
                actionStrategy = fieldActionStrategy;
+               usesFieldActionStrategy = true;
             }
          }
 
@@ -679,6 +683,17 @@ public abstract class AbstractRDBMSAction
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          StringBuilder      clause = new StringBuilder();
          List<Serializable> values = criterion.getValues() == null ? new ArrayList<>() : new ArrayList<>(criterion.getValues());
+
+         ////////////////////////////////////////////////////////////////////////////////////////
+         // CASE_INSENSITIVE: compare the lower-cased string column to lower-cased values      //
+         // (not when a field-level strategy, e.g., a full-text index, builds its own clause). //
+         ////////////////////////////////////////////////////////////////////////////////////////
+         if(criterion.hasOption(CriteriaOption.CASE_INSENSITIVE) && !usesFieldActionStrategy && field.getType() != null && field.getType().isStringLike())
+         {
+            column = "LOWER(" + column + ")";
+            values.replaceAll(value -> value instanceof String string ? string.toLowerCase(Locale.ROOT) : value);
+         }
+
          Integer expectedNoOfParams = actionStrategy.appendCriterionToWhereClause(criterion, clause, column, values, field);
 
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

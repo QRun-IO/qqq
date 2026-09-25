@@ -79,6 +79,7 @@ public class QFrontendTableMetaData
    private Map<String, QFrontendVirtualFieldMetaData> virtualFields;
 
    private List<QFieldSection>                     sections;
+   private List<String>                            searchFields;
    private List<QFrontendExposedJoin>              exposedJoins;
    private List<QFrontendAssociation>              associations;
    private Map<String, QSupplementalTableMetaData> supplementalTableMetaData;
@@ -228,6 +229,14 @@ public class QFrontendTableMetaData
       insertPermission = PermissionsHelper.hasTablePermission(actionInput, tableMetaData.getName(), TablePermissionSubType.INSERT);
       editPermission = PermissionsHelper.hasTablePermission(actionInput, tableMetaData.getName(), TablePermissionSubType.EDIT);
       deletePermission = PermissionsHelper.hasTablePermission(actionInput, tableMetaData.getName(), TablePermissionSubType.DELETE);
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // advertise search fields only to sessions that may search (read) the table //
+      ///////////////////////////////////////////////////////////////////////////////
+      if(readPermission && CollectionUtils.nullSafeHasContents(tableMetaData.getSearchFields()))
+      {
+         this.searchFields = new ArrayList<>(tableMetaData.getSearchFields());
+      }
 
       QBackendMetaData backend = QContext.getQInstance().getBackend(tableMetaData.getBackendName());
       if(backend != null && backend.getUsesVariants())
@@ -517,6 +526,17 @@ public class QFrontendTableMetaData
    public List<QFrontendAssociation> getAssociations()
    {
       return (this.associations);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for searchFields - names of the fields record search matches for
+    ** this table (null when the table is not searchable by this session).
+    *******************************************************************************/
+   public List<String> getSearchFields()
+   {
+      return (this.searchFields);
    }
 
 }

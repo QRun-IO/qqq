@@ -22,7 +22,10 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
@@ -74,6 +77,25 @@ class MetaDataSpecV1Test extends SpecTestBase
       assertThat(jsonObject.getJSONObject("processes").length()).isGreaterThanOrEqualTo(1);
       assertThat(jsonObject.getJSONObject("apps").length()).isGreaterThanOrEqualTo(1);
       assertThat(jsonObject.getJSONArray("appTree").length()).isGreaterThanOrEqualTo(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Tables advertise their search fields, only to sessions that may read them.
+    *******************************************************************************/
+   @Test
+   void testSearchFields()
+   {
+      serverQInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("firstName", "lastName");
+
+      JSONObject tables = JsonUtils.toJSONObject(Unirest.get(getBaseUrlAndPath() + "/metaData").asString().getBody()).getJSONObject("tables");
+      assertThat(tables.getJSONObject(TestUtils.TABLE_NAME_PERSON).getJSONArray("searchFields").toList()).containsExactly("firstName", "lastName");
+      assertThat(tables.getJSONObject(TestUtils.TABLE_NAME_PET).has("searchFields")).isFalse();
+
+      serverQInstance.getTable(TestUtils.TABLE_NAME_PERSON).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      tables = JsonUtils.toJSONObject(Unirest.get(getBaseUrlAndPath() + "/metaData").asString().getBody()).getJSONObject("tables");
+      assertThat(tables.optJSONObject(TestUtils.TABLE_NAME_PERSON) == null || !tables.getJSONObject(TestUtils.TABLE_NAME_PERSON).has("searchFields")).isTrue();
    }
 
 }

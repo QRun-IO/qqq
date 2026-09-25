@@ -16,18 +16,19 @@ An Enterprise Service Bus for QQQ. Tables and processes publish events to queues
 ## 2. Brokers
 
 - One implementation on the Jakarta Messaging (JMS) 3.x API.
-- Supported: ActiveMQ Artemis, ActiveMQ Classic 6.x, RabbitMQ 4.x (via `com.rabbitmq.jms:rabbitmq-jms` 3.x).
+- Supported: ActiveMQ Artemis and RabbitMQ 4.x (via `com.rabbitmq.jms:rabbitmq-jms` 3.x).
+- Not supported: ActiveMQ Classic — it has no JMS 2.0 shared durable subscriptions (`createSharedDurableConsumer` throws `UnsupportedOperationException`), which topic triggers need.
 - The provider type selects the `ConnectionFactory` class, loaded reflectively. Each app adds its broker's client jar.
 - Availability is the broker's job. Services that need HA run HA brokers.
 - RabbitMQ: queues and durable subscription queues are declared as quorum queues (needed for delivery counts).
-- No broker plugins or special broker settings are required. QQQ's `maxAttempts` must stay below the broker's own redelivery limit (defaults: Artemis 10, RabbitMQ quorum 20; QQQ disables Classic's client-side limit).
+- No broker plugins or special broker settings are required. QQQ's `maxAttempts` must stay below the broker's own redelivery limit (defaults: Artemis 10, RabbitMQ quorum 20).
 
 ## 3. Metadata
 
 All new metadata is validated at boot by `QInstanceValidator` (unknown provider, destination, or process fails startup).
 
 **`QEsbProviderMetaData`** (top-level)
-- `name`, `type` (`ACTIVEMQ_ARTEMIS` | `ACTIVEMQ_CLASSIC` | `RABBITMQ`)
+- `name`, `type` (`ACTIVEMQ_ARTEMIS` | `RABBITMQ`)
 - `url` (or `host`/`port`/`virtualHost` for RabbitMQ), `username`, `password` — `${env.*}` interpolated
 - `managementUrl`, `managementUsername`, `managementPassword` — optional; enables queue depth and consumer counts
 
@@ -106,7 +107,7 @@ Supplemental ESB metadata is **not** included in frontend metadata; the UI reads
 Nothing is stored. Data comes from QQQ metadata, in-memory counters on each node, and the broker's management API when `managementUrl` is set.
 
 - **Counters per destination and trigger (per node)**: published, publish failures, consumed, succeeded, failed, retried, dead-lettered, in flight, last activity, average and max processing time.
-- **Broker data (optional)**: queue depth, consumer count, dead-letter depth — Artemis and Classic via Jolokia, RabbitMQ via its management HTTP API. Plain `java.net.http`, no extra dependencies.
+- **Broker data (optional)**: queue depth, consumer count, dead-letter depth — Artemis via Jolokia, RabbitMQ via its management HTTP API. Plain `java.net.http`, no extra dependencies.
 - **Dead letters**: browsed with JMS `QueueBrowser`.
 
 ### Endpoints (`/qqq/v1/esb`, route provider in `qqq-esb`)
@@ -136,16 +137,16 @@ Applies to queues, dead-letter queues, and topic subscriptions (each is a queue 
 - Replay dead letters — consume selected dead letters and run the trigger's process directly (success removes them; failure leaves them). No re-broadcast to other subscribers.
 
 ### Broker queues (needs `managementUrl`)
-Artemis and Classic via Jolokia; RabbitMQ via its management HTTP API.
+Artemis via Jolokia; RabbitMQ via its management HTTP API.
 
-| Action | Artemis | Classic | RabbitMQ |
-|---|---|---|---|
-| Browse messages | yes | yes | yes (JMS `QueueBrowser`) |
-| Pause / resume delivery to all consumers, including non-QQQ | yes | yes | no |
-| Purge all messages | yes | yes | yes |
-| Delete selected messages | yes | yes | no |
-| Delete messages older than a time | yes | yes | no |
-| Move messages to another queue | yes | yes | no |
+| Action | Artemis | RabbitMQ |
+|---|---|---|
+| Browse messages | yes | yes (JMS `QueueBrowser`) |
+| Pause / resume delivery to all consumers, including non-QQQ | yes | no |
+| Purge all messages | yes | yes |
+| Delete selected messages | yes | no |
+| Delete messages older than a time | yes | no |
+| Move messages to another queue | yes | no |
 
 - Each adapter reports its capabilities; the UI shows only supported actions.
 - RabbitMQ has no queue-level pause; pausing QQQ's consumers covers QQQ's side.
@@ -176,7 +177,7 @@ Endpoint addition: `GET /messages/{destination}` — browse (paged). Requires `e
 ## 11. Testing
 
 - **Unit**: embedded Artemis in `qqq-esb` tests (no Docker).
-- **Broker conformance suite**: one abstract suite, run against Artemis, Classic, and RabbitMQ via Testcontainers in CI. A broker is supported only if it passes. Covers:
+- **Broker conformance suite**: one abstract suite, run against Artemis and RabbitMQ via Testcontainers in CI. A broker is supported only if it passes. Covers:
   - queue competing consumers and concurrency
   - topic shared durable subscription across two runtimes (once per subscription, kept while down)
   - retry, backoff, dead-letter, replay, delete
@@ -194,7 +195,7 @@ Endpoint addition: `GET /messages/{destination}` — browse (paged). Requires `e
 2. A process emits started/completed/failed events to its configured destinations.
 3. A process with a queue trigger runs once per message with the configured concurrency, retries, and dead-lettering.
 4. A process with a topic trigger receives each message once across two running app instances, including messages sent while it was stopped.
-5. The conformance suite passes on Artemis, Classic, and RabbitMQ.
+5. The conformance suite passes on Artemis and RabbitMQ.
 6. A user with table READ sees that table's ESB section in the Developer view; without it, the section is absent and the endpoint returns 403.
 7. A user with `esbView` sees the ESB app. With `esbOperate` they can pause, resume, and restart triggers, replay dead letters, and pause, resume, or move queue messages where the broker supports it. With `esbDelete` they can purge queues and delete selected or old messages where supported.
 8. No new database tables; SQS, automations, and scheduler behavior unchanged (existing tests pass untouched).

@@ -51,7 +51,7 @@ public class TableGetResponseV1 implements TableGetOutputInterface, ToSchema
       }
       else
       {
-         this.record = new OutputRecord(record);
+         this.record = new OutputRecord(record, true);
       }
    }
 

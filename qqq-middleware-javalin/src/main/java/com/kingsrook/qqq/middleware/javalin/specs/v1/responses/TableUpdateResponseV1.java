@@ -57,7 +57,7 @@ public class TableUpdateResponseV1 implements TableUpdateOutputInterface, ToSche
       }
       else
       {
-         this.record = new OutputRecord(record);
+         this.record = new OutputRecord(record, true);
       }
    }
 

@@ -22,6 +22,13 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.List;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
@@ -32,7 +39,9 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -140,6 +149,37 @@ class TableGetSpecV1Test extends SpecTestBase
       assertNotNull(record);
       assertThat(record.getString("tableName")).isEqualTo("person");
       assertThat(record.getJSONObject("values").getString("firstName")).isEqualTo("Darin");
+   }
+
+
+
+   /*******************************************************************************
+    ** includeAssociations returns every association, an empty one as an empty
+    ** list (so a client can tell "no children" from "not included").
+    *******************************************************************************/
+   @Test
+   void testIncludeAssociationsListsEveryAssociation() throws QException
+   {
+      QContext.init(serverQInstance, new QSystemUserSession());
+      Integer id = new InsertAction().execute(new InsertInput("person").withRecords(List.of(new QRecord()
+         .withValue("firstName", "No").withValue("lastName", "Pets").withValue("email", "no.pets@example.com"))))
+         .getRecords().get(0).getValueInteger("id");
+      QContext.clear();
+
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/table/person/" + id + "?includeAssociations=true").asString();
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject record = JsonUtils.toJSONObject(response.getBody()).getJSONObject("record");
+      assertTrue(record.has("associatedRecords"), response.getBody());
+      assertEquals(0, record.getJSONObject("associatedRecords").getJSONArray("pets").length(), response.getBody());
+
+      ///////////////////////////////////////////////////////////////////////
+      // like the legacy route, a single record keeps its null values //
+      ///////////////////////////////////////////////////////////////////////
+      assertTrue(record.getJSONObject("values").has("birthDate"), response.getBody());
+      assertTrue(record.getJSONObject("values").isNull("birthDate"), response.getBody());
+
+      HttpResponse<String> without = Unirest.get(getBaseUrlAndPath() + "/table/person/" + id).asString();
+      assertFalse(JsonUtils.toJSONObject(without.getBody()).getJSONObject("record").has("associatedRecords"), without.getBody());
    }
 
 }

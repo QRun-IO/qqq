@@ -57,7 +57,7 @@ public class TableInsertResponseV1 implements TableInsertOutputInterface, ToSche
       }
       else
       {
-         this.record = new OutputRecord(record);
+         this.record = new OutputRecord(record, true);
       }
    }
 

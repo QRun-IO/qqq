@@ -112,30 +112,56 @@ Nothing is stored. Data comes from QQQ metadata, in-memory counters on each node
 | `GET /table/{table}` | that table's publications, their destinations, subscribing triggers, counters | table READ |
 | `GET /process/{process}` | that process's publications and triggers, counters | process access |
 | `GET /deadLetters/{trigger}` | browse dead letters (paged) | access to the trigger's process |
+| `GET /messages/{destination}` | browse any queue (paged) | see section 8 |
 
 Subscribing triggers on processes the user cannot access are omitted.
-
-### Operate actions
-QQQ processes, so they get standard permissions; all share `permissionBaseName = "esbOperate"`:
-- `esbReplayDeadLetters` — consume selected dead letters and run the trigger's process directly (success removes them; failure leaves them). No re-broadcast to other subscribers.
-- `esbDeleteDeadLetters` — remove selected (or all) dead letters for a trigger.
-- `esbPauseTrigger`, `esbResumeTrigger`.
 
 ### Next dashboard (`qqq-frontend-next` only)
 - **ESB app**: backend `QAppMetaData` named `esb` (`permissionBaseName = "esbView"`) with one widget of new type `ESB_OVERVIEW`; Next adds the renderer.
 - **Table Developer view** (`/app/<table>/dev`): ESB section from `GET /table/{table}`; hidden on 403 or when the table has no ESB metadata.
 - **Process Developer view** (`/app/<process>/dev`, new): process metadata plus the same ESB section.
-- Dead-letter list with replay/delete, and pause/resume buttons, shown only with `esbOperate` permission.
+- Management actions (section 8) appear wherever the queue or trigger is shown, only when permitted and supported by the broker. Destructive actions ask for confirmation.
 - No record-level view.
 
-## 8. Permissions
+## 8. Management
+
+Applies to queues, dead-letter queues, and topic subscriptions (each is a queue on the broker).
+
+### QQQ consumers (all brokers, no management API needed)
+- Pause, resume, restart a trigger's consumers — on every node, via the control topic.
+- Replay dead letters — consume selected dead letters and run the trigger's process directly (success removes them; failure leaves them). No re-broadcast to other subscribers.
+
+### Broker queues (needs `managementUrl`)
+Artemis and Classic via Jolokia; RabbitMQ via its management HTTP API.
+
+| Action | Artemis | Classic | RabbitMQ |
+|---|---|---|---|
+| Browse messages | yes | yes | yes (JMS `QueueBrowser`) |
+| Pause / resume delivery to all consumers, including non-QQQ | yes | yes | no |
+| Purge all messages | yes | yes | yes |
+| Delete selected messages | yes | yes | no |
+| Delete messages older than a time | yes | yes | no |
+| Move messages to another queue | yes | yes | no |
+
+- Each adapter reports its capabilities; the UI shows only supported actions.
+- RabbitMQ has no queue-level pause; pausing QQQ's consumers covers QQQ's side.
+
+### Actions as QQQ processes
+Standard permissions via shared `permissionBaseName`:
+- `esbOperate`: `esbPauseTrigger`, `esbResumeTrigger`, `esbRestartTrigger`, `esbReplayDeadLetters`, `esbPauseQueue`, `esbResumeQueue`, `esbMoveMessages`.
+- `esbDelete`: `esbPurgeQueue`, `esbDeleteMessages` (selected or older than a time).
+
+Endpoint addition: `GET /messages/{destination}` — browse (paged). Requires `esbView`, or READ on a table that publishes to it, or access to a process it triggers.
+
+## 9. Permissions
 
 - Table section: table READ. Process section: process access.
 - Service level: `esbView.hasAccess` (the ESB app).
-- Operate actions: `esbOperate.hasAccess`.
+- Pause, resume, restart, replay, move: `esbOperate.hasAccess`.
+- Purge and delete messages: `esbDelete.hasAccess`.
 - All ESB endpoints and processes check permissions server-side; the UI only hides what the server denies.
 
-## 9. Modules
+## 10. Modules
 
 - `qqq-backend-core` — the three hooks in section 5. Nothing else.
 - `qqq-esb` (new) — metadata, validation, publisher, runtime, counters, management adapters, endpoints, operate processes. Depends on `qqq-backend-core`, `qqq-middleware-javalin` (route provider, same pattern as `qqq-middleware-health`), and `jakarta.jms-api`. Added to `qqq-bom`.
@@ -143,7 +169,7 @@ QQQ processes, so they get standard permissions; all share `permissionBaseName =
 - `qqq-sample-project` — ESB example with embedded Artemis.
 - The `feature/topics` branch is not merged; its naming and action shape are reused, its code is replaced.
 
-## 10. Testing
+## 11. Testing
 
 - **Unit**: embedded Artemis in `qqq-esb` tests (no Docker).
 - **Broker conformance suite**: one abstract suite, run against Artemis, Classic, and RabbitMQ via Testcontainers in CI. A broker is supported only if it passes. Covers:
@@ -151,13 +177,14 @@ QQQ processes, so they get standard permissions; all share `permissionBaseName =
   - topic shared durable subscription across two runtimes (once per subscription, kept while down)
   - retry, backoff, dead-letter, replay, delete
   - batch mode
-  - pause/resume across two runtimes
+  - trigger pause/resume/restart across two runtimes
   - reconnect after broker restart
+  - each management action the broker's adapter reports as supported, and a clear error for unsupported ones
 - **Core hooks**: table events on insert/update/delete; none on rollback; published after the caller's commit; process started/completed/failed events.
 - **Permissions**: each endpoint and operate process denies without the required permission.
 - **Next**: component tests for the ESB widget and sections; one Playwright acceptance test for the table Developer view section.
 
-## 11. Acceptance criteria
+## 12. Acceptance criteria
 
 1. A table configured with a publication emits one CloudEvent per inserted, updated, and deleted record, only after commit.
 2. A process emits started/completed/failed events to its configured destinations.
@@ -165,5 +192,5 @@ QQQ processes, so they get standard permissions; all share `permissionBaseName =
 4. A process with a topic trigger receives each message once across two running app instances, including messages sent while it was stopped.
 5. The conformance suite passes on Artemis, Classic, and RabbitMQ.
 6. A user with table READ sees that table's ESB section in the Developer view; without it, the section is absent and the endpoint returns 403.
-7. A user with `esbView` sees the ESB app; with `esbOperate` they can replay, delete, pause, and resume.
+7. A user with `esbView` sees the ESB app. With `esbOperate` they can pause, resume, and restart triggers, replay dead letters, and pause, resume, or move queue messages where the broker supports it. With `esbDelete` they can purge queues and delete selected or old messages where supported.
 8. No new database tables; SQS, automations, and scheduler behavior unchanged (existing tests pass untouched).

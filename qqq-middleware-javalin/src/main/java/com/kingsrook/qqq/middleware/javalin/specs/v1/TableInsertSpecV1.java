@@ -116,18 +116,21 @@ public class TableInsertSpecV1 extends AbstractEndpointSpec<TableInsertInput, Ta
             optionally an `associations` field: JSON of association name to a list of associated records.  With the request header \
             `X-QQQ-Association-Format: record-v1`, each associated record is `{"values": {...}, "associations": {...}}`, nested to any \
             depth, and exactly one `associations` field is required.""")
-         .withProperties(Map.of(
+         .withProperties(new LinkedHashMap<>(Map.of(
             "fieldName", new Schema()
                .withDescription("Value for a field in the record. Repeat for each field to set.")
-               .withType(Type.STRING),
-            "associations", new Schema()
-               .withDescription("JSON object of association name to a list of associated records.")
-               .withType(Type.STRING)));
+               .withType(Type.STRING))));
+      multipartSchema.getProperties().put("associations", new Schema()
+         .withDescription("JSON object of association name to a list of associated records.")
+         .withType(Type.STRING));
 
-      return new RequestBody()
-         .withContent(Map.of(
-            ContentType.APPLICATION_JSON.getMimeType(), new Content().withSchema(bodySchema),
-            ContentType.MULTIPART_FORM_DATA.getMimeType(), new Content().withSchema(multipartSchema)));
+      //////////////////////////////////////////////////////////////
+      // ordered, so the published document is stable between runs //
+      //////////////////////////////////////////////////////////////
+      Map<String, Content> content = new LinkedHashMap<>();
+      content.put(ContentType.APPLICATION_JSON.getMimeType(), new Content().withSchema(bodySchema));
+      content.put(ContentType.MULTIPART_FORM_DATA.getMimeType(), new Content().withSchema(multipartSchema));
+      return new RequestBody().withContent(content);
    }
 
 

@@ -548,6 +548,29 @@ components:
           description: "Map of all processes within the QQQ Instance (that the user\
             \ has permission to see that they exist)."
           type: "object"
+        reports:
+          additionalProperties:
+            properties:
+              hasPermission:
+                description: "Whether the user may run the report."
+                type: "object"
+              iconName:
+                description: "Name of the report's icon."
+                type: "string"
+              label:
+                description: "User-facing name for this report."
+                type: "string"
+              name:
+                description: "Unique name for this report within the QQQ Instance."
+                type: "string"
+              processName:
+                description: "Process that runs this report, when it has one; otherwise\
+                  \ it runs from GET /reports/{reportName}."
+                type: "string"
+            type: "object"
+          description: "Map of all reports within the QQQ Instance (that the user\
+            \ has permission to see that they exist)."
+          type: "object"
         tables:
           additionalProperties:
             $ref: "#/components/schemas/TableMetaDataLight"
@@ -556,7 +579,63 @@ components:
           type: "object"
         widgets:
           additionalProperties:
-            $ref: "#/components/schemas/ProcessMetaDataLight"
+            properties:
+              defaultValues:
+                additionalProperties: true
+                description: "Frontend widget defaults, including explicit association\
+                  \ bindings"
+                type: "object"
+              dropdowns:
+                description: "Dropdowns the widget offers to filter its data."
+                type: "array"
+              footerHTML:
+                description: "HTML shown below the widget."
+                type: "string"
+              gridColumns:
+                description: "Number of grid columns (of 12) the widget spans."
+                type: "number"
+              hasPermission:
+                description: "Whether the user may render the widget."
+                type: "object"
+              helpContent:
+                additionalProperties: true
+                description: "Help content by role."
+                type: "object"
+              icon:
+                description: "Name of the widget's icon."
+                type: "string"
+              icons:
+                additionalProperties: true
+                description: "Icons by role (for example the widget header icon)."
+                type: "object"
+              isCard:
+                description: "Whether the widget is drawn as a card."
+                type: "object"
+              label:
+                description: "User-facing name for this widget"
+                type: "string"
+              minHeight:
+                description: "Minimum height of the widget (a CSS length)."
+                type: "string"
+              name:
+                description: "Unique name for this widget within the QQQ Instance"
+                type: "string"
+              showExportButton:
+                description: "Whether the widget offers an export button."
+                type: "object"
+              showReloadButton:
+                description: "Whether the widget offers a reload button."
+                type: "object"
+              storeDropdownSelections:
+                description: "Whether dropdown selections are remembered for the user."
+                type: "object"
+              tooltip:
+                description: "Tooltip text for the widget."
+                type: "string"
+              type:
+                description: "The type of this widget."
+                type: "string"
+            type: "object"
           description: "Map of all widgets within the QQQ Instance (that the user\
             \ has permission to see that they exist)."
           type: "object"
@@ -1056,6 +1135,25 @@ components:
           - "LEFT"
           - "RIGHT"
           - "FULL"
+          type: "string"
+      type: "object"
+    ReportMetaData:
+      properties:
+        hasPermission:
+          description: "Whether the user may run the report."
+          type: "object"
+        iconName:
+          description: "Name of the report's icon."
+          type: "string"
+        label:
+          description: "User-facing name for this report."
+          type: "string"
+        name:
+          description: "Unique name for this report within the QQQ Instance."
+          type: "string"
+        processName:
+          description: "Process that runs this report, when it has one; otherwise\
+            \ it runs from GET /reports/{reportName}."
           type: "string"
       type: "object"
     TableCountResponseV1:
@@ -2717,6 +2815,16 @@ paths:
           type: "string"
       requestBody:
         content:
+          application/json:
+            schema:
+              description: "JSON object with field names as keys and field values\
+                \ as values."
+              properties:
+                fieldName:
+                  description: "Value for a field in the record. Repeat for each field\
+                    \ to update."
+                  type: "string"
+              type: "object"
           multipart/form-data:
             schema:
               description: "Form fields named for the record's fields (an empty field\
@@ -2734,16 +2842,6 @@ paths:
                 associations:
                   description: "JSON object of association name to a list of associated\
                     \ records."
-                  type: "string"
-              type: "object"
-          application/json:
-            schema:
-              description: "JSON object with field names as keys and field values\
-                \ as values."
-              properties:
-                fieldName:
-                  description: "Value for a field in the record. Repeat for each field\
-                    \ to update."
                   type: "string"
               type: "object"
         required: false
@@ -2788,6 +2886,16 @@ paths:
           type: "string"
       requestBody:
         content:
+          application/json:
+            schema:
+              description: "JSON object with field names as keys and field values\
+                \ as values."
+              properties:
+                fieldName:
+                  description: "Value for a field in the record. Repeat for each field\
+                    \ to set."
+                  type: "string"
+              type: "object"
           multipart/form-data:
             schema:
               description: "Form fields named for the record's fields (an empty field\
@@ -2805,16 +2913,6 @@ paths:
                 associations:
                   description: "JSON object of association name to a list of associated\
                     \ records."
-                  type: "string"
-              type: "object"
-          application/json:
-            schema:
-              description: "JSON object with field names as keys and field values\
-                \ as values."
-              properties:
-                fieldName:
-                  description: "Value for a field in the record. Repeat for each field\
-                    \ to set."
                   type: "string"
               type: "object"
         required: false
@@ -3217,8 +3315,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3229,8 +3327,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3348,8 +3446,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3360,8 +3458,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3450,8 +3548,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3462,8 +3560,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"

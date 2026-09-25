@@ -24,9 +24,11 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.dashboard.RenderWidgetAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
@@ -55,7 +57,13 @@ public class WidgetExecutor extends AbstractMiddlewareExecutor<WidgetInput, Widg
       }
 
       RenderWidgetInput renderWidgetInput = new RenderWidgetInput();
+      renderWidgetInput.setInputSource(QInputSource.USER);
       renderWidgetInput.setWidgetMetaData(widgetMetaData);
+
+      ////////////////////////////////////////////////////////////////
+      // the same permission check as the legacy widget data route //
+      ////////////////////////////////////////////////////////////////
+      PermissionsHelper.checkWidgetPermissionThrowing(renderWidgetInput, widgetName);
 
       Map<String, String> queryParams = input.getQueryParams();
       if(queryParams != null)

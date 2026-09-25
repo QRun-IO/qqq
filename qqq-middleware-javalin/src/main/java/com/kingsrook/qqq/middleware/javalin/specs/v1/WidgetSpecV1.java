@@ -115,6 +115,18 @@ public class WidgetSpecV1 extends AbstractEndpointSpec<WidgetInput, WidgetRespon
       WidgetInput input = new WidgetInput();
       input.setWidgetName(getRequestParam(context, "widgetName"));
 
+      /////////////////////////////////////////////////////////////////////////////////
+      // widget inputs may come as query parameters (as on the legacy GET route) or //
+      // in the JSON body; a body value wins over a query parameter of the same name //
+      /////////////////////////////////////////////////////////////////////////////////
+      context.queryParamMap().forEach((name, values) ->
+      {
+         if(values != null && !values.isEmpty())
+         {
+            input.getQueryParams().put(name, values.get(0));
+         }
+      });
+
       JSONObject requestBody = getRequestBodyAsJsonObject(context);
       if(requestBody != null)
       {

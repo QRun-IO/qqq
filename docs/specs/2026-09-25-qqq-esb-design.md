@@ -46,7 +46,7 @@ All new metadata is validated at boot by `QInstanceValidator` (unknown provider,
 | Field | Default | Meaning |
 |---|---|---|
 | `destinationName` | required | queue or topic to consume |
-| `subscriptionName` | process name | topics only; shared durable subscription name |
+| `subscriptionName` | `<process>.<destination>` | topics only; shared durable subscription name, unique per topic (both brokers name the subscription queue after it) |
 | `mode` | `SINGLE` | `SINGLE` = one message per run; `BATCH` = up to `batchSize` messages or `batchWaitMs` |
 | `batchSize`, `batchWaitMs` | 100, 1000 | batch mode only |
 | `concurrency` | 1 | consumers per node |

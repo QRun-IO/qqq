@@ -122,6 +122,31 @@ components:
       type: "object"
     AuthenticationMetaDataResponseV1:
       properties:
+        branding:
+          description: "The application's branding that is safe to show before sign-in\
+            \ (names, logo, icon and accent colors; never\nbanners), so a login page\
+            \ can look like the application.  Absent when the instance defines no\
+            \ branding."
+          properties:
+            accentColor:
+              description: "Primary accent color, as a CSS color value."
+              type: "string"
+            accentColorLight:
+              description: "Light variant of the accent color, as a CSS color value."
+              type: "string"
+            appName:
+              description: "Name of this application, for display to users."
+              type: "string"
+            companyName:
+              description: "Name of the company that operates this application."
+              type: "string"
+            icon:
+              description: "Path or URL of the application's small icon image."
+              type: "string"
+            logo:
+              description: "Path or URL of the application's logo image."
+              type: "string"
+          type: "object"
         name:
           description: "Unique name for the authentication metaData object within\
             \ the QInstance.\n"
@@ -956,6 +981,27 @@ components:
             \ additional fields will be set."
           type: "string"
       type: "object"
+    PublicBranding:
+      properties:
+        accentColor:
+          description: "Primary accent color, as a CSS color value."
+          type: "string"
+        accentColorLight:
+          description: "Light variant of the accent color, as a CSS color value."
+          type: "string"
+        appName:
+          description: "Name of this application, for display to users."
+          type: "string"
+        companyName:
+          description: "Name of the company that operates this application."
+          type: "string"
+        icon:
+          description: "Path or URL of the application's small icon image."
+          type: "string"
+        logo:
+          description: "Path or URL of the application's logo image."
+          type: "string"
+      type: "object"
     QueryFilter:
       properties:
         booleanOperator:
@@ -1338,6 +1384,9 @@ components:
         displayFormat:
           description: "C-style format specifier for displaying values in this field."
           type: "string"
+        helpContents:
+          description: "Help Contents for this field."
+          type: "array"
         isEditable:
           description: "Indicate if user may edit the value in this field."
           type: "boolean"
@@ -1384,9 +1433,6 @@ components:
             \ a key for helpContents."
           type: "string"
         blockType:
-        helpContents:
-          description: "Help Contents for this field."
-          type: "array"
           description: "What type of block to render."
           enum:
           - "BUTTON"

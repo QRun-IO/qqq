@@ -22,7 +22,9 @@
 package com.kingsrook.qqq.backend.module.mongodb.actions;
 
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -104,6 +106,99 @@ class MongoDBTransactionTest extends BaseTest
          assertThatThrownBy(() -> transaction.commit())
             .isInstanceOf(QException.class)
             .hasRootCauseInstanceOf(MongoCommandException.class);
+      }
+      finally
+      {
+         backend.setTransactionsSupported(false);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Callbacks run once, in order, after commit - including when the backend
+    ** doesn't support transactions (as its writes are already durable) - and a
+    ** failing callback doesn't fail the commit or stop later callbacks.
+    *******************************************************************************/
+   @Test
+   void callbacksRunAfterCommitInOrder() throws QException
+   {
+      InsertInput insertInput = new InsertInput();
+      insertInput.setTableName(TestUtils.TABLE_NAME_PERSON);
+      insertInput.setRecords(List.of(new QRecord().withValue("firstName", "Darin")));
+
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(insertInput))
+      {
+         List<String> ran = new ArrayList<>();
+         transaction.addAfterCommitCallback(() -> ran.add("a"));
+         transaction.addAfterCommitCallback(() ->
+         {
+            throw (new IllegalStateException("callback failure"));
+         });
+         transaction.addAfterCommitCallback(() -> ran.add("c"));
+
+         insertInput.setTransaction(transaction);
+         new InsertAction().execute(insertInput);
+         assertThat(ran).isEmpty();
+
+         transaction.commit();
+         transaction.commit();
+         assertThat(ran).containsExactly("a", "c");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Rollback must discard callbacks, so a later commit doesn't run them.
+    *******************************************************************************/
+   @Test
+   void callbacksDiscardedOnRollback() throws QException
+   {
+      InsertInput insertInput = new InsertInput();
+      insertInput.setTableName(TestUtils.TABLE_NAME_PERSON);
+
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(insertInput))
+      {
+         AtomicInteger runCount = new AtomicInteger(0);
+         transaction.addAfterCommitCallback(runCount::incrementAndGet);
+
+         transaction.rollback();
+         transaction.commit();
+         assertThat(runCount.get()).isEqualTo(0);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** If the commit itself fails (here, transactions turned on against our
+    ** single-node mongo, which can't do them), callbacks must not run.
+    *******************************************************************************/
+   @Test
+   void callbacksNotRunWhenCommitFails() throws QException
+   {
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) QContext.getQInstance().getBackend(TestUtils.DEFAULT_BACKEND_NAME);
+
+      try
+      {
+         backend.setTransactionsSupported(true);
+
+         InsertInput insertInput = new InsertInput();
+         insertInput.setTableName(TestUtils.TABLE_NAME_PERSON);
+         insertInput.setRecords(List.of(new QRecord().withValue("firstName", "Darin")));
+
+         try(QBackendTransaction transaction = QBackendTransaction.openFor(insertInput))
+         {
+            AtomicInteger runCount = new AtomicInteger(0);
+            transaction.addAfterCommitCallback(runCount::incrementAndGet);
+
+            insertInput.setTransaction(transaction);
+            assertThatThrownBy(() -> new InsertAction().execute(insertInput)).isInstanceOf(QException.class);
+
+            assertThatThrownBy(transaction::commit).isInstanceOf(QException.class);
+            assertThat(runCount.get()).isEqualTo(0);
+         }
       }
       finally
       {

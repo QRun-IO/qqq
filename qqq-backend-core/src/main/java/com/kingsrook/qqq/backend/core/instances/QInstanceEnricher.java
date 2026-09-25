@@ -56,6 +56,8 @@ import com.kingsrook.qqq.backend.core.model.bulk.TableKeyFieldsPossibleValueSour
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
@@ -73,7 +75,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
@@ -184,6 +188,7 @@ public class QInstanceEnricher
          {
             qInstance.getBackends().values().forEach(this::disableCapabilitiesUnsupportedByModule);
          }
+         protectTableBasedAuthenticationTables();
          qInstance.getTables().values().forEach(this::enrichTable);
          defineTableBulkProcesses(qInstance);
       }
@@ -491,6 +496,44 @@ public class QInstanceEnricher
       if(table.getAuditRules() == null && qInstance.getDefaultAuditRules() != null)
       {
          table.setAuditRules(qInstance.getDefaultAuditRules());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Secure defaults for TABLE_BASED authentication (QRun-IO/qqq#696): its user
+    ** table holds password hashes and its session table holds the session ids
+    ** that authenticate requests, so unless the application set permission rules
+    ** on them, they require read/insert/edit/delete permissions (granted to no
+    ** session by default) and are hidden from users without them. The password
+    ** hash field is always hidden, so it is never returned by the API. The
+    ** authentication module itself works on these tables as a system user.
+    *******************************************************************************/
+   private void protectTableBasedAuthenticationTables()
+   {
+      List<QAuthenticationMetaData> providers = new ArrayList<>();
+      providers.add(qInstance.getAuthentication());
+      providers.addAll(CollectionUtils.nonNullMap(qInstance.getScopedAuthenticationProviders()).values());
+      for(QAuthenticationMetaData provider : providers)
+      {
+         if(!(provider instanceof TableBasedAuthenticationMetaData tableBased))
+         {
+            continue;
+         }
+         for(String tableName : List.of(tableBased.getUserTableName(), tableBased.getSessionTableName()))
+         {
+            QTableMetaData table = qInstance.getTable(tableName);
+            if(table != null && table.getPermissionRules() == null)
+            {
+               table.setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS).withDenyBehavior(DenyBehavior.HIDDEN));
+            }
+         }
+         QTableMetaData userTable = qInstance.getTable(tableBased.getUserTableName());
+         if(userTable != null && userTable.getFields() != null && userTable.getFields().containsKey(tableBased.getUserTablePasswordHashField()))
+         {
+            userTable.getField(tableBased.getUserTablePasswordHashField()).setIsHidden(true);
+         }
       }
    }
 

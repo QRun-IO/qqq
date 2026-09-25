@@ -138,10 +138,10 @@ CI runs the complete sample test suite for feature changes and before publicatio
 After committing the sample and publishing the release, validate those public artifacts using Python 3.12 or later:
 
 ```bash
-python3 qqq-sample-project/verify-published.py 4.0.0 --material-version 0.41.0
+python3 qqq-sample-project/verify-published.py 4.1.0 --material-version 0.41.0 --next-version 0.2.1
 ```
 
-Supply the core and dashboard versions actually published; the command above selects final core 4.0.0 and Material Dashboard 0.41.0. This exports committed `HEAD`, resolves the literal parent and dashboard from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and reports the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`, including separate test-acceptance and feature-coverage results. Add `--require-complete-coverage` when the deferred comprehensive feature gate is required; without it, a successful run does not certify the deferred scenarios.
+Supply the core and dashboard versions actually published; the command above selects final core 4.1.0, Next dashboard 0.2.1 and Material Dashboard 0.41.0. This exports committed `HEAD`, resolves the literal parent and dashboard from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and reports the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`, including separate test-acceptance and feature-coverage results. Add `--require-complete-coverage` when the deferred comprehensive feature gate is required; without it, a successful run does not certify the deferred scenarios.
 
 ## Source entry points
 

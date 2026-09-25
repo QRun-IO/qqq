@@ -1688,6 +1688,16 @@ components:
             \ BackendVariantsConfig)"
           type: "string"
       type: "object"
+    TableVariantsResponseV1:
+      properties:
+        variants:
+          description: "The variants the table's backend can be scoped to - send one\
+            \ back as tableVariant in query, count, get and export requests.  Empty\
+            \ (always present) when the backend does not use variants."
+          items:
+            $ref: "#/components/schemas/TableVariant"
+          type: "array"
+      type: "object"
     VirtualFieldMetaData:
       properties:
         adornments:
@@ -2299,6 +2309,20 @@ paths:
                 accessToken:
                   description: "An access token from a downstream authentication provider\
                     \ (e.g., Auth0), to use as the basis for authentication and authorization."
+                  type: "string"
+                code:
+                  description: "OAuth2 authorization code, for the backend to exchange\
+                    \ with the identity provider (authorization-code + PKCE sign-in)."
+                  type: "string"
+                codeVerifier:
+                  description: "PKCE code verifier that goes with `code`."
+                  type: "string"
+                redirectUri:
+                  description: "Redirect URI the authorization `code` was issued to."
+                  type: "string"
+                sessionUUID:
+                  description: "UUID of an existing session (from its sessionUUID\
+                    \ cookie), to resume it instead of signing in again."
                   type: "string"
               type: "object"
         required: true
@@ -3382,8 +3406,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3394,8 +3418,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3513,8 +3537,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3525,8 +3549,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3615,8 +3639,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3627,8 +3651,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3922,3 +3946,36 @@ paths:
       summary: "Run a report and download the file"
       tags:
       - "Reports"
+  /qqq/v1/table/{tableName}/variants:
+    get:
+      description: "List the variants a table's backend can be scoped to (for example\
+        \ one data set per store).  Requires read\npermission on the table and on\
+        \ the backend's variant options table."
+      parameters:
+      - description: "Name of the table whose variants to list."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                A table with variants:
+                  value:
+                    variants:
+                    - id: "1"
+                      name: "Main Street"
+                      type: "store"
+              schema:
+                $ref: "#/components/schemas/TableVariantsResponseV1"
+          description: "The variants the table can be scoped to."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "List a table's backend variants"
+      tags:
+      - "Tables"

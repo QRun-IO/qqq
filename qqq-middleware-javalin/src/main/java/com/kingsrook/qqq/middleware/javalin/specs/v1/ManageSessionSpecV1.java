@@ -120,6 +120,22 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
                   .withType(Type.STRING)
                   .withDescription("An access token from a downstream authentication provider (e.g., Auth0), to use as the basis for authentication and authorization.")
                )
+               .withProperty("code", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("OAuth2 authorization code, for the backend to exchange with the identity provider (authorization-code + PKCE sign-in).")
+               )
+               .withProperty("codeVerifier", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("PKCE code verifier that goes with `code`.")
+               )
+               .withProperty("redirectUri", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("Redirect URI the authorization `code` was issued to.")
+               )
+               .withProperty("sessionUUID", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("UUID of an existing session (from its sessionUUID cookie), to resume it instead of signing in again.")
+               )
             )
          ));
    }
@@ -134,6 +150,10 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
    {
       ManageSessionInput manageSessionInput = new ManageSessionInput();
       manageSessionInput.setAccessToken(getRequestParam(context, "accessToken"));
+      manageSessionInput.setCode(getRequestParam(context, "code"));
+      manageSessionInput.setCodeVerifier(getRequestParam(context, "codeVerifier"));
+      manageSessionInput.setRedirectUri(getRequestParam(context, "redirectUri"));
+      manageSessionInput.setSessionUUID(getRequestParam(context, "sessionUUID"));
       return (manageSessionInput);
    }
 

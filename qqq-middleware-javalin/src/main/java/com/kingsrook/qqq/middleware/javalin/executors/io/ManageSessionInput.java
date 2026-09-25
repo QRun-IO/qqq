@@ -28,6 +28,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 public class ManageSessionInput extends AbstractMiddlewareInput
 {
    private String accessToken;
+   private String basicAuthString;
 
 
 
@@ -57,6 +58,38 @@ public class ManageSessionInput extends AbstractMiddlewareInput
    public ManageSessionInput withAccessToken(String accessToken)
    {
       this.accessToken = accessToken;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for basicAuthString - the base64 user-id:password of an
+    ** `Authorization: Basic` header (TABLE_BASED authentication)
+    *******************************************************************************/
+   public String getBasicAuthString()
+   {
+      return (this.basicAuthString);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for basicAuthString
+    *******************************************************************************/
+   public void setBasicAuthString(String basicAuthString)
+   {
+      this.basicAuthString = basicAuthString;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for basicAuthString
+    *******************************************************************************/
+   public ManageSessionInput withBasicAuthString(String basicAuthString)
+   {
+      this.basicAuthString = basicAuthString;
       return (this);
    }
 

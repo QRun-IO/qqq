@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionOutputInterface;
 
@@ -54,6 +55,14 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       Map<String, String> authContext = new HashMap<>();
       authContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, input.getAccessToken());
       authContext.put(Auth0AuthenticationModule.DO_STORE_USER_SESSION_KEY, "true");
+
+      ////////////////////////////////////////////////////////////////////////////
+      // username + password (Authorization: Basic), e.g. for TABLE_BASED auth //
+      ////////////////////////////////////////////////////////////////////////////
+      if(StringUtils.hasContent(input.getBasicAuthString()))
+      {
+         authContext.put(Auth0AuthenticationModule.BASIC_AUTH_KEY, input.getBasicAuthString());
+      }
 
       /////////////////////////////////
       // (try to) create the session //

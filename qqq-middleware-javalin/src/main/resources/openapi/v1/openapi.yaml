@@ -1384,6 +1384,9 @@ components:
             \ a key for helpContents."
           type: "string"
         blockType:
+        helpContents:
+          description: "Help Contents for this field."
+          type: "array"
           description: "What type of block to render."
           enum:
           - "BUTTON"
@@ -1912,7 +1915,20 @@ paths:
         \ response, data from that authentication provider should be posted\nto this\
         \ endpoint, to create a session within the QQQ application.\n\nThe response\
         \ object will include a session identifier (`uuid`) to authenticate the user\
-        \ in subsequent API calls."
+        \ in subsequent API calls.\n\nFor the `TABLE_BASED` type, send the user's\
+        \ credentials in an `Authorization: Basic` header (base64 of\n`username:password`,\
+        \ UTF-8); the body may be empty.  The password is verified against the user\
+        \ table and a\nsession row is stored; a `401` response means the credentials\
+        \ were refused."
+      parameters:
+      - description: "For `TABLE_BASED` authentication: `Basic ` followed by the base64\
+          \ encoding of `username:password` (UTF-8).\nNot used by other authentication\
+          \ types."
+        example: "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
+        in: "header"
+        name: "Authorization"
+        schema:
+          type: "string"
       requestBody:
         content:
           application/json:

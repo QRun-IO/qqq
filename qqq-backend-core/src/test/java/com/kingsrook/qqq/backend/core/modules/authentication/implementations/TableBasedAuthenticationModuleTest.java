@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -327,6 +328,109 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
       assertTrue(new TableBasedAuthenticationModule().isSessionValid(qInstance, session));
       Map<String, Integer> statistics = MemoryRecordStore.getStatistics();
       assertEquals(4, statistics.get(MemoryRecordStore.STAT_QUERIES_RAN));
+   }
+
+
+
+   /*******************************************************************************
+    ** A password may contain colons: the user-id ends at the first one (RFC 7617).
+    *******************************************************************************/
+   @Test
+   void testPasswordContainingColons() throws Exception
+   {
+      QInstance qInstance = getQInstance();
+      insertTestUser(qInstance, USERNAME, "pass:word:2026", FULL_NAME);
+
+      TableBasedAuthenticationModule authModule = new TableBasedAuthenticationModule();
+      QSession                       session    = authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, "pass:word:2026")));
+      assertEquals(USERNAME, session.getUser().getIdReference());
+
+      assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, "pass"))))
+         .isInstanceOf(QAuthenticationException.class)
+         .hasMessage("Incorrect username or password.");
+   }
+
+
+
+   /*******************************************************************************
+    ** Credentials without a user-id, or a user without a password hash, are
+    ** refused as incorrect - never as an internal error that describes them.
+    *******************************************************************************/
+   @Test
+   void testMalformedCredentialsAndMissingHash() throws Exception
+   {
+      QInstance qInstance = getQInstance();
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+
+      TableBasedAuthenticationModule authModule = new TableBasedAuthenticationModule();
+      for(String credentials : List.of(USERNAME + PASSWORD, ":" + PASSWORD, ""))
+      {
+         String encoded = Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+         assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encoded)))
+            .isInstanceOf(QAuthenticationException.class)
+            .hasMessage("Incorrect username or password.");
+      }
+
+      QAuthenticationMetaData tableBasedAuthentication = qInstance.getAuthentication();
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new Auth0AuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
+      TestUtils.insertRecords(qInstance.getTable("user"), List.of(new QRecord().withValue("username", "nohash").withValue("fullName", "No Hash")));
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), tableBasedAuthentication);
+
+      assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth("nohash", ""))))
+         .isInstanceOf(QAuthenticationException.class)
+         .hasMessage("Incorrect username or password.");
+   }
+
+
+
+   /*******************************************************************************
+    ** A session is identified to frontends by name and username (never the hash),
+    ** and resumes from the sessionUUID key that manageSession's cookie supplies.
+    *******************************************************************************/
+   @Test
+   void testFrontendValuesAndSessionUuidKey() throws Exception
+   {
+      QInstance qInstance = getQInstance();
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+
+      TableBasedAuthenticationModule authModule = new TableBasedAuthenticationModule();
+      QSession                       session    = authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, PASSWORD)));
+      assertEquals(Map.of("user", Map.of("name", FULL_NAME, "username", USERNAME)), session.getValuesForFrontend());
+
+      QSession resumed = authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.SESSION_UUID_KEY, session.getUuid()));
+      assertEquals(session.getUuid(), resumed.getUuid());
+      assertEquals(USERNAME, resumed.getUser().getIdReference());
+      assertEquals(session.getValuesForFrontend(), resumed.getValuesForFrontend());
+   }
+
+
+
+   /*******************************************************************************
+    ** Logout deletes the session row, so the session can no longer be resumed.
+    *******************************************************************************/
+   @Test
+   void testLogoutDeletesSession() throws Exception
+   {
+      QInstance qInstance = getQInstance();
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+
+      TableBasedAuthenticationModule authModule = new TableBasedAuthenticationModule();
+      QSession                       session    = authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, PASSWORD)));
+      String                         uuid       = session.getUuid();
+      assertTrue(InMemoryStateProvider.getInstance().get(Instant.class, new SimpleStateKey<>(uuid)).isPresent());
+
+      authModule.logout(qInstance, null);
+      authModule.logout(qInstance, "not-a-session");
+      assertNotNull(authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.SESSION_ID_KEY, uuid)));
+
+      authModule.logout(qInstance, uuid);
+      assertFalse(InMemoryStateProvider.getInstance().get(Instant.class, new SimpleStateKey<>(uuid)).isPresent());
+      for(String key : List.of(TableBasedAuthenticationModule.SESSION_ID_KEY, TableBasedAuthenticationModule.SESSION_UUID_KEY))
+      {
+         assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(key, uuid)))
+            .isInstanceOf(QAuthenticationException.class)
+            .hasMessage("Session not found.");
+      }
    }
 
 

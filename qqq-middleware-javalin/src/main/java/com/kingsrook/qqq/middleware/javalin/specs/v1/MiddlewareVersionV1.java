@@ -47,6 +47,11 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableMetaDataSpecV1());
       list.add(new TableQuerySpecV1());
       list.add(new TableCountSpecV1());
+      ///////////////////////////////////////////////////////////////////////////
+      // before TableGetSpecV1: GET /table/{t}/variants would otherwise match //
+      // GET /table/{t}/{primaryKey} (routes match in registration order)     //
+      ///////////////////////////////////////////////////////////////////////////
+      list.add(new TableVariantsSpecV1());
       list.add(new TableGetSpecV1());
       list.add(new TableInsertSpecV1());
       list.add(new TableUpdateSpecV1());
@@ -70,7 +75,6 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new RecordFieldDownloadSpecV1());
       list.add(new GeneralDownloadSpecV1());
       list.add(new ReportRunSpecV1());
-      list.add(new TableVariantsSpecV1());
    }
 
    /***************************************************************************

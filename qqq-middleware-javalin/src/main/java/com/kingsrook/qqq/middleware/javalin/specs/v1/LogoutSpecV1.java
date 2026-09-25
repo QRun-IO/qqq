@@ -86,10 +86,13 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
    {
       LogoutResponseV1 result = super.serveRequest(abstractMiddlewareVersion, context);
 
-      ////////////////////////////////////////////////////////
-      // remove the session cookie by setting it to expired //
-      ////////////////////////////////////////////////////////
+      ///////////////////////////////////////////////////////////////////////////
+      // remove the session cookies by setting them to expired.  sessionId is   //
+      // also issued (by modules that use it) on every request; a stale one    //
+      // would otherwise shadow the next sign-in's sessionUUID.                //
+      ///////////////////////////////////////////////////////////////////////////
       context.removeCookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME);
+      context.removeCookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME);
 
       return (result);
    }

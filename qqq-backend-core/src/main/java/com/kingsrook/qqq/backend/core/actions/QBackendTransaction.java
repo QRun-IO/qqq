@@ -22,7 +22,11 @@
 package com.kingsrook.qqq.backend.core.actions;
 
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
@@ -35,10 +39,21 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
  ** Most obvious use-case would be a JDBC Connection.  See subclass in rdbms module.
  ** Ditto MongoDB.
  **
+ ** Also holds after-commit callbacks: work (e.g., publishing events about
+ ** changed records) that must only happen once the transaction's data is
+ ** committed, and never if it is rolled back.  Subclasses that override commit()
+ ** must call runAfterCommitCallbacks() once their commit succeeds, and subclasses
+ ** that override rollback() must call super.rollback(), which discards them.
+ **
  ** Note:  One would imagine that this class shouldn't ever implement Serializable...
  *******************************************************************************/
 public class QBackendTransaction implements AutoCloseable
 {
+   private static final QLogger LOG = QLogger.getLogger(QBackendTransaction.class);
+
+   private List<Runnable> afterCommitCallbacks = new ArrayList<>();
+
+
 
    /*******************************************************************************
     **
@@ -58,9 +73,11 @@ public class QBackendTransaction implements AutoCloseable
     *******************************************************************************/
    public void commit() throws QException
    {
-      ////////////////////////
-      // noop in base class //
-      ////////////////////////
+      //////////////////////////////////////////////////////////////////////
+      // nothing to commit in base class - so just run any callbacks that //
+      // were waiting on the commit                                       //
+      //////////////////////////////////////////////////////////////////////
+      runAfterCommitCallbacks();
    }
 
 
@@ -70,9 +87,62 @@ public class QBackendTransaction implements AutoCloseable
     *******************************************************************************/
    public void rollback() throws QException
    {
-      ////////////////////////
-      // noop in base class //
-      ////////////////////////
+      //////////////////////////////////////////////////////////////////////
+      // nothing to roll back in base class - but any after-commit        //
+      // callbacks were for work that won't be committed, so discard them //
+      //////////////////////////////////////////////////////////////////////
+      afterCommitCallbacks.clear();
+   }
+
+
+
+   /*******************************************************************************
+    ** Register a callback to run after this transaction's next successful commit.
+    ** Callbacks run in the order they were added, and each runs at most once.  If
+    ** the transaction is rolled back instead, they are discarded without running.
+    **
+    ** A callback that throws is logged, and does not fail the commit, nor stop
+    ** later callbacks from running.
+    *******************************************************************************/
+   public void addAfterCommitCallback(Runnable callback)
+   {
+      afterCommitCallbacks.add(Objects.requireNonNull(callback, "callback"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Run (and then forget) all after-commit callbacks, in the order they were
+    ** added, catching and logging any exception from each.  For subclasses to
+    ** call once their commit has succeeded.
+    *******************************************************************************/
+   protected void runAfterCommitCallbacks()
+   {
+      if(afterCommitCallbacks.isEmpty())
+      {
+         return;
+      }
+
+      /////////////////////////////////////////////////////////////////////////////
+      // swap the list out before running, so each callback runs at most once.   //
+      // a callback added while these run (e.g., by more writes on this          //
+      // transaction, which a commit re-opens) waits for the next commit, rather //
+      // than running before its work is committed.                              //
+      /////////////////////////////////////////////////////////////////////////////
+      List<Runnable> callbacksToRun = afterCommitCallbacks;
+      afterCommitCallbacks = new ArrayList<>();
+
+      for(Runnable callback : callbacksToRun)
+      {
+         try
+         {
+            callback.run();
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error running after-commit callback", e);
+         }
+      }
    }
 
 

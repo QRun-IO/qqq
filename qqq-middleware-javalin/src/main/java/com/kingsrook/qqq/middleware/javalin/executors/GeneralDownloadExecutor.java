@@ -22,14 +22,12 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.URLConnection;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -49,7 +47,10 @@ public class GeneralDownloadExecutor extends AbstractMiddlewareExecutor<GeneralD
 
 
    /***************************************************************************
-    **
+    ** Serve a file a process made available for download, exactly as the legacy
+    ** download route does: a server file only when this session was granted it
+    ** (ProcessFileDownload), a storage file only when its table and reference were
+    ** registered for this session.
     ***************************************************************************/
    @Override
    public void execute(GeneralDownloadInput input, GeneralDownloadOutputInterface output) throws QException
@@ -77,16 +78,16 @@ public class GeneralDownloadExecutor extends AbstractMiddlewareExecutor<GeneralD
 
          if(StringUtils.hasContent(filePath))
          {
-            validateFilePathWithinTempDir(filePath);
-
-            File        file        = new File(filePath);
-            InputStream inputStream = new FileInputStream(file);
-            output.setInputStream(inputStream);
+            output.setInputStream(ProcessFileDownload.open(filePath));
          }
          else if(StringUtils.hasContent(storageTableName) && StringUtils.hasContent(storageReference))
          {
-            InputStream inputStream = new StorageAction().getInputStream(new StorageInput(storageTableName).withReference(storageReference));
-            output.setInputStream(inputStream);
+            StorageInput storageInput = new StorageInput(storageTableName).withReference(storageReference);
+            if(!ProcessFileDownload.isStorageRegistered(storageInput))
+            {
+               throw (new QPermissionDeniedException("This file is not an authorized process download"));
+            }
+            output.setInputStream(new StorageAction().getInputStream(storageInput));
          }
          else
          {
@@ -100,23 +101,6 @@ public class GeneralDownloadExecutor extends AbstractMiddlewareExecutor<GeneralD
       catch(Exception e)
       {
          throw (new QException("Error executing file download", e));
-      }
-   }
-
-
-
-   /***************************************************************************
-    ** Validate that a file path resolves to within java.io.tmpdir, to prevent
-    ** path traversal attacks.
-    ***************************************************************************/
-   private void validateFilePathWithinTempDir(String filePath) throws QBadRequestException, IOException
-   {
-      File   file          = new File(filePath);
-      String canonicalPath = file.getCanonicalPath();
-      String tempDir       = new File(System.getProperty("java.io.tmpdir")).getCanonicalPath();
-      if(!canonicalPath.startsWith(tempDir))
-      {
-         throw new QBadRequestException("File path is not within the allowed directory");
       }
    }
 

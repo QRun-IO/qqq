@@ -599,7 +599,8 @@ components:
         values:
           description: "Raw values that make up the record.  Keys are Strings, which\
             \ match the table's field names. Values can be any type, as per the table's\
-            \ fields."
+            \ fields.  Single-record responses (get, insert, update) include fields\
+            \ whose value is null; query results omit them."
           type: "object"
         warnings:
           description: "Messages for warnings on this record.  Omitted when there\
@@ -1112,7 +1113,8 @@ components:
             values:
               description: "Raw values that make up the record.  Keys are Strings,\
                 \ which match the table's field names. Values can be any type, as\
-                \ per the table's fields."
+                \ per the table's fields.  Single-record responses (get, insert, update)\
+                \ include fields whose value is null; query results omit them."
               type: "object"
             warnings:
               description: "Messages for warnings on this record.  Omitted when there\
@@ -1155,7 +1157,8 @@ components:
             values:
               description: "Raw values that make up the record.  Keys are Strings,\
                 \ which match the table's field names. Values can be any type, as\
-                \ per the table's fields."
+                \ per the table's fields.  Single-record responses (get, insert, update)\
+                \ include fields whose value is null; query results omit them."
               type: "object"
             warnings:
               description: "Messages for warnings on this record.  Omitted when there\
@@ -1496,7 +1499,8 @@ components:
             values:
               description: "Raw values that make up the record.  Keys are Strings,\
                 \ which match the table's field names. Values can be any type, as\
-                \ per the table's fields."
+                \ per the table's fields.  Single-record responses (get, insert, update)\
+                \ include fields whose value is null; query results omit them."
               type: "object"
             warnings:
               description: "Messages for warnings on this record.  Omitted when there\
@@ -3608,6 +3612,10 @@ paths:
                 includeHeaderRow:
                   description: "Whether to include a header row (default true)"
                   type: "boolean"
+                tableVariant:
+                  $ref: "#/components/schemas/TableVariant"
+                  description: "For tables that use variant backends, the variant\
+                    \ to export from (the same `type` and `id` as in query requests)."
               type: "object"
         required: false
       responses:
@@ -3714,3 +3722,38 @@ paths:
       summary: "Download a file"
       tags:
       - "General"
+  /qqq/v1/reports/{reportName}:
+    get:
+      description: "Run a report and stream the generated file in the requested format.\
+        \  The report's input fields are given as\nquery parameters named for the\
+        \ fields; a missing required input is a 400.  Requires permission to run the\
+        \ report."
+      parameters:
+      - description: "Name of the report to run."
+        example: "personReport"
+        in: "path"
+        name: "reportName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Output format: csv, xlsx, json (as for table export)."
+        example: "csv"
+        in: "query"
+        name: "format"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/octet-stream:
+              schema:
+                format: "binary"
+                type: "string"
+          description: "The generated report file, in the requested format"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Run a report and download the file"
+      tags:
+      - "Reports"

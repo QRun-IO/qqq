@@ -34,6 +34,7 @@ import com.kingsrook.qqq.middleware.javalin.executors.io.TableExportInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.TableExportResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.QuerySpecUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
@@ -119,6 +120,9 @@ public class TableExportSpecV1 extends AbstractEndpointSpec<TableExportInput, Ta
       properties.put("includeHeaderRow", new Schema()
          .withDescription("Whether to include a header row (default true)")
          .withType(Type.BOOLEAN));
+      properties.put("tableVariant", new Schema()
+         .withDescription("For tables that use variant backends, the variant to export from (the same `type` and `id` as in query requests).")
+         .withRef("#/components/schemas/TableVariant"));
 
       return new RequestBody()
          .withContent(Map.of(
@@ -182,6 +186,17 @@ public class TableExportSpecV1 extends AbstractEndpointSpec<TableExportInput, Ta
          {
             input.setIncludeHeaderRow(requestBody.getBoolean("includeHeaderRow"));
          }
+
+         input.setTableVariant(QuerySpecUtils.getTableVariantFromRequestBody(requestBody));
+      }
+
+      //////////////////////////////////////////////////////////////////////////////
+      // like the legacy route: without a format, use the filename's extension //
+      //////////////////////////////////////////////////////////////////////////////
+      String filename = input.getFilename();
+      if(!StringUtils.hasContent(input.getFormat()) && StringUtils.hasContent(filename) && filename.lastIndexOf('.') > 0)
+      {
+         input.setFormat(filename.substring(filename.lastIndexOf('.') + 1));
       }
 
       return (input);
@@ -228,7 +243,8 @@ public class TableExportSpecV1 extends AbstractEndpointSpec<TableExportInput, Ta
 
       if(StringUtils.hasContent(output.getFilename()))
       {
-         context.header("Content-Disposition", "attachment; filename=\"" + output.getFilename() + "\"");
+         String filename = output.getFilename().replaceAll("[\"\\\\\\p{Cntrl}]", "_");
+         context.header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
       }
 
       if(output.getInputStream() != null)

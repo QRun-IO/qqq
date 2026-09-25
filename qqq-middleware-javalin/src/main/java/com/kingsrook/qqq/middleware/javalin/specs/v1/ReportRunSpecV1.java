@@ -22,16 +22,15 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
-import com.kingsrook.qqq.middleware.javalin.executors.GeneralDownloadExecutor;
-import com.kingsrook.qqq.middleware.javalin.executors.io.GeneralDownloadInput;
+import com.kingsrook.qqq.middleware.javalin.executors.ReportRunExecutor;
+import com.kingsrook.qqq.middleware.javalin.executors.io.ReportRunInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
-import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.GeneralDownloadResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.TableExportResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
@@ -44,10 +43,12 @@ import io.javalin.http.Context;
 
 
 /*******************************************************************************
- ** Spec for the general file download endpoint (GET /download/{file}).
- ** This endpoint returns binary file content from server-side storage.
+ ** Spec for running a report and downloading the generated file
+ ** (GET /reports/{reportName}) - the v1 form of the legacy streaming report
+ ** route, for reports that are not run through a process.  Returns the file
+ ** (CSV, XLSX, JSON, ...) rather than a JSON response body.
  *******************************************************************************/
-public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadInput, GeneralDownloadResponseV1, GeneralDownloadExecutor>
+public class ReportRunSpecV1 extends AbstractEndpointSpec<ReportRunInput, TableExportResponseV1, ReportRunExecutor>
 {
 
    /***************************************************************************
@@ -56,12 +57,13 @@ public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadI
    public BasicOperation defineBasicOperation()
    {
       return new BasicOperation()
-         .withPath("/download/{file}")
+         .withPath("/reports/{reportName}")
          .withHttpMethod(HttpMethod.GET)
-         .withTag(TagsV1.GENERAL)
-         .withShortSummary("Download a file")
+         .withTag(TagsV1.REPORTS)
+         .withShortSummary("Run a report and download the file")
          .withLongDescription("""
-            Download a file from server-side storage by file path or storage table reference."""
+            Run a report and stream the generated file in the requested format.  The report's input fields are given as
+            query parameters named for the fields; a missing required input is a 400.  Requires permission to run the report."""
          );
    }
 
@@ -75,29 +77,18 @@ public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadI
    {
       return List.of(
          new Parameter()
-            .withName("file")
-            .withDescription("Filename for the download.")
+            .withName("reportName")
+            .withDescription("Name of the report to run.")
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
-            .withExample("report.csv")
+            .withExample("personReport")
             .withIn(In.PATH),
          new Parameter()
-            .withName("filePath")
-            .withDescription("Server-side file path to download from.")
-            .withRequired(false)
+            .withName("format")
+            .withDescription("Output format: csv, xlsx, json (as for table export).")
+            .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
-            .withIn(In.QUERY),
-         new Parameter()
-            .withName("storageTableName")
-            .withDescription("Name of the storage table to download from.")
-            .withRequired(false)
-            .withSchema(new Schema().withType(Type.STRING))
-            .withIn(In.QUERY),
-         new Parameter()
-            .withName("storageReference")
-            .withDescription("Storage reference key for the file.")
-            .withRequired(false)
-            .withSchema(new Schema().withType(Type.STRING))
+            .withExample("csv")
             .withIn(In.QUERY)
       );
    }
@@ -108,14 +99,21 @@ public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadI
     **
     ***************************************************************************/
    @Override
-   public GeneralDownloadInput buildInput(Context context) throws Exception
+   public ReportRunInput buildInput(Context context) throws Exception
    {
-      GeneralDownloadInput input = new GeneralDownloadInput();
-      input.setFile(getRequestParam(context, "file"));
-      input.setFilePath(getRequestParam(context, "filePath"));
-      input.setStorageTableName(getRequestParam(context, "storageTableName"));
-      input.setStorageReference(getRequestParam(context, "storageReference"));
-      return (input);
+      Map<String, String> inputValues = new LinkedHashMap<>();
+      context.queryParamMap().forEach((name, values) ->
+      {
+         if(!"format".equals(name) && values != null && !values.isEmpty())
+         {
+            inputValues.put(name, values.get(0));
+         }
+      });
+
+      return (new ReportRunInput()
+         .withReportName(getRequestParam(context, "reportName"))
+         .withFormat(getRequestParam(context, "format"))
+         .withInputValues(inputValues));
    }
 
 
@@ -139,7 +137,7 @@ public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadI
    public Map<Integer, Response> defineResponses()
    {
       return Map.of(200, new Response()
-         .withDescription("Binary file content")
+         .withDescription("The generated report file, in the requested format")
          .withContent(Map.of("application/octet-stream", new Content()
             .withSchema(new Schema().withType(Type.STRING).withFormat("binary")))));
    }
@@ -147,23 +145,20 @@ public class GeneralDownloadSpecV1 extends AbstractEndpointSpec<GeneralDownloadI
 
 
    /***************************************************************************
-    ** Override handleOutput to stream binary content rather than JSON.
+    ** Stream the file rather than a JSON body.
     ***************************************************************************/
    @Override
-   public void handleOutput(Context context, GeneralDownloadResponseV1 output) throws Exception
+   public void handleOutput(Context context, TableExportResponseV1 output) throws Exception
    {
-      if(StringUtils.hasContent(output.getContentType()))
+      if(output.getReportFormat() != null && StringUtils.hasContent(output.getReportFormat().getMimeType()))
       {
-         context.contentType(output.getContentType());
+         context.contentType(output.getReportFormat().getMimeType());
       }
 
-      ///////////////////////////////////////////////////////////////////////
-      // the filename comes from the path: send it RFC 5987-encoded, as the //
-      // legacy download route does, so it cannot break out of the header  //
-      ///////////////////////////////////////////////////////////////////////
       if(StringUtils.hasContent(output.getFilename()))
       {
-         context.header("Content-Disposition", "attachment; filename*=UTF-8''" + URLEncoder.encode(output.getFilename(), StandardCharsets.UTF_8).replace("+", "%20"));
+         String filename = output.getFilename().replaceAll("[\"\\\\\\p{Cntrl}]", "_");
+         context.header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
       }
 
       if(output.getInputStream() != null)

@@ -24,6 +24,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 
 
 /*******************************************************************************
@@ -38,6 +39,7 @@ public class TableExportInput extends AbstractMiddlewareInput
    private List<String> fieldNames;
    private Integer      limit;
    private Boolean      includeHeaderRow;
+   private TableVariant tableVariant;
 
 
 
@@ -253,6 +255,37 @@ public class TableExportInput extends AbstractMiddlewareInput
    public TableExportInput withIncludeHeaderRow(Boolean includeHeaderRow)
    {
       this.includeHeaderRow = includeHeaderRow;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public TableExportInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
       return (this);
    }
 

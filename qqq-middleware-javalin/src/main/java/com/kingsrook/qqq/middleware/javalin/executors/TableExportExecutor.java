@@ -37,7 +37,9 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.TableCapabilities;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableExportInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableExportOutputInterface;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -82,7 +84,9 @@ public class TableExportExecutor extends AbstractMiddlewareExecutor<TableExportI
          exportInput.setTableName(input.getTableName());
          exportInput.setInputSource(QInputSource.USER);
 
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
          PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ);
+         TableCapabilities.checkCapabilityThrowing(input.getTableName(), Capability.TABLE_EXPORT);
 
          exportInput.setQueryFilter(input.getFilter());
          exportInput.setFieldNames(input.getFieldNames());

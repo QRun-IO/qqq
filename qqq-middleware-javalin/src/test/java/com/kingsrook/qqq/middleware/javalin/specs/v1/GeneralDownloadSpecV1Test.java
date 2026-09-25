@@ -24,6 +24,9 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.io.File;
 import java.io.FileWriter;
+import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
@@ -78,13 +81,59 @@ class GeneralDownloadSpecV1Test extends SpecTestBase
          writer.write("Hello, download test content!");
       }
 
-      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/download/test-file.txt")
+      /////////////////////////////////////////////////////////////////////////
+      // a file no process registered for this session is refused, even in //
+      // the temp directory                                                  //
+      /////////////////////////////////////////////////////////////////////////
+      HttpResponse<String> refused = Unirest.get(getBaseUrlAndPath() + "/download/test-file.txt")
          .queryString("filePath", tempFile.getAbsolutePath())
+         .cookie("sessionId", "download-session")
+         .asString();
+      assertEquals(403, refused.getStatus());
+      assertThat(refused.getBody()).doesNotContain("Hello, download test content!");
+
+      //////////////////////////////////////////////////////////////////////////////
+      // once a process registers it for the session (as process code does), it //
+      // downloads, and only for that session                                     //
+      //////////////////////////////////////////////////////////////////////////////
+      QSession session = new QSession();
+      session.setUuid("download-session");
+      session.setIdReference("download-session");
+      QContext.init(serverQInstance, session);
+      String registeredPath = ProcessFileDownload.register(tempFile);
+      QContext.clear();
+
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/download/test%20file.txt")
+         .queryString("filePath", registeredPath)
+         .cookie("sessionId", "download-session")
          .asString();
 
-      assertEquals(200, response.getStatus());
-      assertThat(response.getHeaders().getFirst("Content-Disposition")).contains("test-file.txt");
+      assertEquals(200, response.getStatus(), response.getBody());
+      assertEquals("attachment; filename*=UTF-8''test%20file.txt", response.getHeaders().getFirst("Content-Disposition"));
       assertThat(response.getBody()).isEqualTo("Hello, download test content!");
+
+      HttpResponse<String> otherSession = Unirest.get(getBaseUrlAndPath() + "/download/test-file.txt")
+         .queryString("filePath", registeredPath)
+         .cookie("sessionId", "another-session")
+         .asString();
+      assertEquals(403, otherSession.getStatus());
+   }
+
+
+
+   /*******************************************************************************
+    ** A storage file is served only when its table and reference were registered
+    ** for the session.
+    *******************************************************************************/
+   @Test
+   void testUnregisteredStorageReferenceIsRefused()
+   {
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/download/report.csv")
+         .queryString("storageTableName", "person")
+         .queryString("storageReference", "anything.csv")
+         .cookie("sessionId", "download-session")
+         .asString();
+      assertEquals(403, response.getStatus());
    }
 
 
@@ -113,7 +162,7 @@ class GeneralDownloadSpecV1Test extends SpecTestBase
          .queryString("filePath", "/etc/passwd")
          .asString();
 
-      assertThat(response.getStatus()).isIn(400, 500);
+      assertEquals(403, response.getStatus());
       assertThat(response.getBody()).doesNotContain("root:");
    }
 
@@ -130,7 +179,7 @@ class GeneralDownloadSpecV1Test extends SpecTestBase
          .queryString("filePath", tmpDir + "/../etc/passwd")
          .asString();
 
-      assertThat(response.getStatus()).isIn(400, 500);
+      assertEquals(403, response.getStatus());
       assertThat(response.getBody()).doesNotContain("root:");
    }
 

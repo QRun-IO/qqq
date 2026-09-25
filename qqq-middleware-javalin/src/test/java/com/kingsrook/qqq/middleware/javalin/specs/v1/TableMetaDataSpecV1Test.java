@@ -22,7 +22,12 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.List;
 import java.util.function.Supplier;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpFormat;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -30,6 +35,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.eclipse.jetty.http.HttpStatus;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -83,6 +89,49 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       JSONObject firstNameField = fields.getJSONObject("firstName");
       assertEquals("firstName", firstNameField.getString("name"));
       assertEquals("First Name", firstNameField.getString("label"));
+   }
+
+
+
+   /*******************************************************************************
+    ** field help content is part of v1 field meta-data, with its format and roles
+    ** (the frontend picks the entry for the current screen), as in legacy meta-data.
+    *******************************************************************************/
+   @Test
+   void testFieldHelpContents()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      List<QHelpContent> original = firstName.getHelpContents();
+      try
+      {
+         firstName.setHelpContents(List.of(
+            new QHelpContent().withContentAsText("Given name on file.").withRole(QHelpRole.READ_SCREENS),
+            new QHelpContent().withContentAsMarkdown("Enter the **given** name.").withRole(QHelpRole.WRITE_SCREENS)));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONArray helpContents = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields").getJSONObject("firstName").getJSONArray("helpContents");
+         assertEquals(2, helpContents.length());
+
+         JSONObject read = helpContents.getJSONObject(0);
+         assertEquals("Given name on file.", read.getString("content"));
+         assertEquals(HelpFormat.TEXT.name(), read.getString("format"));
+         assertEquals(List.of("READ_SCREENS"), read.getJSONArray("roles").toList());
+
+         JSONObject write = helpContents.getJSONObject(1);
+         assertEquals(HelpFormat.MARKDOWN.name(), write.getString("format"));
+         assertEquals(List.of("WRITE_SCREENS"), write.getJSONArray("roles").toList());
+         assertThat(write.getString("contentAsHtml")).contains("<strong>given</strong>");
+
+         /////////////////////////////////////////////////////////
+         // a field without help content omits the key entirely //
+         /////////////////////////////////////////////////////////
+         assertFalse(JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields").getJSONObject("lastName").has("helpContents"));
+      }
+      finally
+      {
+         firstName.setHelpContents(original);
+      }
    }
 
 

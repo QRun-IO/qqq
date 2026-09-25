@@ -295,6 +295,9 @@ components:
         displayFormat:
           description: "C-style format specifier for displaying values in this field."
           type: "string"
+        helpContents:
+          description: "Help Contents for this field."
+          type: "array"
         isEditable:
           description: "Indicate if user may edit the value in this field."
           type: "boolean"
@@ -1596,6 +1599,9 @@ components:
                     description: "C-style format specifier for displaying values in\
                       \ this field."
                     type: "string"
+                  helpContents:
+                    description: "Help Contents for this field."
+                    type: "array"
                   isEditable:
                     description: "Indicate if user may edit the value in this field."
                     type: "boolean"

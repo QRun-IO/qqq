@@ -161,8 +161,8 @@ public class ProcessRecordsSpecV1 extends AbstractEndpointSpec<ProcessRecordsInp
    {
       if(CollectionUtils.nullSafeIsEmpty(output.getRecords()))
       {
-         context.result(JsonUtils.toJson(output, objectMapper -> objectMapper
-            .setSerializationInclusion(JsonInclude.Include.ALWAYS)));
+         context.result(JsonUtils.toJsonCustomized(output, builder -> builder
+            .serializationInclusion(JsonInclude.Include.ALWAYS)));
       }
       else
       {

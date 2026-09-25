@@ -125,6 +125,18 @@ public class TableMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("Names of the fields that record search (POST /search) matches for this table. Only present when the table is searchable and the user has read permission for it.")
+   @OpenAPIListItems(value = String.class)
+   public List<String> getSearchFields()
+   {
+      return (this.wrapped.getSearchFields());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @OpenAPIDescription("Boolean to indicate if the user has read permission for the table.")
    public Boolean getReadPermission()
    {

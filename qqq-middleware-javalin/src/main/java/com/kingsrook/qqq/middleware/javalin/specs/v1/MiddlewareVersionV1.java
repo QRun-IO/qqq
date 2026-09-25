@@ -47,6 +47,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableMetaDataSpecV1());
       list.add(new TableQuerySpecV1());
       list.add(new TableCountSpecV1());
+      list.add(new RecordSearchSpecV1());
 
       list.add(new ProcessMetaDataSpecV1());
       list.add(new ProcessInitSpecV1());

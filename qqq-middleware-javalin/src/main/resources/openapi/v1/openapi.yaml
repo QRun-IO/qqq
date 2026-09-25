@@ -1008,6 +1008,31 @@ components:
           - "FULL"
           type: "string"
       type: "object"
+    RecordSearchResponseV1:
+      properties:
+        results:
+          description: "Records whose search fields match the search term, grouped\
+            \ by table (in instance order) and ordered by primary key within each\
+            \ table."
+          items:
+            $ref: "#/components/schemas/RecordSearchResultV1"
+          type: "array"
+      type: "object"
+    RecordSearchResultV1:
+      properties:
+        recordId:
+          description: "Primary key of the record, as a string."
+          type: "string"
+        recordLabel:
+          description: "Label to identify the record to a user."
+          type: "string"
+        tableLabel:
+          description: "User-facing label of the table that the record is from."
+          type: "string"
+        tableName:
+          description: "Name of the table that the record is from."
+          type: "string"
+      type: "object"
     TableCountResponseV1:
       properties:
         count:
@@ -1077,6 +1102,13 @@ components:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
+        searchFields:
+          description: "Names of the fields that record search (POST /search) matches\
+            \ for this table. Only present when the table is searchable and the user\
+            \ has read permission for it."
+          items:
+            type: "string"
+          type: "array"
         sections:
           description: "Sections to organize fields on screens for this record"
           items:
@@ -1158,6 +1190,13 @@ components:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
+        searchFields:
+          description: "Names of the fields that record search (POST /search) matches\
+            \ for this table. Only present when the table is searchable and the user\
+            \ has read permission for it."
+          items:
+            type: "string"
+          type: "array"
         variantTableLabel:
           description: "If the table uses variants, this is the user-facing label\
             \ for the table that supplies variants for this table."
@@ -1233,6 +1272,13 @@ components:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
+        searchFields:
+          description: "Names of the fields that record search (POST /search) matches\
+            \ for this table. Only present when the table is searchable and the user\
+            \ has read permission for it."
+          items:
+            type: "string"
+          type: "array"
         sections:
           description: "Sections to organize fields on screens for this record"
           items:
@@ -1338,6 +1384,9 @@ components:
         displayFormat:
           description: "C-style format specifier for displaying values in this field."
           type: "string"
+        helpContents:
+          description: "Help Contents for this field."
+          type: "array"
         isEditable:
           description: "Indicate if user may edit the value in this field."
           type: "boolean"
@@ -2378,6 +2427,61 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Count records in a table"
+      tags:
+      - "Tables"
+  /qqq/v1/search:
+    post:
+      description: "Search for records whose search fields (declared per table in\
+        \ its meta-data, and listed as `searchFields` in the\ntable meta-data) match\
+        \ a search term. String fields match when they contain the term, ignoring\
+        \ case; integer\nfields match when they equal a numeric term. Only tables\
+        \ that the user has permission to read are searched,\nrecord security locks\
+        \ apply, and each table returns at most `limitPerTable` records (default 5,\
+        \ maximum 25)."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                searchTerm:
+                  description: "Text to search for (required; at most 100 characters\
+                    \ after trimming)."
+                  example: "Kelkhoff"
+                  type: "string"
+                tableNames:
+                  description: "Optional list of table names to search. When omitted\
+                    \ or empty, every table with search fields is searched."
+                  items:
+                    type: "string"
+                  type: "array"
+                limitPerTable:
+                  description: "Maximum number of records to return from each table."
+                  type: "number"
+              type: "object"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    results:
+                    - recordId: "1"
+                      recordLabel: "Darin Kelkhoff"
+                      tableLabel: "Person"
+                      tableName: "person"
+                    - recordId: "2"
+                      recordLabel: "Tim Kelkhoff"
+                      tableLabel: "Person"
+                      tableName: "person"
+              schema:
+                $ref: "#/components/schemas/RecordSearchResponseV1"
+          description: "The records matching the search term"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Search records across tables"
       tags:
       - "Tables"
   /qqq/v1/metaData/process/{processName}:

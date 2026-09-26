@@ -634,6 +634,16 @@ components:
             \ query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource\
             \ slots).  Omitted when the instance defines none."
           type: "object"
+        environmentValues:
+          additionalProperties:
+            type: "string"
+          description: "Environment values a frontend may use: the analytics settings\
+            \ (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS,\
+            \ GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED,\
+            \ POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other\
+            \ ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit\
+            \ allow-list - never the whole environment.  Omitted when none are set."
+          type: "object"
         processes:
           additionalProperties:
             $ref: "#/components/schemas/ProcessMetaDataLight"
@@ -696,6 +706,17 @@ components:
                         \ (day is any of, day is none of) on date and date-time fields."
                       type: "boolean"
                   type: "object"
+              type: "object"
+            materialDashboardTheme:
+              additionalProperties: true
+              description: "The application theme from the instance's MaterialDashboardThemeMetaData\
+                \ supplemental meta-data, when the instance defines it.  Keys are\
+                \ MaterialDashboardThemeMetaData property names (for example primaryColor,\
+                \ fontFamily, typographyH1FontSize, borderRadiusGlobal, density, customCss,\
+                \ brandedHeaderEnabled, sidebarBackgroundColor, tableHeaderBackgroundColor);\
+                \ values are strings, numbers or booleans.  An explicit allow-list\
+                \ of the theme's visual properties; properties without a value are\
+                \ omitted."
               type: "object"
           type: "object"
         tables:
@@ -1500,6 +1521,16 @@ components:
           $ref: "#/components/schemas/MaterialDashboardInstanceSettings"
           description: "Settings from the instance's `materialDashboard` supplemental\
             \ meta-data, when the instance defines it."
+        materialDashboardTheme:
+          additionalProperties: true
+          description: "The application theme from the instance's MaterialDashboardThemeMetaData\
+            \ supplemental meta-data, when the instance defines it.  Keys are MaterialDashboardThemeMetaData\
+            \ property names (for example primaryColor, fontFamily, typographyH1FontSize,\
+            \ borderRadiusGlobal, density, customCss, brandedHeaderEnabled, sidebarBackgroundColor,\
+            \ tableHeaderBackgroundColor); values are strings, numbers or booleans.\
+            \  An explicit allow-list of the theme's visual properties; properties\
+            \ without a value are omitted."
+          type: "object"
       type: "object"
     TableCountResponseV1:
       properties:

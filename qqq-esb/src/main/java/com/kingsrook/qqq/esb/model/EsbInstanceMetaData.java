@@ -31,9 +31,11 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
 
 
 /*******************************************************************************
@@ -99,7 +101,9 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
 
    /*******************************************************************************
-    ** Interpret ${env.*} (etc.) variables in each provider's connection fields.
+    ** Interpret ${env.*} (etc.) variables in each provider's connection fields,
+    ** and register the record change listener that publishes table events (once,
+    ** however many times the instance is enriched).
     *******************************************************************************/
    @Override
    public void enrich(QInstance qInstance)
@@ -108,6 +112,13 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       for(QEsbProviderMetaData provider : CollectionUtils.nonNullMap(providers).values())
       {
          provider.interpretVariables(interpreter);
+      }
+
+      boolean listenerRegistered = CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream()
+         .anyMatch(codeReference -> codeReference != null && EsbRecordChangeListener.class.getName().equals(codeReference.getName()));
+      if(!listenerRegistered)
+      {
+         qInstance.withRecordChangeListener(new QCodeReference(EsbRecordChangeListener.class));
       }
    }
 

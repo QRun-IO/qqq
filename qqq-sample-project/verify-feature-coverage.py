@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -13,6 +14,10 @@ import xml.etree.ElementTree as ET
 INVENTORY_IDS_SHA256 = '7ccabc35400e3c2231cbb4156db8c1af9c6d27c2a6ac18d3efb2acecf6b7f64c'
 PUBLISHED_FEATURES = {'train.bom'}
 UNSUPPORTED_FEATURES = {'core.widget.generic'}
+# URL shape is only a traceability check. Release reviewers must verify the linked owner approval.
+APPROVAL_REFERENCE = re.compile(
+    r'https://github\.com/Kingsrook/qqq/(?:issues/[1-9]\d*#issuecomment-[1-9]\d*|pull/[1-9]\d*#pullrequestreview-[1-9]\d*)'
+)
 
 
 def main():
@@ -52,6 +57,8 @@ def main():
                 or set(entry) != {'id', 'owner_approval', 'rationale', 'target_release'}
                 or any(not isinstance(value, str) or not value.strip() for value in entry.values())):
             parser.error('Every release deferral needs an ID, owner approval, rationale, and target release')
+        if not APPROVAL_REFERENCE.fullmatch(entry['owner_approval']):
+            parser.error('Release deferral needs a direct QQQ issue comment or PR review permalink')
         feature_id = entry['id']
         feature = by_id.get(feature_id)
         if (feature_id in release_deferrals or feature is None
@@ -87,16 +94,16 @@ def main():
                 unsupported.append({'id': feature['id'], 'reason': review['reason']})
                 continue
             reasons.append('unsupported disposition requires a reviewed enum-only boundary without test claims')
-        if args.stage == 'source' and feature['id'] in release_deferrals:
+        failed_tests = [test for test in tests if not outcomes.get(test, False)]
+        if args.stage == 'source' and feature['id'] in release_deferrals and not failed_tests:
             applied_release_deferrals.append(feature['id'])
             continue
         if feature['acceptance_status'] != 'verified':
             reasons.append('scenario review is pending')
         if not tests:
             reasons.append('no acceptance tests are mapped')
-        for test in tests:
-            if not outcomes.get(test, False):
-                reasons.append('test did not pass in these reports: ' + test)
+        for test in failed_tests:
+            reasons.append('test did not pass in these reports: ' + test)
         if reasons:
             gaps.append({'id': feature['id'], 'reasons': reasons})
 

@@ -44,7 +44,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
         }))
 
     def approved_deferral(self, feature_id=None):
-        return {'id': feature_id or self.feature['id'], 'owner_approval': 'QQQ-41 release owner review',
+        return {'id': feature_id or self.feature['id'],
+                'owner_approval': 'https://github.com/Kingsrook/qqq/issues/790#issuecomment-123456',
                 'rationale': 'Scenario awaits a supported fixture', 'target_release': '4.1.1'}
 
     def test_reviewed_passing_test_is_required(self):
@@ -98,6 +99,39 @@ class FeatureCoverageGateTest(unittest.TestCase):
         for outcome in ('<failure/>', '<skipped/>'):
             with self.subTest(outcome=outcome):
                 self.assertNotEqual(0, self.run_gate(stage='source', outcome=outcome)[0])
+
+    def test_pending_deferral_cannot_hide_failed_skipped_or_missing_mapped_test(self):
+        self.feature['acceptance_status'] = 'pending'
+        self.set_deferrals(self.approved_deferral())
+        for outcome in ('<failure/>', '<skipped/>', '<error/>'):
+            with self.subTest(outcome=outcome):
+                code, result = self.run_gate(stage='source', outcome=outcome)
+                self.assertEqual(1, code)
+                self.assertEqual([], result['release_deferrals'])
+                self.assertIn('test did not pass in these reports: SampleTest#testExample',
+                              result['gaps'][0]['reasons'])
+        self.feature['verified_tests'] = ['SampleTest#missing']
+        code, result = self.run_gate(stage='source')
+        self.assertEqual(1, code)
+        self.assertIn('test did not pass in these reports: SampleTest#missing',
+                      result['gaps'][0]['reasons'])
+
+    def test_approval_requires_direct_qqq_owner_review_record(self):
+        self.feature['acceptance_status'] = 'pending'
+        self.feature['verified_tests'] = []
+        for reference in ('QQQ-41 release owner review',
+                          'https://example.com/Kingsrook/qqq/issues/790#issuecomment-123456',
+                          'https://github.com/Kingsrook/qqq/issues/790',
+                          'https://github.com/other/qqq/issues/790#issuecomment-123456'):
+            with self.subTest(reference=reference):
+                entry = self.approved_deferral()
+                entry['owner_approval'] = reference
+                self.set_deferrals(entry)
+                self.assertNotEqual(0, self.run_gate(stage='source')[0])
+        entry = self.approved_deferral()
+        entry['owner_approval'] = 'https://github.com/Kingsrook/qqq/pull/798#pullrequestreview-123456'
+        self.set_deferrals(entry)
+        self.assertEqual(0, self.run_gate(stage='source')[0])
 
     def test_source_release_rejects_skipped_verified_test(self):
         code, result = self.run_gate(stage='source', outcome='<skipped/>')

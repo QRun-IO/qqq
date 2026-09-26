@@ -33,6 +33,11 @@
       <version>${revision}</version>
    </parent>
 
+   <properties>
+      <!-- The dedicated machine job opts in to Docker broker conformance. -->
+      <esb.conformance.skip>true</esb.conformance.skip>
+   </properties>
+
    <dependencies>
       <!-- Core QQQ dependency -->
       <dependency>
@@ -123,6 +128,7 @@
             <version>3.5.4</version>
             <configuration>
                <argLine>@{jaCoCoArgLine}</argLine>
+               <skipITs>${esb.conformance.skip}</skipITs>
             </configuration>
             <executions>
                <execution>

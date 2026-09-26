@@ -19,7 +19,9 @@ commands:
 
 jobs:
   esb_broker_conformance:
-    executor: qqq-orb/java
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large
     steps:
       - configure-package-install
       - qqq-orb/install_java
@@ -30,7 +32,7 @@ jobs:
           command: docker info
       - run:
           name: Run Artemis and RabbitMQ broker conformance
-          command: mvn -B -s /tmp/circleci/mvn-settings.xml -pl qqq-esb -am clean verify
+          command: mvn -B -s /tmp/circleci/mvn-settings.xml -pl qqq-esb -am -Desb.conformance.skip=false clean verify
       - run:
           name: Require broker restart conformance on Linux
           command: |

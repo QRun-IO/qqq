@@ -81,8 +81,6 @@ import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import jakarta.jms.Message;
 import jakarta.jms.Session;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -374,7 +372,6 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
 
    /** A consumer recovers after a real broker container restart. */
    @Test
-   @EnabledOnOs(OS.LINUX)
    void reconnectsAfterBrokerRestart() throws Exception
    {
       QInstance instance = defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME));

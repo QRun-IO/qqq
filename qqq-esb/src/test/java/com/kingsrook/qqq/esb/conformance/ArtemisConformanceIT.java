@@ -31,12 +31,15 @@ import com.kingsrook.qqq.esb.management.EsbBrokerAdapter;
 import com.kingsrook.qqq.esb.management.EsbBrokerAdapters;
 import com.kingsrook.qqq.esb.management.EsbMessageBrowser;
 import com.kingsrook.qqq.esb.model.EsbProviderType;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.FixedHostPortGenericContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.DockerImageName;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
@@ -48,19 +51,50 @@ class ArtemisConformanceIT extends AbstractEsbConformanceTest
    private static final String USERNAME = "esbtest";
    private static final String PASSWORD = "esbtest";
 
-   private static final GenericContainer<?> BROKER = new GenericContainer<>(DockerImageName.parse("apache/artemis:2.57.0"))
+   private static final int[] HOST_PORTS = BrokerContainerPorts.availablePair();
+   private static final GenericContainer<?> BROKER = new FixedHostPortGenericContainer<>("apache/artemis:2.57.0")
       .withEnv("ARTEMIS_USER", USERNAME)
       .withEnv("ARTEMIS_PASSWORD", PASSWORD)
-      .withExposedPorts(61616, 8161)
+      .withFixedExposedPort(HOST_PORTS[0], 61616)
+      .withFixedExposedPort(HOST_PORTS[1], 8161)
       .waitingFor(Wait.forListeningPort());
 
 
 
    /** Start the broker container once for the conformance class. */
    @BeforeAll
-   static void startContainer()
+   static void startContainer() throws Exception
    {
       BROKER.start();
+      BrokerContainerPorts.assertReachable(BROKER, 61616, 8161);
+      awaitJmsReady();
+   }
+
+
+
+   /** Artemis can accept TCP before its JMS protocol is ready. */
+   private static void awaitJmsReady() throws Exception
+   {
+      Instant deadline = Instant.now().plusSeconds(30);
+      JMSException lastFailure = null;
+      try(ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(
+         "tcp://" + BROKER.getHost() + ":" + BROKER.getMappedPort(61616), USERNAME, PASSWORD))
+      {
+         while(Instant.now().isBefore(deadline))
+         {
+            try(Connection connection = factory.createConnection())
+            {
+               connection.start();
+               return;
+            }
+            catch(JMSException e)
+            {
+               lastFailure = e;
+               Thread.sleep(200);
+            }
+         }
+      }
+      throw new IllegalStateException("Artemis JMS is not ready on its mapped port", lastFailure);
    }
 
 

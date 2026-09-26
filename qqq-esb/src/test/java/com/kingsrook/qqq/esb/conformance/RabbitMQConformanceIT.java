@@ -36,9 +36,9 @@ import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.FixedHostPortGenericContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.DockerImageName;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
@@ -50,10 +50,12 @@ class RabbitMQConformanceIT extends AbstractEsbConformanceTest
    private static final String USERNAME = "esbtest";
    private static final String PASSWORD = "esbtest";
 
-   private static final GenericContainer<?> BROKER = new GenericContainer<>(DockerImageName.parse("rabbitmq:4-management"))
+   private static final int[] HOST_PORTS = BrokerContainerPorts.availablePair();
+   private static final GenericContainer<?> BROKER = new FixedHostPortGenericContainer<>("rabbitmq:4-management")
       .withEnv("RABBITMQ_DEFAULT_USER", USERNAME)
       .withEnv("RABBITMQ_DEFAULT_PASS", PASSWORD)
-      .withExposedPorts(5672, 15672)
+      .withFixedExposedPort(HOST_PORTS[0], 5672)
+      .withFixedExposedPort(HOST_PORTS[1], 15672)
       .waitingFor(Wait.forHttp("/api/overview").forPort(15672).withBasicCredentials(USERNAME, PASSWORD));
 
 
@@ -63,6 +65,7 @@ class RabbitMQConformanceIT extends AbstractEsbConformanceTest
    static void startContainer()
    {
       BROKER.start();
+      BrokerContainerPorts.assertReachable(BROKER, 5672, 15672);
    }
 
 

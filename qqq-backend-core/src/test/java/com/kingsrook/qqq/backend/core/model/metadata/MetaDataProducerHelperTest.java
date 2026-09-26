@@ -46,6 +46,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.producers.TestMetaDataProdu
 import com.kingsrook.qqq.backend.core.model.metadata.producers.TestMetaDataProducingPossibleValueEnum;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.TestNoInterfacesExtendsObject;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.TestNoValidConstructorMetaDataProducer;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -425,6 +428,23 @@ class MetaDataProducerHelperTest
 
 
    /*******************************************************************************
+    ** A QBitMetaDataProducer finds its producers using the QInstance it is
+    ** producing into, so the QInstance flag applies to the qbit's package too.
+    *******************************************************************************/
+   @Test
+   void testQBitProducerUsesInstanceFlag() throws QException
+   {
+      MetaDataProducerMultiOutput output = new FailingQBitMetaDataProducer().produce(new QInstance());
+      assertEquals(0, output.getEach(QTableMetaData.class).size());
+
+      QInstance  qInstance = new QInstance().withFailOnMetaDataProducerError(true);
+      QException exception = assertThrows(QException.class, () -> new FailingQBitMetaDataProducer().produce(qInstance));
+      assertThat(exception.getMessage()).contains(TestThrowsInConstructorMetaDataProducer.class.getName());
+   }
+
+
+
+   /*******************************************************************************
     ** The static table meta-data customizer is cleared even when processing
     ** throws, so it doesn't leak into the next call.
     *******************************************************************************/
@@ -435,6 +455,52 @@ class MetaDataProducerHelperTest
       assertThrows(QException.class, () -> MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, PRODUCE_ERRORS_PACKAGE, (instance, table) -> table));
       assertNull(new MetaDataProducerHelper().getTableMetaDataCustomizer());
    }
+
+
+
+   /***************************************************************************
+    * Test qbit producer, whose producers come from the package with a class
+    * that fails while being evaluated as a producer.
+    ***************************************************************************/
+   private static class FailingQBitMetaDataProducer implements QBitMetaDataProducer<QBitConfig>
+   {
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public QBitConfig getQBitConfig()
+      {
+         return (new QBitConfig()
+         {
+         });
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public QBitMetaData getQBitMetaData()
+      {
+         return (new QBitMetaData()
+            .withGroupId("test.com.kingsrook.qbits")
+            .withArtifactId("failingQBit")
+            .withVersion("0.1.0"));
+      }
+
+
+
+      /***************************************************************************
+       *
+       ***************************************************************************/
+      @Override
+      public String getPackageNameForFindingMetaDataProducers()
+      {
+         return (EVALUATE_ERRORS_PACKAGE);
+      }
+   }
+
 
 
 

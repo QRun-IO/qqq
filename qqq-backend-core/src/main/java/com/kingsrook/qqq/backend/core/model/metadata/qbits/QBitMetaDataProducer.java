@@ -122,7 +122,7 @@ public interface QBitMetaDataProducer<C extends QBitConfig> extends MetaDataProd
       {
          qBitConfig.validate(qInstance);
 
-         List<MetaDataProducerInterface<?>> producers = MetaDataProducerHelper.findProducers(getPackageNameForFindingMetaDataProducers());
+         List<MetaDataProducerInterface<?>> producers = MetaDataProducerHelper.findProducers(qInstance, getPackageNameForFindingMetaDataProducers());
          MetaDataProducerHelper.sortMetaDataProducers(producers);
          for(MetaDataProducerInterface<?> producer : producers)
          {

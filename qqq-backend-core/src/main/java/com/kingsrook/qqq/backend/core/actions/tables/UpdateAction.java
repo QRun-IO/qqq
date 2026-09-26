@@ -48,6 +48,9 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -65,6 +68,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
@@ -178,7 +182,8 @@ public class UpdateAction
       // fetch the old list of records (if the backend supports it), for audits,    //
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
-      Optional<List<QRecord>> oldRecordList = fetchOldRecords(updateInput, updateInterface);
+      Optional<List<QRecord>> oldRecordList      = fetchOldRecords(updateInput, updateInterface);
+      List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
 
       ///////////////////////////////////////////////////////////////////////////////////////
       // allow caller to specify that we don't want to trigger automations. this isn't     //
@@ -251,6 +256,8 @@ public class UpdateAction
          oldRecordList.ifPresent(l -> dmlAuditInput.setOldRecordList(l));
          new DMLAuditAction().execute(dmlAuditInput);
       }
+
+      fireRecordChangeListeners(updateInput, table, updateOutput.getRecords(), listenerOldRecords);
 
       //////////////////////////////////////////////////////////////
       // finally, run the post-update customizer, if there is one //
@@ -409,22 +416,110 @@ public class UpdateAction
    {
       if(updateInterface.supportsPreFetchQuery())
       {
-         String             primaryKeyField   = updateInput.getTable().getPrimaryKeyField();
-         List<Serializable> pkeysBeingUpdated = CollectionUtils.nonNullList(updateInput.getRecords()).stream().map(r -> r.getValue(primaryKeyField)).toList();
-
-         QueryInput queryInput = new QueryInput();
-         queryInput.setTransaction(updateInput.getTransaction());
-         queryInput.setTableName(updateInput.getTableName());
-         queryInput.setTableMetaData(updateInput.getTable());
-         queryInput.setInputSource(updateInput.getInputSource());
-         queryInput.setFilter(new QQueryFilter(new QFilterCriteria(primaryKeyField, QCriteriaOperator.IN, pkeysBeingUpdated)));
-         // todo - need a limit?  what if too many??
-         QueryOutput queryOutput = new QueryAction().executeForDml(queryInput);
-
-         return (Optional.of(queryOutput.getRecords()));
+         return (Optional.of(queryOldRecords(updateInput)));
       }
 
       return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Query the stored versions of the records being updated.
+    *******************************************************************************/
+   private static List<QRecord> queryOldRecords(UpdateInput updateInput) throws QException
+   {
+      String             primaryKeyField   = updateInput.getTable().getPrimaryKeyField();
+      List<Serializable> pkeysBeingUpdated = CollectionUtils.nonNullList(updateInput.getRecords()).stream().map(r -> r.getValue(primaryKeyField)).toList();
+
+      QueryInput queryInput = new QueryInput();
+      queryInput.setTransaction(updateInput.getTransaction());
+      queryInput.setTableName(updateInput.getTableName());
+      queryInput.setTableMetaData(updateInput.getTable());
+      queryInput.setInputSource(updateInput.getInputSource());
+      queryInput.setFilter(new QQueryFilter(new QFilterCriteria(primaryKeyField, QCriteriaOperator.IN, pkeysBeingUpdated)));
+      // todo - need a limit?  what if too many??
+      QueryOutput queryOutput = new QueryAction().executeForDml(queryInput);
+
+      return (queryOutput.getRecords());
+   }
+
+
+
+   /*******************************************************************************
+    ** Old records for record change listeners.  Reuses the pre-fetch when the
+    ** backend ran one; otherwise queries only if a listener applies to this
+    ** update.  That query is only for listeners, so a failure is logged (the
+    ** listeners get null old records) rather than failing the update.
+    *******************************************************************************/
+   private static List<QRecord> fetchOldRecordsForListeners(UpdateInput updateInput, Optional<List<QRecord>> oldRecordList)
+   {
+      if(oldRecordList.isPresent())
+      {
+         return (oldRecordList.get());
+      }
+
+      if(CollectionUtils.nullSafeIsEmpty(updateInput.getRecords()) || !RecordChangeListenerHelper.anyApply(QContext.getQInstance(), updateInput.getTableName(), RecordChangeType.UPDATE))
+      {
+         return (null);
+      }
+
+      try
+      {
+         return (queryOldRecords(updateInput));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error fetching old records for record change listeners", e, logPair("tableName", updateInput.getTableName()));
+         return (null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Tell record change listeners about the records updated without errors, each
+    ** paired (by primary key) with its old record.  Runs before post-update
+    ** customizers, which may change the records the action returns.
+    *******************************************************************************/
+   private static void fireRecordChangeListeners(UpdateInput updateInput, QTableMetaData table, List<QRecord> updatedRecords, List<QRecord> oldRecords)
+   {
+      QInstance qInstance = QContext.getQInstance();
+      if(!RecordChangeListenerHelper.anyApply(qInstance, updateInput.getTableName(), RecordChangeType.UPDATE))
+      {
+         return;
+      }
+
+      try
+      {
+         Map<Object, QRecord> oldRecordsByPrimaryKey = new HashMap<>();
+         for(QRecord oldRecord : CollectionUtils.nonNullList(oldRecords))
+         {
+            oldRecordsByPrimaryKey.put(AssociatedRecordUpdate.primaryKey(table, oldRecord), oldRecord);
+         }
+
+         List<QRecord> successfulRecords = new ArrayList<>();
+         List<QRecord> pairedOldRecords  = new ArrayList<>();
+         for(QRecord record : updatedRecords)
+         {
+            if(record != null && CollectionUtils.nullSafeIsEmpty(record.getErrors()))
+            {
+               successfulRecords.add(record);
+               pairedOldRecords.add(oldRecordsByPrimaryKey.get(AssociatedRecordUpdate.primaryKey(table, record)));
+            }
+         }
+
+         RecordChangeListenerHelper.fire(qInstance, new RecordChangeEvent()
+            .withTableName(updateInput.getTableName())
+            .withType(RecordChangeType.UPDATE)
+            .withRecords(Collections.unmodifiableList(successfulRecords))
+            .withOldRecords(Collections.unmodifiableList(pairedOldRecords))
+            .withTransaction(updateInput.getTransaction()));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error preparing record change event", e, logPair("tableName", updateInput.getTableName()));
+      }
    }
 
 

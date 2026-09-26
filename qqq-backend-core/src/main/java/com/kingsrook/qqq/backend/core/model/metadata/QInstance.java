@@ -143,6 +143,8 @@ public class QInstance
 
    private ListingHash<String, QCodeReference> tableCustomizers;
 
+   private List<QCodeReference> recordChangeListeners = new ArrayList<>();
+
    private QCodeReference metaDataActionCustomizer = null;
 
    private List<QCodeReference> processLifecycleListeners = new ArrayList<>();
@@ -1948,6 +1950,43 @@ public class QInstance
       }
 
       return (this.tableCustomizers.getOrDefault(tableCustomizer.getRole(), Collections.emptyList()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for recordChangeListeners
+    *******************************************************************************/
+   public List<QCodeReference> getRecordChangeListeners()
+   {
+      return (this.recordChangeListeners);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordChangeListeners
+    *******************************************************************************/
+   public void setRecordChangeListeners(List<QCodeReference> recordChangeListeners)
+   {
+      this.recordChangeListeners = recordChangeListeners;
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a RecordChangeListenerInterface, which InsertAction, UpdateAction and
+    ** DeleteAction call with the records they write successfully.
+    *******************************************************************************/
+   public QInstance withRecordChangeListener(QCodeReference recordChangeListener)
+   {
+      if(this.recordChangeListeners == null)
+      {
+         this.recordChangeListeners = new ArrayList<>();
+      }
+
+      this.recordChangeListeners.add(recordChangeListener);
+      return (this);
    }
 
 

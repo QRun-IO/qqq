@@ -22,10 +22,13 @@
 package com.kingsrook.qqq.backend.module.rdbms.actions;
 
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -189,6 +192,61 @@ class RDBMSTransactionTest extends BaseTest
          assertThrows(QException.class, transaction::commit);
          assertEquals(0, runCount.get());
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** If the commit fails, its pending callbacks are discarded - so a later,
+    ** successful commit on the same transaction must not run them (their work
+    ** was never committed).
+    *******************************************************************************/
+   @Test
+   void callbacksDiscardedWhenCommitFails() throws Exception
+   {
+      AtomicBoolean failCommit = new AtomicBoolean(true);
+      try(RDBMSTransaction transaction = new RDBMSTransaction(connectionWithFailableCommit(new ConnectionManager().getConnection(TestUtils.defineBackend()), failCommit)))
+      {
+         AtomicInteger runCount = new AtomicInteger(0);
+         transaction.addAfterCommitCallback(runCount::incrementAndGet);
+         assertThrows(QException.class, transaction::commit);
+
+         failCommit.set(false);
+         transaction.commit();
+         assertEquals(0, runCount.get());
+
+         ////////////////////////////////////////////////////
+         // callbacks added after the failure run as usual //
+         ////////////////////////////////////////////////////
+         transaction.addAfterCommitCallback(runCount::incrementAndGet);
+         transaction.commit();
+         assertEquals(1, runCount.get());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Wrap a connection so that its commit() throws while failCommit is true.
+    *******************************************************************************/
+   private static Connection connectionWithFailableCommit(Connection connection, AtomicBoolean failCommit)
+   {
+      return ((Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[] { Connection.class }, (proxy, method, args) ->
+      {
+         if("commit".equals(method.getName()) && failCommit.get())
+         {
+            throw (new SQLException("Expected commit failure"));
+         }
+
+         try
+         {
+            return (method.invoke(connection, args));
+         }
+         catch(InvocationTargetException e)
+         {
+            throw (e.getCause());
+         }
+      }));
    }
 
 

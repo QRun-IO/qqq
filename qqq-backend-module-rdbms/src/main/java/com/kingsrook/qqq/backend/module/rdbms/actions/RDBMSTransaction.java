@@ -107,6 +107,12 @@ public class RDBMSTransaction extends QBackendTransaction
       catch(Exception e)
       {
          LOG.error("Error committing transaction", e);
+
+         ///////////////////////////////////////////////////////////////////////////
+         // the callbacks' work was not committed - so drop them now, rather than //
+         // running them on a later commit of this (re-opened) transaction        //
+         ///////////////////////////////////////////////////////////////////////////
+         discardAfterCommitCallbacks();
          throw new QException("Error committing transaction: " + e.getMessage(), e);
       }
       finally

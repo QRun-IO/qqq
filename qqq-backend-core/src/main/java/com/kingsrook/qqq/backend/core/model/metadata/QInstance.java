@@ -149,6 +149,8 @@ public class QInstance
 
    private List<QCodeReference> processLifecycleListeners = new ArrayList<>();
 
+   private List<QCodeReference> runtimeServices = new ArrayList<>();
+
    ////////////////////////////////////////////////////////////////////////////////
    // if true, MetaDataProducerHelper throws when it can't use or run a          //
    // producer, instead of logging a warning and skipping it.  the system        //
@@ -2118,6 +2120,44 @@ public class QInstance
          this.processLifecycleListeners = new ArrayList<>();
       }
       this.processLifecycleListeners.add(processLifecycleListener);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for runtimeServices - code references to QRuntimeServiceInterface
+    ** implementations, which an application launcher starts (in this order)
+    ** after the server, and stops (in reverse order) at shutdown.
+    *******************************************************************************/
+   public List<QCodeReference> getRuntimeServices()
+   {
+      return (this.runtimeServices);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for runtimeServices
+    *******************************************************************************/
+   public void setRuntimeServices(List<QCodeReference> runtimeServices)
+   {
+      this.runtimeServices = runtimeServices;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent method to add one runtime service (a code reference to a
+    ** QRuntimeServiceInterface implementation).
+    *******************************************************************************/
+   public QInstance withRuntimeService(QCodeReference runtimeService)
+   {
+      if(this.runtimeServices == null)
+      {
+         this.runtimeServices = new ArrayList<>();
+      }
+      this.runtimeServices.add(runtimeService);
       return (this);
    }
 

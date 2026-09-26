@@ -50,7 +50,7 @@ class SampleEsbTest
     **
     *******************************************************************************/
    @Test
-   void insertedPersonRunsSyncPersonOnce() throws Exception
+   void repeatedCleanStartupRunsSyncPersonOncePerCycle() throws Exception
    {
       String previousPort = System.getProperty("qqq.sample.esb.port");
       String previousMockAuthentication = System.getProperty("qqq.sample.mockAuthentication");
@@ -59,32 +59,43 @@ class SampleEsbTest
          System.setProperty("qqq.sample.esb.port", String.valueOf(socket.getLocalPort()));
       }
 
-      SampleJavalinServer server = new SampleJavalinServer();
-      server.setPort(0);
+      SampleJavalinServer server = null;
       try
       {
          System.setProperty("qqq.sample.mockAuthentication", "true");
          QEsbRuntime.getInstance().stop();
          EsbConnectionManager.getInstance().closeAll();
-         EsbStats.getInstance().reset();
-         server.start();
-         await(() -> QEsbRuntime.getInstance().getRunner("syncPerson.personEvents").getState() == EsbTriggerState.RUNNING);
-         QContext.init(server.getQInstance(), new QSystemUserSession());
+         for(int cycle = 0; cycle < 2; cycle++)
+         {
+            server = new SampleJavalinServer();
+            server.setPort(0);
+            EsbStats.getInstance().reset();
+            server.start();
+            await(() -> QEsbRuntime.getInstance().getRunner("syncPerson.personEvents").getState() == EsbTriggerState.RUNNING);
+            QContext.init(server.getQInstance(), new QSystemUserSession());
 
-         new InsertAction().executeForRecord(new InsertInput("person").withRecord(new QRecord()
-            .withValue("firstName", "Event")
-            .withValue("lastName", "Sample")
-            .withValue("email", "event.sample@example.invalid")));
+            new InsertAction().executeForRecord(new InsertInput("person").withRecord(new QRecord()
+               .withValue("firstName", "Event")
+               .withValue("lastName", "Sample")
+               .withValue("email", "event.sample" + cycle + "@example.invalid")));
 
-         await(() -> EsbStats.getInstance().trigger("syncPerson.personEvents").succeeded() == 1);
-         assertEquals(1, EsbStats.getInstance().destination("personEvents").published());
-         assertEquals(1, EsbStats.getInstance().trigger("syncPerson.personEvents").consumed());
-         assertEquals(0, EsbStats.getInstance().trigger("syncPerson.personEvents").failed());
+            await(() -> EsbStats.getInstance().trigger("syncPerson.personEvents").succeeded() == 1);
+            assertEquals(1, EsbStats.getInstance().destination("personEvents").published());
+            assertEquals(1, EsbStats.getInstance().trigger("syncPerson.personEvents").consumed());
+            assertEquals(0, EsbStats.getInstance().trigger("syncPerson.personEvents").failed());
+            QContext.clear();
+            server.stop();
+            server = null;
+            ConnectionManager.resetConnectionProviders();
+         }
       }
       finally
       {
          QContext.clear();
-         server.stop();
+         if(server != null)
+         {
+            server.stop();
+         }
          ConnectionManager.resetConnectionProviders();
          if(previousPort == null)
          {

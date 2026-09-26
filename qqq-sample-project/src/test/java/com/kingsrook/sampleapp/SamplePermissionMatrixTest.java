@@ -255,7 +255,8 @@ class SamplePermissionMatrixTest
 
 
    /*******************************************************************************
-    ** Capability metadata is tested separately from actual permission enforcement.
+    ** Without capabilities, count and export are refused over every route even on
+    ** an unprotected table; get, query and mutations still follow permissions.
     *******************************************************************************/
    @Test
    void testDisabledCapabilityRuntimeBoundary() throws Exception
@@ -263,9 +264,9 @@ class SamplePermissionMatrixTest
       tableRules(rules(PermissionLevel.NOT_PROTECTED));
       instance.getTable("fieldLab").withoutCapabilities(EnumSet.allOf(Capability.class));
       assertEquals(0, metadata().getJSONObject("tables").getJSONObject("fieldLab").getJSONArray("capabilities").length());
-      assertAccess(true, true, true, true);
+      assertAccess(true, false, true, true, true);
       tableRules(rules(PermissionLevel.READ_WRITE_PERMISSIONS));
-      assertAccess(false, false, false, false);
+      assertAccess(false, false, false, false, false);
    }
 
 
@@ -291,9 +292,21 @@ class SamplePermissionMatrixTest
 
 
    /*******************************************************************************
-    ** Check response authorization and every mutation against native SQL.
+    ** Check response authorization and every mutation against native SQL; count
+    ** and export follow READ while the table declares those capabilities.
     *******************************************************************************/
    private void assertAccess(Boolean read, Boolean insert, Boolean edit, Boolean delete) throws Exception
+   {
+      assertAccess(read, read, insert, edit, delete);
+   }
+
+
+
+   /*******************************************************************************
+    ** Check response authorization and every mutation against native SQL, with
+    ** count and export (TABLE_COUNT / TABLE_EXPORT) asserted separately from READ.
+    *******************************************************************************/
+   private void assertAccess(Boolean read, Boolean countAndExport, Boolean insert, Boolean edit, Boolean delete) throws Exception
    {
       try(Connection connection = ConnectionManager.getConnection(SampleMetaDataProvider.defineRdbmsBackend()); Statement statement = connection.createStatement())
       {
@@ -301,12 +314,14 @@ class SamplePermissionMatrixTest
          statement.executeUpdate("ALTER TABLE field_lab ALTER COLUMN id RESTART WITH 100");
          statement.executeUpdate("INSERT INTO field_lab(id,name) VALUES (1,'Target'),(2,'Bystander')");
       }
-      for(String path : List.of("/data/fieldLab/1", "/data/fieldLab", "/data/fieldLab/count"))
+      for(String path : List.of("/data/fieldLab/1", "/data/fieldLab"))
       {
          assertStatus(request("GET", path, null, null), read);
       }
       assertStatus(request("POST", "/qqq/v1/table/fieldLab/query", "{}", "application/json"), read);
-      assertStatus(request("POST", "/qqq/v1/table/fieldLab/count", "{}", "application/json"), read);
+      assertStatus(request("GET", "/data/fieldLab/count", null, null), countAndExport);
+      assertStatus(request("POST", "/qqq/v1/table/fieldLab/count", "{}", "application/json"), countAndExport);
+      assertStatus(request("POST", "/data/fieldLab/export/fieldLab.csv", "fields=id,name", "application/x-www-form-urlencoded"), countAndExport);
       assertStatus(request("POST", "/data/fieldLab", "{\"name\":\"Inserted\"}", "application/json"), insert);
       assertStatus(request("PATCH", "/data/fieldLab/1", "{\"name\":\"Changed\"}", "application/json"), edit);
       assertStatus(request("DELETE", "/data/fieldLab/1", null, null), delete);

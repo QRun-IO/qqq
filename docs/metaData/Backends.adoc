@@ -28,7 +28,7 @@ These objects will have some common attributes, but many different attributes ba
 Basic rules that apply to all tables in the backend, describing what actions (such as Delete, or Count) are supported in the backend.
 ** By default, QQQ assumes that a backend supports _most_ capabilities, with one exception being `QUERY_STATS`.
 ** When the backend disables a capability, a table-level enabled entry overrides that exclusion. Otherwise, a table-level disabled entry disables it. Avoid contradictory enabled and disabled entries. A flag cannot add an operation that the selected backend implementation does not implement.
-** Capability flags control the operations exposed in frontend metadata. Direct table HTTP operations do not enforce these flags; use `permissionRules` to deny access. New runtime capability enforcement is deferred in https://github.com/QRun-IO/qqq/issues/546[issue #546].
+** Capability flags control the operations exposed in frontend metadata. The count and export HTTP routes refuse tables without `TABLE_COUNT` or `TABLE_EXPORT`; other direct table HTTP operations do not enforce these flags, so use `permissionRules` to deny access. Broader runtime capability enforcement is deferred in https://github.com/QRun-IO/qqq/issues/546[issue #546].
 * `usesVariants` - *Boolean, default false* - Control whether or not the backend supports the concept of "Variants".
 ** Supporting variants means that tables within the backend can exist in alternative "variants" of the backend.
 For example, this might mean a sharded or multi-tenant database backend (perhaps a different server or database name per-client).

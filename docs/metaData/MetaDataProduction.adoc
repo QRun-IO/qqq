@@ -198,6 +198,25 @@ public class BackendMetaDataProducer implements MetaDataProducerInterface<QBacke
 // left as an exercise for the reader
 ----
 
+=== Failing fast on producer errors
+
+By default, `MetaDataProducerHelper` logs a warning and skips any class that fails while being
+evaluated as a producer (for example, its constructor throws), and any producer whose `produce`
+method throws.  The application then starts without that meta-data.
+
+To make those errors stop startup instead, turn on fail-fast before processing producers, either on
+the `QInstance`, or with the system property `qqq.metaData.failOnProducerError=true`.  With either
+one on, the helper throws a `QException` naming the failing class, with the original error as its cause.
+
+[source,java]
+.Failing fast on meta-data producer errors
+----
+QInstance qInstance = new QInstance()
+   .withFailOnMetaDataProducerError(true);
+MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance,
+   "com.mydomain.myapplication");
+----
+
 === MetaDataProducerMultiOutput
 It is worth mentioning, that sometimes it might feel like a bridge that's a bit too far, to make
 every single one of your meta-data objects require its own class.  Some may argue that it's best

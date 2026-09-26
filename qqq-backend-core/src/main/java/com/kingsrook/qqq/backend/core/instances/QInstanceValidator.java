@@ -281,6 +281,14 @@ public class QInstanceValidator
          }
       }
 
+      for(QCodeReference codeReference : CollectionUtils.nonNullList(qInstance.getRuntimeServices()))
+      {
+         if(assertCondition(codeReference != null, "Instance runtimeServices contains a null code reference."))
+         {
+            validateSimpleCodeReference("Instance runtimeService ", codeReference, QRuntimeServiceInterface.class);
+         }
+      }
+
       if(qInstance.getTableCustomizers() != null)
       {
          for(Map.Entry<String, List<QCodeReference>> entry : qInstance.getTableCustomizers().entrySet())

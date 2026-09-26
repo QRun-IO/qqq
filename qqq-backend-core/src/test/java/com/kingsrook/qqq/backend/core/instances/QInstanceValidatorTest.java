@@ -227,6 +227,28 @@ public class QInstanceValidatorTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Runtime service code references are validated like other instance code
+    ** references: each must load as a QRuntimeServiceInterface.
+    *******************************************************************************/
+   @Test
+   void testRuntimeServices()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withRuntimeService(new QCodeReference(QInstanceValidator.class)),
+         "Instance runtimeService CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRuntimeService(new QCodeReference("com.kingsrook.qqq.NoSuchService", QCodeType.JAVA)),
+         "Instance runtimeService Class for com.kingsrook.qqq.NoSuchService could not be found");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRuntimeService(null),
+         "Instance runtimeServices contains a null code reference");
+
+      assertValidationSuccess((qInstance) -> qInstance.withRuntimeService(new QCodeReference(ValidRuntimeService.class)));
+      assertValidationSuccess((qInstance) -> qInstance.setRuntimeServices(null));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -3266,6 +3288,43 @@ public class QInstanceValidatorTest extends BaseTest
        ***************************************************************************/
       @Override
       public void onProcessFailed(RunProcessInput input, Exception exception)
+      {
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** a valid (no-op) runtime service
+    ***************************************************************************/
+   public static class ValidRuntimeService implements QRuntimeServiceInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public String getName()
+      {
+         return ("validRuntimeService");
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void start(QInstance qInstance)
+      {
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void stop()
       {
       }
    }

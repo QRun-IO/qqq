@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it can't use as a producer (no no-arg constructor, a constructor that throws, or wrong producer annotations),
   or a producer that fails to run. `QBitMetaDataProducer` honors the instance flag for its
   own producers. The default (warn and skip) is unchanged.
+- **Application launcher ([#762](https://github.com/QRun-IO/qqq/issues/762))** — `QApplicationLauncher.run(application,
+  config)` starts the application's `QApplicationJavalinServer`, then the `QScheduleManager` when anything is
+  scheduled, then each runtime service registered with `QInstance.withRuntimeService` (new `QRuntimeServiceInterface`),
+  all on the one instance the server builds; a JVM shutdown hook stops them in reverse order, and a failed start
+  stops the ones already started. `QApplicationJavalinServer.getQInstance()` exposes that instance, and
+  `AbstractMetaDataProducerBasedQQQApplication.withFailOnMetaDataProducerError` (also on `QApplicationLauncherConfig`)
+  makes the instance it defines fail-fast.
 
 ### Changed
 - The sample application and quickstart serve the Next dashboard from the sample itself on port 8000;

@@ -103,7 +103,8 @@ public class QApplicationJavalinServer
    private long                millisBetweenHotSwaps = 2500;
    private Consumer<QInstance> hotSwapCustomizer     = null;
 
-   private Javalin service;
+   private Javalin   service;
+   private QInstance qInstance;
 
 
 
@@ -124,6 +125,7 @@ public class QApplicationJavalinServer
    public void start() throws QException
    {
       QInstance qInstance = application.defineValidatedQInstance();
+      this.qInstance = qInstance;
 
       QJavalinMetaData javalinMetaData = getJavalinMetaDataToUse(qInstance);
       if(javalinMetaData != null)
@@ -574,6 +576,7 @@ public class QApplicationJavalinServer
             routeProvider.setQInstance(newQInstance);
          }
 
+         this.qInstance = newQInstance;
          LOG.info("Swapped qInstance");
       }
       catch(QInstanceValidationException e)
@@ -584,6 +587,17 @@ public class QApplicationJavalinServer
       {
          LOG.error("Error hot-swapping QInstance", e);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the QInstance this server built from its application in start
+    ** (or the latest one, when hot-swapping) - null before start.
+    *******************************************************************************/
+   public QInstance getQInstance()
+   {
+      return (this.qInstance);
    }
 
 

@@ -224,6 +224,10 @@ MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance,
    "com.mydomain.myapplication");
 ----
 
+An `AbstractMetaDataProducerBasedQQQApplication` (such as `MetaDataProducerBasedQQQApplication`) creates
+its own `QInstance`, so set the flag on the application with `withFailOnMetaDataProducerError(true)`, or
+on the `QApplicationLauncherConfig` that launches it (see <<Javalin>>).
+
 === MetaDataProducerMultiOutput
 It is worth mentioning, that sometimes it might feel like a bridge that's a bit too far, to make
 every single one of your meta-data objects require its own class.  Some may argue that it's best

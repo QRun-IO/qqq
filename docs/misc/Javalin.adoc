@@ -55,6 +55,31 @@ implementations of `QJavalinRouteProviderInterface`, to add additional endpoints
 defining it in the `QInstance`). _Note that if it is set in both places, the one in the QApplicationJavalinServer
 is used._
 
+=== QApplicationLauncher
+`QApplicationLauncher.run(application, config)` is one entry point that starts everything an application
+has configured, in this order: a `QApplicationJavalinServer` for the application; the `QScheduleManager`,
+when a process, queue or table automation has a schedule, or the instance has the `scheduledJob` table;
+and each runtime service registered with `QInstance.withRuntimeService(QCodeReference)` (an implementation
+of `QRuntimeServiceInterface`), in registration order.  They all use the one `QInstance` the server builds
+(`getQInstance()` on the launcher or the server).  A JVM shutdown hook, or the launcher's `stop()`, stops
+them in reverse order.  If one fails to start, the ones already started are stopped, and `run` throws.
+
+[source,java]
+.QApplicationLauncher usage example
+----
+public static void main(String[] args) throws QException
+{
+   QApplicationLauncher.run(new MetaDataProducerBasedQQQApplication(MyMetaDataProducer.class), new QApplicationLauncherConfig()
+      .withServerCustomizer(server -> server.withPort(8080))
+      .withFailOnMetaDataProducerError(true));
+}
+----
+
+`QApplicationLauncherConfig` also sets the session the schedule manager runs as (`withSystemUserSessionSupplier`,
+default a `QSystemUserSession`), and can turn off the shutdown hook (`withRegisterShutdownHook(false)`).
+`withFailOnMetaDataProducerError(true)` makes a producer that fails stop the launch (see <<MetaDataProduction>>);
+it needs an application that extends `AbstractMetaDataProducerBasedQQQApplication`.
+
 === Route registration and service observation
 
 Javalin 7 registers routes, before/after handlers and error/exception handlers during configuration.

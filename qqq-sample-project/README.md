@@ -137,6 +137,8 @@ CI runs the complete sample test suite for feature changes and before publicatio
 
 After committing the sample and publishing the release, validate those public artifacts using Python 3.12 or later:
 
+For a published BOM candidate or GA release, first run `python3 qqq-sample-project/verify-published-bom.py 4.1.0-RC.1` (substitute the literal published version). The checker reads the committed source BOM, imports the public BOM through Maven Central with empty settings and a fresh cache, and resolves every managed QQQ jar plus the pinned Next dashboard. It fails on absent, wrong-version, or snapshot dependencies and keeps `pom.xml`, `settings.xml`, `maven.log`, `dependency-tree.json`, the isolated cache, and `evidence.json` under `qqq-sample-project/target/published-bom-*`. Run it after Central sync for each RC and again with the GA version; archive that directory and require exit code zero before promoting the release. This checks the published BOM consumer contract, while the sample acceptance command below checks runtime behavior.
+
 ```bash
 python3 qqq-sample-project/verify-published.py 4.1.0 --material-version 0.41.0 --next-version 0.2.1
 ```

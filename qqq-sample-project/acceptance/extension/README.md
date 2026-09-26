@@ -29,3 +29,8 @@ sample feature ledger. Omit `--maven-repo` to use the default local repository.
 This is source-stage acceptance; it does not prove
 registry publication or the template's unfinished example extension out of the
 box.
+
+The new Java fixture sources use the Apache-2.0 header from QQQ #797. This
+branch is based on develop before #797, whose Checkstyle license template still
+expects AGPL. Full-tree license/Checkstyle validation therefore needs the #797
+head combined; the standalone host fixture does not run that root gate.

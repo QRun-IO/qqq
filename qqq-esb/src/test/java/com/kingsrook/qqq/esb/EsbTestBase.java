@@ -49,6 +49,7 @@ import com.kingsrook.qqq.esb.model.EsbProviderType;
 import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
+import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -189,6 +190,17 @@ public class EsbTestBase
    public static synchronized boolean isEmbeddedBrokerRunning()
    {
       return (embeddedBroker != null && embeddedBroker.getActiveMQServer().isStarted());
+   }
+
+
+
+   /*******************************************************************************
+    ** The embedded broker's server (e.g., to register a broker plugin that
+    ** watches what clients send) - or null if the broker isn't running.
+    *******************************************************************************/
+   public static synchronized ActiveMQServer getEmbeddedBrokerServer()
+   {
+      return (embeddedBroker == null ? null : embeddedBroker.getActiveMQServer());
    }
 
 

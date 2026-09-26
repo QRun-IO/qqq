@@ -528,6 +528,24 @@ class EsbMetaDataValidationTest extends EsbTestBase
 
 
    /*******************************************************************************
+    ** The instance name goes in event sources as the URI authority
+    ** (qqq://instanceName/...), so it may only use URI-unreserved characters.
+    *******************************************************************************/
+   @Test
+   void testInstanceName()
+   {
+      QInstance validInstance = defineFullInstance();
+      EsbInstanceMetaData.of(validInstance).withInstanceName("order-service_2.prod~a");
+      assertThatCode(() -> new QInstanceValidator().validate(validInstance)).doesNotThrowAnyException();
+
+      QInstance invalidInstance = defineFullInstance();
+      EsbInstanceMetaData.of(invalidInstance).withInstanceName("order service/prod");
+      assertValidationError(invalidInstance, "ESB instanceName order service/prod may only contain letters, digits, and . _ ~ -");
+   }
+
+
+
+   /*******************************************************************************
     ** Validate, asserting it fails, with (at least) the expected reason.
     *******************************************************************************/
    private void assertValidationError(QInstance qInstance, String expectedReasonPrefix)

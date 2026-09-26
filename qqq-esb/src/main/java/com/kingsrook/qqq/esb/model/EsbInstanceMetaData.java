@@ -31,19 +31,23 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
 
 
 /*******************************************************************************
  * Instance-level ESB meta-data: the providers (brokers) and destinations
- * (queues and topics) that tables and processes publish to and trigger from.
+ * (queues and topics) that tables and processes publish to and trigger from,
+ * and the instance name that identifies this application in the source of the
+ * events it publishes.
  *
  * Supplemental instance meta-data is included in the frontend meta-data
- * output, so the providers and destinations (with urls and credentials) are
- * excluded from JSON serialization.  The UI reads ESB details through the
- * permission-checked ESB endpoints instead.
+ * output, so the providers and destinations (with urls and credentials), and
+ * the instance name, are excluded from JSON serialization.  The UI reads ESB
+ * details through the permission-checked ESB endpoints instead.
  *******************************************************************************/
 public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 {
@@ -51,6 +55,13 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    private static final long serialVersionUID = 1L;
 
+   //////////////////////////////////////////////////////////////////////
+   // RFC 3986 unreserved characters - so qqq://instanceName/... is a  //
+   // valid URI, with the instance name as its authority, unescaped    //
+   //////////////////////////////////////////////////////////////////////
+   private static final String INSTANCE_NAME_PATTERN = "[A-Za-z0-9._~-]+";
+
+   private String                               instanceName;
    private Map<String, QEsbProviderMetaData>    providers    = new LinkedHashMap<>();
    private Map<String, QEsbDestinationMetaData> destinations = new LinkedHashMap<>();
 
@@ -90,7 +101,9 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
 
    /*******************************************************************************
-    ** Interpret ${env.*} (etc.) variables in each provider's connection fields.
+    ** Interpret ${env.*} (etc.) variables in each provider's connection fields,
+    ** and register the record change listener that publishes table events (once,
+    ** however many times the instance is enriched).
     *******************************************************************************/
    @Override
    public void enrich(QInstance qInstance)
@@ -99,6 +112,13 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       for(QEsbProviderMetaData provider : CollectionUtils.nonNullMap(providers).values())
       {
          provider.interpretVariables(interpreter);
+      }
+
+      boolean listenerRegistered = CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream()
+         .anyMatch(codeReference -> codeReference != null && EsbRecordChangeListener.class.getName().equals(codeReference.getName()));
+      if(!listenerRegistered)
+      {
+         qInstance.withRecordChangeListener(new QCodeReference(EsbRecordChangeListener.class));
       }
    }
 
@@ -112,6 +132,11 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
    @Override
    public void validate(QInstance qInstance, QInstanceValidator validator)
    {
+      if(instanceName != null)
+      {
+         validator.assertCondition(instanceName.matches(INSTANCE_NAME_PATTERN), "ESB instanceName " + instanceName + " may only contain letters, digits, and . _ ~ - (it is the authority of the events' qqq:// source URI).");
+      }
+
       for(QEsbProviderMetaData provider : CollectionUtils.nonNullMap(providers).values())
       {
          String prefix = "ESB provider " + provider.getName() + " ";
@@ -245,6 +270,41 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       }
 
       this.destinations.put(destination.getName(), destination);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for instanceName: the name that identifies this application in the
+    ** source of the events it publishes (qqq://instanceName/table/order).  When
+    ** null, sources have an empty authority (qqq:///table/order).  Not
+    ** serialized (see class comment).
+    *******************************************************************************/
+   @JsonIgnore
+   public String getInstanceName()
+   {
+      return (this.instanceName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for instanceName
+    *******************************************************************************/
+   public void setInstanceName(String instanceName)
+   {
+      this.instanceName = instanceName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for instanceName
+    *******************************************************************************/
+   public EsbInstanceMetaData withInstanceName(String instanceName)
+   {
+      this.instanceName = instanceName;
       return (this);
    }
 

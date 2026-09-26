@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
@@ -37,6 +38,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMeta
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -141,6 +145,39 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          firstName.setHelpContents(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Inline field enum values are part of the v1 response, including their IDs
+    ** and labels.  Fields without an inline source omit the property.
+    *******************************************************************************/
+   @Test
+   void testInlinePossibleValueSource()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      QPossibleValueSource original = firstName.getInlinePossibleValueSource();
+      try
+      {
+         firstName.setInlinePossibleValueSource(new QPossibleValueSource().withType(QPossibleValueSourceType.ENUM).withIdType(QFieldType.STRING)
+            .withEnumValues(List.of(new QPossibleValue<>("LOW", "Low"), new QPossibleValue<>("HIGH", "High"))));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONArray values = fields.getJSONObject("firstName").getJSONObject("inlinePossibleValueSource").getJSONArray("enumValues");
+         assertEquals(2, values.length());
+         assertEquals("LOW", values.getJSONObject(0).getString("id"));
+         assertEquals("Low", values.getJSONObject(0).getString("label"));
+         assertEquals("HIGH", values.getJSONObject(1).getString("id"));
+         assertEquals("High", values.getJSONObject(1).getString("label"));
+         assertFalse(fields.getJSONObject("lastName").has("inlinePossibleValueSource"));
+      }
+      finally
+      {
+         firstName.setInlinePossibleValueSource(original);
       }
    }
 

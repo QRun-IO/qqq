@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
@@ -203,7 +204,14 @@ public class FieldMetaData implements ToSchema
 
    // todo - PVS filter!!
 
-   // todo - inline PVS
+   /***************************************************************************
+    ** Inline possible values declared on a field, as in frontend metadata.
+    ***************************************************************************/
+   @OpenAPIDescription("Inline possible-value source for this field; enumValues supply choices without a separate lookup.")
+   public QPossibleValueSource getInlinePossibleValueSource()
+   {
+      return (this.wrappedFull != null ? this.wrappedFull.getInlinePossibleValueSource() : this.wrappedFrontend.getInlinePossibleValueSource());
+   }
 
 
 

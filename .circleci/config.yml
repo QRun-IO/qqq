@@ -34,7 +34,7 @@ jobs:
       - run:
           name: Require broker restart conformance on Linux
           command: |
-            python3 - <<'PY'
+            python3 - \<<'PY'
             from pathlib import Path
             from xml.etree import ElementTree
 

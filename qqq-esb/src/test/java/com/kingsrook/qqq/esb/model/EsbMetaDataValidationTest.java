@@ -28,6 +28,8 @@ import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.esb.EsbTestBase;
 import org.junit.jupiter.api.Test;
@@ -336,6 +338,196 @@ class EsbMetaDataValidationTest extends EsbTestBase
 
 
    /*******************************************************************************
+    ** Two topic triggers on one provider can't use the same subscription name
+    ** (both brokers name the subscription's queue after it) - though triggers
+    ** on different providers can.
+    *******************************************************************************/
+   @Test
+   void testDuplicateSubscriptionNameOnProvider()
+   {
+      QInstance qInstance = defineFullInstance();
+      addProcessWithTrigger(qInstance, "auditOrder", new EsbTrigger().withDestinationName(ORDER_EVENTS).withSubscriptionName("syncOrderSubscription"));
+      assertThat(validationReasons(qInstance)).anySatisfy(reason -> assertThat(reason)
+         .startsWith("ESB subscription name syncOrderSubscription is used by more than one topic trigger on provider artemis")
+         .contains("syncOrder.orderEvents")
+         .contains("auditOrder.orderEvents"));
+
+      QInstance otherProviderInstance = defineFullInstance();
+      EsbInstanceMetaData.of(otherProviderInstance).withDestination(new QEsbDestinationMetaData()
+         .withName("rabbitOrderEvents")
+         .withType(EsbDestinationType.TOPIC)
+         .withProviderName(RABBIT_PROVIDER));
+      addProcessWithTrigger(otherProviderInstance, "auditOrder", new EsbTrigger().withDestinationName("rabbitOrderEvents").withSubscriptionName("syncOrderSubscription"));
+      assertThatCode(() -> new QInstanceValidator().validate(otherProviderInstance)).doesNotThrowAnyException();
+   }
+
+
+
+   /*******************************************************************************
+    ** Default subscription names are built from the broker-side destination
+    ** name - so two QQQ destinations for the same broker topic give one process
+    ** colliding default subscription names.
+    *******************************************************************************/
+   @Test
+   void testDefaultSubscriptionNamesCollideOnBrokerSideName()
+   {
+      QInstance qInstance = defineFullInstance();
+      EsbInstanceMetaData.of(qInstance).withDestination(new QEsbDestinationMetaData()
+         .withName("orderEventsAlias")
+         .withType(EsbDestinationType.TOPIC)
+         .withProviderName(PROVIDER_NAME)
+         .withDestinationName(ORDER_EVENTS));
+      firstTrigger(qInstance).setSubscriptionName(null);
+      EsbProcessMetaData.of(qInstance.getProcess(PROCESS_NAME_SYNC_ORDER)).withTrigger(new EsbTrigger().withDestinationName("orderEventsAlias"));
+
+      assertThat(validationReasons(qInstance)).anySatisfy(reason -> assertThat(reason)
+         .isEqualTo("ESB subscription name syncOrder.orderEvents is used by more than one topic trigger on provider artemis: syncOrder.orderEvents, syncOrder.orderEventsAlias."));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testRetryDelayMsNegative()
+   {
+      QInstance qInstance = defineFullInstance();
+      firstTrigger(qInstance).setRetryDelayMs(-1);
+      assertValidationError(qInstance, "ESB trigger syncOrder.orderEvents retryDelayMs must be at least 0");
+
+      QInstance nullInstance = defineFullInstance();
+      firstTrigger(nullInstance).setRetryDelayMs(null);
+      assertValidationError(nullInstance, "ESB trigger syncOrder.orderEvents retryDelayMs must be at least 0");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testRetryMultiplierBelowOne()
+   {
+      QInstance qInstance = defineFullInstance();
+      firstTrigger(qInstance).setRetryMultiplier(0.5);
+      assertValidationError(qInstance, "ESB trigger syncOrder.orderEvents retryMultiplier must be at least 1");
+
+      QInstance nullInstance = defineFullInstance();
+      firstTrigger(nullInstance).setRetryMultiplier(null);
+      assertValidationError(nullInstance, "ESB trigger syncOrder.orderEvents retryMultiplier must be at least 1");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testRetryMaxDelayBelowRetryDelay()
+   {
+      QInstance qInstance = defineFullInstance();
+      firstTrigger(qInstance).withRetryDelayMs(100).setRetryMaxDelayMs(99);
+      assertValidationError(qInstance, "ESB trigger syncOrder.orderEvents retryMaxDelayMs must be at least retryDelayMs");
+
+      QInstance nullInstance = defineFullInstance();
+      firstTrigger(nullInstance).setRetryMaxDelayMs(null);
+      assertValidationError(nullInstance, "ESB trigger syncOrder.orderEvents retryMaxDelayMs must be at least retryDelayMs");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testTimeoutMsNotPositive()
+   {
+      QInstance zeroInstance = defineFullInstance();
+      firstTrigger(zeroInstance).setTimeoutMs(0);
+      assertValidationError(zeroInstance, "ESB trigger syncOrder.orderEvents timeoutMs must be greater than 0");
+
+      QInstance negativeInstance = defineFullInstance();
+      firstTrigger(negativeInstance).setTimeoutMs(-1);
+      assertValidationError(negativeInstance, "ESB trigger syncOrder.orderEvents timeoutMs must be greater than 0");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testBatchWaitMsNegative()
+   {
+      QInstance qInstance = defineFullInstance();
+      secondTrigger(qInstance).setBatchWaitMs(-1);
+      assertValidationError(qInstance, "ESB trigger syncOrder.orderQueue batchWaitMs must be at least 0");
+   }
+
+
+
+   /*******************************************************************************
+    ** The lowest allowed values (and an unset timeout) validate.
+    *******************************************************************************/
+   @Test
+   void testBoundaryValuesValidate()
+   {
+      QInstance qInstance = defineFullInstance();
+      firstTrigger(qInstance)
+         .withRetryDelayMs(0)
+         .withRetryMultiplier(1.0)
+         .withRetryMaxDelayMs(0)
+         .withTimeoutMs(null);
+      secondTrigger(qInstance)
+         .withBatchWaitMs(0)
+         .withTimeoutMs(1);
+      assertThatCode(() -> new QInstanceValidator().validate(qInstance)).doesNotThrowAnyException();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testMissingModeOrOnDeadLetter()
+   {
+      QInstance modeInstance = defineFullInstance();
+      firstTrigger(modeInstance).setMode(null);
+      List<String> modeReasons = validationReasons(modeInstance);
+      assertThat(modeReasons).anySatisfy(reason -> assertThat(reason).startsWith("ESB trigger syncOrder.orderEvents is missing a mode"));
+      assertThat(modeReasons).noneSatisfy(reason -> assertThat(reason).contains("batch fields"));
+
+      QInstance onDeadLetterInstance = defineFullInstance();
+      firstTrigger(onDeadLetterInstance).setOnDeadLetter(null);
+      assertValidationError(onDeadLetterInstance, "ESB trigger syncOrder.orderEvents is missing an onDeadLetter action");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testProviderAndDestinationWithoutName()
+   {
+      QInstance providerInstance = defineFullInstance();
+      EsbInstanceMetaData.of(providerInstance).withProvider(new QEsbProviderMetaData()
+         .withType(EsbProviderType.ACTIVEMQ_ARTEMIS)
+         .withUrl(getBrokerUrl()));
+      assertValidationError(providerInstance, "An ESB provider is missing a name");
+
+      QInstance destinationInstance = defineFullInstance();
+      EsbInstanceMetaData.of(destinationInstance).withDestination(new QEsbDestinationMetaData()
+         .withType(EsbDestinationType.QUEUE)
+         .withProviderName(PROVIDER_NAME));
+      assertValidationError(destinationInstance, "An ESB destination is missing a name");
+   }
+
+
+
+   /*******************************************************************************
     ** Validate, asserting it fails, with (at least) the expected reason.
     *******************************************************************************/
    private void assertValidationError(QInstance qInstance, String expectedReasonPrefix)
@@ -343,6 +535,34 @@ class EsbMetaDataValidationTest extends EsbTestBase
       QInstanceValidationException exception = catchThrowableOfType(QInstanceValidationException.class, () -> new QInstanceValidator().validate(qInstance));
       assertThat(exception).as("validation should fail").isNotNull();
       assertThat(exception.getReasons()).anySatisfy(reason -> assertThat(reason).startsWith(expectedReasonPrefix));
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate, asserting it fails, and return all of its reasons.
+    *******************************************************************************/
+   private List<String> validationReasons(QInstance qInstance)
+   {
+      QInstanceValidationException exception = catchThrowableOfType(QInstanceValidationException.class, () -> new QInstanceValidator().validate(qInstance));
+      assertThat(exception).as("validation should fail").isNotNull();
+      return (exception.getReasons());
+   }
+
+
+
+   /*******************************************************************************
+    ** Add another process (running the syncOrder step) with one ESB trigger.
+    *******************************************************************************/
+   private static void addProcessWithTrigger(QInstance qInstance, String processName, EsbTrigger trigger)
+   {
+      QProcessMetaData process = new QProcessMetaData()
+         .withName(processName)
+         .withStep(new QBackendStepMetaData()
+            .withName("sync")
+            .withCode(new QCodeReference(SyncOrderStep.class)));
+      EsbProcessMetaData.ofOrWithNew(process).withTrigger(trigger);
+      qInstance.addProcess(process);
    }
 
 

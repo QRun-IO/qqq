@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -42,8 +43,9 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
  ** Also holds after-commit callbacks: work (e.g., publishing events about
  ** changed records) that must only happen once the transaction's data is
  ** committed, and never if it is rolled back.  Subclasses that override commit()
- ** must call runAfterCommitCallbacks() once their commit succeeds, and subclasses
- ** that override rollback() must call super.rollback(), which discards them.
+ ** must call runAfterCommitCallbacks() once their commit succeeds, and
+ ** discardAfterCommitCallbacks() if it fails.  Subclasses that override
+ ** rollback() must call super.rollback(), which discards them.
  **
  ** Note:  One would imagine that this class shouldn't ever implement Serializable...
  *******************************************************************************/
@@ -91,7 +93,7 @@ public class QBackendTransaction implements AutoCloseable
       // nothing to roll back in base class - but any after-commit        //
       // callbacks were for work that won't be committed, so discard them //
       //////////////////////////////////////////////////////////////////////
-      afterCommitCallbacks.clear();
+      discardAfterCommitCallbacks();
    }
 
 
@@ -101,8 +103,10 @@ public class QBackendTransaction implements AutoCloseable
     ** Callbacks run in the order they were added, and each runs at most once.  If
     ** the transaction is rolled back instead, they are discarded without running.
     **
-    ** A callback that throws is logged, and does not fail the commit, nor stop
-    ** later callbacks from running.
+    ** A callback that throws (an Exception, or a LinkageError, such as a
+    ** NoClassDefFoundError from an optional library that isn't on the classpath)
+    ** is logged, and does not fail the commit - whose data is already committed -
+    ** nor stop later callbacks from running.
     *******************************************************************************/
    public void addAfterCommitCallback(Runnable callback)
    {
@@ -113,8 +117,8 @@ public class QBackendTransaction implements AutoCloseable
 
    /*******************************************************************************
     ** Run (and then forget) all after-commit callbacks, in the order they were
-    ** added, catching and logging any exception from each.  For subclasses to
-    ** call once their commit has succeeded.
+    ** added, catching and logging any Exception or LinkageError from each.  For
+    ** subclasses to call once their commit has succeeded.
     *******************************************************************************/
    protected void runAfterCommitCallbacks()
    {
@@ -138,11 +142,23 @@ public class QBackendTransaction implements AutoCloseable
          {
             callback.run();
          }
-         catch(Exception e)
+         catch(Exception | LinkageError e)
          {
-            LOG.warn("Error running after-commit callback", e);
+            LOG.warn("Error running after-commit callback", e, logPair("callbackClass", callback.getClass().getName()));
          }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Forget all after-commit callbacks, without running them - their work will
+    ** not be committed.  For rollback, and for subclasses to call when their
+    ** commit fails (so a later commit on this transaction doesn't run them).
+    *******************************************************************************/
+   protected void discardAfterCommitCallbacks()
+   {
+      afterCommitCallbacks.clear();
    }
 
 

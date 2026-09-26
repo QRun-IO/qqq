@@ -41,8 +41,12 @@ import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRe
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ParentWidgetRenderer;
 import com.kingsrook.qqq.backend.core.actions.metadata.DefaultNoopMetaDataActionCustomizer;
 import com.kingsrook.qqq.backend.core.actions.processes.CancelProcessActionTest;
+import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
@@ -51,6 +55,8 @@ import com.kingsrook.qqq.backend.core.instances.validation.plugins.FailsIfEnable
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -171,6 +177,51 @@ public class QInstanceValidatorTest extends BaseTest
 
       assertValidationSuccess((qInstance) -> qInstance.setMetaDataActionCustomizer(new QCodeReference(DefaultNoopMetaDataActionCustomizer.class)));
       assertValidationSuccess((qInstance) -> qInstance.setMetaDataActionCustomizer(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Record change listener code references are validated like other instance
+    ** code references: each must load as a RecordChangeListenerInterface.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListeners()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordChangeListener(new QCodeReference(QInstanceValidator.class)),
+         "Instance recordChangeListener CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordChangeListener(new QCodeReference("com.kingsrook.qqq.NoSuchListener", QCodeType.JAVA)),
+         "Instance recordChangeListener Class for com.kingsrook.qqq.NoSuchListener could not be found");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordChangeListener(null),
+         "Instance recordChangeListeners contains a null code reference");
+
+      assertValidationSuccess((qInstance) -> qInstance.withRecordChangeListener(new QCodeReference(ValidRecordChangeListener.class)));
+      assertValidationSuccess((qInstance) -> qInstance.setRecordChangeListeners(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Process lifecycle listener code references are validated like other
+    ** instance code references: each must load as a
+    ** ProcessLifecycleListenerInterface.
+    *******************************************************************************/
+   @Test
+   void testProcessLifecycleListeners()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withProcessLifecycleListener(new QCodeReference(QInstanceValidator.class)),
+         "Instance processLifecycleListener CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withProcessLifecycleListener(new QCodeReference("com.kingsrook.qqq.NoSuchListener", QCodeType.JAVA)),
+         "Instance processLifecycleListener Class for com.kingsrook.qqq.NoSuchListener could not be found");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withProcessLifecycleListener(null),
+         "Instance processLifecycleListeners contains a null code reference");
+
+      assertValidationSuccess((qInstance) -> qInstance.withProcessLifecycleListener(new QCodeReference(ValidProcessLifecycleListener.class)));
+      assertValidationSuccess((qInstance) -> qInstance.setProcessLifecycleListeners(null));
    }
 
 
@@ -3144,5 +3195,78 @@ public class QInstanceValidatorTest extends BaseTest
 
       }
    }
-}
 
+
+
+   /***************************************************************************
+    ** a valid (no-op) record change listener
+    ***************************************************************************/
+   public static class ValidRecordChangeListener implements RecordChangeListenerInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return (false);
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** a valid (no-op) process lifecycle listener
+    ***************************************************************************/
+   public static class ValidProcessLifecycleListener implements ProcessLifecycleListenerInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public boolean appliesTo(String processName)
+      {
+         return (false);
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessStarted(RunProcessInput input)
+      {
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessCompleted(RunProcessInput input, RunProcessOutput output)
+      {
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessFailed(RunProcessInput input, Exception exception)
+      {
+      }
+   }
+}

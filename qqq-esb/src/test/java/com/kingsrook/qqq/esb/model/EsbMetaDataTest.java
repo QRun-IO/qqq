@@ -81,49 +81,104 @@ class EsbMetaDataTest extends EsbTestBase
 
 
    /*******************************************************************************
-    ** Trigger name and default subscription name: <process>.<destination>
+    ** Trigger name: <process>.<destination>, using the QQQ destination name.
+    ** Default subscription name: <process>.<broker-side destination name>.
     *******************************************************************************/
    @Test
    void testTriggerNames()
    {
+      QEsbDestinationMetaData orderEvents = new QEsbDestinationMetaData().withName("orderEvents").withType(EsbDestinationType.TOPIC).withProviderName(PROVIDER_NAME);
+      QEsbDestinationMetaData renamed     = new QEsbDestinationMetaData().withName("orderEventsV2").withType(EsbDestinationType.TOPIC).withProviderName(PROVIDER_NAME).withDestinationName("prod.order.events");
+      QInstance               qInstance   = defineInstance();
+      EsbInstanceMetaData.of(qInstance).withDestination(orderEvents).withDestination(renamed);
+      QContext.init(qInstance, new QSession());
+
       EsbTrigger trigger = new EsbTrigger().withDestinationName("orderEvents");
       assertThat(trigger.getName("syncOrder")).isEqualTo("syncOrder.orderEvents");
       assertThat(trigger.getEffectiveSubscriptionName("syncOrder")).isEqualTo("syncOrder.orderEvents");
+      assertThat(trigger.getEffectiveSubscriptionName("syncOrder", orderEvents)).isEqualTo("syncOrder.orderEvents");
+
+      /////////////////////////////////////////////////////////////////////
+      // with a broker-side name, the trigger's name keeps the QQQ name, //
+      // but the subscription (a queue on the broker) uses the broker's  //
+      /////////////////////////////////////////////////////////////////////
+      EsbTrigger renamedTrigger = new EsbTrigger().withDestinationName("orderEventsV2");
+      assertThat(renamedTrigger.getName("syncOrder")).isEqualTo("syncOrder.orderEventsV2");
+      assertThat(renamedTrigger.getEffectiveSubscriptionName("syncOrder")).isEqualTo("syncOrder.prod.order.events");
+      assertThat(renamedTrigger.getEffectiveSubscriptionName("syncOrder", renamed)).isEqualTo("syncOrder.prod.order.events");
 
       trigger.withSubscriptionName("customSubscription");
       assertThat(trigger.getName("syncOrder")).isEqualTo("syncOrder.orderEvents");
       assertThat(trigger.getEffectiveSubscriptionName("syncOrder")).isEqualTo("customSubscription");
+      assertThat(trigger.getEffectiveSubscriptionName("syncOrder", orderEvents)).isEqualTo("customSubscription");
+
+      ///////////////////////////////////////////////////////////////////////
+      // without an explicit name, the default needs the destination: the  //
+      // one-arg version reads it from the QContext's instance, and fails  //
+      // loudly if it isn't there                                          //
+      ///////////////////////////////////////////////////////////////////////
+      EsbTrigger unknownTrigger = new EsbTrigger().withDestinationName("noSuchDestination");
+      assertThatThrownBy(() -> unknownTrigger.getEffectiveSubscriptionName("syncOrder"))
+         .isInstanceOf(QRuntimeException.class)
+         .hasMessageContaining("noSuchDestination");
+      assertThatThrownBy(() -> unknownTrigger.getEffectiveSubscriptionName("syncOrder", null))
+         .isInstanceOf(NullPointerException.class);
+
+      ////////////////////////////////////////////////////////////////////
+      // an explicit subscription name needs no lookup (nor a QContext) //
+      ////////////////////////////////////////////////////////////////////
+      QContext.clear();
+      assertThat(trigger.getEffectiveSubscriptionName("syncOrder")).isEqualTo("customSubscription");
+      assertThatThrownBy(() -> renamedTrigger.getEffectiveSubscriptionName("syncOrder"))
+         .isInstanceOf(QRuntimeException.class)
+         .hasMessageContaining("orderEventsV2");
    }
 
 
 
    /*******************************************************************************
-    ** Dead-letter destination defaults: <destination>.dlq for queues, and
-    ** <destination>.<subscription>.dlq for topics.
+    ** Dead-letter destination defaults, from the broker-side destination name:
+    ** <destination>.dlq for queues, and <destination>.<subscription>.dlq for
+    ** topics.
     *******************************************************************************/
    @Test
    void testDeadLetterDestinationNames()
    {
-      QInstance qInstance = defineInstance();
-      EsbInstanceMetaData.of(qInstance)
-         .withDestination(new QEsbDestinationMetaData().withName("orderEvents").withType(EsbDestinationType.TOPIC).withProviderName(PROVIDER_NAME))
-         .withDestination(new QEsbDestinationMetaData().withName("orderQueue").withType(EsbDestinationType.QUEUE).withProviderName(PROVIDER_NAME));
+      QEsbDestinationMetaData orderEvents = new QEsbDestinationMetaData().withName("orderEvents").withType(EsbDestinationType.TOPIC).withProviderName(PROVIDER_NAME);
+      QEsbDestinationMetaData orderQueue  = new QEsbDestinationMetaData().withName("orderQueue").withType(EsbDestinationType.QUEUE).withProviderName(PROVIDER_NAME);
+      QEsbDestinationMetaData v1Queue     = new QEsbDestinationMetaData().withName("orderQueueV1").withType(EsbDestinationType.QUEUE).withProviderName(PROVIDER_NAME).withDestinationName("orders.v1");
+      QEsbDestinationMetaData v1Topic     = new QEsbDestinationMetaData().withName("orderEventsV1").withType(EsbDestinationType.TOPIC).withProviderName(PROVIDER_NAME).withDestinationName("order.events.v1");
+      QInstance               qInstance   = defineInstance();
+      EsbInstanceMetaData.of(qInstance).withDestination(orderEvents).withDestination(orderQueue).withDestination(v1Queue).withDestination(v1Topic);
       QContext.init(qInstance, new QSession());
 
       EsbTrigger queueTrigger = new EsbTrigger().withDestinationName("orderQueue");
       assertThat(queueTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("orderQueue.dlq");
-      assertThat(queueTrigger.getEffectiveDeadLetterDestinationName("syncOrder", EsbDestinationType.QUEUE)).isEqualTo("orderQueue.dlq");
+      assertThat(queueTrigger.getEffectiveDeadLetterDestinationName("syncOrder", orderQueue)).isEqualTo("orderQueue.dlq");
 
       EsbTrigger topicTrigger = new EsbTrigger().withDestinationName("orderEvents");
       assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("orderEvents.syncOrder.orderEvents.dlq");
-      assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder", EsbDestinationType.TOPIC)).isEqualTo("orderEvents.syncOrder.orderEvents.dlq");
+      assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder", orderEvents)).isEqualTo("orderEvents.syncOrder.orderEvents.dlq");
+
+      /////////////////////////////////////////////////////////////////////
+      // with broker-side names, the defaults are built from those names //
+      /////////////////////////////////////////////////////////////////////
+      EsbTrigger v1QueueTrigger = new EsbTrigger().withDestinationName("orderQueueV1");
+      assertThat(v1QueueTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("orders.v1.dlq");
+      assertThat(v1QueueTrigger.getEffectiveDeadLetterDestinationName("syncOrder", v1Queue)).isEqualTo("orders.v1.dlq");
+
+      EsbTrigger v1TopicTrigger = new EsbTrigger().withDestinationName("orderEventsV1");
+      assertThat(v1TopicTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("order.events.v1.syncOrder.order.events.v1.dlq");
+      assertThat(v1TopicTrigger.getEffectiveDeadLetterDestinationName("syncOrder", v1Topic)).isEqualTo("order.events.v1.syncOrder.order.events.v1.dlq");
 
       topicTrigger.withSubscriptionName("mySubscription");
       assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("orderEvents.mySubscription.dlq");
+      v1TopicTrigger.withSubscriptionName("mySubscription");
+      assertThat(v1TopicTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("order.events.v1.mySubscription.dlq");
 
       topicTrigger.withDeadLetterDestinationName("customDeadLetters");
       assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("customDeadLetters");
-      assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder", EsbDestinationType.TOPIC)).isEqualTo("customDeadLetters");
+      assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder", orderEvents)).isEqualTo("customDeadLetters");
 
       ///////////////////////////////////////////////////////////////////////////
       // without an explicit name, an unknown destination can't be resolved to //
@@ -133,11 +188,57 @@ class EsbMetaDataTest extends EsbTestBase
       assertThatThrownBy(() -> unknownTrigger.getEffectiveDeadLetterDestinationName("syncOrder"))
          .isInstanceOf(QRuntimeException.class)
          .hasMessageContaining("noSuchDestination");
+      assertThatThrownBy(() -> unknownTrigger.getEffectiveDeadLetterDestinationName("syncOrder", null))
+         .isInstanceOf(NullPointerException.class);
 
       QContext.clear();
       assertThatThrownBy(() -> queueTrigger.getEffectiveDeadLetterDestinationName("syncOrder"))
          .isInstanceOf(QRuntimeException.class)
          .hasMessageContaining("orderQueue");
+      assertThat(topicTrigger.getEffectiveDeadLetterDestinationName("syncOrder")).isEqualTo("customDeadLetters");
+   }
+
+
+
+   /*******************************************************************************
+    ** Adding a second provider or destination with a name already in use throws
+    ** (like QInstance does for a second table or process), rather than silently
+    ** replacing the first.
+    *******************************************************************************/
+   @Test
+   void testDuplicateProviderOrDestinationNameThrows()
+   {
+      EsbInstanceMetaData esbInstanceMetaData = new EsbInstanceMetaData()
+         .withProvider(new QEsbProviderMetaData().withName("p1"))
+         .withDestination(new QEsbDestinationMetaData().withName("d1"));
+
+      assertThatThrownBy(() -> esbInstanceMetaData.withProvider(new QEsbProviderMetaData().withName("p1")))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("p1");
+      assertThatThrownBy(() -> esbInstanceMetaData.withDestination(new QEsbDestinationMetaData().withName("d1")))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("d1");
+
+      ///////////////////////////////////////////////////////////////////
+      // including via addSelfToInstance (as a MetaDataProducer would) //
+      ///////////////////////////////////////////////////////////////////
+      QInstance qInstance = defineInstance();
+      assertThatThrownBy(() -> new QEsbProviderMetaData().withName(PROVIDER_NAME).addSelfToInstance(qInstance))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining(PROVIDER_NAME);
+      new QEsbDestinationMetaData().withName("orderEvents").addSelfToInstance(qInstance);
+      assertThatThrownBy(() -> new QEsbDestinationMetaData().withName("orderEvents").addSelfToInstance(qInstance))
+         .isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("orderEvents");
+
+      /////////////////////////////////////////////////////////
+      // the originals are kept, and other names still work  //
+      /////////////////////////////////////////////////////////
+      assertThat(esbInstanceMetaData.getProviders()).containsOnlyKeys("p1");
+      assertThat(esbInstanceMetaData.getDestinations()).containsOnlyKeys("d1");
+      esbInstanceMetaData.withProvider(new QEsbProviderMetaData().withName("p2")).withDestination(new QEsbDestinationMetaData().withName("d2"));
+      assertThat(esbInstanceMetaData.getProviders()).containsOnlyKeys("p1", "p2");
+      assertThat(esbInstanceMetaData.getDestinations()).containsOnlyKeys("d1", "d2");
    }
 
 

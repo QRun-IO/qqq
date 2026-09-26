@@ -24,6 +24,7 @@ package com.kingsrook.qqq.esb.model;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.Objects;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
@@ -40,10 +41,15 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *
  * A trigger doesn't know its process's name (it lives in the process's
  * EsbProcessMetaData), so the derived names take it as a parameter:
- * - name: processName.destinationName
- * - subscriptionName (topics only): defaults to the trigger's name
- * - deadLetterDestinationName: defaults to destinationName.dlq for a queue, or
- *   destinationName.subscriptionName.dlq for a topic.
+ * - name: processName.destinationName (the QQQ destination name).
+ * - subscriptionName (topics only): defaults to processName.X, where X is the
+ *   destination's broker-side name (QEsbDestinationMetaData
+ *   getEffectiveDestinationName).
+ * - deadLetterDestinationName: defaults to X.dlq for a queue, or
+ *   X.subscriptionName.dlq for a topic (X again being the broker-side name).
+ * The subscription and dead-letter names are names on the broker.  When the
+ * destination has no separate broker-side name, X is its QQQ name, and the
+ * default subscription name is the same as the trigger's name.
  *
  * Other defaults are per spec section 3.  batchSize and batchWaitMs are left
  * unset unless given (so validation can reject them in SINGLE mode); use
@@ -84,19 +90,50 @@ public class EsbTrigger
 
    /*******************************************************************************
     ** The shared durable subscription name (topic triggers): subscriptionName if
-    ** set, else the trigger's name.
+    ** set, else processName.X, where X is the broker-side name of this trigger's
+    ** destination, which is looked up in the ESB meta-data of the QContext's
+    ** instance (so, on a thread of your own, call this after QContext.init, or
+    ** use the overload that takes the destination).
+    **
+    ** Throws QRuntimeException if a default is needed but the destination can't
+    ** be found there.
     *******************************************************************************/
    public String getEffectiveSubscriptionName(String processName)
    {
-      return (StringUtils.hasContent(subscriptionName) ? subscriptionName : getName(processName));
+      if(StringUtils.hasContent(subscriptionName))
+      {
+         return (subscriptionName);
+      }
+
+      return (getEffectiveSubscriptionName(processName, lookUpDestination()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The shared durable subscription name (topic triggers), given this trigger's
+    ** destination: subscriptionName if set, else processName.X, where X is the
+    ** destination's broker-side name.
+    *******************************************************************************/
+   public String getEffectiveSubscriptionName(String processName, QEsbDestinationMetaData destination)
+   {
+      if(StringUtils.hasContent(subscriptionName))
+      {
+         return (subscriptionName);
+      }
+
+      Objects.requireNonNull(destination, "destination");
+      return (processName + "." + destination.getEffectiveDestinationName());
    }
 
 
 
    /*******************************************************************************
     ** The dead-letter destination (broker queue) name: deadLetterDestinationName
-    ** if set, else the default for this trigger's destination type, which is
-    ** looked up in the ESB meta-data of the QContext's instance.
+    ** if set, else the default for this trigger's destination, which is looked up
+    ** in the ESB meta-data of the QContext's instance (so, on a thread of your
+    ** own, call this after QContext.init, or use the overload that takes the
+    ** destination).
     **
     ** Throws QRuntimeException if a default is needed but the destination can't
     ** be found there.
@@ -108,29 +145,32 @@ public class EsbTrigger
          return (deadLetterDestinationName);
       }
 
-      return (getEffectiveDeadLetterDestinationName(processName, lookUpDestinationType()));
+      return (getEffectiveDeadLetterDestinationName(processName, lookUpDestination()));
    }
 
 
 
    /*******************************************************************************
-    ** The dead-letter destination (broker queue) name, for a destination of the
-    ** given type: deadLetterDestinationName if set, else destinationName.dlq for
-    ** a queue, or destinationName.effectiveSubscriptionName.dlq for a topic.
+    ** The dead-letter destination (broker queue) name, given this trigger's
+    ** destination: deadLetterDestinationName if set, else X.dlq for a queue, or
+    ** X.effectiveSubscriptionName.dlq for a topic, where X is the destination's
+    ** broker-side name.
     *******************************************************************************/
-   public String getEffectiveDeadLetterDestinationName(String processName, EsbDestinationType destinationType)
+   public String getEffectiveDeadLetterDestinationName(String processName, QEsbDestinationMetaData destination)
    {
       if(StringUtils.hasContent(deadLetterDestinationName))
       {
          return (deadLetterDestinationName);
       }
 
-      if(EsbDestinationType.TOPIC.equals(destinationType))
+      Objects.requireNonNull(destination, "destination");
+      String brokerDestinationName = destination.getEffectiveDestinationName();
+      if(destination.getType() == EsbDestinationType.TOPIC)
       {
-         return (destinationName + "." + getEffectiveSubscriptionName(processName) + ".dlq");
+         return (brokerDestinationName + "." + getEffectiveSubscriptionName(processName, destination) + ".dlq");
       }
 
-      return (destinationName + ".dlq");
+      return (brokerDestinationName + ".dlq");
    }
 
 
@@ -156,18 +196,18 @@ public class EsbTrigger
 
 
    /*******************************************************************************
-    ** Find this trigger's destination type in the QContext's instance.
+    ** Find this trigger's destination (with a type) in the QContext's instance.
     *******************************************************************************/
-   private EsbDestinationType lookUpDestinationType()
+   private QEsbDestinationMetaData lookUpDestination()
    {
       QInstance               qInstance           = QContext.getQInstance();
       EsbInstanceMetaData     esbInstanceMetaData = qInstance == null ? null : EsbInstanceMetaData.ofOrNull(qInstance);
       QEsbDestinationMetaData destination         = esbInstanceMetaData == null ? null : esbInstanceMetaData.getDestination(destinationName);
       if(destination == null || destination.getType() == null)
       {
-         throw (new QRuntimeException("Cannot determine the default dead-letter destination for ESB destination " + destinationName + ": it is not defined (with a type) in the ESB meta-data of the QContext's instance."));
+         throw (new QRuntimeException("Cannot determine the default subscription or dead-letter destination name for ESB destination " + destinationName + ": it is not defined (with a type) in the ESB meta-data of the QContext's instance."));
       }
-      return (destination.getType());
+      return (destination);
    }
 
 
@@ -181,20 +221,26 @@ public class EsbTrigger
       String prefix = "ESB trigger " + getName(processName) + " ";
 
       QEsbDestinationMetaData destination = esbInstanceMetaData == null ? null : esbInstanceMetaData.getDestination(destinationName);
-      if(validator.assertCondition(destination != null, prefix + "references an unknown destination: " + destinationName + "."))
+      validator.assertCondition(destination != null, prefix + "references an unknown destination: " + destinationName + ".");
+      if(destination != null)
       {
-         boolean subscriptionOnQueue = StringUtils.hasContent(subscriptionName) && EsbDestinationType.QUEUE.equals(destination.getType());
+         boolean subscriptionOnQueue = StringUtils.hasContent(subscriptionName) && destination.getType() == EsbDestinationType.QUEUE;
          validator.assertCondition(!subscriptionOnQueue, prefix + "has a subscriptionName, but destination " + destinationName + " is a QUEUE (subscriptionName is only for topics).");
       }
 
       validator.assertCondition(concurrency != null && concurrency >= 1, prefix + "concurrency must be at least 1.");
       validator.assertCondition(maxAttempts != null && maxAttempts >= 1, prefix + "maxAttempts must be at least 1.");
+      validator.assertCondition(onDeadLetter != null, prefix + "is missing an onDeadLetter action.");
+      validator.assertCondition(timeoutMs == null || timeoutMs > 0, prefix + "timeoutMs must be greater than 0.");
+      validateRetryFields(prefix, validator);
 
-      if(EsbTriggerMode.BATCH.equals(mode))
+      validator.assertCondition(mode != null, prefix + "is missing a mode.");
+      if(mode == EsbTriggerMode.BATCH)
       {
          validator.assertCondition(batchSize == null || batchSize >= 1, prefix + "batchSize must be at least 1.");
+         validator.assertCondition(batchWaitMs == null || batchWaitMs >= 0, prefix + "batchWaitMs must be at least 0.");
       }
-      else
+      else if(mode != null)
       {
          validator.assertCondition(batchSize == null && batchWaitMs == null, prefix + "sets batchSize or batchWaitMs, but its mode is " + mode + " (batch fields are only for BATCH mode).");
       }
@@ -203,6 +249,19 @@ public class EsbTrigger
       {
          validateRunAsSessionSupplier(prefix, validator);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Backoff fields: a delay of at least 0, a multiplier of at least 1, and a
+    ** maximum delay no less than the (first) delay.
+    *******************************************************************************/
+   private void validateRetryFields(String prefix, QInstanceValidator validator)
+   {
+      validator.assertCondition(retryDelayMs != null && retryDelayMs >= 0, prefix + "retryDelayMs must be at least 0.");
+      validator.assertCondition(retryMultiplier != null && retryMultiplier >= 1, prefix + "retryMultiplier must be at least 1.");
+      validator.assertCondition(retryMaxDelayMs != null && (retryDelayMs == null || retryMaxDelayMs >= retryDelayMs), prefix + "retryMaxDelayMs must be at least retryDelayMs.");
    }
 
 

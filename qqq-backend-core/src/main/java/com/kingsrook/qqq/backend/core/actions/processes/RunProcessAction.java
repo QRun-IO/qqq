@@ -158,8 +158,9 @@ public class RunProcessAction
 
       ///////////////////////////////////////////////////////////////////////////
       // lifecycle listeners hear "started" only for a new run (not a resume), //
-      // and only once the run is set up - so every started is followed by a   //
-      // completed or failed (unless the run stops at a frontend step).        //
+      // and only once the run is set up - so a started run's own failures are //
+      // heard too (though not every started gets exactly one completed or     //
+      // failed - see ProcessLifecycleListenerInterface).                      //
       ///////////////////////////////////////////////////////////////////////////
       if(!isResume)
       {

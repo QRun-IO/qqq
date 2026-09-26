@@ -239,6 +239,29 @@ class QBackendTransactionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A callback that throws a LinkageError (e.g., a NoClassDefFoundError from an
+    ** optional client jar that isn't on the classpath) must not fail the commit -
+    ** whose data is already committed - nor stop later callbacks.
+    *******************************************************************************/
+   @Test
+   void callbackLinkageErrorDoesNotFailCommitOrLaterCallbacks() throws QException
+   {
+      List<String>        ran = new ArrayList<>();
+      QBackendTransaction tx  = new QBackendTransaction();
+      tx.addAfterCommitCallback(() -> ran.add("a"));
+      tx.addAfterCommitCallback(() ->
+      {
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      });
+      tx.addAfterCommitCallback(() -> ran.add("c"));
+
+      assertThatCode(tx::commit).doesNotThrowAnyException();
+      assertThat(ran).containsExactly("a", "c");
+   }
+
+
+
+   /*******************************************************************************
     ** A null callback is a caller bug - reject it when added, not at commit time.
     *******************************************************************************/
    @Test

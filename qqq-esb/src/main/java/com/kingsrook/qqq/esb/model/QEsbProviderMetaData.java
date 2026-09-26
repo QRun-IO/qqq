@@ -24,8 +24,10 @@ package com.kingsrook.qqq.esb.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.TopLevelMetaDataInterface;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -37,13 +39,22 @@ import com.kingsrook.qqq.backend.core.model.metadata.TopLevelMetaDataInterface;
  *
  * url, username, password, and the management fields may be given as
  * ${env.X} (etc.) variables - they are interpreted when the instance is
- * enriched.
+ * enriched.  A variable that isn't set leaves its field null, and logs a
+ * warning that names the provider and field (never a value).
+ *
+ * url can itself carry credentials (e.g., an AMQP URI with user:pass@), so
+ * don't serialize these objects or echo url to users; build a view of just
+ * the fields that are safe to show instead.
  *
  * A top-level meta-data object: adding it to an instance puts it in that
  * instance's EsbInstanceMetaData.
  *******************************************************************************/
 public class QEsbProviderMetaData implements TopLevelMetaDataInterface
 {
+   private static final long serialVersionUID = 1L;
+
+   private static final QLogger LOG = QLogger.getLogger(QEsbProviderMetaData.class);
+
    private String          name;
    private EsbProviderType type;
 
@@ -73,12 +84,30 @@ public class QEsbProviderMetaData implements TopLevelMetaDataInterface
     *******************************************************************************/
    public void interpretVariables(QMetaDataVariableInterpreter interpreter)
    {
-      url = interpreter.interpret(url);
-      username = interpreter.interpret(username);
-      password = interpreter.interpret(password);
-      managementUrl = interpreter.interpret(managementUrl);
-      managementUsername = interpreter.interpret(managementUsername);
-      managementPassword = interpreter.interpret(managementPassword);
+      url = interpretField(interpreter, "url", url);
+      username = interpretField(interpreter, "username", username);
+      password = interpretField(interpreter, "password", password);
+      managementUrl = interpretField(interpreter, "managementUrl", managementUrl);
+      managementUsername = interpretField(interpreter, "managementUsername", managementUsername);
+      managementPassword = interpretField(interpreter, "managementPassword", managementPassword);
+   }
+
+
+
+   /*******************************************************************************
+    ** Interpret one connection field.  The interpreter gives null for a variable
+    ** that isn't set - so warn about that, naming the field, but never logging
+    ** its value (not even the variable reference, which could hold a literal
+    ** fallback, as in ${env.X}??fallback).
+    *******************************************************************************/
+   private String interpretField(QMetaDataVariableInterpreter interpreter, String fieldName, String value)
+   {
+      String interpreted = interpreter.interpret(value);
+      if(value != null && interpreted == null)
+      {
+         LOG.warn("ESB provider connection field references a variable that is not set", logPair("provider", name), logPair("field", fieldName));
+      }
+      return (interpreted);
    }
 
 

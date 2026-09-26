@@ -33,6 +33,8 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -89,7 +91,9 @@ public class RecordChangeListenerHelperTest extends BaseTest
       CapturingListener.appliesToTableName = null;
       CapturingListener.appliesToType = null;
       ThrowingListener.events.clear();
+      LinkageErrorListener.events.clear();
       NoPrefetchMemoryModule.failQueries = false;
+      NoPrefetchMemoryModule.addUnreadablePrimaryKeys = false;
    }
 
 
@@ -196,6 +200,32 @@ public class RecordChangeListenerHelperTest extends BaseTest
 
       qInstance.setRecordChangeListeners(new ArrayList<>(List.of(new QCodeReference(ThrowingAppliesToListener.class), new QCodeReference(Object.class))));
       assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.DELETE));
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener that throws a LinkageError (e.g., a NoClassDefFoundError from
+    ** an optional client jar that isn't on the classpath) - from appliesTo, from
+    ** onRecordsChanged, or from its own class initialization - is caught like an
+    ** exception, so other listeners still run and nothing escapes to the caller.
+    *******************************************************************************/
+   @Test
+   void testListenerLinkageErrorsAreCaught()
+   {
+      QInstance qInstance = QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(LinkageErrorListener.class))
+         .withRecordChangeListener(new QCodeReference(LinkageErrorAppliesToListener.class))
+         .withRecordChangeListener(new QCodeReference(FailingInitializationListener.class))
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      RecordChangeEvent event = personInsertEvent();
+      RecordChangeListenerHelper.fire(qInstance, event);
+      assertThat(LinkageErrorListener.events).containsExactly(event);
+      assertThat(CapturingListener.events).containsExactly(event);
+
+      qInstance.setRecordChangeListeners(new ArrayList<>(List.of(new QCodeReference(LinkageErrorAppliesToListener.class), new QCodeReference(FailingInitializationListener.class))));
+      assertFalse(RecordChangeListenerHelper.anyApply(qInstance, TestUtils.TABLE_NAME_PERSON_MEMORY, RecordChangeType.INSERT));
    }
 
 
@@ -342,12 +372,121 @@ public class RecordChangeListenerHelperTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Records every event it gets, then throws a LinkageError.
+    *******************************************************************************/
+   public static class LinkageErrorListener implements RecordChangeListenerInterface
+   {
+      public static final List<RecordChangeEvent> events = new ArrayList<>();
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         events.add(event);
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Throws a LinkageError from appliesTo, so it never receives an event.
+    *******************************************************************************/
+   public static class LinkageErrorAppliesToListener implements RecordChangeListenerInterface
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         throw (new IllegalStateException("Should not be called"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener class that can't be initialized, so loading it throws a
+    ** LinkageError (ExceptionInInitializerError, then NoClassDefFoundError).
+    *******************************************************************************/
+   public static class FailingInitializationListener implements RecordChangeListenerInterface
+   {
+      private static final Object UNINITIALIZABLE = failInitialization();
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      private static Object failInitialization()
+      {
+         throw (new IllegalStateException("Expected class initialization failure"));
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public boolean appliesTo(String tableName, RecordChangeType type)
+      {
+         return (UNINITIALIZABLE != null);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onRecordsChanged(RecordChangeEvent event)
+      {
+         throw (new IllegalStateException("Should not be called"));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Memory storage behind update and delete actions that do not pre-fetch old
-    ** records.  Set failQueries to make every query throw.
+    ** records.  Set failQueries to make every query throw.  Set
+    ** addUnreadablePrimaryKeys to have each update also return a record whose
+    ** primary key can't be read as the table's (integer) type.
     *******************************************************************************/
    public static class NoPrefetchMemoryModule extends MemoryBackendModule
    {
-      public static Boolean failQueries = false;
+      public static final String UNREADABLE_PRIMARY_KEY = "not-a-number";
+
+      public static Boolean failQueries              = false;
+      public static Boolean addUnreadablePrimaryKeys = false;
 
 
 
@@ -374,6 +513,19 @@ public class RecordChangeListenerHelperTest extends BaseTest
             public boolean supportsPreFetchQuery()
             {
                return (false);
+            }
+
+
+
+            @Override
+            public UpdateOutput execute(UpdateInput updateInput) throws QException
+            {
+               UpdateOutput updateOutput = super.execute(updateInput);
+               if(addUnreadablePrimaryKeys)
+               {
+                  updateOutput.getRecords().add(new QRecord().withValue("id", UNREADABLE_PRIMARY_KEY).withValue("name", "unreadable"));
+               }
+               return (updateOutput);
             }
          });
       }

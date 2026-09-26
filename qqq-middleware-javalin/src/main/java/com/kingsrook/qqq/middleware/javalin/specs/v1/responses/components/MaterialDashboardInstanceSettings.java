@@ -40,6 +40,9 @@ public class MaterialDashboardInstanceSettings implements ToSchema
    @OpenAPIListItems(value = String.class)
    private List<String> processNamesToAddToAllQueryAndViewScreens;
 
+   @OpenAPIDescription("Weekday criteria settings for the query screens (day is any of, day is none of).  Omitted when the material dashboard meta-data does not define them.")
+   private MaterialDashboardWeekdayCriteriaSettings weekdayCriteriaSettings;
+
 
 
    /*******************************************************************************
@@ -71,6 +74,38 @@ public class MaterialDashboardInstanceSettings implements ToSchema
    public MaterialDashboardInstanceSettings withProcessNamesToAddToAllQueryAndViewScreens(List<String> processNamesToAddToAllQueryAndViewScreens)
    {
       this.processNamesToAddToAllQueryAndViewScreens = processNamesToAddToAllQueryAndViewScreens;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for weekdayCriteriaSettings
+    *******************************************************************************/
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   public MaterialDashboardWeekdayCriteriaSettings getWeekdayCriteriaSettings()
+   {
+      return (this.weekdayCriteriaSettings);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for weekdayCriteriaSettings
+    *******************************************************************************/
+   public void setWeekdayCriteriaSettings(MaterialDashboardWeekdayCriteriaSettings weekdayCriteriaSettings)
+   {
+      this.weekdayCriteriaSettings = weekdayCriteriaSettings;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for weekdayCriteriaSettings
+    *******************************************************************************/
+   public MaterialDashboardInstanceSettings withWeekdayCriteriaSettings(MaterialDashboardWeekdayCriteriaSettings weekdayCriteriaSettings)
+   {
+      this.weekdayCriteriaSettings = weekdayCriteriaSettings;
       return (this);
    }
 

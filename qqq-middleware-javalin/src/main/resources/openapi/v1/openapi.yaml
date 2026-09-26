@@ -550,6 +550,24 @@ components:
           items:
             type: "string"
           type: "array"
+        weekdayCriteriaSettings:
+          $ref: "#/components/schemas/MaterialDashboardWeekdayCriteriaSettings"
+          description: "Weekday criteria settings for the query screens (day is any\
+            \ of, day is none of).  Omitted when the material dashboard meta-data\
+            \ does not define them."
+      type: "object"
+    MaterialDashboardWeekdayCriteriaSettings:
+      properties:
+        dateTimeFieldFunctionArguments:
+          additionalProperties: true
+          description: "Arguments for the WeekdayOfDateTime field function that a\
+            \ frontend sends with weekday criteria on date-time fields (for example\
+            \ timeZoneId or useSessionZoneId)."
+          type: "object"
+        enabled:
+          description: "Whether query screens offer the weekday criteria (day is any\
+            \ of, day is none of) on date and date-time fields."
+          type: "boolean"
       type: "object"
     MetaDataResponseV1:
       properties:
@@ -595,6 +613,12 @@ components:
             logo:
               description: "Path or URL of the application's logo image."
               type: "string"
+          type: "object"
+        helpContents:
+          additionalProperties: true
+          description: "Instance-level help content, by slot name (for example the\
+            \ query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource\
+            \ slots).  Omitted when the instance defines none."
           type: "object"
         processes:
           additionalProperties:
@@ -642,6 +666,22 @@ components:
                   items:
                     type: "string"
                   type: "array"
+                weekdayCriteriaSettings:
+                  description: "Weekday criteria settings for the query screens (day\
+                    \ is any of, day is none of).  Omitted when the material dashboard\
+                    \ meta-data does not define them."
+                  properties:
+                    dateTimeFieldFunctionArguments:
+                      additionalProperties: true
+                      description: "Arguments for the WeekdayOfDateTime field function\
+                        \ that a frontend sends with weekday criteria on date-time\
+                        \ fields (for example timeZoneId or useSessionZoneId)."
+                      type: "object"
+                    enabled:
+                      description: "Whether query screens offer the weekday criteria\
+                        \ (day is any of, day is none of) on date and date-time fields."
+                      type: "boolean"
+                  type: "object"
               type: "object"
           type: "object"
         tables:

@@ -58,12 +58,17 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.ProcessInitOrStepOrStatusResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.WidgetBlock;
 import com.kingsrook.qqq.openapi.model.Example;
+import com.kingsrook.qqq.openapi.model.In;
+import com.kingsrook.qqq.openapi.model.Parameter;
 import com.kingsrook.qqq.openapi.model.Schema;
+import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.Context;
 import io.javalin.http.UploadedFile;
 import org.json.JSONArray;
@@ -78,8 +83,62 @@ public class ProcessSpecUtilsV1
 {
    private static final QLogger LOG = QLogger.getLogger(ProcessSpecUtilsV1.class);
 
+   public static final String TABLE_VARIANT_PARAM = "tableVariant";
+
+   private static final String TABLE_VARIANT_DESCRIPTION = "For processes on tables that use variant backends, JSON object naming the variant to use (the same `type` and `id` as in table requests).";
+   private static final String TABLE_VARIANT_EXAMPLE     = """
+      {"type":"store","id":"1"}""";
+
    public static final String EXAMPLE_PROCESS_UUID = "01234567-89AB-CDEF-0123-456789ABCDEF";
    public static final String EXAMPLE_JOB_UUID     = "98765432-10FE-DCBA-9876-543210FEDCBA";
+
+
+
+   /*******************************************************************************
+    ** The (optional) table variant for a process request:  a JSON object with the
+    ** variant's `type` and `id` (as for the table routes), read from the form
+    ** field or query parameter named `tableVariant`.
+    *******************************************************************************/
+   public static TableVariant getTableVariantParam(Context context)
+   {
+      String tableVariantParam = QJavalinUtils.getFormParamOrQueryParam(context, TABLE_VARIANT_PARAM);
+      if(!StringUtils.hasContent(tableVariantParam))
+      {
+         return (null);
+      }
+
+      JSONObject variant = new JSONObject(tableVariantParam);
+      return (new TableVariant().withType(variant.optString("type", null)).withId(variant.has("id") ? String.valueOf(variant.get("id")) : null));
+   }
+
+
+
+   /*******************************************************************************
+    ** OpenAPI definition of the (optional) tableVariant query parameter.
+    *******************************************************************************/
+   public static Parameter defineTableVariantQueryParameter()
+   {
+      return (new Parameter()
+         .withName(TABLE_VARIANT_PARAM)
+         .withDescription(TABLE_VARIANT_DESCRIPTION)
+         .withRequired(false)
+         .withSchema(new Schema().withType(Type.STRING))
+         .withExample(TABLE_VARIANT_EXAMPLE)
+         .withIn(In.QUERY));
+   }
+
+
+
+   /*******************************************************************************
+    ** OpenAPI definition of the (optional) tableVariant form field.
+    *******************************************************************************/
+   public static Schema defineTableVariantFormProperty()
+   {
+      return (new Schema()
+         .withType(Type.STRING)
+         .withDescription(TABLE_VARIANT_DESCRIPTION + "  May also be given as a query parameter.")
+         .withExample(TABLE_VARIANT_EXAMPLE));
+   }
 
 
 

@@ -105,7 +105,9 @@ public class ProcessRecordsSpecV1 extends AbstractEndpointSpec<ProcessRecordsInp
             .withRequired(false)
             .withSchema(new Schema().withType(Type.INTEGER))
             .withExample("20")
-            .withIn(In.QUERY)
+            .withIn(In.QUERY),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -122,6 +124,7 @@ public class ProcessRecordsSpecV1 extends AbstractEndpointSpec<ProcessRecordsInp
       input.setProcessUUID(getRequestParam(context, "processUUID"));
       input.setSkip(Objects.requireNonNullElse(getRequestParamInteger(context, "skip"), 0));
       input.setLimit(Objects.requireNonNullElse(getRequestParamInteger(context, "limit"), 20));
+      input.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
       return (input);
    }
 

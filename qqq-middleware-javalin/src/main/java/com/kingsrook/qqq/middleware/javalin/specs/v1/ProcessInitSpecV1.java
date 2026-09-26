@@ -117,7 +117,9 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("samplePersonProcess")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -169,6 +171,8 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
                      .withFormat("binary")
                      .withDescription("A file upload, for processes which expect to be initialized with an uploaded file.")
                   )
+
+                  .withProperty(ProcessSpecUtilsV1.TABLE_VARIANT_PARAM, ProcessSpecUtilsV1.defineTableVariantFormProperty())
                )
          );
    }
@@ -187,6 +191,7 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
       processInitOrStepInput.setProcessName(getRequestParam(context, "processName"));
       processInitOrStepInput.setStepTimeoutMillis(Objects.requireNonNullElse(getRequestParamInteger(context, "stepTimeoutMillis"), DEFAULT_ASYNC_STEP_TIMEOUT_MILLIS));
       processInitOrStepInput.setValues(getRequestParamMap(context, "values"));
+      processInitOrStepInput.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
 
       String       recordsParam         = getRequestParam(context, "recordsParam");
       String       recordIds            = getRequestParam(context, "recordIds");

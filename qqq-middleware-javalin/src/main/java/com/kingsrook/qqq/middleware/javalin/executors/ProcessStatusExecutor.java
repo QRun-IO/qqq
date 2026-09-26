@@ -56,6 +56,8 @@ public class ProcessStatusExecutor extends AbstractMiddlewareExecutor<ProcessSta
    {
       try
       {
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          String processName = input.getProcessName();
          String processUUID = input.getProcessUUID();
          String jobUUID     = input.getJobUUID();

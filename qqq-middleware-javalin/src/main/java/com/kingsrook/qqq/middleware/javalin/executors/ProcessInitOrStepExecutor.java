@@ -95,6 +95,11 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
 
       try
       {
+         /////////////////////////////////////////////////////////////////////////
+         // a variant-backed table's process runs against the requested variant //
+         /////////////////////////////////////////////////////////////////////////
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          RunProcessInput runProcessInput = new RunProcessInput();
          QContext.pushAction(runProcessInput);
 

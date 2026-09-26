@@ -46,6 +46,8 @@ public class ProcessRecordsExecutor extends AbstractMiddlewareExecutor<ProcessRe
    @Override
    public void execute(ProcessRecordsInput input, ProcessRecordsOutputInterface output) throws QException
    {
+      ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
       ////////////////////////////////////////////////////////////////////////////
       // only the session that ran the process may read its records (as legacy) //
       ////////////////////////////////////////////////////////////////////////////

@@ -114,7 +114,9 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("inputForm")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -144,6 +146,8 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
                   .withType(Type.STRING)
                   .withFormat("binary")
                   .withDescription("A file upload, for process steps which expect an uploaded file."))
+
+               .withProperty(ProcessSpecUtilsV1.TABLE_VARIANT_PARAM, ProcessSpecUtilsV1.defineTableVariantFormProperty())
             )
          );
    }
@@ -175,6 +179,7 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
       }
       processInitOrStepInput.setStepTimeoutMillis(Objects.requireNonNullElse(getRequestParamInteger(context, "stepTimeoutMillis"), DEFAULT_ASYNC_STEP_TIMEOUT_MILLIS));
       processInitOrStepInput.setValues(getRequestParamMap(context, "values"));
+      processInitOrStepInput.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
 
       /////////////////////////////////////////////////////////////////////////
       // uploaded files are stored and referenced from their process values //

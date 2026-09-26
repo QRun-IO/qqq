@@ -22,6 +22,9 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
+
+
 /*******************************************************************************
  **
  *******************************************************************************/
@@ -30,6 +33,8 @@ public class ProcessStatusInput extends AbstractMiddlewareInput
    private String processName;
    private String processUUID;
    private String jobUUID;
+
+   private TableVariant tableVariant;
 
 
 
@@ -121,6 +126,37 @@ public class ProcessStatusInput extends AbstractMiddlewareInput
    public ProcessStatusInput withJobUUID(String jobUUID)
    {
       this.jobUUID = jobUUID;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (this.tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public ProcessStatusInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
       return (this);
    }
 

@@ -22,6 +22,9 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
+
+
 /*******************************************************************************
  ** Middleware input for fetching records from a process state.
  *******************************************************************************/
@@ -31,6 +34,8 @@ public class ProcessRecordsInput extends AbstractMiddlewareInput
    private String  processUUID;
    private Integer skip  = 0;
    private Integer limit = 20;
+
+   private TableVariant tableVariant;
 
 
 
@@ -153,6 +158,37 @@ public class ProcessRecordsInput extends AbstractMiddlewareInput
    public ProcessRecordsInput withLimit(Integer limit)
    {
       this.limit = limit;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (this.tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public ProcessRecordsInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
       return (this);
    }
 

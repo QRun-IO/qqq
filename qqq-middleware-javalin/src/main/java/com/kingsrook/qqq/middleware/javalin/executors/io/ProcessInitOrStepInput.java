@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 
 
 /*******************************************************************************
@@ -49,6 +50,8 @@ public class ProcessInitOrStepInput extends AbstractMiddlewareInput
 
    private RunProcessInput.FrontendStepBehavior frontendStepBehavior = RunProcessInput.FrontendStepBehavior.BREAK;
    private String startAtStep;
+
+   private TableVariant tableVariant;
 
    // todo - file??
 
@@ -322,6 +325,37 @@ public class ProcessInitOrStepInput extends AbstractMiddlewareInput
    public ProcessInitOrStepInput withStartAtStep(String startAtStep)
    {
       this.startAtStep = startAtStep;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (this.tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public ProcessInitOrStepInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
       return (this);
    }
 

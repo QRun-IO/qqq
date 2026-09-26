@@ -60,6 +60,7 @@ jobs:
           name: Run sample data, HTTP and browser acceptance
           command: |
             python3 qqq-sample-project/test_feature_coverage.py
+            python3 -m unittest discover -s qqq-sample-project -p test_published_bom.py
             mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
       - run:
           name: Report sample feature coverage

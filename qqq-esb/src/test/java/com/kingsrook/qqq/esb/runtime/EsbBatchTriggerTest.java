@@ -214,6 +214,33 @@ class EsbBatchTriggerTest extends EsbRuntimeTestBase
 
 
    /*******************************************************************************
+    ** Pausing while a batch is being collected ends the collecting: the batch so
+    ** far runs right away, not after batchWaitMs, and the trigger then pauses.
+    *******************************************************************************/
+   @Test
+   void pauseEndsTheBatchBeingCollected() throws Exception
+   {
+      defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME).withMode(EsbTriggerMode.BATCH).withBatchSize(10).withBatchWaitMs(30_000));
+      QEsbRuntime runtime = startRuntime(QContext.getQInstance());
+      waitForState(runtime, QUEUE_TRIGGER_NAME, EsbTriggerState.RUNNING);
+
+      sendEvent(QUEUE_NAME, Map.of("n", 1));
+      sendEvent(QUEUE_NAME, Map.of("n", 2));
+      pause(1500);
+      assertThat(RecordingStep.getRuns()).isEmpty();
+
+      Instant pausedAt = Instant.now();
+      runtime.getRunner(QUEUE_TRIGGER_NAME).pauseLocal();
+      waitFor("the batch run", () -> RecordingStep.getCompletedRuns().size() == 1);
+
+      assertThat(Duration.between(pausedAt, RecordingStep.getRuns().get(0).getStartedAt())).isLessThan(Duration.ofSeconds(5));
+      assertThat(RecordingStep.getRuns().get(0).getEvents()).hasSize(2);
+      assertThat(runtime.getRunner(QUEUE_TRIGGER_NAME).getState()).isEqualTo(EsbTriggerState.PAUSED);
+   }
+
+
+
+   /*******************************************************************************
     ** The broker-side name of the trigger's dead-letter queue.
     *******************************************************************************/
    private String getDeadLetterQueueName(EsbTrigger trigger)

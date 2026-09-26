@@ -22,6 +22,8 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -236,6 +238,43 @@ class ProcessInitSpecV1Test extends SpecTestBase
       assertEquals("hadNullKey", mapWithNullKey.getString(""));
       assertTrue(mapWithNullKey.has("one"));
       assertEquals("1", mapWithNullKey.getString("one"));
+   }
+
+
+
+   /*******************************************************************************
+    ** An uploaded file with an unsafe name is refused (400) before anything is
+    ** stored, as on the legacy route (QRun-IO/qqq#543).
+    *******************************************************************************/
+   @Test
+   void testUnsafeUploadFilenameIsRefused()
+   {
+      for(String filename : List.of("..", "a/b.txt", "c:\\d.txt"))
+      {
+         HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+            .field("values", "{}")
+            .field("theFile", new ByteArrayInputStream("x".getBytes(StandardCharsets.UTF_8)), filename)
+            .asString();
+         assertEquals(400, response.getStatus(), filename + ": " + response.getBody());
+         assertThat(response.getBody()).contains("Uploaded filename must be a nonempty filename");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Without an uploaded-file archive table, a file upload is an error rather
+    ** than silently dropped.
+    *******************************************************************************/
+   @Test
+   void testUploadWithoutArchiveTableIsAnError()
+   {
+      HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/processes/greet/init")
+         .field("values", "{}")
+         .field("theFile", new ByteArrayInputStream("x".getBytes(StandardCharsets.UTF_8)), "ok.txt")
+         .asString();
+      assertThat(response.getStatus()).isGreaterThanOrEqualTo(400);
+      assertThat(response.getBody()).contains("UploadFileArchiveTableName was not specified");
    }
 
 }

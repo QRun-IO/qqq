@@ -307,10 +307,12 @@ class SampleInteractiveProcessTest
 
 
    /*******************************************************************************
-    ** A successful v1 response does not establish delivery of multipart files.
+    ** v1 process routes accept multipart files the way the legacy routes do: they
+    ** stream them to the javalin uploaded-file archive table. This instance has no
+    ** archive table, so a v1 upload is refused with that reason and nothing is run.
     *******************************************************************************/
    @Test
-   void testVersionedUploadsRemainAnExplicitUnsupportedPath() throws Exception
+   void testVersionedUploadsWithoutAnArchiveTableAreRefused() throws Exception
    {
       List<String> before = people();
       for(String name : List.of("ownedUploadInit", "ownedUploadStep"))
@@ -324,8 +326,8 @@ class SampleInteractiveProcessTest
          String body = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"owned.txt\"\r\nContent-Type: text/plain\r\n\r\nowned sample bytes\r\n--" + boundary + "--\r\n";
          HttpResponse<String> response = client.send(builder(path).header("Content-Type", "multipart/form-data; boundary=" + boundary)
             .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
-         JSONObject result = json(response);
-         assertEquals(0, result.getJSONObject("values").getInt("uploadedFileCount"), result.toString());
+         failure(response);
+         assertTrue(response.body().contains("Cannot accept file uploads"), response.body());
       }
       assertEquals(before, people());
    }

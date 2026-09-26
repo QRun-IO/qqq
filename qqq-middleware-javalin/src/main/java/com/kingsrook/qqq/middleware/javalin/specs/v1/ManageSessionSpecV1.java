@@ -41,6 +41,8 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
+import com.kingsrook.qqq.openapi.model.In;
+import com.kingsrook.qqq.openapi.model.Parameter;
 import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
 import com.kingsrook.qqq.openapi.model.Type;
@@ -54,6 +56,7 @@ import io.javalin.http.HttpStatus;
  *******************************************************************************/
 public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput, ManageSessionResponseV1, ManageSessionExecutor>
 {
+   private static final String BASIC_PREFIX = "Basic ";
 
 
    /***************************************************************************
@@ -72,7 +75,11 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
             `type` field in the `metaData/authentication` response, data from that authentication provider should be posted
             to this endpoint, to create a session within the QQQ application.
             
-            The response object will include a session identifier (`uuid`) to authenticate the user in subsequent API calls.""");
+            The response object will include a session identifier (`uuid`) to authenticate the user in subsequent API calls.
+            
+            For the `TABLE_BASED` type, send the user's credentials in an `Authorization: Basic` header (base64 of
+            `username:password`, UTF-8); the body may be empty.  The password is verified against the user table and a
+            session row is stored; a `401` response means the credentials were refused.""");
    }
 
 
@@ -97,7 +104,7 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       if(result != null)
       {
          String sessionUuid = result.getUuid();
-         context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME, sessionUuid, QJavalinImplementation.SESSION_COOKIE_AGE);
+         QJavalinImplementation.setSessionCookie(context, QJavalinImplementation.SESSION_UUID_COOKIE_NAME, sessionUuid);
       }
       return (result);
    }
@@ -120,8 +127,42 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
                   .withType(Type.STRING)
                   .withDescription("An access token from a downstream authentication provider (e.g., Auth0), to use as the basis for authentication and authorization.")
                )
+               .withProperty("code", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("OAuth2 authorization code, for the backend to exchange with the identity provider (authorization-code + PKCE sign-in).")
+               )
+               .withProperty("codeVerifier", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("PKCE code verifier that goes with `code`.")
+               )
+               .withProperty("redirectUri", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("Redirect URI the authorization `code` was issued to.")
+               )
+               .withProperty("sessionUUID", new Schema()
+                  .withType(Type.STRING)
+                  .withDescription("UUID of an existing session (from its sessionUUID cookie), to resume it instead of signing in again.")
+               )
             )
          ));
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public List<Parameter> defineRequestParameters()
+   {
+      return List.of(new Parameter()
+         .withName("Authorization")
+         .withDescription("""
+            For `TABLE_BASED` authentication: `Basic ` followed by the base64 encoding of `username:password` (UTF-8).
+            Not used by other authentication types.""")
+         .withIn(In.HEADER)
+         .withSchema(new Schema().withType(Type.STRING))
+         .withExample("Basic dXNlcm5hbWU6cGFzc3dvcmQ="));
    }
 
 
@@ -134,6 +175,17 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
    {
       ManageSessionInput manageSessionInput = new ManageSessionInput();
       manageSessionInput.setAccessToken(getRequestParam(context, "accessToken"));
+      manageSessionInput.setCode(getRequestParam(context, "code"));
+      manageSessionInput.setCodeVerifier(getRequestParam(context, "codeVerifier"));
+      manageSessionInput.setRedirectUri(getRequestParam(context, "redirectUri"));
+      manageSessionInput.setSessionUUID(getRequestParam(context, "sessionUUID"));
+
+      String authorization = context.header("Authorization");
+      if(authorization != null && authorization.startsWith(BASIC_PREFIX))
+      {
+         manageSessionInput.setBasicAuthString(authorization.substring(BASIC_PREFIX.length()).trim());
+      }
+
       return (manageSessionInput);
    }
 

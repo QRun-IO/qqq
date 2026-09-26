@@ -95,7 +95,9 @@ public class ProcessStatusSpecV1 extends AbstractEndpointSpec<ProcessStatusInput
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING).withFormat("uuid"))
             .withExample(ProcessSpecUtilsV1.EXAMPLE_JOB_UUID)
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -128,6 +130,7 @@ public class ProcessStatusSpecV1 extends AbstractEndpointSpec<ProcessStatusInput
       input.setProcessName(getRequestParam(context, "processName"));
       input.setProcessUUID(getRequestParam(context, "processUUID"));
       input.setJobUUID(getRequestParam(context, "jobUUID"));
+      input.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
       return (input);
    }
 

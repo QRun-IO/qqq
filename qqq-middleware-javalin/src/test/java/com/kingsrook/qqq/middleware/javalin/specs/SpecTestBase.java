@@ -44,7 +44,7 @@ import org.junit.jupiter.api.BeforeEach;
  *******************************************************************************/
 public abstract class SpecTestBase
 {
-   protected static int PORT = 6273;
+   protected static int PORT = 6400;
 
    protected static Javalin service;
    protected QInstance serverQInstance;

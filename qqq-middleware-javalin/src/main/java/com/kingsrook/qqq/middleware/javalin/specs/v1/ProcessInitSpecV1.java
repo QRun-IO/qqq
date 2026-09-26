@@ -25,6 +25,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -116,7 +117,9 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("samplePersonProcess")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -168,6 +171,8 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
                      .withFormat("binary")
                      .withDescription("A file upload, for processes which expect to be initialized with an uploaded file.")
                   )
+
+                  .withProperty(ProcessSpecUtilsV1.TABLE_VARIANT_PARAM, ProcessSpecUtilsV1.defineTableVariantFormProperty())
                )
          );
    }
@@ -186,6 +191,7 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
       processInitOrStepInput.setProcessName(getRequestParam(context, "processName"));
       processInitOrStepInput.setStepTimeoutMillis(Objects.requireNonNullElse(getRequestParamInteger(context, "stepTimeoutMillis"), DEFAULT_ASYNC_STEP_TIMEOUT_MILLIS));
       processInitOrStepInput.setValues(getRequestParamMap(context, "values"));
+      processInitOrStepInput.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
 
       String       recordsParam         = getRequestParam(context, "recordsParam");
       String       recordIds            = getRequestParam(context, "recordIds");
@@ -193,8 +199,14 @@ public class ProcessInitSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
       QQueryFilter initialRecordsFilter = buildProcessInitRecordsFilter(recordsParam, recordIds, filterJSON, processInitOrStepInput);
       processInitOrStepInput.setRecordsFilter(initialRecordsFilter);
 
-      // todo - uploaded files
-      // todo - archive uploaded files?
+      /////////////////////////////////////////////////////////////////////////
+      // uploaded files are stored and referenced from their process values //
+      /////////////////////////////////////////////////////////////////////////
+      if(processInitOrStepInput.getValues() == null)
+      {
+         processInitOrStepInput.setValues(new LinkedHashMap<>());
+      }
+      ProcessSpecUtilsV1.addUploadedFiles(context, processInitOrStepInput);
 
       return (processInitOrStepInput);
    }

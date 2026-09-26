@@ -25,6 +25,7 @@ package com.kingsrook.qqq.middleware.javalin;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
@@ -38,6 +39,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardSecurityHeaders;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.http.HttpStatus;
@@ -52,6 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -801,6 +804,23 @@ class QApplicationJavalinServerTest
       assertEquals(404, missingTableResponse.getStatus());
       assertThat(missingTableResponse.getBody()).contains("\"error\"").contains("not found");
       assertThat(missingTableResponse.getBody()).doesNotContainIgnoringCase("<!doctype html");
+   }
+
+
+
+   /*******************************************************************************
+    ** The Next dashboard security headers customizer is kept for the provider.
+    *******************************************************************************/
+   @Test
+   void testNextDashboardSecurityHeadersCustomizer()
+   {
+      QApplicationJavalinServer server = new QApplicationJavalinServer(getQqqApplication());
+      assertNull(server.getNextDashboardSecurityHeadersCustomizer());
+
+      Consumer<NextDashboardSecurityHeaders> customizer = headers -> headers.withSources("img-src", "https://cdn.example.com");
+      assertSame(customizer, server.withNextDashboardSecurityHeadersCustomizer(customizer).getNextDashboardSecurityHeadersCustomizer());
+      server.setNextDashboardSecurityHeadersCustomizer(null);
+      assertNull(server.getNextDashboardSecurityHeadersCustomizer());
    }
 
 

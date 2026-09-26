@@ -23,19 +23,30 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.utils;
 
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.Serializable;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessMetaDataAdjustment;
 import com.kingsrook.qqq.backend.core.model.actions.processes.QUploadedFile;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.blocks.AbstractBlockWidgetData;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -44,16 +55,25 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QComponentType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendComponentMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.ProcessInitOrStepOrStatusResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.WidgetBlock;
 import com.kingsrook.qqq.openapi.model.Example;
+import com.kingsrook.qqq.openapi.model.In;
+import com.kingsrook.qqq.openapi.model.Parameter;
 import com.kingsrook.qqq.openapi.model.Schema;
+import com.kingsrook.qqq.openapi.model.Type;
 import io.javalin.http.Context;
+import io.javalin.http.UploadedFile;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -63,8 +83,62 @@ public class ProcessSpecUtilsV1
 {
    private static final QLogger LOG = QLogger.getLogger(ProcessSpecUtilsV1.class);
 
+   public static final String TABLE_VARIANT_PARAM = "tableVariant";
+
+   private static final String TABLE_VARIANT_DESCRIPTION = "For processes on tables that use variant backends, JSON object naming the variant to use (the same `type` and `id` as in table requests).";
+   private static final String TABLE_VARIANT_EXAMPLE     = """
+      {"type":"store","id":"1"}""";
+
    public static final String EXAMPLE_PROCESS_UUID = "01234567-89AB-CDEF-0123-456789ABCDEF";
    public static final String EXAMPLE_JOB_UUID     = "98765432-10FE-DCBA-9876-543210FEDCBA";
+
+
+
+   /*******************************************************************************
+    ** The (optional) table variant for a process request:  a JSON object with the
+    ** variant's `type` and `id` (as for the table routes), read from the form
+    ** field or query parameter named `tableVariant`.
+    *******************************************************************************/
+   public static TableVariant getTableVariantParam(Context context)
+   {
+      String tableVariantParam = QJavalinUtils.getFormParamOrQueryParam(context, TABLE_VARIANT_PARAM);
+      if(!StringUtils.hasContent(tableVariantParam))
+      {
+         return (null);
+      }
+
+      JSONObject variant = new JSONObject(tableVariantParam);
+      return (new TableVariant().withType(variant.optString("type", null)).withId(variant.has("id") ? String.valueOf(variant.get("id")) : null));
+   }
+
+
+
+   /*******************************************************************************
+    ** OpenAPI definition of the (optional) tableVariant query parameter.
+    *******************************************************************************/
+   public static Parameter defineTableVariantQueryParameter()
+   {
+      return (new Parameter()
+         .withName(TABLE_VARIANT_PARAM)
+         .withDescription(TABLE_VARIANT_DESCRIPTION)
+         .withRequired(false)
+         .withSchema(new Schema().withType(Type.STRING))
+         .withExample(TABLE_VARIANT_EXAMPLE)
+         .withIn(In.QUERY));
+   }
+
+
+
+   /*******************************************************************************
+    ** OpenAPI definition of the (optional) tableVariant form field.
+    *******************************************************************************/
+   public static Schema defineTableVariantFormProperty()
+   {
+      return (new Schema()
+         .withType(Type.STRING)
+         .withDescription(TABLE_VARIANT_DESCRIPTION + "  May also be given as a query parameter.")
+         .withExample(TABLE_VARIANT_EXAMPLE));
+   }
 
 
 
@@ -225,7 +299,7 @@ public class ProcessSpecUtilsV1
                }
                else if(value == null)
                {
-                  valuesAsJsonObject.put(name, (Object) null);
+                  valuesAsJsonObject.put(name, JSONObject.NULL);
                   continue;
                }
                //////////////////////////////////////////////////////////////////////////////////
@@ -319,4 +393,66 @@ public class ProcessSpecUtilsV1
 
       new InsertAction().executeAsync(insertInput);
    }
+
+
+
+   /***************************************************************************
+    ** Read the files uploaded with a process init or step request (QRun-IO/qqq#543)
+    ** the same way the legacy process routes do: every value is validated and
+    ** every filename checked before anything is stored; each file is streamed to
+    ** the uploaded-file archive table, and the field's process value becomes the
+    ** list of StorageInputs that reference the stored files.
+    ***************************************************************************/
+   public static void addUploadedFiles(Context context, ProcessInitOrStepInput input) throws IOException, QException
+   {
+      Map<String, List<UploadedFile>> uploadedFileMap = context.isMultipartFormData() ? context.uploadedFileMap() : Map.of();
+
+      RunProcessInput validationInput = new RunProcessInput();
+      validationInput.setProcessName(input.getProcessName());
+      validationInput.setValues(new LinkedHashMap<>(input.getValues()));
+      RunProcessAction.validateUserInputValues(validationInput);
+
+      for(List<UploadedFile> uploadedFiles : uploadedFileMap.values())
+      {
+         for(UploadedFile uploadedFile : uploadedFiles)
+         {
+            String filename = uploadedFile.filename();
+            if(filename.isBlank() || filename.equals(".") || filename.equals("..") || filename.contains("/") || filename.contains("\\")
+               || filename.contains(":") || filename.chars().anyMatch(Character::isISOControl))
+            {
+               throw new QBadRequestException("Uploaded filename must be a nonempty filename without directory separators, colons or control characters.");
+            }
+         }
+      }
+
+      for(Map.Entry<String, List<UploadedFile>> entry : uploadedFileMap.entrySet())
+      {
+         ArrayList<StorageInput> storageInputs = new ArrayList<>();
+         input.getValues().put(entry.getKey(), storageInputs);
+
+         String storageTableName = QJavalinImplementation.getJavalinMetaData() == null ? null : QJavalinImplementation.getJavalinMetaData().getUploadedFileArchiveTableName();
+         if(!StringUtils.hasContent(storageTableName))
+         {
+            throw (new QException("UploadFileArchiveTableName was not specified in javalinMetaData.  Cannot accept file uploads."));
+         }
+
+         for(UploadedFile uploadedFile : entry.getValue())
+         {
+            String reference = QValueFormatter.formatDate(LocalDate.now())
+                               + File.separator + input.getProcessName()
+                               + File.separator + UUID.randomUUID()
+                               + File.separator + uploadedFile.filename();
+
+            StorageInput storageInput = new StorageInput(storageTableName).withReference(reference);
+            storageInputs.add(storageInput);
+
+            try(InputStream content = uploadedFile.content(); OutputStream outputStream = new StorageAction().createOutputStream(storageInput))
+            {
+               content.transferTo(outputStream);
+               LOG.info("Streamed uploaded file", logPair("storageTable", storageTableName), logPair("reference", reference), logPair("processName", input.getProcessName()), logPair("uploadFileName", uploadedFile.filename()));
+            }
+         }
+      }
+   }
+
 }

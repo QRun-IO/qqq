@@ -98,7 +98,18 @@ public class WidgetBlock implements Serializable, ToSchema
    @OpenAPIDescription("What type of block to render.")
    public BlockType getBlockType()
    {
-      return (BlockType.valueOf(this.wrapped.getBlockTypeName()));
+      /////////////////////////////////////////////////////////////////////////
+      // a block type this version does not know is left out (blockTypeName //
+      // still names it) rather than failing the whole response            //
+      /////////////////////////////////////////////////////////////////////////
+      try
+      {
+         return (BlockType.valueOf(this.wrapped.getBlockTypeName()));
+      }
+      catch(IllegalArgumentException | NullPointerException e)
+      {
+         return (null);
+      }
    }
 
 
@@ -228,5 +239,16 @@ public class WidgetBlock implements Serializable, ToSchema
    private String                    overlayHtml;
    private Map<String, Serializable> overlayStyleOverrides = new HashMap<>();
    */
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Name of the block's type, as the backend declares it (including types this API version does not enumerate in blockType).")
+   public String getBlockTypeName()
+   {
+      return (this.wrapped.getBlockTypeName());
+   }
 
 }

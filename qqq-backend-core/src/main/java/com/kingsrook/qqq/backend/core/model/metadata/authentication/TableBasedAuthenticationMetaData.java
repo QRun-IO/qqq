@@ -50,6 +50,13 @@ public class TableBasedAuthenticationMetaData extends QAuthenticationMetaData
 
    private Integer inactivityTimeoutSeconds = 14_400; // 4 hours
 
+   ////////////////////////////////////////////////////////////////////////////
+   // soft lockout of password sign-in (ASVS 2.2.1): 5 failures within 15   //
+   // minutes lock the username for 15 minutes                              //
+   ////////////////////////////////////////////////////////////////////////////
+   private Integer maxFailedSignInAttempts = 5;
+   private Integer signInLockoutSeconds    = 900;
+
 
 
    /*******************************************************************************
@@ -448,6 +455,69 @@ public class TableBasedAuthenticationMetaData extends QAuthenticationMetaData
    public TableBasedAuthenticationMetaData withInactivityTimeoutSeconds(Integer inactivityTimeoutSeconds)
    {
       this.inactivityTimeoutSeconds = inactivityTimeoutSeconds;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for maxFailedSignInAttempts: failed password attempts for a username,
+    ** within signInLockoutSeconds, before it is locked out (null or 0 disables).
+    *******************************************************************************/
+   public Integer getMaxFailedSignInAttempts()
+   {
+      return (this.maxFailedSignInAttempts);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for maxFailedSignInAttempts
+    *******************************************************************************/
+   public void setMaxFailedSignInAttempts(Integer maxFailedSignInAttempts)
+   {
+      this.maxFailedSignInAttempts = maxFailedSignInAttempts;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maxFailedSignInAttempts
+    *******************************************************************************/
+   public TableBasedAuthenticationMetaData withMaxFailedSignInAttempts(Integer maxFailedSignInAttempts)
+   {
+      this.maxFailedSignInAttempts = maxFailedSignInAttempts;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for signInLockoutSeconds: the window failures are counted in, and how
+    ** long a locked-out username is refused (null or 0 disables the lockout).
+    *******************************************************************************/
+   public Integer getSignInLockoutSeconds()
+   {
+      return (this.signInLockoutSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for signInLockoutSeconds
+    *******************************************************************************/
+   public void setSignInLockoutSeconds(Integer signInLockoutSeconds)
+   {
+      this.signInLockoutSeconds = signInLockoutSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for signInLockoutSeconds
+    *******************************************************************************/
+   public TableBasedAuthenticationMetaData withSignInLockoutSeconds(Integer signInLockoutSeconds)
+   {
+      this.signInLockoutSeconds = signInLockoutSeconds;
       return (this);
    }
 

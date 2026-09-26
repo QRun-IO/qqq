@@ -55,7 +55,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
  ** Omitted members of a named relationship require DELETE even when record
  ** locks hide them. Key-only discovery is internal; actual DML retains its locks.
  *******************************************************************************/
-final class AssociatedWritePermissions
+public final class AssociatedWritePermissions
 {
    private final AbstractTableActionInput originalInput;
    private final Map<String, Set<Object>> visitedDeleteKeys = new HashMap<>();

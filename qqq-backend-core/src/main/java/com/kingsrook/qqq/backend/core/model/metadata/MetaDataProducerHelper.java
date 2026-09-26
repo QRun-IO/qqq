@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -69,10 +70,18 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * the system property {@code qqq.MetaDataProducerHelper.disableNameTiebreaker}
  * to {@code true}.</p>
  *
+ * <p>By default, a class that fails while being evaluated as a producer, or a
+ * producer that fails while running, is logged as a warning and skipped.  To
+ * fail fast instead (throw a QException), set
+ * {@code QInstance.withFailOnMetaDataProducerError(true)}, or the system
+ * property {@code qqq.metaData.failOnProducerError} to {@code true}.</p>
+ *
  *******************************************************************************/
 public class MetaDataProducerHelper
 {
    private static final QLogger LOG = QLogger.getLogger(MetaDataProducerHelper.class);
+
+   public static final String FAIL_ON_PRODUCER_ERROR_PROPERTY = "qqq.metaData.failOnProducerError";
 
    private static Map<Class<?>, Integer> comparatorValuesByType = new HashMap<>();
    private static Integer                defaultComparatorValue;
@@ -119,16 +128,41 @@ public class MetaDataProducerHelper
    public static void processAllMetaDataProducersInPackage(QInstance instance, String packageName, MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer) throws QException
    {
       MetaDataProducerHelper.tableMetaDataCustomizer = tableMetaDataCustomizer;
-      processAllMetaDataProducersInPackage(instance, packageName);
-      MetaDataProducerHelper.tableMetaDataCustomizer = null;
+      try
+      {
+         processAllMetaDataProducersInPackage(instance, packageName);
+      }
+      finally
+      {
+         MetaDataProducerHelper.tableMetaDataCustomizer = null;
+      }
    }
 
 
 
    /***************************************************************************
-    **
+    * Find (but do not run) the meta-data producers in (and under) a package.
+    * With no QInstance, only the system property can turn on fail-fast - see
+    * {@link #isFailOnProducerError(QInstance)}.
     ***************************************************************************/
    public static List<MetaDataProducerInterface<?>> findProducers(String packageName) throws QException
+   {
+      return (findProducers(null, packageName));
+   }
+
+
+
+   /***************************************************************************
+    * Find (but do not run) the meta-data producers in (and under) a package.
+    *
+    * <p>A class that fails while being evaluated (e.g., its constructor throws)
+    * is logged as a warning and skipped - unless fail-fast is on for the given
+    * instance (see {@link #isFailOnProducerError(QInstance)}), in which case a
+    * QException is thrown.</p>
+    *
+    * @param instance only used to check if fail-fast is on.  May be null.
+    ***************************************************************************/
+   public static List<MetaDataProducerInterface<?>> findProducers(QInstance instance, String packageName) throws QException
    {
       List<Class<?>> classesInPackage;
       try
@@ -189,6 +223,11 @@ public class MetaDataProducerHelper
          }
          catch(Exception e)
          {
+            if(isFailOnProducerError(instance))
+            {
+               throw (new QException("Error evaluating a possible meta-data producer class [" + aClass.getName() + "]", e));
+            }
+
             LOG.warn("Error evaluating a possible meta-data producer class", e, logPair("class", aClass.getSimpleName()));
          }
       }
@@ -263,10 +302,14 @@ public class MetaDataProducerHelper
     ** run them, and add their output to the given qInstance.
     **
     ** Note - they'll be sorted by the sortOrder they provide.
+    **
+    ** A producer that fails is logged as a warning and skipped - unless fail-fast
+    ** is on for the instance (see isFailOnProducerError), in which case a
+    ** QException is thrown.
     *******************************************************************************/
    public static void processAllMetaDataProducersInPackage(QInstance instance, String packageName) throws QException
    {
-      List<MetaDataProducerInterface<?>> producers = findProducers(packageName);
+      List<MetaDataProducerInterface<?>> producers = findProducers(instance, packageName);
 
       ///////////////////////////////////////////////////////////////////////////
       // execute each one (if enabled), adding their meta data to the instance //
@@ -285,6 +328,11 @@ public class MetaDataProducerHelper
             }
             catch(Exception e)
             {
+               if(isFailOnProducerError(instance))
+               {
+                  throw (new QException("Error executing metaDataProducer [" + producer.getClass().getName() + "]", e));
+               }
+
                LOG.warn("error executing metaDataProducer", e, logPair("producer", producer.getClass().getSimpleName()));
             }
          }
@@ -293,6 +341,30 @@ public class MetaDataProducerHelper
             LOG.debug("Not using producer which is not enabled", logPair("producer", producer.getClass().getSimpleName()));
          }
       }
+   }
+
+
+
+   /***************************************************************************
+    * Check if producer errors should fail fast (throw a QException) instead of
+    * being logged as warnings: true if the instance's
+    * failOnMetaDataProducerError flag is on, or if the system property
+    * {@code qqq.metaData.failOnProducerError} is {@code true}.
+    *
+    * <p>The system property is read on every call (not cached), so tests can
+    * change it - and this isn't a hot code path.</p>
+    *
+    * @param instance may be null, in which case only the system property is
+    * checked.
+    ***************************************************************************/
+   public static boolean isFailOnProducerError(QInstance instance)
+   {
+      if(instance != null && BooleanUtils.isTrue(instance.getFailOnMetaDataProducerError()))
+      {
+         return (true);
+      }
+
+      return (Boolean.getBoolean(FAIL_ON_PRODUCER_ERROR_PROPERTY));
    }
 
 

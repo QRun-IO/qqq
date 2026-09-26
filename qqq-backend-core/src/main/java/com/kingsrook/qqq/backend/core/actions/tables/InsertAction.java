@@ -44,6 +44,9 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -53,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
@@ -263,6 +267,8 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
             .withRecordList(insertOutput.getRecords()));
       }
 
+      fireRecordChangeListeners(insertInput, insertOutput.getRecords());
+
       ////////////////////////////////////////////////////////////////
       // finally, run the post-insert customizers, if there are any //
       ////////////////////////////////////////////////////////////////
@@ -294,6 +300,32 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
     *******************************************************************************/
    record ReplaceResult(InsertOutput output, List<QRecord> nativeRecords)
    {
+   }
+
+
+
+   /*******************************************************************************
+    ** Tell record change listeners about the records inserted without errors.
+    ** Runs before post-insert customizers, which may change the records the
+    ** action returns, so listeners see the values that were stored.
+    *******************************************************************************/
+   private static void fireRecordChangeListeners(InsertInput insertInput, List<QRecord> insertedRecords)
+   {
+      QInstance qInstance = QContext.getQInstance();
+      if(!RecordChangeListenerHelper.anyApply(qInstance, insertInput.getTableName(), RecordChangeType.INSERT))
+      {
+         return;
+      }
+
+      List<QRecord> successfulRecords = insertedRecords.stream()
+         .filter(r -> r != null && CollectionUtils.nullSafeIsEmpty(r.getErrors()))
+         .toList();
+
+      RecordChangeListenerHelper.fire(qInstance, new RecordChangeEvent()
+         .withTableName(insertInput.getTableName())
+         .withType(RecordChangeType.INSERT)
+         .withRecords(successfulRecords)
+         .withTransaction(insertInput.getTransaction()));
    }
 
 

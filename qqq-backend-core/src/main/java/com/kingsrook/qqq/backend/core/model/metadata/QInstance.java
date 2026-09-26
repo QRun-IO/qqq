@@ -143,7 +143,18 @@ public class QInstance
 
    private ListingHash<String, QCodeReference> tableCustomizers;
 
+   private List<QCodeReference> recordChangeListeners = new ArrayList<>();
+
    private QCodeReference metaDataActionCustomizer = null;
+
+   private List<QCodeReference> processLifecycleListeners = new ArrayList<>();
+
+   ////////////////////////////////////////////////////////////////////////////////
+   // if true, MetaDataProducerHelper throws when it can't use or run a          //
+   // producer, instead of logging a warning and skipping it.  the system        //
+   // property qqq.metaData.failOnProducerError=true turns this on too.          //
+   ////////////////////////////////////////////////////////////////////////////////
+   private Boolean failOnMetaDataProducerError = false;
 
    //////////////////////////////////////////////////////////////////////////////////////
    // todo - lock down the object (no more changes allowed) after it's been validated? //
@@ -1951,6 +1962,43 @@ public class QInstance
 
 
    /*******************************************************************************
+    ** Getter for recordChangeListeners
+    *******************************************************************************/
+   public List<QCodeReference> getRecordChangeListeners()
+   {
+      return (this.recordChangeListeners);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordChangeListeners
+    *******************************************************************************/
+   public void setRecordChangeListeners(List<QCodeReference> recordChangeListeners)
+   {
+      this.recordChangeListeners = recordChangeListeners;
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a RecordChangeListenerInterface, which InsertAction, UpdateAction and
+    ** DeleteAction call with the records they write successfully.
+    *******************************************************************************/
+   public QInstance withRecordChangeListener(QCodeReference recordChangeListener)
+   {
+      if(this.recordChangeListeners == null)
+      {
+         this.recordChangeListeners = new ArrayList<>();
+      }
+
+      this.recordChangeListeners.add(recordChangeListener);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
     ** Add an audit handler to the instance.
     *******************************************************************************/
    public void addAuditHandler(QAuditHandlerMetaData handler)
@@ -2023,6 +2071,89 @@ public class QInstance
          .filter(h -> CollectionUtils.nullSafeIsEmpty(h.getTableNames())
                       || h.getTableNames().contains(tableName))
          .toList();
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for processLifecycleListeners - code references to
+    ** ProcessLifecycleListenerInterface implementations.
+    *******************************************************************************/
+   public List<QCodeReference> getProcessLifecycleListeners()
+   {
+      return (this.processLifecycleListeners);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for processLifecycleListeners
+    *******************************************************************************/
+   public void setProcessLifecycleListeners(List<QCodeReference> processLifecycleListeners)
+   {
+      this.processLifecycleListeners = processLifecycleListeners;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for processLifecycleListeners
+    *******************************************************************************/
+   public QInstance withProcessLifecycleListeners(List<QCodeReference> processLifecycleListeners)
+   {
+      this.processLifecycleListeners = processLifecycleListeners;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent method to add one process lifecycle listener (a code reference to a
+    ** ProcessLifecycleListenerInterface implementation).
+    *******************************************************************************/
+   public QInstance withProcessLifecycleListener(QCodeReference processLifecycleListener)
+   {
+      if(this.processLifecycleListeners == null)
+      {
+         this.processLifecycleListeners = new ArrayList<>();
+      }
+      this.processLifecycleListeners.add(processLifecycleListener);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for failOnMetaDataProducerError - if true, MetaDataProducerHelper
+    ** throws when it can't use or run a meta-data producer, instead of logging
+    ** a warning.
+    *******************************************************************************/
+   public Boolean getFailOnMetaDataProducerError()
+   {
+      return (this.failOnMetaDataProducerError);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for failOnMetaDataProducerError
+    *******************************************************************************/
+   public void setFailOnMetaDataProducerError(Boolean failOnMetaDataProducerError)
+   {
+      this.failOnMetaDataProducerError = failOnMetaDataProducerError;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for failOnMetaDataProducerError - set to true before running
+    ** MetaDataProducerHelper, so a failing producer stops startup instead of
+    ** being logged as a warning and skipped.
+    *******************************************************************************/
+   public QInstance withFailOnMetaDataProducerError(Boolean failOnMetaDataProducerError)
+   {
+      this.failOnMetaDataProducerError = failOnMetaDataProducerError;
+      return (this);
    }
 
 }

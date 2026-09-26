@@ -73,6 +73,7 @@
     <module>qqq-middleware-slack</module>
     <module>qqq-middleware-api</module>
     <module>qqq-middleware-health</module>
+    <module>qqq-esb</module>
     <module>qqq-utility-lambdas</module>
   </modules>
 
@@ -82,6 +83,9 @@
     <!-- Keep Javalin and its Jetty modules on a consistent version. -->
     <jetty.version>12.1.13</jetty.version>
     <javalin.version>7.2.3</javalin.version>
+
+    <!-- ActiveMQ Artemis (qqq-esb broker client and embedded test broker) -->
+    <artemis.version>2.57.0</artemis.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>

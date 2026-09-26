@@ -34,6 +34,7 @@ import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.NoCodeWidgetRenderer;
+import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
@@ -131,7 +132,8 @@ public class RunProcessAction
       }
       runProcessOutput.setProcessUUID(runProcessInput.getProcessUUID());
 
-      traceStartOrResume(runProcessInput, process);
+      boolean isResume = isResume(runProcessInput);
+      traceStartOrResume(runProcessInput, process, isResume);
 
       UUIDAndTypeStateKey stateKey     = new UUIDAndTypeStateKey(UUID.fromString(runProcessInput.getProcessUUID()), StateType.PROCESS_STATUS);
       ProcessState        processState = primeProcessState(runProcessInput, stateKey, process);
@@ -152,6 +154,17 @@ public class RunProcessAction
          // get the stored basepull timestamp //
          ///////////////////////////////////////
          persistLastRunTime(runProcessInput, process, basepullConfiguration);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // lifecycle listeners hear "started" only for a new run (not a resume), //
+      // and only once the run is set up - so a started run's own failures are //
+      // heard too (though not every started gets exactly one completed or     //
+      // failed - see ProcessLifecycleListenerInterface).                      //
+      ///////////////////////////////////////////////////////////////////////////
+      if(!isResume)
+      {
+         ProcessLifecycleListenerHelper.fireStarted(QContext.getQInstance(), runProcessInput);
       }
 
       try
@@ -181,6 +194,7 @@ public class RunProcessAction
          // upon exception (e.g., one thrown by a step), throw it. //
          ////////////////////////////////////////////////////////////
          traceBreakOrFinish(runProcessInput, runProcessOutput, qe);
+         ProcessLifecycleListenerHelper.fireFailed(QContext.getQInstance(), runProcessInput, qe);
          throw (qe);
       }
       catch(Exception e)
@@ -189,6 +203,7 @@ public class RunProcessAction
          // upon exception (e.g., one thrown by a step), throw it. //
          ////////////////////////////////////////////////////////////
          traceBreakOrFinish(runProcessInput, runProcessOutput, e);
+         ProcessLifecycleListenerHelper.fireFailed(QContext.getQInstance(), runProcessInput, e);
          throw (new QException("Error running process", e));
       }
       finally
@@ -201,7 +216,42 @@ public class RunProcessAction
 
       traceBreakOrFinish(runProcessInput, runProcessOutput, null);
 
+      if(isProcessFinished(processState))
+      {
+         ProcessLifecycleListenerHelper.fireCompleted(QContext.getQInstance(), runProcessInput, runProcessOutput);
+      }
+
       return (runProcessOutput);
+   }
+
+
+
+   /*******************************************************************************
+    ** A request that starts after or at a named step is continuing an existing
+    ** run (e.g., after a frontend step), rather than starting a new one.
+    *******************************************************************************/
+   private static boolean isResume(RunProcessInput runProcessInput)
+   {
+      return (StringUtils.hasContent(runProcessInput.getStartAfterStep()) || StringUtils.hasContent(runProcessInput.getStartAtStep()));
+   }
+
+
+
+   /*******************************************************************************
+    ** A run is finished when there is no next step, or when the next step is the
+    ** last one in the step list (e.g., a final frontend step showing results,
+    ** after which the frontend does not call back to the backend).
+    *******************************************************************************/
+   private static boolean isProcessFinished(ProcessState processState)
+   {
+      if(processState.getNextStepName().isEmpty())
+      {
+         return (true);
+      }
+
+      String nextStepName  = processState.getNextStepName().get();
+      int    nextStepIndex = processState.getStepList().indexOf(nextStepName);
+      return (nextStepIndex == processState.getStepList().size() - 1);
    }
 
 
@@ -1014,7 +1064,7 @@ public class RunProcessAction
    /***************************************************************************
     **
     ***************************************************************************/
-   private void traceStartOrResume(RunProcessInput runProcessInput, QProcessMetaData process)
+   private void traceStartOrResume(RunProcessInput runProcessInput, QProcessMetaData process, boolean isResume)
    {
       setupProcessTracer(runProcessInput, process);
 
@@ -1022,7 +1072,7 @@ public class RunProcessAction
       {
          if(processTracer != null)
          {
-            if(StringUtils.hasContent(runProcessInput.getStartAfterStep()) || StringUtils.hasContent(runProcessInput.getStartAtStep()))
+            if(isResume)
             {
                processTracer.handleProcessResume(runProcessInput);
             }
@@ -1049,36 +1099,13 @@ public class RunProcessAction
       {
          if(processTracer != null)
          {
-            ProcessState processState = runProcessOutput.getProcessState();
-            boolean      isBreak      = true;
-
-            /////////////////////////////////////////////////////////////
-            // if there's no next step, that means the process is done //
-            /////////////////////////////////////////////////////////////
-            if(processState.getNextStepName().isEmpty())
-            {
-               isBreak = false;
-            }
-            else
-            {
-               /////////////////////////////////////////////////////////////////
-               // or if the next step is the last index, then we're also done //
-               /////////////////////////////////////////////////////////////////
-               String nextStepName  = processState.getNextStepName().get();
-               int    nextStepIndex = processState.getStepList().indexOf(nextStepName);
-               if(nextStepIndex == processState.getStepList().size() - 1)
-               {
-                  isBreak = false;
-               }
-            }
-
-            if(isBreak)
-            {
-               processTracer.handleProcessBreak(runProcessInput, runProcessOutput, processException);
-            }
-            else
+            if(isProcessFinished(runProcessOutput.getProcessState()))
             {
                processTracer.handleProcessFinish(runProcessInput, runProcessOutput, processException);
+            }
+            else
+            {
+               processTracer.handleProcessBreak(runProcessInput, runProcessOutput, processException);
             }
          }
       }

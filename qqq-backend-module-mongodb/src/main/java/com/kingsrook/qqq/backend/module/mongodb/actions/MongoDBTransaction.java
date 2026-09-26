@@ -118,6 +118,12 @@ public class MongoDBTransaction extends QBackendTransaction
       catch(Exception e)
       {
          LOG.error("Error committing transaction", e);
+
+         ///////////////////////////////////////////////////////////////////////////
+         // the callbacks' work was not committed - so drop them now, rather than //
+         // running them on a later commit of this (re-opened) transaction        //
+         ///////////////////////////////////////////////////////////////////////////
+         discardAfterCommitCallbacks();
          throw new QException("Error committing transaction: " + e.getMessage(), e);
       }
       finally
@@ -131,6 +137,13 @@ public class MongoDBTransaction extends QBackendTransaction
             this.clientSession.startTransaction();
          }
       }
+
+      ////////////////////////////////////////////////////////////////////////
+      // only reached if the commit succeeded (else the catch threw above). //
+      // without transaction support, writes were already durable, so the   //
+      // callbacks run then too.                                            //
+      ////////////////////////////////////////////////////////////////////////
+      runAfterCommitCallbacks();
    }
 
 
@@ -161,6 +174,12 @@ public class MongoDBTransaction extends QBackendTransaction
       }
       finally
       {
+         ///////////////////////////////////////////////////////////////////////
+         // base class discards after-commit callbacks - even if the rollback //
+         // failed (or isn't supported), they must not run on a later commit  //
+         ///////////////////////////////////////////////////////////////////////
+         super.rollback();
+
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // reset this - as after one commit, the transaction is essentially re-opened for any future statements that run on it //
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

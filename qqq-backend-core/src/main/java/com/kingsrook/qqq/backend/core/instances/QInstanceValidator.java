@@ -50,8 +50,10 @@ import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRe
 import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
 import com.kingsrook.qqq.backend.core.actions.metadata.MetaDataActionCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
 import com.kingsrook.qqq.backend.core.actions.scripts.TestScriptActionInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.validation.plugins.QInstanceValidatorPluginInterface;
@@ -261,6 +263,22 @@ public class QInstanceValidator
       if(qInstance.getMetaDataActionCustomizer() != null)
       {
          validateSimpleCodeReference("Instance metaDataActionCustomizer ", qInstance.getMetaDataActionCustomizer(), MetaDataActionCustomizerInterface.class);
+      }
+
+      for(QCodeReference codeReference : CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()))
+      {
+         if(assertCondition(codeReference != null, "Instance recordChangeListeners contains a null code reference."))
+         {
+            validateSimpleCodeReference("Instance recordChangeListener ", codeReference, RecordChangeListenerInterface.class);
+         }
+      }
+
+      for(QCodeReference codeReference : CollectionUtils.nonNullList(qInstance.getProcessLifecycleListeners()))
+      {
+         if(assertCondition(codeReference != null, "Instance processLifecycleListeners contains a null code reference."))
+         {
+            validateSimpleCodeReference("Instance processLifecycleListener ", codeReference, ProcessLifecycleListenerInterface.class);
+         }
       }
 
       if(qInstance.getTableCustomizers() != null)

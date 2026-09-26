@@ -46,6 +46,9 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -60,6 +63,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
@@ -224,7 +228,8 @@ public class DeleteAction
       // fetch the old list of records (if the backend supports it), for audits,    //
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
-      Optional<List<QRecord>> oldRecordList = fetchOldRecords(deleteInput, deleteInterface);
+      Optional<List<QRecord>> oldRecordList      = fetchOldRecords(deleteInput, deleteInterface);
+      List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(deleteInput, oldRecordList);
 
       List<QRecord>              customizerResult              = performValidations(deleteInput, oldRecordList, false);
       List<QRecord>              recordsWithValidationErrors   = new ArrayList<>();
@@ -357,6 +362,8 @@ public class DeleteAction
          }
          new DMLAuditAction().execute(dmlAuditInput);
       }
+
+      fireRecordChangeListeners(deleteInput, table, listenerOldRecords, outputRecordsWithErrors);
 
       //////////////////////////////////////////////////////////////
       // finally, run the post-delete customizer, if there is one //
@@ -727,26 +734,101 @@ public class DeleteAction
    {
       if(deleteInterface.supportsPreFetchQuery())
       {
-         List<Serializable> primaryKeyList = deleteInput.getPrimaryKeys();
-         if(CollectionUtils.nullSafeIsEmpty(deleteInput.getPrimaryKeys()) && deleteInput.getQueryFilter() != null)
-         {
-            primaryKeyList = getPrimaryKeysFromQueryFilter(deleteInput);
-         }
-
-         if(CollectionUtils.nullSafeHasContents(primaryKeyList))
-         {
-            QueryInput queryInput = new QueryInput();
-            queryInput.setTransaction(deleteInput.getTransaction());
-            queryInput.setTableName(deleteInput.getTableName());
-            queryInput.setInputSource(deleteInput.getInputSource());
-            queryInput.setTableMetaData(deleteInput.getTable());
-            queryInput.setFilter(new QQueryFilter(new QFilterCriteria(deleteInput.getTable().getPrimaryKeyField(), QCriteriaOperator.IN, primaryKeyList)));
-            QueryOutput queryOutput = new QueryAction().executeForDml(queryInput);
-            return (Optional.of(queryOutput.getRecords()));
-         }
+         return (queryOldRecords(deleteInput));
       }
 
       return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Query the stored versions of the records being deleted, selected by the
+    ** input's primary keys or its query filter.  Empty if nothing is selected.
+    *******************************************************************************/
+   private static Optional<List<QRecord>> queryOldRecords(DeleteInput deleteInput) throws QException
+   {
+      List<Serializable> primaryKeyList = deleteInput.getPrimaryKeys();
+      if(CollectionUtils.nullSafeIsEmpty(deleteInput.getPrimaryKeys()) && deleteInput.getQueryFilter() != null)
+      {
+         primaryKeyList = getPrimaryKeysFromQueryFilter(deleteInput);
+      }
+
+      if(CollectionUtils.nullSafeHasContents(primaryKeyList))
+      {
+         QueryInput queryInput = new QueryInput();
+         queryInput.setTransaction(deleteInput.getTransaction());
+         queryInput.setTableName(deleteInput.getTableName());
+         queryInput.setInputSource(deleteInput.getInputSource());
+         queryInput.setTableMetaData(deleteInput.getTable());
+         queryInput.setFilter(new QQueryFilter(new QFilterCriteria(deleteInput.getTable().getPrimaryKeyField(), QCriteriaOperator.IN, primaryKeyList)));
+         QueryOutput queryOutput = new QueryAction().executeForDml(queryInput);
+         return (Optional.of(queryOutput.getRecords()));
+      }
+
+      return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Old records for record change listeners.  Reuses the pre-fetch when the
+    ** backend ran one; otherwise queries only if a listener applies to this
+    ** delete.  That query is only for listeners, so a failure is logged (and the
+    ** listeners hear nothing) rather than failing the delete.
+    *******************************************************************************/
+   private static List<QRecord> fetchOldRecordsForListeners(DeleteInput deleteInput, Optional<List<QRecord>> oldRecordList)
+   {
+      if(oldRecordList.isPresent())
+      {
+         return (oldRecordList.get());
+      }
+
+      if(!RecordChangeListenerHelper.anyApply(QContext.getQInstance(), deleteInput.getTableName(), RecordChangeType.DELETE))
+      {
+         return (null);
+      }
+
+      try
+      {
+         return (queryOldRecords(deleteInput).orElse(null));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error fetching old records for record change listeners", e, new LogPair("tableName", deleteInput.getTableName()));
+         return (null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Tell record change listeners about the deleted records: the old records
+    ** whose keys did not end up with errors.  Runs before the post-delete
+    ** customizer, like the audit.
+    *******************************************************************************/
+   private static void fireRecordChangeListeners(DeleteInput deleteInput, QTableMetaData table, List<QRecord> oldRecords, List<QRecord> outputRecordsWithErrors)
+   {
+      QInstance qInstance = QContext.getQInstance();
+      if(oldRecords == null || !RecordChangeListenerHelper.anyApply(qInstance, deleteInput.getTableName(), RecordChangeType.DELETE))
+      {
+         return;
+      }
+
+      try
+      {
+         List<QRecord> deletedRecords = Collections.unmodifiableList(makeListOfRecordsNotInErrorList(table, oldRecords, outputRecordsWithErrors));
+         RecordChangeListenerHelper.fire(qInstance, new RecordChangeEvent()
+            .withTableName(deleteInput.getTableName())
+            .withType(RecordChangeType.DELETE)
+            .withRecords(deletedRecords)
+            .withOldRecords(deletedRecords)
+            .withTransaction(deleteInput.getTransaction()));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error preparing record change event", e, new LogPair("tableName", deleteInput.getTableName()));
+      }
    }
 
 

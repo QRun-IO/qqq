@@ -22,7 +22,11 @@
 package com.kingsrook.qqq.backend.module.mongodb.actions;
 
 
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -33,6 +37,9 @@ import com.kingsrook.qqq.backend.module.mongodb.BaseTest;
 import com.kingsrook.qqq.backend.module.mongodb.TestUtils;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBBackendMetaData;
 import com.mongodb.MongoCommandException;
+import com.mongodb.MongoException;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoClient;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -109,6 +116,153 @@ class MongoDBTransactionTest extends BaseTest
       {
          backend.setTransactionsSupported(false);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Callbacks run once, in order, after commit - including when the backend
+    ** doesn't support transactions (as its writes are already durable) - and a
+    ** failing callback doesn't fail the commit or stop later callbacks.
+    *******************************************************************************/
+   @Test
+   void callbacksRunAfterCommitInOrder() throws QException
+   {
+      InsertInput insertInput = new InsertInput();
+      insertInput.setTableName(TestUtils.TABLE_NAME_PERSON);
+      insertInput.setRecords(List.of(new QRecord().withValue("firstName", "Darin")));
+
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(insertInput))
+      {
+         List<String> ran = new ArrayList<>();
+         transaction.addAfterCommitCallback(() -> ran.add("a"));
+         transaction.addAfterCommitCallback(() ->
+         {
+            throw (new IllegalStateException("callback failure"));
+         });
+         transaction.addAfterCommitCallback(() -> ran.add("c"));
+
+         insertInput.setTransaction(transaction);
+         new InsertAction().execute(insertInput);
+         assertThat(ran).isEmpty();
+
+         transaction.commit();
+         transaction.commit();
+         assertThat(ran).containsExactly("a", "c");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Rollback must discard callbacks, so a later commit doesn't run them.
+    *******************************************************************************/
+   @Test
+   void callbacksDiscardedOnRollback() throws QException
+   {
+      InsertInput insertInput = new InsertInput();
+      insertInput.setTableName(TestUtils.TABLE_NAME_PERSON);
+
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(insertInput))
+      {
+         AtomicInteger runCount = new AtomicInteger(0);
+         transaction.addAfterCommitCallback(runCount::incrementAndGet);
+
+         transaction.rollback();
+         transaction.commit();
+         assertThat(runCount.get()).isEqualTo(0);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** If the commit itself fails (here, transactions turned on against our
+    ** single-node mongo, which can't do them), callbacks must not run.
+    *******************************************************************************/
+   @Test
+   void callbacksNotRunWhenCommitFails() throws QException
+   {
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) QContext.getQInstance().getBackend(TestUtils.DEFAULT_BACKEND_NAME);
+
+      try
+      {
+         backend.setTransactionsSupported(true);
+
+         InsertInput insertInput = new InsertInput();
+         insertInput.setTableName(TestUtils.TABLE_NAME_PERSON);
+         insertInput.setRecords(List.of(new QRecord().withValue("firstName", "Darin")));
+
+         try(QBackendTransaction transaction = QBackendTransaction.openFor(insertInput))
+         {
+            AtomicInteger runCount = new AtomicInteger(0);
+            transaction.addAfterCommitCallback(runCount::incrementAndGet);
+
+            insertInput.setTransaction(transaction);
+            assertThatThrownBy(() -> new InsertAction().execute(insertInput)).isInstanceOf(QException.class);
+
+            assertThatThrownBy(transaction::commit).isInstanceOf(QException.class);
+            assertThat(runCount.get()).isEqualTo(0);
+         }
+      }
+      finally
+      {
+         backend.setTransactionsSupported(false);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** If the commit fails, its pending callbacks are discarded - so a later,
+    ** successful commit on the same transaction must not run them (their work
+    ** was never committed).  Uses a stand-in client whose commit can be made to
+    ** fail, as our single-node test mongo can't commit transactions at all.
+    *******************************************************************************/
+   @Test
+   void callbacksDiscardedWhenCommitFails() throws QException
+   {
+      AtomicBoolean          failCommit = new AtomicBoolean(true);
+      MongoDBBackendMetaData backend    = new MongoDBBackendMetaData().withTransactionsSupported(true);
+
+      try(MongoDBTransaction transaction = new MongoDBTransaction(backend, clientWithFailableCommit(failCommit)))
+      {
+         AtomicInteger runCount = new AtomicInteger(0);
+         transaction.addAfterCommitCallback(runCount::incrementAndGet);
+         assertThatThrownBy(transaction::commit).isInstanceOf(QException.class);
+
+         failCommit.set(false);
+         transaction.commit();
+         assertThat(runCount.get()).isEqualTo(0);
+
+         ////////////////////////////////////////////////////
+         // callbacks added after the failure run as usual //
+         ////////////////////////////////////////////////////
+         transaction.addAfterCommitCallback(runCount::incrementAndGet);
+         transaction.commit();
+         assertThat(runCount.get()).isEqualTo(1);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A MongoClient whose sessions' commitTransaction throws while failCommit is
+    ** true.  Other session and client calls do nothing.
+    *******************************************************************************/
+   private static MongoClient clientWithFailableCommit(AtomicBoolean failCommit)
+   {
+      ClientSession clientSession = (ClientSession) Proxy.newProxyInstance(ClientSession.class.getClassLoader(), new Class<?>[] { ClientSession.class }, (proxy, method, args) ->
+      {
+         if("commitTransaction".equals(method.getName()) && failCommit.get())
+         {
+            throw (new MongoException("Expected commit failure"));
+         }
+         return (null);
+      });
+
+      return ((MongoClient) Proxy.newProxyInstance(MongoClient.class.getClassLoader(), new Class<?>[] { MongoClient.class }, (proxy, method, args) ->
+         "startSession".equals(method.getName()) ? clientSession : null));
    }
 
 }

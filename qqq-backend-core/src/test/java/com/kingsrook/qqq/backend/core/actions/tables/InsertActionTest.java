@@ -29,11 +29,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.function.BiConsumer;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.customizers.AbstractPostInsertCustomizer;
 import com.kingsrook.qqq.backend.core.actions.customizers.AbstractPreInsertCustomizer;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.ExamplePersonalizer;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest.CapturingListener;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelperTest.ThrowingListener;
+import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
@@ -64,6 +70,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -1076,6 +1083,130 @@ class InsertActionTest extends BaseTest
          assertEquals("b", records.get(2).getWarningsAsString());
          assertNull(records.get(2).getValueInteger("id"));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Record change listeners hear about inserted records, with generated keys,
+    ** no old records, and the caller's transaction when there is one.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerReceivesInsertedRecords() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(List.of(
+         new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff"),
+         new QRecord().withValue("firstName", "Tim").withValue("lastName", "Chamberlain"))));
+
+      assertThat(CapturingListener.events).hasSize(1);
+      RecordChangeEvent event = CapturingListener.events.get(0);
+      assertEquals(TestUtils.TABLE_NAME_PERSON_MEMORY, event.getTableName());
+      assertEquals(RecordChangeType.INSERT, event.getType());
+      assertThat(event.getRecords()).extracting(r -> r.getValueInteger("id")).containsExactly(1, 2);
+      assertThat(event.getRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Darin", "Tim");
+      assertNull(event.getOldRecords());
+      assertNull(event.getTransaction());
+
+      QBackendTransaction transaction = new QBackendTransaction();
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withTransaction(transaction)
+         .withRecord(new QRecord().withValue("firstName", "James").withValue("lastName", "Maes")));
+      assertThat(CapturingListener.events).hasSize(2);
+      assertSame(transaction, CapturingListener.events.get(1).getTransaction());
+   }
+
+
+
+   /*******************************************************************************
+    ** Records that failed to insert are left out, and a batch where every record
+    ** failed sends no event at all.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerSkipsRecordsWithErrors() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff")));
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      InsertOutput insertOutput = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(List.of(
+         new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff"),
+         new QRecord().withValue("firstName", "Tim").withValue("lastName", "Chamberlain"))));
+      assertThat(insertOutput.getRecords().get(0).getErrors()).isNotEmpty();
+      assertThat(CapturingListener.events).hasSize(1);
+      assertThat(CapturingListener.events.get(0).getRecords()).extracting(r -> r.getValueString("firstName")).containsExactly("Tim");
+
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff")));
+      assertThat(CapturingListener.events).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener is not called for tables or change types it does not apply to.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerNotCalledWhenNotApplying() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      CapturingListener.appliesToTableName = TestUtils.TABLE_NAME_SHAPE;
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("firstName", "Darin")));
+
+      CapturingListener.appliesToTableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+      CapturingListener.appliesToType = RecordChangeType.UPDATE;
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("firstName", "Tim")));
+
+      assertThat(CapturingListener.events).isEmpty();
+      assertEquals(2, TestUtils.queryTable(TestUtils.TABLE_NAME_PERSON_MEMORY).size());
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener that throws does not fail the insert or stop later listeners.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerExceptionDoesNotFailInsert() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      QContext.getQInstance()
+         .withRecordChangeListener(new QCodeReference(ThrowingListener.class))
+         .withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      InsertOutput insertOutput = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Darin").withValue("lastName", "Kelkhoff")));
+
+      assertThat(insertOutput.getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertThat(insertOutput.getRecords().get(0).getWarnings()).isNullOrEmpty();
+      assertEquals(1, TestUtils.queryTable(TestUtils.TABLE_NAME_PERSON_MEMORY).size());
+      assertThat(ThrowingListener.events).hasSize(1);
+      assertThat(CapturingListener.events).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Listeners get the stored values: they run before post-insert customizers,
+    ** which may change the records the action returns.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerRunsBeforePostInsertCustomizer() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).withCustomizer(TableCustomizers.POST_INSERT_RECORD, new QCodeReference(TestPostInsertCustomizer.class));
+
+      InsertOutput insertOutput = new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY)
+         .withRecord(new QRecord().withValue("firstName", "Thom").withValue("lastName", "Chutterloin")));
+
+      assertEquals(47, insertOutput.getRecords().get(0).getValueInteger("homeStateId"));
+      assertThat(CapturingListener.events).hasSize(1);
+      assertNull(CapturingListener.events.get(0).getRecords().get(0).getValueInteger("homeStateId"));
    }
 
 

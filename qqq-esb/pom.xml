@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ QQQ - Low-code Application Framework for Engineers.
+  ~ Copyright (C) 2021-2026.  Kingsrook, LLC
+  ~ 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+  ~ contact@kingsrook.com
+  ~ https://github.com/Kingsrook/
+  ~
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU Affero General Public License as
+  ~ published by the Free Software Foundation, either version 3 of the
+  ~ License, or (at your option) any later version.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU Affero General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Affero General Public License
+  ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+
+   <artifactId>qqq-esb</artifactId>
+   <name>QQQ ESB</name>
+   <description>Queues and topics (JMS) for QQQ tables and processes: publishing, triggers, observability, and management</description>
+
+   <parent>
+      <groupId>com.kingsrook.qqq</groupId>
+      <artifactId>qqq-parent-project</artifactId>
+      <version>${revision}</version>
+   </parent>
+
+   <dependencies>
+      <!-- Core QQQ dependency -->
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-core</artifactId>
+         <version>${revision}</version>
+      </dependency>
+
+      <!-- Javalin middleware module for the route provider interface (provided scope, as in qqq-middleware-health) -->
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-middleware-javalin</artifactId>
+         <version>${revision}</version>
+         <scope>provided</scope>
+      </dependency>
+      <dependency>
+         <groupId>io.javalin</groupId>
+         <artifactId>javalin</artifactId>
+         <version>${javalin.version}</version>
+         <scope>provided</scope>
+      </dependency>
+
+      <!-- Jakarta Messaging (JMS) API -->
+      <dependency>
+         <groupId>jakarta.jms</groupId>
+         <artifactId>jakarta.jms-api</artifactId>
+         <version>3.1.0</version>
+      </dependency>
+
+      <!-- Broker clients - optional: each application adds the client for its broker -->
+      <dependency>
+         <groupId>org.apache.artemis</groupId>
+         <artifactId>artemis-jakarta-client</artifactId>
+         <version>${artemis.version}</version>
+         <optional>true</optional>
+      </dependency>
+      <dependency>
+         <groupId>com.rabbitmq.jms</groupId>
+         <artifactId>rabbitmq-jms</artifactId>
+         <version>3.9.0</version>
+         <optional>true</optional>
+      </dependency>
+
+      <!-- Embedded Artemis broker for unit tests -->
+      <dependency>
+         <groupId>org.apache.artemis</groupId>
+         <artifactId>artemis-jakarta-server</artifactId>
+         <version>${artemis.version}</version>
+         <scope>test</scope>
+      </dependency>
+
+      <!-- Common deps for all qqq modules -->
+      <dependency>
+         <groupId>org.apache.logging.log4j</groupId>
+         <artifactId>log4j-api</artifactId>
+      </dependency>
+      <dependency>
+         <groupId>org.apache.logging.log4j</groupId>
+         <artifactId>log4j-core</artifactId>
+      </dependency>
+      <dependency>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-engine</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.assertj</groupId>
+         <artifactId>assertj-core</artifactId>
+         <scope>test</scope>
+      </dependency>
+   </dependencies>
+
+   <build>
+      <plugins>
+         <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+         </plugin>
+      </plugins>
+   </build>
+
+</project>

@@ -60,6 +60,7 @@ class ProcessLifecycleListenerTest extends BaseTest
    private static final String PROCESS_BACKEND_ONLY  = "lifecycleBackendOnly";
    private static final String PROCESS_WITH_FRONTEND = "lifecycleWithFrontend";
    private static final String PROCESS_FAILING       = "lifecycleFailing";
+   private static final String PROCESS_FAILING_LATER = "lifecycleFailingAfterFrontend";
    private static final String PROCESS_NOT_LISTENED  = "lifecycleNotListened";
 
    private static final String FAILURE_MESSAGE = "step failed on purpose";
@@ -71,6 +72,7 @@ class ProcessLifecycleListenerTest extends BaseTest
    private static final List<String> events = new ArrayList<>();
 
    private static RunProcessOutput lastCompletedOutput = null;
+   private static String           lastStartedUUID     = null;
 
 
 
@@ -82,6 +84,7 @@ class ProcessLifecycleListenerTest extends BaseTest
    {
       events.clear();
       lastCompletedOutput = null;
+      lastStartedUUID = null;
 
       QInstance qInstance = QContext.getQInstance();
 
@@ -101,6 +104,13 @@ class ProcessLifecycleListenerTest extends BaseTest
          .withName(PROCESS_FAILING)
          .withStep(recordingStep("prepare"))
          .withStep(new QBackendStepMetaData().withName("explode").withCode(new QCodeReference(FailingStep.class))));
+
+      qInstance.addProcess(new QProcessMetaData()
+         .withName(PROCESS_FAILING_LATER)
+         .withStep(recordingStep("prepare"))
+         .withStep(new QFrontendStepMetaData().withName("confirm"))
+         .withStep(new QBackendStepMetaData().withName("explode").withCode(new QCodeReference(FailingStep.class)))
+         .withStep(new QFrontendStepMetaData().withName("result")));
 
       qInstance.addProcess(new QProcessMetaData()
          .withName(PROCESS_NOT_LISTENED)
@@ -186,6 +196,100 @@ class ProcessLifecycleListenerTest extends BaseTest
 
       assertThrows(QException.class, () -> runProcess(new RunProcessInput().withProcessName(PROCESS_FAILING)));
 
+      assertEquals(List.of(
+         "started:" + PROCESS_FAILING,
+         "step:prepare",
+         "failed:" + PROCESS_FAILING + ":" + FAILURE_MESSAGE), events);
+   }
+
+
+
+   /*******************************************************************************
+    ** The input given to onProcessStarted already carries the run's processUUID
+    ** (which ESB started events include), the same one the run's output has.
+    *******************************************************************************/
+   @Test
+   void testStarted_receivesProcessUUID() throws QException
+   {
+      QContext.getQInstance().withProcessLifecycleListener(new QCodeReference(RecordingListener.class));
+
+      RunProcessOutput output = runProcess(new RunProcessInput().withProcessName(PROCESS_BACKEND_ONLY));
+
+      assertThat(lastStartedUUID).isNotNull();
+      assertEquals(output.getProcessUUID(), lastStartedUUID);
+   }
+
+
+
+   /*******************************************************************************
+    ** Going back to re-run a step (startAtStep) continues the same run, so it
+    ** does not fire started again.
+    *******************************************************************************/
+   @Test
+   void testStartAtStep_doesNotFireStartedAgain() throws QException
+   {
+      QContext.getQInstance().withProcessLifecycleListener(new QCodeReference(RecordingListener.class));
+
+      RunProcessInput input = new RunProcessInput().withProcessName(PROCESS_WITH_FRONTEND);
+      runProcess(input);
+      assertEquals(List.of("started:" + PROCESS_WITH_FRONTEND, "step:prepare"), events);
+
+      input.setStartAtStep("prepare");
+      RunProcessOutput output = runProcess(input);
+      assertEquals("confirm", output.getProcessState().getNextStepName().orElseThrow());
+      assertEquals(List.of(
+         "started:" + PROCESS_WITH_FRONTEND,
+         "step:prepare",
+         "step:prepare"), events);
+   }
+
+
+
+   /*******************************************************************************
+    ** A step that throws on a resumed request (after a frontend step) fires
+    ** failed - without a second started.
+    *******************************************************************************/
+   @Test
+   void testFailureOnResumedRequest_firesFailed() throws QException
+   {
+      QContext.getQInstance().withProcessLifecycleListener(new QCodeReference(RecordingListener.class));
+
+      RunProcessInput input = new RunProcessInput().withProcessName(PROCESS_FAILING_LATER);
+      runProcess(input);
+      assertEquals(List.of("started:" + PROCESS_FAILING_LATER, "step:prepare"), events);
+
+      input.setStartAfterStep("confirm");
+      assertThrows(QException.class, () -> runProcess(input));
+      assertEquals(List.of(
+         "started:" + PROCESS_FAILING_LATER,
+         "step:prepare",
+         "failed:" + PROCESS_FAILING_LATER + ":" + FAILURE_MESSAGE), events);
+   }
+
+
+
+   /*******************************************************************************
+    ** A listener that throws a LinkageError (e.g., a NoClassDefFoundError from
+    ** an optional client jar that isn't on the classpath) is caught like an
+    ** exception: the run's outcome, and its exception, are unchanged.
+    *******************************************************************************/
+   @Test
+   void testLinkageErrorListener_doesNotAffectProcessOrOtherListeners() throws QException
+   {
+      QContext.getQInstance().withProcessLifecycleListeners(new ArrayList<>(List.of(
+         new QCodeReference(LinkageErrorListener.class),
+         new QCodeReference(RecordingListener.class))));
+
+      runProcess(new RunProcessInput().withProcessName(PROCESS_BACKEND_ONLY));
+      assertEquals(List.of(
+         "started:" + PROCESS_BACKEND_ONLY,
+         "step:first",
+         "step:second",
+         "completed:" + PROCESS_BACKEND_ONLY), events);
+
+      events.clear();
+      QException exception = assertThrows(QException.class, () -> runProcess(new RunProcessInput().withProcessName(PROCESS_FAILING)));
+      assertEquals(FAILURE_MESSAGE, exception.getMessage());
       assertEquals(List.of(
          "started:" + PROCESS_FAILING,
          "step:prepare",
@@ -373,6 +477,7 @@ class ProcessLifecycleListenerTest extends BaseTest
       public void onProcessStarted(RunProcessInput input)
       {
          events.add("started:" + input.getProcessName());
+         lastStartedUUID = input.getProcessUUID();
       }
 
 
@@ -446,6 +551,56 @@ class ProcessLifecycleListenerTest extends BaseTest
       public void onProcessFailed(RunProcessInput input, Exception exception)
       {
          throw (new IllegalStateException("failed listener failure"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** listener that throws a LinkageError from every callback
+    *******************************************************************************/
+   public static class LinkageErrorListener implements ProcessLifecycleListenerInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public boolean appliesTo(String processName)
+      {
+         return (true);
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessStarted(RunProcessInput input)
+      {
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessCompleted(RunProcessInput input, RunProcessOutput output)
+      {
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void onProcessFailed(RunProcessInput input, Exception exception)
+      {
+         throw (new NoClassDefFoundError("com/example/MissingBrokerClient"));
       }
    }
 

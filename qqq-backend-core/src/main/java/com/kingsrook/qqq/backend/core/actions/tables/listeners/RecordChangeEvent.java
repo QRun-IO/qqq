@@ -42,6 +42,9 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
  ** - DELETE: the same list as records.
  **
  ** transaction: the caller's transaction, or null if the action ran without one.
+ **
+ ** One event object is given to every listener that applies to it, in turn -
+ ** so listeners must treat it (and its records) as read-only.
  *******************************************************************************/
 public class RecordChangeEvent
 {

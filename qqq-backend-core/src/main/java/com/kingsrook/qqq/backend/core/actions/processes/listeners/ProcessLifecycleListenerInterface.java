@@ -32,9 +32,25 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
  ** processTracerCodeReference, any number of these can be registered, and
  ** they apply across processes (filtered by appliesTo).
  **
- ** Started fires once per run (not when a run resumes after a frontend step).
- ** Completed fires when the run's last step has finished.  Failed fires when
- ** a step (or the run itself) throws.  Exceptions thrown by a listener are
+ ** Started fires once per run (not when a run resumes after a frontend step,
+ ** or goes back to re-run a step).  Completed fires when the run's last step
+ ** has finished.  Failed fires when a step (or the run itself) throws, on the
+ ** run's first request or on a resumed one.
+ **
+ ** A started event is not always followed by exactly one terminal (completed
+ ** or failed) event, so don't assume it is - correlate events by processUUID:
+ ** - a run that stops at a frontend step may never be resumed (no terminal).
+ ** - a resumed request that fails before its steps run (e.g., its process
+ **   state has expired) fires nothing.
+ ** - a failed step can be retried, and a final step re-run (after going
+ **   back), so one run can fire failed, or completed, more than once.
+ **
+ ** A new instance is loaded (via QCodeLoader) for each event, so a listener
+ ** can't carry state in its own fields from started to completed; keep any
+ ** such state outside the instance.
+ **
+ ** Exceptions (and LinkageErrors, such as a NoClassDefFoundError from an
+ ** optional library that isn't on the classpath) thrown by a listener are
  ** caught and logged, and never affect the process.
  *******************************************************************************/
 public interface ProcessLifecycleListenerInterface

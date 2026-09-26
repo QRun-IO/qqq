@@ -1020,4 +1020,34 @@ class UpdateActionTest extends BaseTest
       assertEquals("deux", TestUtils.queryTable(tableName).get(1).getValueString("name"));
    }
 
+
+
+   /*******************************************************************************
+    ** An updated record whose primary key can't be read (here, a non-integer id
+    ** that the backend returns among the updated records) is left out of the
+    ** event, and the rest of the records are still heard about.
+    *******************************************************************************/
+   @Test
+   void testRecordChangeListenerSkipsRecordWithUnreadablePrimaryKey() throws QException
+   {
+      RecordChangeListenerHelperTest.resetListeners();
+      String tableName = RecordChangeListenerHelperTest.defineNoPrefetchTable();
+      new InsertAction().execute(new InsertInput(tableName).withRecords(List.of(
+         new QRecord().withValue("id", 1).withValue("name", "one"),
+         new QRecord().withValue("id", 2).withValue("name", "two"))));
+      QContext.getQInstance().withRecordChangeListener(new QCodeReference(CapturingListener.class));
+
+      NoPrefetchMemoryModule.addUnreadablePrimaryKeys = true;
+      UpdateOutput updateOutput = new UpdateAction().execute(new UpdateInput(tableName).withRecords(List.of(
+         new QRecord().withValue("id", 1).withValue("name", "uno"),
+         new QRecord().withValue("id", 2).withValue("name", "dos"))));
+      NoPrefetchMemoryModule.addUnreadablePrimaryKeys = false;
+      assertThat(updateOutput.getRecords()).extracting(r -> r.getValue("id")).contains(NoPrefetchMemoryModule.UNREADABLE_PRIMARY_KEY);
+
+      assertThat(CapturingListener.events).hasSize(1);
+      RecordChangeEvent event = CapturingListener.events.get(0);
+      assertThat(event.getRecords()).extracting(r -> r.getValueString("name")).containsExactly("uno", "dos");
+      assertThat(event.getOldRecords()).extracting(r -> r.getValueString("name")).containsExactly("one", "two");
+   }
+
 }

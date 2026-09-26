@@ -481,6 +481,10 @@ public class UpdateAction
     ** Tell record change listeners about the records updated without errors, each
     ** paired (by primary key) with its old record.  Runs before post-update
     ** customizers, which may change the records the action returns.
+    **
+    ** A record whose primary key can't be read is left out of the event (and an
+    ** old record whose key can't be read is not paired), with a warning - rather
+    ** than dropping the event for every other record.
     *******************************************************************************/
    private static void fireRecordChangeListeners(UpdateInput updateInput, QTableMetaData table, List<QRecord> updatedRecords, List<QRecord> oldRecords)
    {
@@ -495,7 +499,14 @@ public class UpdateAction
          Map<Object, QRecord> oldRecordsByPrimaryKey = new HashMap<>();
          for(QRecord oldRecord : CollectionUtils.nonNullList(oldRecords))
          {
-            oldRecordsByPrimaryKey.put(AssociatedRecordUpdate.primaryKey(table, oldRecord), oldRecord);
+            try
+            {
+               oldRecordsByPrimaryKey.put(AssociatedRecordUpdate.primaryKey(table, oldRecord), oldRecord);
+            }
+            catch(QException e)
+            {
+               LOG.warn("Could not read primary key of an old record for record change listeners; it will not be paired", e, logPair("tableName", updateInput.getTableName()));
+            }
          }
 
          List<QRecord> successfulRecords = new ArrayList<>();
@@ -504,8 +515,19 @@ public class UpdateAction
          {
             if(record != null && CollectionUtils.nullSafeIsEmpty(record.getErrors()))
             {
+               Object primaryKey;
+               try
+               {
+                  primaryKey = AssociatedRecordUpdate.primaryKey(table, record);
+               }
+               catch(QException e)
+               {
+                  LOG.warn("Could not read primary key of an updated record; leaving it out of the record change event", e, logPair("tableName", updateInput.getTableName()));
+                  continue;
+               }
+
                successfulRecords.add(record);
-               pairedOldRecords.add(oldRecordsByPrimaryKey.get(AssociatedRecordUpdate.primaryKey(table, record)));
+               pairedOldRecords.add(oldRecordsByPrimaryKey.get(primaryKey));
             }
          }
 

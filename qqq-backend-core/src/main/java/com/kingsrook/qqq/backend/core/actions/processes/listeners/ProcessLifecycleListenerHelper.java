@@ -37,10 +37,13 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 /*******************************************************************************
  ** Calls the instance's ProcessLifecycleListenerInterface implementations.
  **
- ** Each listener is loaded via QCodeLoader and skipped unless it appliesTo the
- ** process.  Anything a listener throws (including a code reference that does
- ** not load as a listener) is caught and logged, so listeners can never change
- ** the outcome of a process run.  With no listeners registered, this is a no-op.
+ ** Each listener is loaded via QCodeLoader (a new instance for each event) and
+ ** skipped unless it appliesTo the process.  Anything a listener throws - any
+ ** Exception, or a LinkageError (e.g., a NoClassDefFoundError when a listener
+ ** uses an optional library, such as a message broker's client, that isn't on
+ ** the classpath) - is caught and logged, as is a code reference that does not
+ ** load as a listener, so listeners can never change the outcome of a process
+ ** run.  With no listeners registered, this is a no-op.
  *******************************************************************************/
 public class ProcessLifecycleListenerHelper
 {
@@ -112,7 +115,7 @@ public class ProcessLifecycleListenerHelper
                callback.accept(listener);
             }
          }
-         catch(Exception e)
+         catch(Exception | LinkageError e)
          {
             LOG.warn("Error calling process lifecycle listener", e, logPair("event", eventName), logPair("processName", processName), logPair("processUUID", input.getProcessUUID()), logPair("listener", listenerName));
          }

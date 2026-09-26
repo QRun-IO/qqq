@@ -33,7 +33,13 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 /*******************************************************************************
  ** Runs the instance's record change listeners.  Every listener failure (in
  ** loading it, in appliesTo, or in onRecordsChanged) is caught and logged, so
- ** a listener can never fail the write that it is hearing about.
+ ** a listener can never fail the write that it is hearing about.  That includes
+ ** a LinkageError (e.g., a NoClassDefFoundError when a listener uses an
+ ** optional library, such as a message broker's client, that isn't on the
+ ** classpath), as well as any Exception.
+ **
+ ** Each applying listener is given the same event object, in registration
+ ** order.
  *******************************************************************************/
 public class RecordChangeListenerHelper
 {
@@ -89,7 +95,7 @@ public class RecordChangeListenerHelper
          {
             listener.onRecordsChanged(event);
          }
-         catch(Exception e)
+         catch(Exception | LinkageError e)
          {
             LOG.warn("Error in record change listener", e, logPair("listener", codeReference.getName()), logPair("tableName", event.getTableName()), logPair("type", event.getType()), logPair("recordCount", event.getRecords().size()));
          }
@@ -111,7 +117,7 @@ public class RecordChangeListenerHelper
             return (listener);
          }
       }
-      catch(Exception e)
+      catch(Exception | LinkageError e)
       {
          LOG.warn("Error loading record change listener", e, logPair("listener", codeReference == null ? null : codeReference.getName()), logPair("tableName", tableName), logPair("type", type));
       }

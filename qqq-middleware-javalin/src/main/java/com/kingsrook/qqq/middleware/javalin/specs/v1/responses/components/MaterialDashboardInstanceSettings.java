@@ -43,6 +43,9 @@ public class MaterialDashboardInstanceSettings implements ToSchema
    @OpenAPIDescription("Weekday criteria settings for the query screens (day is any of, day is none of).  Omitted when the material dashboard meta-data does not define them.")
    private MaterialDashboardWeekdayCriteriaSettings weekdayCriteriaSettings;
 
+   @OpenAPIDescription("Where the record view puts its actions: IN_IDENTITY_SECTION or INLINE_WITH_PAGE_TITLE.  When set, this overrides each table's placement.")
+   private String recordViewActionsPlacement;
+
 
 
    /*******************************************************************************
@@ -106,6 +109,38 @@ public class MaterialDashboardInstanceSettings implements ToSchema
    public MaterialDashboardInstanceSettings withWeekdayCriteriaSettings(MaterialDashboardWeekdayCriteriaSettings weekdayCriteriaSettings)
    {
       this.weekdayCriteriaSettings = weekdayCriteriaSettings;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for recordViewActionsPlacement
+    *******************************************************************************/
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   public String getRecordViewActionsPlacement()
+   {
+      return (this.recordViewActionsPlacement);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordViewActionsPlacement
+    *******************************************************************************/
+   public void setRecordViewActionsPlacement(String recordViewActionsPlacement)
+   {
+      this.recordViewActionsPlacement = recordViewActionsPlacement;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordViewActionsPlacement
+    *******************************************************************************/
+   public MaterialDashboardInstanceSettings withRecordViewActionsPlacement(String recordViewActionsPlacement)
+   {
+      this.recordViewActionsPlacement = recordViewActionsPlacement;
       return (this);
    }
 

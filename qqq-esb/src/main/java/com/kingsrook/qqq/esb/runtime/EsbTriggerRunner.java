@@ -85,7 +85,10 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *   "unparseable message"), without retries.  In a batch, the other messages
  *   still run.
  * A batch fails as a unit, so every message in it is dead-lettered when the
- * batch reaches maxAttempts, each with its own attempt count.
+ * batch reaches maxAttempts, each with its own attempt count.  A session
+ * commits or rolls back everything it received, so when a batch's run fails
+ * and is retried, the dead letters of its unparseable messages roll back too:
+ * those messages are redelivered as well, and dead-lettered by a later commit.
  *
  * Connecting never blocks the caller: until a worker has a consumer, the
  * trigger is CONNECTING, and the worker retries every second, or at once when

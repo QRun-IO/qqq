@@ -66,7 +66,7 @@ Supplemental ESB metadata is **not** included in frontend metadata; the UI reads
 - `id` (UUID), `source` (`qqq://<instance>/table/<name>` or `.../process/<name>`), `type`, `time`, `subject` (record primary key, table events only), `datacontenttype: application/json`, `data`.
 - Types: `qqq.table.<table>.inserted|updated|deleted`, `qqq.process.<process>.started|completed|failed`, or caller-supplied for explicit publishes.
 - Table `data`: `{ record }` for insert, `{ record, oldRecord }` for update (`record` is the full post-update record), `{ oldRecord }` for delete. Record values are the record's field-value map (`QRecord.getValues()`), keyed by field name.
-- Extension attribute `qqqcausationid`: the `id` of the event whose triggered run produced this event; absent otherwise.
+- Extension attribute `qqqcausationid`: the `id` of the event whose `SINGLE`-mode triggered run produced this event; absent otherwise (including `BATCH` runs).
 - JMS properties mirror `ce_id`, `ce_type`, `ce_source`.
 - One message per record. A multi-record insert publishes all its messages on one JMS session.
 

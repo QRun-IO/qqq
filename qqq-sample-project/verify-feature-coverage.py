@@ -16,7 +16,7 @@ PUBLISHED_FEATURES = {'train.bom'}
 UNSUPPORTED_FEATURES = {'core.widget.generic'}
 # URL shape is only a traceability check. Release reviewers must verify the linked owner approval.
 APPROVAL_REFERENCE = re.compile(
-    r'https://github\.com/Kingsrook/qqq/(?:issues/[1-9]\d*#issuecomment-[1-9]\d*|pull/[1-9]\d*#pullrequestreview-[1-9]\d*)'
+    r'https://github\.com/QRun-IO/qqq/(?:issues/[1-9]\d*#issuecomment-[1-9]\d*|pull/[1-9]\d*#pullrequestreview-[1-9]\d*)'
 )
 
 

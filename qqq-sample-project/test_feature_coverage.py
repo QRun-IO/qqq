@@ -45,7 +45,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
 
     def approved_deferral(self, feature_id=None):
         return {'id': feature_id or self.feature['id'],
-                'owner_approval': 'https://github.com/Kingsrook/qqq/issues/790#issuecomment-123456',
+                'owner_approval': 'https://github.com/QRun-IO/qqq/issues/790#issuecomment-123456',
                 'rationale': 'Scenario awaits a supported fixture', 'target_release': '4.1.1'}
 
     def test_reviewed_passing_test_is_required(self):
@@ -120,8 +120,9 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.feature['acceptance_status'] = 'pending'
         self.feature['verified_tests'] = []
         for reference in ('QQQ-41 release owner review',
-                          'https://example.com/Kingsrook/qqq/issues/790#issuecomment-123456',
-                          'https://github.com/Kingsrook/qqq/issues/790',
+                          'https://example.com/QRun-IO/qqq/issues/790#issuecomment-123456',
+                          'https://github.com/QRun-IO/qqq/issues/790',
+                          'https://github.com/Kingsrook/qqq/issues/790#issuecomment-123456',
                           'https://github.com/other/qqq/issues/790#issuecomment-123456'):
             with self.subTest(reference=reference):
                 entry = self.approved_deferral()
@@ -129,7 +130,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
                 self.set_deferrals(entry)
                 self.assertNotEqual(0, self.run_gate(stage='source')[0])
         entry = self.approved_deferral()
-        entry['owner_approval'] = 'https://github.com/Kingsrook/qqq/pull/798#pullrequestreview-123456'
+        entry['owner_approval'] = 'https://github.com/QRun-IO/qqq/pull/798#pullrequestreview-123456'
         self.set_deferrals(entry)
         self.assertEqual(0, self.run_gate(stage='source')[0])
 

@@ -22,10 +22,15 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
@@ -36,6 +41,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -202,6 +208,57 @@ class MetaDataSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** The material dashboard's weekday criteria settings are published (enabled,
+    ** and the WeekdayOfDateTime arguments), and nothing else from that object.
+    *******************************************************************************/
+   @Test
+   void testMaterialDashboardWeekdayCriteriaSettings()
+   {
+      serverQInstance.withSupplementalMetaData(new TestMaterialDashboardMetaData()
+         .withWeekdayCriteriaSettings(new TestWeekdayCriteriaSettings().withEnabled(false)
+            .withDateTimeFieldFunctionArguments(Map.of("timeZoneId", "US/Central", "useSessionZoneId", false))));
+
+      String     body              = getMetaDataBody();
+      JSONObject materialDashboard = JsonUtils.toJSONObject(body).getJSONObject("supplementalInstanceMetaData").getJSONObject("materialDashboard");
+      assertEquals(Set.of("processNamesToAddToAllQueryAndViewScreens", "weekdayCriteriaSettings"), materialDashboard.keySet());
+      JSONObject weekday = materialDashboard.getJSONObject("weekdayCriteriaSettings");
+      assertEquals(Set.of("enabled", "dateTimeFieldFunctionArguments"), weekday.keySet());
+      assertFalse(weekday.getBoolean("enabled"));
+      assertEquals(Map.of("timeZoneId", "US/Central", "useSessionZoneId", false), weekday.getJSONObject("dateTimeFieldFunctionArguments").toMap());
+      assertThat(body).doesNotContain(TestWeekdayCriteriaSettings.SECRET_SETTING_VALUE);
+
+      /////////////////////////////////////////////////////////////////////////////
+      // a settings object without a value for enabled means enabled (Material's //
+      // default), and no arguments omits them                                   //
+      /////////////////////////////////////////////////////////////////////////////
+      serverQInstance.withSupplementalMetaData(new TestMaterialDashboardMetaData()
+         .withWeekdayCriteriaSettings(new TestWeekdayCriteriaSettings().withEnabled(null).withDateTimeFieldFunctionArguments(Map.of())));
+      weekday = JsonUtils.toJSONObject(getMetaDataBody()).getJSONObject("supplementalInstanceMetaData").getJSONObject("materialDashboard").getJSONObject("weekdayCriteriaSettings");
+      assertEquals(Set.of("enabled"), weekday.keySet());
+      assertTrue(weekday.getBoolean("enabled"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Instance-level help content is published by slot (e.g., for the query
+    ** screen's bulk-add-filter-values dialog); without any, the key is omitted.
+    *******************************************************************************/
+   @Test
+   void testInstanceHelpContents()
+   {
+      assertFalse(JsonUtils.toJSONObject(getMetaDataBody()).has("helpContents"));
+
+      serverQInstance.withHelpContent("bulkAddFilterValues", new QHelpContent().withContentAsText("Paste one value per line.").withRole(QHelpRole.QUERY_SCREEN));
+      JSONArray slot = JsonUtils.toJSONObject(getMetaDataBody()).getJSONObject("helpContents").getJSONArray("bulkAddFilterValues");
+      assertEquals(1, slot.length());
+      assertEquals("Paste one value per line.", slot.getJSONObject(0).getString("content"));
+      assertEquals(List.of("QUERY_SCREEN"), slot.getJSONObject(0).getJSONArray("roles").toList());
+   }
+
+
+
+   /*******************************************************************************
     ** GET the v1 meta-data, asserting success.
     *******************************************************************************/
    private String getMetaDataBody()
@@ -243,7 +300,8 @@ class MetaDataSpecV1Test extends SpecTestBase
    {
       public static final String SECRET_SETTING_VALUE = "material-dashboard-secret-setting";
 
-      private List<String> processNamesToAddToAllQueryAndViewScreens = new ArrayList<>();
+      private List<String>                processNamesToAddToAllQueryAndViewScreens = new ArrayList<>();
+      private TestWeekdayCriteriaSettings weekdayCriteriaSettings;
 
 
 
@@ -274,6 +332,93 @@ class MetaDataSpecV1Test extends SpecTestBase
       public TestMaterialDashboardMetaData withProcessNamesToAddToAllQueryAndViewScreens(List<String> processNamesToAddToAllQueryAndViewScreens)
       {
          this.processNamesToAddToAllQueryAndViewScreens = processNamesToAddToAllQueryAndViewScreens;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** A setting that is not on the published allow-list.
+       *******************************************************************************/
+      public String getSecretSetting()
+      {
+         return (SECRET_SETTING_VALUE);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for weekdayCriteriaSettings
+       *******************************************************************************/
+      public TestWeekdayCriteriaSettings getWeekdayCriteriaSettings()
+      {
+         return (this.weekdayCriteriaSettings);
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for weekdayCriteriaSettings
+       *******************************************************************************/
+      public TestMaterialDashboardMetaData withWeekdayCriteriaSettings(TestWeekdayCriteriaSettings weekdayCriteriaSettings)
+      {
+         this.weekdayCriteriaSettings = weekdayCriteriaSettings;
+         return (this);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Stand-in for the material dashboard module's WeekdayCriteriaSettings, with
+    ** one setting that must not be published.
+    *******************************************************************************/
+   public static class TestWeekdayCriteriaSettings implements Serializable
+   {
+      public static final String SECRET_SETTING_VALUE = "weekday-criteria-secret-setting";
+
+      private Boolean                   enabled                        = true;
+      private Map<String, Serializable> dateTimeFieldFunctionArguments = new HashMap<>();
+
+
+
+      /*******************************************************************************
+       ** Getter for enabled
+       *******************************************************************************/
+      public Boolean getEnabled()
+      {
+         return (this.enabled);
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for enabled
+       *******************************************************************************/
+      public TestWeekdayCriteriaSettings withEnabled(Boolean enabled)
+      {
+         this.enabled = enabled;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for dateTimeFieldFunctionArguments
+       *******************************************************************************/
+      public Map<String, Serializable> getDateTimeFieldFunctionArguments()
+      {
+         return (this.dateTimeFieldFunctionArguments);
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for dateTimeFieldFunctionArguments
+       *******************************************************************************/
+      public TestWeekdayCriteriaSettings withDateTimeFieldFunctionArguments(Map<String, Serializable> dateTimeFieldFunctionArguments)
+      {
+         this.dateTimeFieldFunctionArguments = dateTimeFieldFunctionArguments;
          return (this);
       }
 

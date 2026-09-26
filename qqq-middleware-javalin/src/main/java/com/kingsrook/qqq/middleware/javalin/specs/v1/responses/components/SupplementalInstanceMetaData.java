@@ -22,12 +22,15 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
+import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
@@ -58,6 +61,9 @@ public class SupplementalInstanceMetaData implements ToSchema
 
    @OpenAPIExclude()
    private static final String PROCESS_NAMES_GETTER = "getProcessNamesToAddToAllQueryAndViewScreens";
+
+   @OpenAPIExclude()
+   private static final String WEEKDAY_CRITERIA_SETTINGS_GETTER = "getWeekdayCriteriaSettings";
 
    @OpenAPIDescription("Settings from the instance's `materialDashboard` supplemental meta-data, when the instance defines it.")
    private MaterialDashboardInstanceSettings materialDashboard;
@@ -92,7 +98,66 @@ public class SupplementalInstanceMetaData implements ToSchema
       }
 
       return (new SupplementalInstanceMetaData().withMaterialDashboard(new MaterialDashboardInstanceSettings()
-         .withProcessNamesToAddToAllQueryAndViewScreens(new ArrayList<>(processNames))));
+         .withProcessNamesToAddToAllQueryAndViewScreens(new ArrayList<>(processNames))
+         .withWeekdayCriteriaSettings(getWeekdayCriteriaSettings(materialDashboard))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Read the weekday criteria settings (enabled, dateTimeFieldFunctionArguments)
+    ** from the material dashboard's supplemental meta-data, or null when it has
+    ** none (by getters, as those classes live in the material dashboard module).
+    *******************************************************************************/
+   private static MaterialDashboardWeekdayCriteriaSettings getWeekdayCriteriaSettings(QSupplementalInstanceMetaData materialDashboard)
+   {
+      Object settings = invokeGetter(materialDashboard, WEEKDAY_CRITERIA_SETTINGS_GETTER);
+      if(settings == null)
+      {
+         return (null);
+      }
+
+      MaterialDashboardWeekdayCriteriaSettings published = new MaterialDashboardWeekdayCriteriaSettings()
+         .withEnabled(!Boolean.FALSE.equals(invokeGetter(settings, "getEnabled")));
+
+      if(invokeGetter(settings, "getDateTimeFieldFunctionArguments") instanceof Map<?, ?> arguments && !arguments.isEmpty())
+      {
+         Map<String, Serializable> dateTimeFieldFunctionArguments = new LinkedHashMap<>();
+         for(Map.Entry<?, ?> entry : arguments.entrySet())
+         {
+            if(entry.getKey() instanceof String name && entry.getValue() instanceof Serializable value)
+            {
+               dateTimeFieldFunctionArguments.put(name, value);
+            }
+         }
+         published.setDateTimeFieldFunctionArguments(dateTimeFieldFunctionArguments);
+      }
+
+      return (published);
+   }
+
+
+
+   /*******************************************************************************
+    ** Call a no-argument getter by name, returning null when the object does not
+    ** have it (e.g., an older material dashboard module) or it fails.
+    *******************************************************************************/
+   private static Object invokeGetter(Object target, String getterName)
+   {
+      try
+      {
+         Method getter = target.getClass().getMethod(getterName);
+         return (getter.invoke(target));
+      }
+      catch(NoSuchMethodException e)
+      {
+         return (null);
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error reading a setting from supplemental instance meta-data", e, logPair("name", MATERIAL_DASHBOARD_NAME), logPair("getter", getterName));
+         return (null);
+      }
    }
 
 

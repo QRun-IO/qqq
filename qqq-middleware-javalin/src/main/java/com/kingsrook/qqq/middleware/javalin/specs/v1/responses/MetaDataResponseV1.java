@@ -26,16 +26,19 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.MetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppMetaData;
@@ -81,6 +84,10 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 
    @OpenAPIDescription("Settings from supplemental modules that a frontend may use (an explicit allow-list - not the supplemental meta-data objects themselves).  Omitted when the instance defines none of them.")
    private SupplementalInstanceMetaData supplementalInstanceMetaData;
+
+   @OpenAPIDescription("Instance-level help content, by slot name (for example the query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource slots).  Omitted when the instance defines none.")
+   @OpenAPIHasAdditionalProperties()
+   private Map<String, List<QHelpContent>> helpContents;
 
 
 
@@ -129,6 +136,8 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
       branding = metaDataOutput.getBranding() == null ? null : new Branding(metaDataOutput.getBranding());
 
       supplementalInstanceMetaData = SupplementalInstanceMetaData.of(metaDataOutput);
+
+      helpContents = CollectionUtils.nullSafeHasContents(metaDataOutput.getHelpContents()) ? metaDataOutput.getHelpContents() : null;
    }
 
 
@@ -229,5 +238,17 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    public SupplementalInstanceMetaData getSupplementalInstanceMetaData()
    {
       return supplementalInstanceMetaData;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for helpContents
+    **
+    *******************************************************************************/
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   public Map<String, List<QHelpContent>> getHelpContents()
+   {
+      return helpContents;
    }
 }

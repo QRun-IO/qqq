@@ -95,6 +95,7 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
 import com.kingsrook.sampleapp.dashboard.widgets.PersonsByCreateDateBarChart;
+import com.kingsrook.qbits.reference.ReferenceDataQBit;
 import com.kingsrook.sampleapp.processes.clonepeople.ClonePeopleTransformStep;
 import org.apache.commons.io.IOUtils;
 
@@ -221,6 +222,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addTable(setTableBackendNamesForRdbms(new RedirectStateMetaDataProducer(RDBMS_BACKEND_NAME).produce(qInstance)));
 
       MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, SampleMetaDataProvider.class.getPackageName());
+      new ReferenceDataQBit("sample", MEMORY_BACKEND_NAME).produce(qInstance);
 
       defineWidgets(qInstance);
       defineBranding(qInstance);

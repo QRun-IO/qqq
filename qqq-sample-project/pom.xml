@@ -42,6 +42,11 @@
    </properties>
 
    <dependencies>
+      <dependency>
+         <groupId>com.kingsrook.qbits</groupId>
+         <artifactId>qqq-sample-data-qbit</artifactId>
+         <version>${revision}</version>
+      </dependency>
       <!-- other qqq modules deps -->
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
@@ -152,6 +157,12 @@
       <dependency>
          <groupId>org.junit.jupiter</groupId>
          <artifactId>junit-jupiter-engine</artifactId>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.liquibase</groupId>
+         <artifactId>liquibase-core</artifactId>
+         <version>4.29.2</version>
          <scope>test</scope>
       </dependency>
       <dependency>

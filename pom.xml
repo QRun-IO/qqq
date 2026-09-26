@@ -75,6 +75,7 @@
     <module>qqq-middleware-health</module>
     <module>qqq-esb</module>
     <module>qqq-utility-lambdas</module>
+    <module>qqq-sample-data-qbit</module>
   </modules>
 
   <properties>

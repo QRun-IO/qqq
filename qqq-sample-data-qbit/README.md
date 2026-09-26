@@ -1,0 +1,3 @@
+# Generated reference-data QBit
+
+This separate JAR is a first-party consumer derived from `qbit-template-data` at `30bcb3c52fb9ad54657691706d21e6c2d7f65c2f` for QQQ 4.1 acceptance. Its config, natural-key sync, bundled JSON, and tokenized Liquibase generator adapt that template's corresponding sources; explicit table metadata replaces the template's obsolete 0.35 annotation path. The sample host declares this artifact as a Maven dependency and registers its producer. Host acceptance runs the QQQ sync process and a real H2 Liquibase migration. The original 0.35 template is not claimed to compile unchanged on QQQ 4.1; this JAR is installed for sample verification and is not published.

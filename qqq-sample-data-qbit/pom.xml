@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+   <modelVersion>4.0.0</modelVersion>
+
+   <parent>
+      <groupId>com.kingsrook.qqq</groupId>
+      <artifactId>qqq-parent-project</artifactId>
+      <version>${revision}</version>
+   </parent>
+
+   <groupId>com.kingsrook.qbits</groupId>
+   <artifactId>qqq-sample-data-qbit</artifactId>
+   <name>Generated Sample Reference Data QBit</name>
+
+   <properties>
+      <maven.deploy.skip>true</maven.deploy.skip>
+      <central.publishing.skip>true</central.publishing.skip>
+   </properties>
+
+   <dependencies>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-core</artifactId>
+         <version>${revision}</version>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-rdbms</artifactId>
+         <version>${revision}</version>
+      </dependency>
+   </dependencies>
+
+   <build>
+      <plugins>
+         <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-pmd-plugin</artifactId>
+            <configuration>
+               <rulesets>
+                  <ruleset>${project.basedir}/../pmd/ruleset.xml</ruleset>
+               </rulesets>
+            </configuration>
+         </plugin>
+      </plugins>
+   </build>
+</project>

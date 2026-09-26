@@ -153,6 +153,25 @@ class QApplicationJavalinServerTest
 
 
    /*******************************************************************************
+    ** getQInstance is null until start, then the one instance the server built
+    ** from the application.
+    *******************************************************************************/
+   @Test
+   void testGetQInstance() throws QException
+   {
+      javalinServer = new QApplicationJavalinServer(getQqqApplication())
+         .withPort(PORT)
+         .withServeFrontendMaterialDashboard(false);
+      assertNull(javalinServer.getQInstance());
+
+      javalinServer.start();
+      assertThat(TestApplication.callCount).isEqualTo(1);
+      assertThat(javalinServer.getQInstance().getTables().values()).isNotEmpty().allMatch(t -> t.getLabel().endsWith("1"));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test
@@ -203,11 +222,13 @@ class QApplicationJavalinServerTest
       {
          assertThat(aTable.getString("label")).doesNotEndWith("1");
          assertThat(TestApplication.callCount).isGreaterThanOrEqualTo(1);
+         assertThat(javalinServer.getQInstance().getTable(aTableName).getLabel()).doesNotEndWith("1");
       }
       else
       {
          assertThat(aTable.getString("label")).endsWith("1");
          assertThat(TestApplication.callCount).isEqualTo(1);
+         assertThat(javalinServer.getQInstance().getTable(aTableName).getLabel()).endsWith("1");
       }
    }
 

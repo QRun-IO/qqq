@@ -56,9 +56,10 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * and a node that starts later uses startPaused.
  *
  * Opening a listener never blocks the caller: it runs on a virtual thread, and
- * if the provider can't be reached, QEsbRuntime's connection listener calls
- * onReconnect when it can, which opens the listener again (also after a lost
- * connection).  Messages arrive on the broker client's threads.
+ * if the provider can't be reached or listener setup fails, that thread keeps
+ * trying.  QEsbRuntime's connection listener calls onReconnect after a lost
+ * connection, which discards the old session so the thread rebuilds it.
+ * Messages arrive on the broker client's threads.
  *******************************************************************************/
 public class EsbControlChannel
 {
@@ -123,7 +124,12 @@ public class EsbControlChannel
     *******************************************************************************/
    void onReconnect(String providerName)
    {
-      listenInBackground(providerName);
+      Session oldSession;
+      synchronized(this)
+      {
+         oldSession = sessions.remove(providerName);
+      }
+      closeQuietly(oldSession);
    }
 
 
@@ -191,8 +197,9 @@ public class EsbControlChannel
 
 
    /*******************************************************************************
-    ** Open the provider's listener on a new virtual thread (whose QContext holds
-    ** the instance, for the connection manager).
+    ** Keep the provider's listener open on one virtual thread (whose QContext
+    ** holds the instance, for the connection manager).  A failed setup or lost
+    ** connection is retried without waiting for another reconnect callback.
     *******************************************************************************/
    private void listenInBackground(String providerName)
    {
@@ -201,13 +208,38 @@ public class EsbControlChannel
          try
          {
             QContext.init(qInstance, null);
-            listen(providerName);
+            while(isOpen())
+            {
+               if(!isListening(providerName))
+               {
+                  listen(providerName);
+               }
+               try
+               {
+                  Thread.sleep(1000);
+               }
+               catch(InterruptedException e)
+               {
+                  Thread.currentThread().interrupt();
+                  return;
+               }
+            }
          }
          finally
          {
             QContext.clear();
          }
       });
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the channel has not been closed.
+    *******************************************************************************/
+   private synchronized Boolean isOpen()
+   {
+      return (open);
    }
 
 

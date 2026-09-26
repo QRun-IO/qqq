@@ -95,6 +95,7 @@ public class QEsbRuntime
    private Boolean           running        = false;
    private Long              startCount     = 0L;
    private EsbControlChannel controlChannel = null;
+   private Set<String>        providerNames  = Set.of();
 
 
 
@@ -140,9 +141,10 @@ public class QEsbRuntime
       running = true;
       startCount++;
 
-      Long        thisStart     = startCount;
-      Set<String> providerNames = new LinkedHashSet<>();
-      newRunners.values().forEach(runner -> providerNames.add(runner.getDestination().getProviderName()));
+      Long        thisStart        = startCount;
+      Set<String> activeProviders = new LinkedHashSet<>();
+      newRunners.values().forEach(runner -> activeProviders.add(runner.getDestination().getProviderName()));
+      providerNames = Set.copyOf(activeProviders);
       for(String providerName : providerNames)
       {
          EsbConnectionManager.getInstance().addConnectionListener(providerName, () -> onReconnect(thisStart, providerName));
@@ -175,6 +177,7 @@ public class QEsbRuntime
          running = false;
          channelToClose = controlChannel;
          controlChannel = null;
+         providerNames = Set.of();
          runnersToStop = List.copyOf(runners.values());
          runnersToStop.forEach(EsbTriggerRunner::requestStop);
       }
@@ -193,11 +196,13 @@ public class QEsbRuntime
 
 
    /*******************************************************************************
-    ** Whether start has been called (and stop has not, since).
+    ** Whether this runtime is started and its control subscriptions are ready.
+    ** A non-durable command sent before a subscription exists would be lost, so
+    ** startup and a disconnected provider do not report RUNNING.
     *******************************************************************************/
    public synchronized Boolean isRunning()
    {
-      return (running);
+      return (running && controlChannel != null && providerNames.stream().allMatch(controlChannel::isListening));
    }
 
 

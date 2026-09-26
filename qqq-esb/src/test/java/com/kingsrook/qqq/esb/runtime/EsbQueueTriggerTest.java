@@ -298,7 +298,7 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
       Instant     start   = Instant.now();
       QEsbRuntime runtime = startRuntime(QContext.getQInstance());
       assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(1));
-      assertThat(runtime.isRunning()).isTrue();
+      assertThat(runtime.isRunning()).isFalse();
       assertThat(runtime.getRunner(QUEUE_TRIGGER_NAME).getState()).isEqualTo(EsbTriggerState.CONNECTING);
 
       pause(500);
@@ -306,6 +306,7 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
 
       startEmbeddedBroker();
       waitForState(runtime, QUEUE_TRIGGER_NAME, EsbTriggerState.RUNNING);
+      waitFor("runtime control listener after broker starts", runtime::isRunning);
 
       sendEvent(QUEUE_NAME, Map.of());
       waitFor("1 run", () -> RecordingStep.getCompletedRuns().size() == 1);
@@ -346,7 +347,7 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
    {
       QInstance   qInstance = defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME).withConcurrency(2));
       QEsbRuntime runtime   = startRuntime(qInstance);
-      assertThat(runtime.isRunning()).isTrue();
+      waitFor("runtime control listener", runtime::isRunning);
 
       EsbTriggerRunner runner = runtime.getRunner(QUEUE_TRIGGER_NAME);
       assertThat(runner.getTriggerName()).isEqualTo(QUEUE_TRIGGER_NAME);

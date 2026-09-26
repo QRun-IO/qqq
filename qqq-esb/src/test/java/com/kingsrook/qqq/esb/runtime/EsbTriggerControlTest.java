@@ -25,6 +25,9 @@ package com.kingsrook.qqq.esb.runtime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -34,6 +37,11 @@ import com.kingsrook.qqq.esb.management.EsbMessageBrowser;
 import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
 import com.kingsrook.qqq.esb.model.EsbTrigger;
 import jakarta.jms.Session;
+import org.apache.activemq.artemis.api.core.ActiveMQException;
+import org.apache.activemq.artemis.api.core.SimpleString;
+import org.apache.activemq.artemis.core.postoffice.QueueBinding;
+import org.apache.activemq.artemis.core.server.ActiveMQServer;
+import org.apache.activemq.artemis.core.server.plugin.ActiveMQServerConsumerPlugin;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -242,6 +250,67 @@ class EsbTriggerControlTest extends EsbRuntimeTestBase
 
 
    /*******************************************************************************
+    ** A runtime is not ready while its control subscription is still opening.
+    ** Otherwise callers can observe RUNNING and publish a non-durable command
+    ** before this node has any listener to receive it.
+    *******************************************************************************/
+   @Test
+   void runtimeIsNotRunningUntilControlSubscriptionExists() throws Exception
+   {
+      ControlConsumerGate gate = new ControlConsumerGate(false);
+      ActiveMQServer broker = getEmbeddedBrokerServer();
+      broker.registerBrokerPlugin(gate);
+      try
+      {
+         QInstance instance = defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME));
+         QEsbRuntime runtime = startRuntime(instance);
+         assertThat(gate.entered.await(5, TimeUnit.SECONDS)).isTrue();
+         assertThat(runtime.isRunning()).isFalse();
+
+         gate.release.countDown();
+         waitFor("runtime ready after control subscription", runtime::isRunning);
+         assertThat(runtime.getControlChannel().isListening(PROVIDER_NAME)).isTrue();
+         EsbTriggerControl.pause(QUEUE_TRIGGER_NAME);
+         waitForState(runtime, QUEUE_TRIGGER_NAME, EsbTriggerState.PAUSED);
+      }
+      finally
+      {
+         gate.release.countDown();
+         broker.unRegisterBrokerPlugin(gate);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A transient failure to create the topic consumer must retry while the
+    ** provider stays connected; there is no reconnect callback to rescue it.
+    *******************************************************************************/
+   @Test
+   void listenerSetupFailureRetriesWithoutProviderReconnect() throws Exception
+   {
+      ControlConsumerGate gate = new ControlConsumerGate(true);
+      ActiveMQServer broker = getEmbeddedBrokerServer();
+      broker.registerBrokerPlugin(gate);
+      try
+      {
+         QInstance instance = defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME));
+         QEsbRuntime runtime = startRuntime(instance);
+         assertThat(gate.entered.await(5, TimeUnit.SECONDS)).isTrue();
+         assertThat(EsbConnectionManager.getInstance().isConnected(PROVIDER_NAME)).isTrue();
+         waitFor("control listener retried", () -> gate.attempts.get() >= 2 && runtime.getControlChannel().isListening(PROVIDER_NAME));
+         EsbTriggerControl.pause(QUEUE_TRIGGER_NAME);
+         waitForState(runtime, QUEUE_TRIGGER_NAME, EsbTriggerState.PAUSED);
+      }
+      finally
+      {
+         broker.unRegisterBrokerPlugin(gate);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Once a runtime stops, its control channel stops listening.
     *******************************************************************************/
    @Test
@@ -314,6 +383,62 @@ class EsbTriggerControlTest extends EsbRuntimeTestBase
     *******************************************************************************/
    private record Nodes(QEsbRuntime a, QEsbRuntime b, QInstance instanceB)
    {
+   }
+
+
+
+   /*******************************************************************************
+    ** Broker-side gate for only the non-durable control consumer.  It can hold
+    ** the first creation attempt or reject it once without dropping the broker
+    ** connection, leaving the real JMS client and listener lifecycle in place.
+    *******************************************************************************/
+   private static class ControlConsumerGate implements ActiveMQServerConsumerPlugin
+   {
+      private final Boolean failFirst;
+      private final CountDownLatch entered = new CountDownLatch(1);
+      private final CountDownLatch release = new CountDownLatch(1);
+      private final AtomicInteger attempts = new AtomicInteger();
+
+      /*******************************************************************************
+       ** Hold or fail the first control-consumer creation attempt.
+       *******************************************************************************/
+      private ControlConsumerGate(Boolean failFirst)
+      {
+         this.failFirst = failFirst;
+      }
+
+      /*******************************************************************************
+       ** Gate only consumers on the internal control topic.
+       *******************************************************************************/
+      @Override
+      public void beforeCreateConsumer(long consumerId, QueueBinding binding, SimpleString filterString, boolean browseOnly, boolean supportLargeMessage) throws ActiveMQException
+      {
+         if(!EsbControlChannel.CONTROL_TOPIC_NAME.equals(binding.getQueue().getAddress().toString()))
+         {
+            return;
+         }
+
+         if(attempts.incrementAndGet() == 1)
+         {
+            entered.countDown();
+            if(failFirst)
+            {
+               throw (new ActiveMQException("transient control consumer failure"));
+            }
+            try
+            {
+               if(!release.await(5, TimeUnit.SECONDS))
+               {
+                  throw (new ActiveMQException("timed out waiting to release control consumer"));
+               }
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               throw (new ActiveMQException("interrupted waiting for control consumer", e));
+            }
+         }
+      }
    }
 
 }

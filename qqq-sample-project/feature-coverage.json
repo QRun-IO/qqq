@@ -5012,10 +5012,18 @@
       "negative_cases": [
         "Removed APIs must not remain in sample/generated source; mismatched module versions"
       ],
-      "gap": "Keep compile checks for migration examples and exact candidate sample; compilation alone does not satisfy behavioral coverage.",
-      "verified_tests": [],
+      "gap": "The Javalin 7 migration examples and representative replacement APIs compile against candidate modules, with HTTP behavior and resolved Jetty alignment checked. The guide's remaining BREAK-03/04 replacement snippets and a packaged candidate consumer have not been independently compiled or exercised.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testDocumentedAfterExamplesCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testRemovedMigrationApisDoNotCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testSampleSourceHasNoSelectedRemovedApis",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testResolvedCandidateRuntimeVersions",
+        "com.kingsrook.sampleapp.SampleHttpLifecycleTest#testProviderConfigurationAndServiceObservationOrder",
+        "com.kingsrook.sampleapp.SampleCustomRouteTest#testMethodsAndDecodedRequestData"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
+      "acceptance_note": "The test compiles the guide's actual Javalin 7 provider and server-customizer blocks plus renamed Javalin/PicoCLI imports, QContext access, String process-input, and selected replacement APIs. Negative JavaCompiler fixtures reject legacy package names and removed methods; selected removed API names are absent from sample and generated Java; a mismatched QQQ dependency fixture is detected. Existing sample HTTP tests verify provider/configuration ordering, service observation, and GET/POST/PUT/PATCH/DELETE method values as String. Resolved Javalin 7.2.3 and all Jetty core/EE10 jars on the test classpath use 12.1.13; core, Javalin and PicoCLI candidate jars match the parent revision. Other guide snippets and a published 4.0 consumer remain outside this evidence.",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/611",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
     },

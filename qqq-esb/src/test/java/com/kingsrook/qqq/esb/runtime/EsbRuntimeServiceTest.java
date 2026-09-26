@@ -74,7 +74,7 @@ class EsbRuntimeServiceTest extends EsbRuntimeTestBase
       try
       {
          service.start(qInstance);
-         assertThat(QEsbRuntime.getInstance().isRunning()).isTrue();
+         waitFor("runtime service control listener", QEsbRuntime.getInstance()::isRunning);
          waitForState(QEsbRuntime.getInstance(), QUEUE_TRIGGER_NAME, EsbTriggerState.RUNNING);
       }
       finally

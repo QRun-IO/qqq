@@ -240,6 +240,46 @@ class TableBasedSessionSpecV1Test extends SpecTestBase
 
 
 
+   /*******************************************************************************
+    ** Repeated wrong passwords lock the username out over v1 manageSession, even
+    ** for the right password afterwards; no session is created (QRun-IO/qqq#696).
+    *******************************************************************************/
+   @Test
+   void testRepeatedFailuresLockTheUsernameOut() throws QException
+   {
+      for(int i = 0; i < 5; i++)
+      {
+         HttpResponse<String> wrong = signIn(basic("lockout.user", "wrong-" + i));
+         assertEquals(401, wrong.getStatus());
+         assertEquals("Incorrect username or password.", JsonUtils.toJSONObject(wrong.getBody()).getString("error"));
+      }
+      HttpResponse<String> locked = signIn(basic("lockout.user", PASSWORD));
+      assertEquals(401, locked.getStatus());
+      assertEquals("Too many failed sign-in attempts. Try again later.", JsonUtils.toJSONObject(locked.getBody()).getString("error"));
+      assertEquals(0, sessionCount());
+
+      ////////////////////////////////////////
+      // other usernames are not affected   //
+      ////////////////////////////////////////
+      assertEquals(200, signIn(basic(USERNAME, PASSWORD)).getStatus());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private HttpResponse<String> signIn(String basicCredentials)
+   {
+      return (Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Authorization", "Basic " + basicCredentials)
+         .header("Content-Type", "application/json")
+         .body("{}")
+         .asString());
+   }
+
+
+
    /***************************************************************************
     **
     ***************************************************************************/

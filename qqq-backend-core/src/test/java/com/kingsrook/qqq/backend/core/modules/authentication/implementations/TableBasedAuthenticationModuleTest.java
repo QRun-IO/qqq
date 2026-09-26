@@ -31,10 +31,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -42,6 +49,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0Authent
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
@@ -78,6 +88,196 @@ public class TableBasedAuthenticationModuleTest extends BaseTest
       MemoryRecordStore.getInstance().reset();
       MemoryRecordStore.resetStatistics();
       MemoryRecordStore.setCollectStatistics(false);
+      TableBasedAuthenticationModule.clearSignInThrottle();
+   }
+
+
+
+   /*******************************************************************************
+    ** A remembered validation no longer hides an inactivity timeout shorter than
+    ** the validation interval (QRun-IO/qqq#696).
+    *******************************************************************************/
+   @Test
+   void testShortInactivityTimeoutIsEnforcedPromptly() throws Exception
+   {
+      QInstance qInstance = getQInstance();
+      ((TableBasedAuthenticationMetaData) qInstance.getAuthentication()).setInactivityTimeoutSeconds(60);
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+      String uuid = insertTestSession(qInstance, USERNAME, Instant.now().minus(90, ChronoUnit.SECONDS));
+
+      QSession session = new QSession();
+      session.setIdReference(uuid);
+
+      ///////////////////////////////////////////////////////////////////////
+      // validated 10 seconds ago (within the interval), idle for 90 of 60 //
+      ///////////////////////////////////////////////////////////////////////
+      InMemoryStateProvider.getInstance().put(new SimpleStateKey<>(uuid), Instant.now().minus(10, ChronoUnit.SECONDS));
+      InMemoryStateProvider.getInstance().put(new SimpleStateKey<>("tableBasedAuthActivity:" + uuid), Instant.now().minus(90, ChronoUnit.SECONDS));
+      assertFalse(new TableBasedAuthenticationModule().isSessionValid(qInstance, session));
+      assertTrue(InMemoryStateProvider.getInstance().get(Instant.class, new SimpleStateKey<>(uuid)).isEmpty(), "the remembered validation is dropped");
+   }
+
+
+
+   /*******************************************************************************
+    ** Requests answered from the remembered validation count as activity, so an
+    ** active session is not expired because the table's access time is stale.
+    *******************************************************************************/
+   @Test
+   void testActiveSessionIsNotExpiredEarly() throws Exception
+   {
+      QInstance qInstance = getQInstance();
+      ((TableBasedAuthenticationMetaData) qInstance.getAuthentication()).setInactivityTimeoutSeconds(60);
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+      String uuid = insertTestSession(qInstance, USERNAME, Instant.now().minus(70, ChronoUnit.SECONDS));
+
+      QSession session = new QSession();
+      session.setIdReference(uuid);
+      InMemoryStateProvider.getInstance().put(new SimpleStateKey<>(uuid), Instant.now().minus(40, ChronoUnit.SECONDS));
+      InMemoryStateProvider.getInstance().put(new SimpleStateKey<>("tableBasedAuthActivity:" + uuid), Instant.now().minus(5, ChronoUnit.SECONDS));
+      assertTrue(new TableBasedAuthenticationModule().isSessionValid(qInstance, session));
+
+      //////////////////////////////////////////////////////////
+      // the revalidation refreshed the table's access time   //
+      //////////////////////////////////////////////////////////
+      qInstance.registerAuthenticationProvider(AuthScope.instanceDefault(), new Auth0AuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
+      GetInput getInput = new GetInput();
+      getInput.setTableName("session");
+      getInput.setPrimaryKey(uuid);
+      Instant accessTimestamp = new GetAction().execute(getInput).getRecord().getValueInstant("accessTimestamp");
+      assertTrue(accessTimestamp.isAfter(Instant.now().minus(5, ChronoUnit.SECONDS)));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testValidationIntervalIsAtMostHalfTheTimeout()
+   {
+      assertEquals(1800, TableBasedAuthenticationModule.validationInterval(new TableBasedAuthenticationMetaData()).toSeconds());
+      assertEquals(30, TableBasedAuthenticationModule.validationInterval(new TableBasedAuthenticationMetaData().withInactivityTimeoutSeconds(60)).toSeconds());
+      assertEquals(1, TableBasedAuthenticationModule.validationInterval(new TableBasedAuthenticationMetaData().withInactivityTimeoutSeconds(1)).toSeconds());
+      assertEquals(1800, TableBasedAuthenticationModule.validationInterval(new TableBasedAuthenticationMetaData().withInactivityTimeoutSeconds(null)).toSeconds());
+   }
+
+
+
+   /*******************************************************************************
+    ** Repeated failures lock the username out, whatever password follows; known
+    ** and unknown usernames behave the same (QRun-IO/qqq#696).
+    *******************************************************************************/
+   @Test
+   void testSignInLockout() throws Exception
+   {
+      QInstance                      qInstance  = getQInstance();
+      TableBasedAuthenticationModule authModule = new TableBasedAuthenticationModule();
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+
+      for(int i = 0; i < 5; i++)
+      {
+         assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, "wrong"))))
+            .isInstanceOf(QAuthenticationException.class).hasMessage("Incorrect username or password.");
+      }
+      assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, PASSWORD))))
+         .isInstanceOf(QAuthenticationException.class).hasMessage("Too many failed sign-in attempts. Try again later.");
+      assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(" " + USERNAME.toUpperCase(), PASSWORD))))
+         .isInstanceOf(QAuthenticationException.class).hasMessage("Too many failed sign-in attempts. Try again later.");
+
+      for(int i = 0; i < 5; i++)
+      {
+         assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth("nobody", "wrong"))))
+            .hasMessage("Incorrect username or password.");
+      }
+      assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth("nobody", "wrong"))))
+         .hasMessage("Too many failed sign-in attempts. Try again later.");
+
+      /////////////////////////////////////////
+      // another username is unaffected      //
+      /////////////////////////////////////////
+      insertTestUser(qInstance, "other", PASSWORD, "Other");
+      assertNotNull(authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth("other", PASSWORD))));
+   }
+
+
+
+   /*******************************************************************************
+    ** A success resets the count; the lockout can be switched off.
+    *******************************************************************************/
+   @Test
+   void testSignInLockoutResetAndDisable() throws Exception
+   {
+      QInstance                      qInstance  = getQInstance();
+      TableBasedAuthenticationModule authModule = new TableBasedAuthenticationModule();
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+
+      for(int round = 0; round < 2; round++)
+      {
+         for(int i = 0; i < 4; i++)
+         {
+            assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, "wrong"))))
+               .hasMessage("Incorrect username or password.");
+         }
+         assertNotNull(authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, PASSWORD))));
+      }
+
+      ((TableBasedAuthenticationMetaData) qInstance.getAuthentication()).setMaxFailedSignInAttempts(0);
+      for(int i = 0; i < 10; i++)
+      {
+         assertThatThrownBy(() -> authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, "wrong"))))
+            .hasMessage("Incorrect username or password.");
+      }
+      assertNotNull(authModule.createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, PASSWORD))));
+   }
+
+
+
+   /*******************************************************************************
+    ** The user and session tables are protected by default: no permissions, no
+    ** access, password hashes hidden; the module still signs users in; rules the
+    ** application set are kept (QRun-IO/qqq#696).
+    *******************************************************************************/
+   @Test
+   void testAuthenticationTablesProtectedByDefault() throws Exception
+   {
+      QInstance qInstance = getQInstance();
+      insertTestUser(qInstance, USERNAME, PASSWORD, FULL_NAME);
+      new QInstanceEnricher(qInstance).enrich();
+
+      for(String tableName : List.of("user", "session"))
+      {
+         assertEquals(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS, qInstance.getTable(tableName).getPermissionRules().getLevel(), tableName);
+         assertEquals(DenyBehavior.HIDDEN, qInstance.getTable(tableName).getPermissionRules().getDenyBehavior(), tableName);
+      }
+      assertTrue(qInstance.getTable("user").getField("passwordHash").getIsHidden());
+
+      QSession signedIn = new TableBasedAuthenticationModule().createSession(qInstance, Map.of(TableBasedAuthenticationModule.BASIC_AUTH_KEY, encodeBasicAuth(USERNAME, PASSWORD)));
+      QContext.init(qInstance, signedIn);
+      for(String tableName : List.of("user", "session"))
+      {
+         QueryInput queryInput = new QueryInput(tableName);
+         assertThatThrownBy(() -> PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ)).isInstanceOf(QPermissionDeniedException.class);
+         assertThatThrownBy(() -> PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.INSERT)).isInstanceOf(QPermissionDeniedException.class);
+      }
+
+      signedIn.withPermission("user.read");
+      PermissionsHelper.checkTablePermissionThrowing(new QueryInput("user"), TablePermissionSubType.READ);
+      QueryInput userQuery = new QueryInput("user");
+      userQuery.setShouldOmitHiddenFields(true);
+      QRecord user = new QueryAction().execute(userQuery).getRecords().get(0);
+      assertEquals(USERNAME, user.getValueString("username"));
+      assertFalse(user.getValues().containsKey("passwordHash"));
+
+      /////////////////////////////////////////
+      // an application's own rules are kept //
+      /////////////////////////////////////////
+      QInstance custom = getQInstance();
+      custom.getTable("user").setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED));
+      new QInstanceEnricher(custom).enrich();
+      assertEquals(PermissionLevel.NOT_PROTECTED, custom.getTable("user").getPermissionRules().getLevel());
+      assertEquals(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS, custom.getTable("session").getPermissionRules().getLevel());
+      assertTrue(custom.getTable("user").getField("passwordHash").getIsHidden());
    }
 
 

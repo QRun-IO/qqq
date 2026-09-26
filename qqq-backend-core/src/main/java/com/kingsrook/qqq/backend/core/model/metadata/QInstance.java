@@ -149,6 +149,13 @@ public class QInstance
 
    private List<QCodeReference> processLifecycleListeners = new ArrayList<>();
 
+   ////////////////////////////////////////////////////////////////////////////////
+   // if true, MetaDataProducerHelper throws when it can't use or run a          //
+   // producer, instead of logging a warning and skipping it.  the system        //
+   // property qqq.metaData.failOnProducerError=true turns this on too.          //
+   ////////////////////////////////////////////////////////////////////////////////
+   private Boolean failOnMetaDataProducerError = false;
+
    //////////////////////////////////////////////////////////////////////////////////////
    // todo - lock down the object (no more changes allowed) after it's been validated? //
    //  if doing so, may need to copy all of the collections into read-only versions... //
@@ -2111,6 +2118,41 @@ public class QInstance
          this.processLifecycleListeners = new ArrayList<>();
       }
       this.processLifecycleListeners.add(processLifecycleListener);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for failOnMetaDataProducerError - if true, MetaDataProducerHelper
+    ** throws when it can't use or run a meta-data producer, instead of logging
+    ** a warning.
+    *******************************************************************************/
+   public Boolean getFailOnMetaDataProducerError()
+   {
+      return (this.failOnMetaDataProducerError);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for failOnMetaDataProducerError
+    *******************************************************************************/
+   public void setFailOnMetaDataProducerError(Boolean failOnMetaDataProducerError)
+   {
+      this.failOnMetaDataProducerError = failOnMetaDataProducerError;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for failOnMetaDataProducerError - set to true before running
+    ** MetaDataProducerHelper, so a failing producer stops startup instead of
+    ** being logged as a warning and skipped.
+    *******************************************************************************/
+   public QInstance withFailOnMetaDataProducerError(Boolean failOnMetaDataProducerError)
+   {
+      this.failOnMetaDataProducerError = failOnMetaDataProducerError;
       return (this);
    }
 

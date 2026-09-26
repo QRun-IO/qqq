@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance `branding` (names, logo, icon, accent colors, banners). The published v1 OpenAPI document was
   regenerated, which also brings in previously unpublished schema additions (associations, OAuth2
   authentication values, back-channel logout).
+- **Fail-fast meta-data producers ([#763](https://github.com/QRun-IO/qqq/issues/763))** — with
+  `QInstance.withFailOnMetaDataProducerError(true)` or JVM property `qqq.metaData.failOnProducerError=true`,
+  `MetaDataProducerHelper` throws a `QException` wherever it would log a warning and drop a producer: a class
+  it can't use as a producer (no no-arg constructor, a constructor that throws, or wrong producer annotations),
+  or a producer that fails to run. `QBitMetaDataProducer` honors the instance flag for its
+  own producers. The default (warn and skip) is unchanged.
 
 ### Changed
 - The sample application and quickstart serve the Next dashboard from the sample itself on port 8000;

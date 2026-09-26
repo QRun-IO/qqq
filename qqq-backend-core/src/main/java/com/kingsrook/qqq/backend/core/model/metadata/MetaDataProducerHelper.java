@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.LogPair;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QField;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
@@ -53,6 +54,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -69,10 +71,19 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * the system property {@code qqq.MetaDataProducerHelper.disableNameTiebreaker}
  * to {@code true}.</p>
  *
+ * <p>By default, a class that can't be used as a producer (e.g., it has no
+ * no-arg constructor, its constructor throws, or its annotations are wrong), or
+ * a producer that fails while running, is logged as a warning and skipped.  To
+ * fail fast instead (throw a QException), set
+ * {@code QInstance.withFailOnMetaDataProducerError(true)}, or the system
+ * property {@code qqq.metaData.failOnProducerError} to {@code true}.</p>
+ *
  *******************************************************************************/
 public class MetaDataProducerHelper
 {
    private static final QLogger LOG = QLogger.getLogger(MetaDataProducerHelper.class);
+
+   public static final String FAIL_ON_PRODUCER_ERROR_PROPERTY = "qqq.metaData.failOnProducerError";
 
    private static Map<Class<?>, Integer> comparatorValuesByType = new HashMap<>();
    private static Integer                defaultComparatorValue;
@@ -119,17 +130,45 @@ public class MetaDataProducerHelper
    public static void processAllMetaDataProducersInPackage(QInstance instance, String packageName, MetaDataCustomizerInterface<QTableMetaData> tableMetaDataCustomizer) throws QException
    {
       MetaDataProducerHelper.tableMetaDataCustomizer = tableMetaDataCustomizer;
-      processAllMetaDataProducersInPackage(instance, packageName);
-      MetaDataProducerHelper.tableMetaDataCustomizer = null;
+      try
+      {
+         processAllMetaDataProducersInPackage(instance, packageName);
+      }
+      finally
+      {
+         MetaDataProducerHelper.tableMetaDataCustomizer = null;
+      }
    }
 
 
 
    /***************************************************************************
-    **
+    * Find (but do not run) the meta-data producers in (and under) a package.
+    * With no QInstance, only the system property can turn on fail-fast - see
+    * {@link #isFailOnProducerError(QInstance)}.
     ***************************************************************************/
    public static List<MetaDataProducerInterface<?>> findProducers(String packageName) throws QException
    {
+      return (findProducers(null, packageName));
+   }
+
+
+
+   /***************************************************************************
+    * Find (but do not run) the meta-data producers in (and under) a package.
+    *
+    * <p>A class that can't be used as a producer (e.g., it has no no-arg
+    * constructor, its constructor throws, or its annotations are wrong) is
+    * logged as a warning and skipped - unless fail-fast is on for the given
+    * instance (see {@link #isFailOnProducerError(QInstance)}), in which case a
+    * QException is thrown.</p>
+    *
+    * @param instance only used to check if fail-fast is on.  May be null.
+    ***************************************************************************/
+   public static List<MetaDataProducerInterface<?>> findProducers(QInstance instance, String packageName) throws QException
+   {
+      boolean failOnProducerError = isFailOnProducerError(instance);
+
       List<Class<?>> classesInPackage;
       try
       {
@@ -161,7 +200,7 @@ public class MetaDataProducerHelper
             /////////////////////////////////////////////////////////////////////
             if(MetaDataProducerInterface.class.isAssignableFrom(aClass))
             {
-               CollectionUtils.addIfNotNull(producers, processMetaDataProducer(aClass));
+               CollectionUtils.addIfNotNull(producers, processMetaDataProducer(aClass, failOnProducerError));
             }
 
             /////////////////////////////////////////////////////////////////////////
@@ -170,7 +209,7 @@ public class MetaDataProducerHelper
             /////////////////////////////////////////////////////////////////////////
             if(aClass.isAnnotationPresent(QMetaDataProducingEntity.class))
             {
-               producers.addAll(processMetaDataProducingEntity(aClass));
+               producers.addAll(processMetaDataProducingEntity(aClass, failOnProducerError));
             }
 
             //////////////////////////////////////////////////////////////////
@@ -182,13 +221,18 @@ public class MetaDataProducerHelper
                QMetaDataProducingPossibleValueEnum qMetaDataProducingPossibleValueEnum = aClass.getAnnotation(QMetaDataProducingPossibleValueEnum.class);
                if(qMetaDataProducingPossibleValueEnum.producePossibleValueSource())
                {
-                  CollectionUtils.addIfNotNull(producers, processMetaDataProducingPossibleValueEnum(aClass));
+                  CollectionUtils.addIfNotNull(producers, processMetaDataProducingPossibleValueEnum(aClass, failOnProducerError));
                }
             }
 
          }
          catch(Exception e)
          {
+            if(failOnProducerError)
+            {
+               throw (new QException("Error evaluating a possible meta-data producer class [" + aClass.getName() + "]", e));
+            }
+
             LOG.warn("Error evaluating a possible meta-data producer class", e, logPair("class", aClass.getSimpleName()));
          }
       }
@@ -263,10 +307,14 @@ public class MetaDataProducerHelper
     ** run them, and add their output to the given qInstance.
     **
     ** Note - they'll be sorted by the sortOrder they provide.
+    **
+    ** A producer that fails is logged as a warning and skipped - unless fail-fast
+    ** is on for the instance (see isFailOnProducerError), in which case a
+    ** QException is thrown.
     *******************************************************************************/
    public static void processAllMetaDataProducersInPackage(QInstance instance, String packageName) throws QException
    {
-      List<MetaDataProducerInterface<?>> producers = findProducers(packageName);
+      List<MetaDataProducerInterface<?>> producers = findProducers(instance, packageName);
 
       ///////////////////////////////////////////////////////////////////////////
       // execute each one (if enabled), adding their meta data to the instance //
@@ -285,6 +333,11 @@ public class MetaDataProducerHelper
             }
             catch(Exception e)
             {
+               if(isFailOnProducerError(instance))
+               {
+                  throw (new QException("Error executing metaDataProducer [" + producer.getClass().getName() + "]", e));
+               }
+
                LOG.warn("error executing metaDataProducer", e, logPair("producer", producer.getClass().getSimpleName()));
             }
          }
@@ -298,15 +351,56 @@ public class MetaDataProducerHelper
 
 
    /***************************************************************************
+    * Check if producer errors should fail fast (throw a QException) instead of
+    * being logged as warnings: true if the instance's
+    * failOnMetaDataProducerError flag is on, or if the system property
+    * {@code qqq.metaData.failOnProducerError} is {@code true}.
+    *
+    * <p>The system property is read on every call (not cached), so tests can
+    * change it - and this isn't a hot code path.</p>
+    *
+    * @param instance may be null, in which case only the system property is
+    * checked.
+    ***************************************************************************/
+   public static boolean isFailOnProducerError(QInstance instance)
+   {
+      if(instance != null && BooleanUtils.isTrue(instance.getFailOnMetaDataProducerError()))
+      {
+         return (true);
+      }
+
+      return (Boolean.getBoolean(FAIL_ON_PRODUCER_ERROR_PROPERTY));
+   }
+
+
+
+   /***************************************************************************
+    * For a class that can't be used as a producer: log a warning (and the
+    * caller then skips it) - or, if fail-fast is on, throw a QException with
+    * the warning's message instead.
+    ***************************************************************************/
+   private static void warnOrThrow(boolean failOnProducerError, String message, LogPair... logPairs) throws QException
+   {
+      if(failOnProducerError)
+      {
+         throw (new QException(message));
+      }
+
+      LOG.warn(message, logPairs);
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    @SuppressWarnings("unchecked")
-   private static <T extends Serializable & PossibleValueEnum<T>> MetaDataProducerInterface<?> processMetaDataProducingPossibleValueEnum(Class<?> sourceClass)
+   private static <T extends Serializable & PossibleValueEnum<T>> MetaDataProducerInterface<?> processMetaDataProducingPossibleValueEnum(Class<?> sourceClass, boolean failOnProducerError) throws QException
    {
       String warningPrefix = "Found a class annotated as @" + QMetaDataProducingPossibleValueEnum.class.getSimpleName();
       if(!PossibleValueEnum.class.isAssignableFrom(sourceClass))
       {
-         LOG.warn(warningPrefix + ", but which is not a " + PossibleValueEnum.class.getSimpleName() + ", so it will not be used.", logPair("class", sourceClass.getSimpleName()));
+         warnOrThrow(failOnProducerError, warningPrefix + ", but which is not a " + PossibleValueEnum.class.getSimpleName() + ", so it will not be used.", logPair("class", sourceClass.getSimpleName()));
          return null;
       }
 
@@ -321,7 +415,7 @@ public class MetaDataProducerHelper
    /***************************************************************************
     **
     ***************************************************************************/
-   private static List<MetaDataProducerInterface<?>> processMetaDataProducingEntity(Class<?> sourceClass) throws Exception
+   private static List<MetaDataProducerInterface<?>> processMetaDataProducingEntity(Class<?> sourceClass, boolean failOnProducerError) throws Exception
    {
       List<MetaDataProducerInterface<?>> rs = new ArrayList<>();
 
@@ -333,7 +427,7 @@ public class MetaDataProducerHelper
       ///////////////////////////////////////////////////////////
       if(!QRecordEntity.class.isAssignableFrom(sourceClass))
       {
-         LOG.warn(warningPrefix + ", but which is not a " + QRecordEntity.class.getSimpleName() + ", so it will not be used.", logPair("class", sourceClass.getSimpleName()));
+         warnOrThrow(failOnProducerError, warningPrefix + ", but which is not a " + QRecordEntity.class.getSimpleName() + ", so it will not be used.", logPair("class", sourceClass.getSimpleName()));
          return (rs);
       }
 
@@ -346,7 +440,7 @@ public class MetaDataProducerHelper
       Field tableNameField = recordEntityClass.getDeclaredField("TABLE_NAME");
       if(!tableNameField.getType().equals(String.class))
       {
-         LOG.warn(warningPrefix + ", but whose TABLE_NAME field is not a String, so it will not be used.", logPair("class", recordEntityClass.getSimpleName()));
+         warnOrThrow(failOnProducerError, warningPrefix + ", but whose TABLE_NAME field is not a String, so it will not be used.", logPair("class", recordEntityClass.getSimpleName()));
          return (rs);
       }
 
@@ -400,7 +494,7 @@ public class MetaDataProducerHelper
          Class<? extends QRecordEntity> childEntityClass = childTable.childTableEntityClass();
          if(childTable.childJoin().enabled())
          {
-            CollectionUtils.addIfNotNull(rs, processChildJoin(recordEntityClass, childTable));
+            CollectionUtils.addIfNotNull(rs, processChildJoin(recordEntityClass, childTable, failOnProducerError));
 
             if(childTable.childRecordListWidget().enabled())
             {
@@ -414,7 +508,7 @@ public class MetaDataProducerHelper
                //////////////////////////////////////////////////////////////////////////
                // if not doing the join, can't do the child-widget, so warn about that //
                //////////////////////////////////////////////////////////////////////////
-               LOG.warn(warningPrefix + " requested to produce a ChildRecordListWidget, but not produce a Join - which is not allowed (must do join to do widget). ", logPair("class", recordEntityClass.getSimpleName()), logPair("childEntityClass", childEntityClass.getSimpleName()));
+               warnOrThrow(failOnProducerError, warningPrefix + " requested to produce a ChildRecordListWidget, but not produce a Join - which is not allowed (must do join to do widget). ", logPair("class", recordEntityClass.getSimpleName()), logPair("childEntityClass", childEntityClass.getSimpleName()));
             }
          }
       }
@@ -466,7 +560,7 @@ public class MetaDataProducerHelper
    /***************************************************************************
     **
     ***************************************************************************/
-   private static MetaDataProducerInterface<?> processChildJoin(Class<? extends QRecordEntity> entityClass, ChildTable childTable) throws Exception
+   private static MetaDataProducerInterface<?> processChildJoin(Class<? extends QRecordEntity> entityClass, ChildTable childTable, boolean failOnProducerError) throws Exception
    {
       Class<? extends QRecordEntity> childEntityClass = childTable.childTableEntityClass();
 
@@ -475,7 +569,7 @@ public class MetaDataProducerHelper
       String possibleValueFieldName = findPossibleValueField(childEntityClass, parentTableName);
       if(!StringUtils.hasContent(possibleValueFieldName))
       {
-         LOG.warn("Could not find field in [" + childEntityClass.getSimpleName() + "] with possibleValueSource referencing table [" + entityClass.getSimpleName() + "]");
+         warnOrThrow(failOnProducerError, "Could not find field in [" + childEntityClass.getSimpleName() + "] with possibleValueSource referencing table [" + entityClass.getSimpleName() + "]");
          return (null);
       }
 
@@ -489,7 +583,7 @@ public class MetaDataProducerHelper
    /***************************************************************************
     **
     ***************************************************************************/
-   private static MetaDataProducerInterface<?> processMetaDataProducer(Class<?> sourceCClass) throws Exception
+   private static MetaDataProducerInterface<?> processMetaDataProducer(Class<?> sourceCClass, boolean failOnProducerError) throws Exception
    {
       for(Constructor<?> constructor : sourceCClass.getConstructors())
       {
@@ -502,7 +596,7 @@ public class MetaDataProducerHelper
          }
       }
 
-      LOG.warn("Found a class which implements MetaDataProducerInterface, but it does not have a no-arg constructor, so it cannot be used.", logPair("class", sourceCClass.getSimpleName()));
+      warnOrThrow(failOnProducerError, "Found a class which implements MetaDataProducerInterface, but it does not have a no-arg constructor, so it cannot be used.", logPair("class", sourceCClass.getSimpleName()));
       return null;
    }
 

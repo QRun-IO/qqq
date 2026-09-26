@@ -59,13 +59,14 @@ import org.junit.jupiter.api.BeforeEach;
 /*******************************************************************************
  * Base class for qqq-esb unit tests.
  *
- * Runs an embedded ActiveMQ Artemis broker (in-memory, no security) on a random
- * localhost port for each test class, and puts a fresh memory-backend QInstance
+ * Starts an embedded ActiveMQ Artemis broker (in-memory, no security) before
+ * each test class, and stops it after.  Puts a fresh memory-backend QInstance
  * (table `order`, process `syncOrder`, and an ESB provider named `artemis`
  * pointing at the embedded broker) into the QContext before each test.
  *
- * The broker keeps its port across stop/start within a JVM, so tests can
- * restart it and expect clients to reconnect to the same URL.
+ * The broker's localhost port is picked (a free, random one) once per JVM, and
+ * then reused by every test class and every restart - so tests can stop and
+ * start the broker and expect clients to reconnect to the same URL.
  *******************************************************************************/
 public class EsbTestBase
 {
@@ -193,7 +194,8 @@ public class EsbTestBase
 
 
    /*******************************************************************************
-    ** URL of the embedded broker, e.g., tcp://localhost:61616 (random port).
+    ** URL of the embedded broker, e.g., tcp://localhost:61616 (on the port that
+    ** was picked, once per JVM, when the broker first started).
     *******************************************************************************/
    public static String getBrokerUrl()
    {

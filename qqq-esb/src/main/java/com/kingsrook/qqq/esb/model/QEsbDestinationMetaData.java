@@ -31,13 +31,17 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  * Meta-data for an ESB destination - a queue or topic on a provider.
  *
  * name is how QQQ meta-data (publications, triggers) refers to the destination;
- * destinationName is its name on the broker, which defaults to name.
+ * destinationName is its name on the broker, which defaults to name.  Triggers
+ * build their default subscription and dead-letter names from the broker-side
+ * name (getEffectiveDestinationName).
  *
  * A top-level meta-data object: adding it to an instance puts it in that
  * instance's EsbInstanceMetaData.
  *******************************************************************************/
 public class QEsbDestinationMetaData implements TopLevelMetaDataInterface
 {
+   private static final long serialVersionUID = 1L;
+
    private String             name;
    private EsbDestinationType type;
    private String             providerName;

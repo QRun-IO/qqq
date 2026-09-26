@@ -22,13 +22,16 @@
 package com.kingsrook.qqq.esb.model;
 
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
@@ -45,6 +48,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 {
    public static final String NAME = "esb";
+
+   private static final long serialVersionUID = 1L;
 
    private Map<String, QEsbProviderMetaData>    providers    = new LinkedHashMap<>();
    private Map<String, QEsbDestinationMetaData> destinations = new LinkedHashMap<>();
@@ -100,8 +105,9 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
 
    /*******************************************************************************
-    ** Validate providers and destinations.  (Publications and triggers are
-    ** validated by EsbTableMetaData and EsbProcessMetaData.)
+    ** Validate providers and destinations, and that topic triggers' subscription
+    ** names are unique per provider.  (Publications and each trigger's own
+    ** fields are validated by EsbTableMetaData and EsbProcessMetaData.)
     *******************************************************************************/
    @Override
    public void validate(QInstance qInstance, QInstanceValidator validator)
@@ -109,6 +115,7 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       for(QEsbProviderMetaData provider : CollectionUtils.nonNullMap(providers).values())
       {
          String prefix = "ESB provider " + provider.getName() + " ";
+         validator.assertCondition(StringUtils.hasContent(provider.getName()), "An ESB provider is missing a name.");
          validator.assertCondition(provider.getType() != null, prefix + "is missing a type.");
          validator.assertCondition(StringUtils.hasContent(provider.getUrl()), prefix + "is missing a url.");
       }
@@ -116,8 +123,60 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       for(QEsbDestinationMetaData destination : CollectionUtils.nonNullMap(destinations).values())
       {
          String prefix = "ESB destination " + destination.getName() + " ";
+         validator.assertCondition(StringUtils.hasContent(destination.getName()), "An ESB destination is missing a name.");
          validator.assertCondition(destination.getType() != null, prefix + "is missing a type.");
          validator.assertCondition(getProvider(destination.getProviderName()) != null, prefix + "references an unknown provider: " + destination.getProviderName() + ".");
+      }
+
+      validateUniqueSubscriptionNames(qInstance, validator);
+   }
+
+
+
+   /*******************************************************************************
+    ** Both brokers name a shared durable subscription's queue after the
+    ** subscription, and (on Artemis) queue names are unique across the broker -
+    ** so two topic triggers on one provider with the same effective subscription
+    ** name would share (and split) one subscription.  Report each such name.
+    *******************************************************************************/
+   private void validateUniqueSubscriptionNames(QInstance qInstance, QInstanceValidator validator)
+   {
+      Map<String, Map<String, List<String>>> triggerNamesBySubscriptionByProvider = new LinkedHashMap<>();
+      for(QProcessMetaData process : CollectionUtils.nonNullMap(qInstance.getProcesses()).values())
+      {
+         EsbProcessMetaData esbProcessMetaData = EsbProcessMetaData.of(process);
+         if(esbProcessMetaData == null)
+         {
+            continue;
+         }
+
+         for(EsbTrigger trigger : CollectionUtils.nonNullList(esbProcessMetaData.getTriggers()))
+         {
+            /////////////////////////////////////////////////////////////////////
+            // only topic triggers have subscriptions.  an unknown destination //
+            // is reported by the trigger's own validation.                    //
+            /////////////////////////////////////////////////////////////////////
+            QEsbDestinationMetaData destination = getDestination(trigger.getDestinationName());
+            if(destination == null || destination.getType() != EsbDestinationType.TOPIC)
+            {
+               continue;
+            }
+
+            String subscriptionName = trigger.getEffectiveSubscriptionName(process.getName(), destination);
+            triggerNamesBySubscriptionByProvider
+               .computeIfAbsent(destination.getProviderName(), k -> new LinkedHashMap<>())
+               .computeIfAbsent(subscriptionName, k -> new ArrayList<>())
+               .add(trigger.getName(process.getName()));
+         }
+      }
+
+      for(Map.Entry<String, Map<String, List<String>>> providerEntry : triggerNamesBySubscriptionByProvider.entrySet())
+      {
+         for(Map.Entry<String, List<String>> subscriptionEntry : providerEntry.getValue().entrySet())
+         {
+            List<String> triggerNames = subscriptionEntry.getValue();
+            validator.assertCondition(triggerNames.size() == 1, "ESB subscription name " + subscriptionEntry.getKey() + " is used by more than one topic trigger on provider " + providerEntry.getKey() + ": " + String.join(", ", triggerNames) + ".");
+         }
       }
    }
 
@@ -135,6 +194,9 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    /*******************************************************************************
     ** Fluent setter to add a provider (keyed by its name).
+    **
+    ** Throws IllegalArgumentException if a provider with that name was already
+    ** added (as QInstance does for a second table, process, etc).
     *******************************************************************************/
    public EsbInstanceMetaData withProvider(QEsbProviderMetaData provider)
    {
@@ -142,6 +204,12 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       {
          this.providers = new LinkedHashMap<>();
       }
+
+      if(this.providers.containsKey(provider.getName()))
+      {
+         throw (new IllegalArgumentException("Attempted to add a second ESB provider with name: " + provider.getName()));
+      }
+
       this.providers.put(provider.getName(), provider);
       return (this);
    }
@@ -160,6 +228,9 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    /*******************************************************************************
     ** Fluent setter to add a destination (keyed by its name).
+    **
+    ** Throws IllegalArgumentException if a destination with that name was
+    ** already added (as QInstance does for a second table, process, etc).
     *******************************************************************************/
    public EsbInstanceMetaData withDestination(QEsbDestinationMetaData destination)
    {
@@ -167,6 +238,12 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       {
          this.destinations = new LinkedHashMap<>();
       }
+
+      if(this.destinations.containsKey(destination.getName()))
+      {
+         throw (new IllegalArgumentException("Attempted to add a second ESB destination with name: " + destination.getName()));
+      }
+
       this.destinations.put(destination.getName(), destination);
       return (this);
    }

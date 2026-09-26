@@ -28,6 +28,9 @@ import com.kingsrook.qqq.backend.core.actions.metadata.MetaDataAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
+import com.kingsrook.qqq.backend.core.logging.CollectedLogMessage;
+import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
@@ -40,6 +43,8 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.esb.EsbTestBase;
+import org.apache.logging.log4j.Level;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -114,6 +119,48 @@ class EsbInstanceMetaDataTest extends EsbTestBase
       assertThatThrownBy(() -> new QInstanceValidator().validate(qInstance))
          .isInstanceOf(QInstanceValidationException.class)
          .satisfies(e -> assertThat(((QInstanceValidationException) e).getReasons()).anySatisfy(reason -> assertThat(reason).startsWith("ESB provider fromEnv is missing a url")));
+   }
+
+
+
+   /*******************************************************************************
+    ** A connection field whose ${env.*} variable isn't set logs a warning that
+    ** names the provider and the field - but never the field's value (nor the
+    ** variable reference, which could carry a literal fallback).
+    *******************************************************************************/
+   @Test
+   void testUnsetEnvVariableLogsWarningNamingTheField() throws Exception
+   {
+      String            unsetPassword    = "${env.QQQ_ESB_TEST_PASSWORD_THAT_IS_NOT_SET}";
+      QCollectingLogger collectingLogger = QLogger.activateCollectingLoggerForClass(QEsbProviderMetaData.class);
+      try
+      {
+         QInstance qInstance = defineInstance();
+         EsbInstanceMetaData.of(qInstance).withProvider(new QEsbProviderMetaData()
+            .withName("fromEnv")
+            .withType(EsbProviderType.RABBITMQ)
+            .withUrl("amqp://localhost:5672/%2F")
+            .withUsername("brokerUser")
+            .withPassword(unsetPassword)
+            .withManagementPassword(SECRET_MANAGEMENT_PASSWORD));
+
+         new QInstanceValidator().validate(qInstance);
+         assertThat(EsbInstanceMetaData.of(qInstance).getProvider("fromEnv").getPassword()).isNull();
+
+         List<CollectedLogMessage> warnings = collectingLogger.getCollectedMessages().stream().filter(m -> Level.WARN.equals(m.getLevel())).toList();
+         assertThat(warnings).hasSize(1);
+         JSONObject warning = warnings.get(0).getMessageAsJSONObject();
+         assertThat(warning.getString("provider")).isEqualTo("fromEnv");
+         assertThat(warning.getString("field")).isEqualTo("password");
+         assertThat(warnings.get(0).getMessage())
+            .doesNotContain("QQQ_ESB_TEST_PASSWORD_THAT_IS_NOT_SET")
+            .doesNotContain(SECRET_MANAGEMENT_PASSWORD)
+            .doesNotContain("brokerUser");
+      }
+      finally
+      {
+         QLogger.deactivateCollectingLoggerForClass(QEsbProviderMetaData.class);
+      }
    }
 
 

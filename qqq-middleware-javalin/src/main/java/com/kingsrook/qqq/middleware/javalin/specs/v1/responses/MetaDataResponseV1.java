@@ -43,6 +43,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppTre
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.Branding;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ProcessMetaDataLight;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ReportMetaData;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.SupplementalInstanceMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableMetaDataLight;
 
 
@@ -77,6 +78,9 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 
    @OpenAPIDescription("Application identity (names, logo, icon, accent colors and banners), when the instance defines it.")
    private Branding branding;
+
+   @OpenAPIDescription("Settings from supplemental modules that a frontend may use (an explicit allow-list - not the supplemental meta-data objects themselves).  Omitted when the instance defines none of them.")
+   private SupplementalInstanceMetaData supplementalInstanceMetaData;
 
 
 
@@ -123,6 +127,8 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
       }
 
       branding = metaDataOutput.getBranding() == null ? null : new Branding(metaDataOutput.getBranding());
+
+      supplementalInstanceMetaData = SupplementalInstanceMetaData.of(metaDataOutput);
    }
 
 
@@ -212,5 +218,16 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    public Branding getBranding()
    {
       return branding;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for supplementalInstanceMetaData
+    **
+    *******************************************************************************/
+   public SupplementalInstanceMetaData getSupplementalInstanceMetaData()
+   {
+      return supplementalInstanceMetaData;
    }
 }

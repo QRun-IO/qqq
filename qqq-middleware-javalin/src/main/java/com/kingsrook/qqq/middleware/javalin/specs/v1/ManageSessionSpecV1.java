@@ -104,7 +104,7 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       if(result != null)
       {
          String sessionUuid = result.getUuid();
-         context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME, sessionUuid, QJavalinImplementation.SESSION_COOKIE_AGE);
+         QJavalinImplementation.setSessionCookie(context, QJavalinImplementation.SESSION_UUID_COOKIE_NAME, sessionUuid);
       }
       return (result);
    }

@@ -33,16 +33,34 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
 import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
@@ -65,6 +83,11 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** Requests are only handled after no other route matched (via the shared
  ** SpaNotFoundHandlerRegistry), so API endpoints, including their own 404
  ** responses, and path-scoped SPAs are never shadowed.
+ **
+ ** Every response carries the NextDashboardSecurityHeaders; HTML documents also
+ ** get a Content-Security-Policy whose script-src lists the SHA-256 hash of each
+ ** inline script in that document (the export's router payload bootstrap), so
+ ** no other inline script can run (QRun-IO/qqq#695).
  *******************************************************************************/
 public final class NextDashboardRouteProvider implements QJavalinRouteProviderInterface
 {
@@ -72,6 +95,14 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
 
    public static final String DEFAULT_RESOURCE_ROOT = "next-dashboard";
    public static final String PLACEHOLDER_SEGMENT   = "_";
+
+   //////////////////////////////////////////////////////////////////////////
+   // where AWS serves QuickSight embeds (the quickSightChart widget's URL) //
+   //////////////////////////////////////////////////////////////////////////
+   public static final String QUICKSIGHT_FRAME_SOURCE = "https://*.quicksight.aws.amazon.com";
+
+   private static final Pattern SCRIPT_ELEMENT = Pattern.compile("<script\\b([^>]*)>(.*?)</script\\s*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+   private static final Pattern SRC_ATTRIBUTE  = Pattern.compile("(^|\\s)src\\s*=", Pattern.CASE_INSENSITIVE);
 
    private static final Map<String, String> CONTENT_TYPES = Map.ofEntries(
       Map.entry("html", "text/html; charset=utf-8"),
@@ -96,6 +127,33 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    private final Set<String> files       = new HashSet<>();
    private final Set<String> directories = new HashSet<>();
 
+   private final Map<String, List<String>>                     scriptHashes    = new ConcurrentHashMap<>();
+   private final AtomicReference<NextDashboardSecurityHeaders> securityHeaders = new AtomicReference<>();
+   private       Consumer<NextDashboardSecurityHeaders>        securityHeadersCustomizer;
+   private       InstanceOrigins                               instanceOrigins = InstanceOrigins.NONE;
+
+
+
+   /*******************************************************************************
+    ** The origins an instance's metadata adds to the policy.
+    *******************************************************************************/
+   private record InstanceOrigins(Set<String> connect, Set<String> frame, Set<String> script)
+   {
+      static final InstanceOrigins NONE = new InstanceOrigins(Set.of(), Set.of(), Set.of());
+
+
+
+      /***************************************************************************
+       ** Keep insertion order (the header lists sources in metadata order).
+       ***************************************************************************/
+      InstanceOrigins
+      {
+         connect = Collections.unmodifiableSet(new LinkedHashSet<>(connect));
+         frame = Collections.unmodifiableSet(new LinkedHashSet<>(frame));
+         script = Collections.unmodifiableSet(new LinkedHashSet<>(script));
+      }
+   }
+
 
 
    /*******************************************************************************
@@ -117,6 +175,35 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    {
       this.resourceRoot = resourceRoot.replaceAll("^/+|/+$", "");
       indexResources();
+      this.securityHeaders.set(buildSecurityHeaders());
+   }
+
+
+
+   /*******************************************************************************
+    ** Adjust the security headers (for example extra CSP sources, or allowing the
+    ** dashboard to be framed). The customizer receives the defaults with the
+    ** instance's identity provider and QuickSight origins already added, and runs
+    ** again whenever the QInstance is set or hot-swapped.
+    **
+    ** @param customizer changes the headers in place, or null for the defaults
+    ** @return this
+    *******************************************************************************/
+   public NextDashboardRouteProvider withSecurityHeadersCustomizer(Consumer<NextDashboardSecurityHeaders> customizer)
+   {
+      this.securityHeadersCustomizer = customizer;
+      this.securityHeaders.set(buildSecurityHeaders());
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The headers currently sent (after the instance additions and customizer).
+    *******************************************************************************/
+   public NextDashboardSecurityHeaders getSecurityHeaders()
+   {
+      return (securityHeaders.get());
    }
 
 
@@ -137,9 +224,166 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    @Override
    public void setQInstance(QInstance qInstance)
    {
-      //////////////////////////////////////////////////////////////////
-      // static files only; authentication happens in the API it calls //
-      //////////////////////////////////////////////////////////////////
+      ////////////////////////////////////////////////////////////////////////
+      // static files only; authentication happens in the API it calls. The //
+      // instance only decides which identity provider and embed origins    //
+      // the Content-Security-Policy allows.                                //
+      ////////////////////////////////////////////////////////////////////////
+      this.instanceOrigins = qInstance == null ? InstanceOrigins.NONE : new InstanceOrigins(identityProviderOrigins(qInstance),
+         hasQuickSightWidget(qInstance) ? Set.of(QUICKSIGHT_FRAME_SOURCE) : Set.of(), customComponentOrigins(qInstance));
+      this.securityHeaders.set(buildSecurityHeaders());
+   }
+
+
+
+   /*******************************************************************************
+    ** The default headers plus the current instance's origins, customized.
+    *******************************************************************************/
+   private NextDashboardSecurityHeaders buildSecurityHeaders()
+   {
+      NextDashboardSecurityHeaders headers = new NextDashboardSecurityHeaders();
+      instanceOrigins.connect().forEach(origin -> headers.withSources("connect-src", origin));
+      instanceOrigins.frame().forEach(origin -> headers.withSources("frame-src", origin));
+      instanceOrigins.script().forEach(origin -> headers.withSources(NextDashboardSecurityHeaders.SCRIPT_SRC, origin));
+      if(securityHeadersCustomizer != null)
+      {
+         securityHeadersCustomizer.accept(headers);
+      }
+      return (headers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Origins of the instance's OAUTH2 and AUTH_0 identity providers, which the
+    ** dashboard calls from the browser (OIDC discovery, the Auth0 token exchange).
+    *******************************************************************************/
+   static Set<String> identityProviderOrigins(QInstance qInstance)
+   {
+      List<QAuthenticationMetaData> providers = new ArrayList<>();
+      providers.add(qInstance.getAuthentication());
+      if(qInstance.getScopedAuthenticationProviders() != null)
+      {
+         providers.addAll(qInstance.getScopedAuthenticationProviders().values());
+      }
+
+      Set<String> origins = new LinkedHashSet<>();
+      for(QAuthenticationMetaData provider : providers)
+      {
+         String baseUrl = null;
+         if(provider instanceof OAuth2AuthenticationMetaData oauth2)
+         {
+            baseUrl = oauth2.getBaseUrl();
+         }
+         else if(provider instanceof Auth0AuthenticationMetaData auth0)
+         {
+            baseUrl = auth0.getBaseUrl();
+         }
+         String origin = NextDashboardSecurityHeaders.originOf(baseUrl);
+         if(origin != null)
+         {
+            origins.add(origin);
+         }
+      }
+      return (origins);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static boolean hasQuickSightWidget(QInstance qInstance)
+   {
+      return (widgets(qInstance).stream().anyMatch(widget -> WidgetType.QUICK_SIGHT_CHART.getType().equals(widget.getType())));
+   }
+
+
+
+   /*******************************************************************************
+    ** Origins of the script bundles that customComponent widgets load (their
+    ** componentSourceUrl default value), when they are on another origin.
+    *******************************************************************************/
+   static Set<String> customComponentOrigins(QInstance qInstance)
+   {
+      Set<String> origins = new LinkedHashSet<>();
+      for(QWidgetMetaDataInterface widget : widgets(qInstance))
+      {
+         if(WidgetType.CUSTOM_COMPONENT.getType().equals(widget.getType()) && widget.getDefaultValues() != null)
+         {
+            Object sourceUrl = widget.getDefaultValues().get("componentSourceUrl");
+            String origin    = NextDashboardSecurityHeaders.originOf(sourceUrl == null ? null : String.valueOf(sourceUrl));
+            if(origin != null)
+            {
+               origins.add(origin);
+            }
+         }
+      }
+      return (origins);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static List<QWidgetMetaDataInterface> widgets(QInstance qInstance)
+   {
+      Map<String, QWidgetMetaDataInterface> widgets = qInstance.getWidgets();
+      return (widgets == null ? List.of() : widgets.values().stream().filter(Objects::nonNull).toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** CSP hash sources ('sha256-...') of the inline scripts in an HTML document.
+    ** Line breaks are normalized first, as the HTML parser does before hashing.
+    **
+    ** @param html the document
+    ** @return one source per distinct inline script, in document order
+    *******************************************************************************/
+   public static List<String> inlineScriptHashes(String html)
+   {
+      Set<String> hashes  = new LinkedHashSet<>();
+      Matcher     matcher = SCRIPT_ELEMENT.matcher(html);
+      while(matcher.find())
+      {
+         if(SRC_ATTRIBUTE.matcher(matcher.group(1)).find())
+         {
+            continue;
+         }
+         String script = matcher.group(2).replace("\r\n", "\n").replace('\r', '\n');
+         try
+         {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(script.getBytes(StandardCharsets.UTF_8));
+            hashes.add("'sha256-" + Base64.getEncoder().encodeToString(digest) + "'");
+         }
+         catch(NoSuchAlgorithmException e)
+         {
+            throw (new IllegalStateException("SHA-256 is not available", e));
+         }
+      }
+      return (new ArrayList<>(hashes));
+   }
+
+
+
+   /*******************************************************************************
+    ** The inline script hashes of an exported HTML file (read once, then cached).
+    *******************************************************************************/
+   private List<String> scriptHashesFor(String file)
+   {
+      return (scriptHashes.computeIfAbsent(file, name ->
+      {
+         try(InputStream stream = getClass().getClassLoader().getResourceAsStream(resourceRoot + "/" + name))
+         {
+            return (stream == null ? List.of() : inlineScriptHashes(new String(stream.readAllBytes(), StandardCharsets.UTF_8)));
+         }
+         catch(IOException e)
+         {
+            throw (new IllegalStateException("Could not read " + name + " from the Next dashboard export", e));
+         }
+      }));
    }
 
 
@@ -269,7 +513,14 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
       // hashed build assets never change; pages and router payloads must revalidate //
       /////////////////////////////////////////////////////////////////////////////////
       context.header("Cache-Control", file.startsWith("_next/static/") ? "public, max-age=31536000, immutable" : "no-cache");
-      context.header("X-Content-Type-Options", "nosniff");
+
+      NextDashboardSecurityHeaders headers = securityHeaders.get();
+      headers.getHeaders().forEach(context::header);
+      String policyHeader = headers.getContentSecurityPolicyHeaderName();
+      if(policyHeader != null && "html".equals(extension))
+      {
+         context.header(policyHeader, headers.buildContentSecurityPolicy(scriptHashesFor(file)));
+      }
       context.result(stream);
    }
 

@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModu
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import io.javalin.http.Context;
 
@@ -143,7 +144,7 @@ public class ExecutorSessionUtils
          /////////////////////////////////////////////////////////////////////////////////
          if(authenticationModule.usesSessionIdCookie())
          {
-            context.cookie(SESSION_ID_COOKIE_NAME, session.getIdReference(), SESSION_COOKIE_AGE);
+            QJavalinImplementation.setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getIdReference());
          }
 
          setUserTimezoneOffsetMinutesInSession(context, session);

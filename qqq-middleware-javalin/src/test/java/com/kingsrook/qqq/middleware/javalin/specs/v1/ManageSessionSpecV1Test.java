@@ -87,4 +87,43 @@ class ManageSessionSpecV1Test extends SpecTestBase
       assertThat(response.getHeaders().get("Set-Cookie")).anyMatch(s -> s.contains("sessionUUID"));
    }
 
+
+
+   /*******************************************************************************
+    ** The session cookie is SameSite=Lax for the whole site, and Secure only when
+    ** the request came over HTTPS (here: through a TLS-terminating proxy).
+    *******************************************************************************/
+   @Test
+   void testSessionCookieAttributes()
+   {
+      String body = """
+         {"accessToken": "abcdefg"}
+         """;
+
+      HttpResponse<String> plain = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Content-Type", "application/json")
+         .body(body)
+         .asString();
+      String plainCookie = sessionUuidCookie(plain);
+      assertThat(plainCookie).contains("Path=/").containsIgnoringCase("SameSite=Lax").containsIgnoringCase("Max-Age=86400").doesNotContainIgnoringCase("Secure");
+
+      HttpResponse<String> proxied = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Content-Type", "application/json")
+         .header("X-Forwarded-Proto", "https, http")
+         .body(body)
+         .asString();
+      assertThat(sessionUuidCookie(proxied)).containsIgnoringCase("SameSite=Lax").containsIgnoringCase("; Secure");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static String sessionUuidCookie(HttpResponse<String> response)
+   {
+      assertEquals(200, response.getStatus());
+      return (response.getHeaders().get("Set-Cookie").stream().filter(s -> s.startsWith("sessionUUID=")).findFirst().orElseThrow());
+   }
+
 }

@@ -1,0 +1,40 @@
+== Enterprise Service Bus (ESB)
+
+QQQ publishes table and process events as CloudEvents 1.0 JSON messages over Jakarta Messaging (JMS). A process trigger consumes from a queue or a durable topic subscription. The broker stores and redelivers messages; QQQ does not add an event table or outbox.
+
+=== Run the sample
+
+The `qqq-sample-project` includes an embedded ActiveMQ Artemis broker. Start `com.kingsrook.sampleapp.SampleJavalinServer` to start both the HTTP server and ESB runtime. The sample publishes `person` INSERT, UPDATE, and DELETE events to the `personEvents` topic. Its `syncPerson` process subscribes to that topic and logs each received event's ID and person ID. Stop the sample server to stop its consumers and broker.
+
+The broker listens on `127.0.0.1:61616` by default. Set `-Dqqq.sample.esb.port=<port>` before startup to choose another local port. The sample broker is in memory, has authentication disabled, and is for local development only. Its data is lost on shutdown.
+
+An application using its own broker adds `qqq-esb` and the client for the chosen broker, defines the metadata below, then calls `QEsbRuntime.getInstance().start(qInstance)` after creating its validated instance. Call `stop()` during shutdown. A broker outage does not block application boot; the runtime retries connecting.
+
+=== Metadata
+
+Define a `QEsbProviderMetaData` for each broker with a unique `name`, `type`, and `url`. Types are `ACTIVEMQ_ARTEMIS` and `RABBITMQ`. The Artemis URL uses `tcp://host:port`; the RabbitMQ URL is an AMQP URI including its virtual host. Optional `username` and `password` are connection credentials. Values can use `${env.VARIABLE}` interpolation. Keep credentials outside source control.
+
+Define each `QEsbDestinationMetaData` with a `name`, `providerName`, and `type` (`QUEUE` or `TOPIC`). `destinationName` optionally overrides the broker-side name; by default it equals `name`.
+
+On a table, `EsbTableMetaData` contains `EsbTablePublication` entries with `destinationName` and events `INSERT`, `UPDATE`, or `DELETE`. On a process, `EsbProcessMetaData` can publish `STARTED`, `COMPLETED`, and `FAILED`, and can contain `EsbTrigger` entries. A trigger names its destination and can configure:
+
+* `subscriptionName` for a topic's shared durable subscription; its default is `<process>.<broker-side destination>` and it must be unique per provider.
+* `mode` (`SINGLE`, the default, or `BATCH`), `batchSize` (100), and `batchWaitMs` (1000).
+* `concurrency` (1 consumer per node), `maxAttempts` (3), and retry delay, multiplier, and maximum delay (`retryDelayMs`, `retryMultiplier`, `retryMaxDelayMs`).
+* `onDeadLetter` (`DEAD_LETTER_QUEUE` by default or `DISCARD`), optional `deadLetterDestinationName`, optional `runAsSessionSupplier`, optional `timeoutMs`, and `startPaused` (false).
+
+QQQ validates unknown providers, destinations, and processes at boot. In `SINGLE` mode a trigger passes one CloudEvent in `esbMessages`; `BATCH` passes a list. When the process's `tableName` matches an event's table, the process callback selects that event's record key. Table messages include the current record on insert, current and old records on update, and the old record on delete.
+
+=== Brokers and delivery
+
+ActiveMQ Artemis and RabbitMQ 4.x are supported through JMS 3.x. ActiveMQ Classic is unsupported because it lacks the shared durable topic subscription required by triggers. For RabbitMQ, queues and durable subscription queues use quorum queues. A queue's consumers compete for messages; each topic subscription receives its own copy, while consumers sharing that subscription divide its messages.
+
+Table events publish after a successful transaction commits. A failed publish is logged and counted but does not undo the table write. Trigger success commits the JMS session; failure rolls it back for broker redelivery until `maxAttempts`, when the event is dead-lettered or discarded. Keep `maxAttempts` below the broker's own redelivery limit (Artemis defaults to 10; RabbitMQ quorum queues default to 20). Broker high availability must be configured on the broker itself.
+
+Delivery is at least once. Write triggered processes so a repeat delivery is safe. There is no ordering guarantee unless concurrency is 1, no duplicate filtering, and no XA transaction across the broker and table backend. Avoid publishing an event that triggers the same process indefinitely. A rollback on a non-transactional table backend drops pending events even if its write persisted. If fetching the old record for DELETE fails, QQQ publishes no delete event.
+
+=== Visibility, management, and permissions
+
+ESB endpoints under `/qqq/v1/esb` expose the overview, table and process publications, triggers, counters, and browsable queue or dead-letter messages. Counters are local to the node. Broker queue depth and consumer counts require the provider's optional `managementUrl` and management credentials: Artemis uses Jolokia; RabbitMQ uses its management HTTP API.
+
+The ESB overview requires `esbView.hasAccess`. A table's ESB details require that table's READ permission; a process's details require process access. A user can browse a destination when they have ESB view access, READ on a table publishing there, or access to a process it triggers. Trigger pause, resume, restart, replay, and supported queue move actions require `esbOperate.hasAccess`; purge and delete require `esbDelete.hasAccess`. The server enforces these permissions. Artemis supports queue pause/resume, purge, delete, and move through management; RabbitMQ supports purge but not queue-level pause, selected delete, or move. Both support JMS queue browsing and QQQ trigger pause/resume/restart. Runtime trigger pause state is local and resets to `startPaused` on restart.

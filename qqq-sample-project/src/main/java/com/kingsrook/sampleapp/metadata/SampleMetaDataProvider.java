@@ -94,8 +94,19 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
+import com.kingsrook.qqq.esb.model.EsbDestinationType;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
+import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
+import com.kingsrook.qqq.esb.model.EsbProviderType;
+import com.kingsrook.qqq.esb.model.EsbTableEvent;
+import com.kingsrook.qqq.esb.model.EsbTableMetaData;
+import com.kingsrook.qqq.esb.model.EsbTablePublication;
+import com.kingsrook.qqq.esb.model.EsbTrigger;
+import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
+import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
 import com.kingsrook.sampleapp.dashboard.widgets.PersonsByCreateDateBarChart;
 import com.kingsrook.sampleapp.processes.clonepeople.ClonePeopleTransformStep;
+import com.kingsrook.sampleapp.processes.syncperson.SyncPersonStep;
 import org.apache.commons.io.IOUtils;
 
 
@@ -116,6 +127,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
    public static final String PROCESS_NAME_GREET             = "greet";
    public static final String PROCESS_NAME_GREET_INTERACTIVE = "greetInteractive";
    public static final String PROCESS_NAME_CLONE_PEOPLE      = "clonePeople";
+   public static final String PROCESS_NAME_SYNC_PERSON       = "syncPerson";
    public static final String PROCESS_NAME_SIMPLE_SLEEP      = "simpleSleep";
    public static final String PROCESS_NAME_SIMPLE_THROW      = "simpleThrow";
    public static final String PROCESS_NAME_SLEEP_INTERACTIVE = "sleepInteractive";
@@ -213,6 +225,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addProcess(defineProcessGreetPeople());
       qInstance.addProcess(defineProcessGreetPeopleInteractive());
       qInstance.addProcess(defineProcessClonePeople());
+      qInstance.addProcess(defineProcessSyncPerson());
       qInstance.addProcess(defineProcessSimpleSleep());
       qInstance.addProcess(defineProcessScreenThenSleep());
       qInstance.addProcess(defineProcessSimpleThrow());
@@ -221,6 +234,19 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addTable(setTableBackendNamesForRdbms(new RedirectStateMetaDataProducer(RDBMS_BACKEND_NAME).produce(qInstance)));
 
       MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, SampleMetaDataProvider.class.getPackageName());
+
+      EsbInstanceMetaData.of(qInstance)
+         .withInstanceName("qqq-sample")
+         .withProvider(new QEsbProviderMetaData().withName("sampleArtemis")
+            .withType(EsbProviderType.ACTIVEMQ_ARTEMIS)
+            .withUrl("tcp://127.0.0.1:" + Integer.getInteger("qqq.sample.esb.port", 61616)))
+         .withDestination(new QEsbDestinationMetaData().withName("personEvents")
+            .withType(EsbDestinationType.TOPIC).withProviderName("sampleArtemis"));
+      EsbTableMetaData.ofOrWithNew(qInstance.getTable(TABLE_NAME_PERSON))
+         .withPublication(new EsbTablePublication().withDestinationName("personEvents")
+            .withEvents(List.of(EsbTableEvent.INSERT, EsbTableEvent.UPDATE, EsbTableEvent.DELETE)));
+      EsbProcessMetaData.ofOrWithNew(qInstance.getProcess(PROCESS_NAME_SYNC_PERSON))
+         .withTrigger(new EsbTrigger().withDestinationName("personEvents"));
 
       defineWidgets(qInstance);
       defineBranding(qInstance);
@@ -595,6 +621,23 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
                )
                .withFieldList(List.of(new QFieldMetaData("outputMessage", QFieldType.STRING))))
          );
+   }
+
+
+
+   /*******************************************************************************
+    ** Example subscriber for changes to the person table.
+    *******************************************************************************/
+   private static QProcessMetaData defineProcessSyncPerson()
+   {
+      return new QProcessMetaData()
+         .withName(PROCESS_NAME_SYNC_PERSON)
+         .withLabel("Sync Person")
+         .withTableName(TABLE_NAME_PERSON)
+         .withIsHidden(true)
+         .withStep(new QBackendStepMetaData()
+            .withName("sync")
+            .withCode(new QCodeReference(SyncPersonStep.class)));
    }
 
 

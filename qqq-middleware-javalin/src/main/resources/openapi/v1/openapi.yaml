@@ -325,12 +325,24 @@ components:
           items:
             $ref: "#/components/schemas/FieldAdornment"
           type: "array"
+        behaviors:
+          description: "Names of the field's behaviors that a frontend applies while\
+            \ editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.  Absent when the\
+            \ field has none."
+          items:
+            type: "string"
+          type: "array"
         defaultValue:
           description: "Default value to use in this field."
           type: "string"
         displayFormat:
           description: "C-style format specifier for displaying values in this field."
           type: "string"
+        gridColumns:
+          description: "Width of this field in a 12-column record form or view grid\
+            \ (e.g., 12 for the full width, 6 for half).  Absent when the frontend's\
+            \ default applies."
+          type: "number"
         helpContents:
           description: "Help Contents for this field."
           type: "array"
@@ -1996,12 +2008,24 @@ components:
           items:
             $ref: "#/components/schemas/FieldAdornment"
           type: "array"
+        behaviors:
+          description: "Names of the field's behaviors that a frontend applies while\
+            \ editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.  Absent when the\
+            \ field has none."
+          items:
+            type: "string"
+          type: "array"
         defaultValue:
           description: "Default value to use in this field."
           type: "string"
         displayFormat:
           description: "C-style format specifier for displaying values in this field."
           type: "string"
+        gridColumns:
+          description: "Width of this field in a 12-column record form or view grid\
+            \ (e.g., 12 for the full width, 6 for half).  Absent when the frontend's\
+            \ default applies."
+          type: "number"
         helpContents:
           description: "Help Contents for this field."
           type: "array"
@@ -2263,6 +2287,13 @@ components:
                     items:
                       $ref: "#/components/schemas/FieldAdornment"
                     type: "array"
+                  behaviors:
+                    description: "Names of the field's behaviors that a frontend applies\
+                      \ while editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.\
+                      \  Absent when the field has none."
+                    items:
+                      type: "string"
+                    type: "array"
                   defaultValue:
                     description: "Default value to use in this field."
                     type: "string"
@@ -2270,6 +2301,11 @@ components:
                     description: "C-style format specifier for displaying values in\
                       \ this field."
                     type: "string"
+                  gridColumns:
+                    description: "Width of this field in a 12-column record form or\
+                      \ view grid (e.g., 12 for the full width, 6 for half).  Absent\
+                      \ when the frontend's default applies."
+                    type: "number"
                   helpContents:
                     description: "Help Contents for this field."
                     type: "array"
@@ -4035,8 +4071,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4047,8 +4083,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -4180,8 +4216,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4192,8 +4228,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -4290,8 +4326,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4302,8 +4338,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          type: "STRING"
                           isHeavy: false
+                          type: "STRING"
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"

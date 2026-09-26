@@ -23,11 +23,15 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
@@ -209,7 +213,61 @@ public class FieldMetaData implements ToSchema
       return (this.wrappedFull != null ? this.wrappedFull.getMaxLength() : this.wrappedFrontend.getMaxLength());
    }
 
-   // todo behaviors?
+
+
+
+   /***************************************************************************
+    ** Width of the field in a 12-column grid, as the Material dashboard lays out
+    ** record forms and views (QRun-IO/qqq#723).
+    ***************************************************************************/
+   @OpenAPIDescription("Width of this field in a 12-column record form or view grid (e.g., 12 for the full width, 6 for half).  Absent when the frontend's default applies.")
+   public Integer getGridColumns()
+   {
+      return (this.wrappedFull != null ? this.wrappedFull.getGridColumns() : this.wrappedFrontend.getGridColumns());
+   }
+
+
+
+   /***************************************************************************
+    ** Names of the behaviors a frontend applies while a value is edited (e.g.,
+    ** TO_UPPER_CASE applied as the user types, QRun-IO/qqq#723), as the legacy
+    ** table meta-data lists them.
+    ***************************************************************************/
+   @OpenAPIDescription("Names of the field's behaviors that a frontend applies while editing, e.g., TO_UPPER_CASE, TO_LOWER_CASE or TRIM.  Absent when the field has none.")
+   @OpenAPIListItems(String.class)
+   public List<String> getBehaviors()
+   {
+      List<String> names = new ArrayList<>();
+      if(this.wrappedFull != null)
+      {
+         for(FieldBehavior<?> behavior : CollectionUtils.nonNullCollection(this.wrappedFull.getBehaviors()))
+         {
+            if(behavior instanceof FieldBehaviorForFrontend frontendBehavior)
+            {
+               names.add(behaviorName(frontendBehavior));
+            }
+         }
+      }
+      else
+      {
+         for(FieldBehaviorForFrontend frontendBehavior : CollectionUtils.nonNullList(this.wrappedFrontend.getBehaviors()))
+         {
+            names.add(behaviorName(frontendBehavior));
+         }
+      }
+      return (names.isEmpty() ? null : names);
+   }
+
+
+
+   /***************************************************************************
+    ** the name a frontend knows a behavior by (the enum constant for the
+    ** standard case and white-space behaviors).
+    ***************************************************************************/
+   private static String behaviorName(FieldBehaviorForFrontend behavior)
+   {
+      return (behavior instanceof Enum<?> constant ? constant.name() : String.valueOf(behavior));
+   }
 
 
 

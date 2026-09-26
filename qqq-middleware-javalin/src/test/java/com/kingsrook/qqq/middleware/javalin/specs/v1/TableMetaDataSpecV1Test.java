@@ -22,9 +22,15 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
@@ -131,6 +137,45 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          firstName.setHelpContents(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** a field's grid width and its frontend behaviors (live case change, white
+    ** space) are part of v1 field meta-data, as in the legacy table meta-data
+    ** (QRun-IO/qqq#723); fields without them omit the keys.
+    *******************************************************************************/
+   @Test
+   void testFieldGridColumnsAndBehaviors()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Integer originalGridColumns = firstName.getGridColumns();
+      Set<FieldBehavior<?>> originalBehaviors = firstName.getBehaviors();
+      try
+      {
+         firstName.setGridColumns(12);
+         firstName.setBehaviors(new LinkedHashSet<>(List.of(CaseChangeBehavior.TO_UPPER_CASE, WhiteSpaceBehavior.TRIM, ValueTooLongBehavior.TRUNCATE)));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONObject field = fields.getJSONObject("firstName");
+         assertEquals(12, field.getInt("gridColumns"));
+
+         /////////////////////////////////////////////////////////////////////////////
+         // only behaviors a frontend applies are listed (not the backend-only ones) //
+         /////////////////////////////////////////////////////////////////////////////
+         assertThat(field.getJSONArray("behaviors").toList()).containsExactlyInAnyOrder("TO_UPPER_CASE", "TRIM");
+
+         assertFalse(fields.getJSONObject("lastName").has("gridColumns"));
+         assertFalse(fields.getJSONObject("lastName").has("behaviors"));
+      }
+      finally
+      {
+         firstName.setGridColumns(originalGridColumns);
+         firstName.setBehaviors(originalBehaviors);
       }
    }
 

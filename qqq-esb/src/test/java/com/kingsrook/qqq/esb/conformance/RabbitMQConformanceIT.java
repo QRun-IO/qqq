@@ -27,10 +27,12 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.esb.connection.RabbitConnectionFactoryBuilder;
 import com.kingsrook.qqq.esb.management.EsbBrokerAdapter;
 import com.kingsrook.qqq.esb.management.EsbBrokerAdapters;
 import com.kingsrook.qqq.esb.model.EsbProviderType;
 import com.kingsrook.qqq.esb.model.EsbTrigger;
+import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
 import com.kingsrook.qqq.esb.runtime.EsbTriggerState;
 import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import org.junit.jupiter.api.AfterAll;
@@ -62,10 +64,13 @@ class RabbitMQConformanceIT extends AbstractEsbConformanceTest
 
    /** Start the broker container once for the conformance class. */
    @BeforeAll
-   static void startContainer()
+   static void startContainer() throws Exception
    {
       BROKER.start();
       BrokerContainerPorts.assertReachable(BROKER, 5672, 15672);
+      BrokerContainerPorts.awaitJmsReady(new RabbitConnectionFactoryBuilder().buildConnectionFactory(
+         new QEsbProviderMetaData().withUrl("amqp://" + BROKER.getHost() + ":" + BROKER.getMappedPort(5672) + "/%2F")
+            .withUsername(USERNAME).withPassword(PASSWORD)), "RabbitMQ");
    }
 
 

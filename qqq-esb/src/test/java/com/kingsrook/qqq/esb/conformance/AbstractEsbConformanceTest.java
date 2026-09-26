@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
@@ -60,6 +61,7 @@ import com.kingsrook.qqq.esb.management.EsbBrokerAdapter;
 import com.kingsrook.qqq.esb.management.EsbBrokerAdapters;
 import com.kingsrook.qqq.esb.management.EsbBrokerCapabilities;
 import com.kingsrook.qqq.esb.management.EsbBrokerNames;
+import com.kingsrook.qqq.esb.management.EsbBrowsedMessage;
 import com.kingsrook.qqq.esb.management.EsbMessageBrowser;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.EsbProcessEvent;
@@ -353,8 +355,7 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
          assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, getBrokerQueueName(), 0, 10)).isEmpty();
          transaction.commit();
       }
-      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, getBrokerQueueName(), 0, 10))
-         .extracting(message -> message.getEvent().getType()).containsExactly("qqq.table.order.inserted");
+      waitForBrowsedTypes(getBrokerQueueName(), List.of("qqq.table.order.inserted"));
 
       try(QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(TABLE_NAME_ORDER)))
       {
@@ -364,8 +365,7 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
          transaction.rollback();
          transaction.commit();
       }
-      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, getBrokerQueueName(), 0, 10))
-         .extracting(message -> message.getEvent().getType()).containsExactly("qqq.table.order.inserted");
+      waitForBrowsedTypes(getBrokerQueueName(), List.of("qqq.table.order.inserted"));
    }
 
 
@@ -418,10 +418,8 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
       EsbEvent first = sendEvent(QUEUE_NAME, Map.of("n", 1));
       EsbEvent second = sendEvent(QUEUE_NAME, Map.of("n", 2));
       waitForQueueDepth(adapter, queue, 2L);
-      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, queue, 0, 1))
-         .extracting(message -> message.getEvent().getId()).containsExactly(first.getId());
-      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, queue, 1, 1))
-         .extracting(message -> message.getEvent().getId()).containsExactly(second.getId());
+      waitForBrowsedIds(queue, 0, 1, List.of(first.getId()));
+      waitForBrowsedIds(queue, 1, 1, List.of(second.getId()));
       assertThat(adapter.purgeQueue(queue)).isGreaterThanOrEqualTo(1);
       waitForQueueDepth(adapter, queue, 0L);
       assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, queue, 0, 10)).isEmpty();
@@ -461,6 +459,50 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
       }
       assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, queue, 0, 20))
          .extracting(message -> message.getEvent().getId()).contains(eventId);
+   }
+
+
+
+   /** Poll JMS browsing, which can lag management depth on RabbitMQ quorum queues. */
+   private void waitForBrowsedIds(String queue, int offset, int limit, List<String> expected) throws Exception
+   {
+      waitForBrowsedValues(queue, offset, limit, expected, message -> message.getEvent().getId());
+   }
+
+
+
+   /** Poll for event types after a transaction has committed. */
+   private void waitForBrowsedTypes(String queue, List<String> expected) throws Exception
+   {
+      waitForBrowsedValues(queue, 0, 10, expected, message -> message.getEvent().getType());
+   }
+
+
+
+   /** Poll for broker message IDs after a replay transaction. */
+   private void waitForBrowsedMessageIds(String queue, List<String> expected) throws Exception
+   {
+      waitForBrowsedValues(queue, 0, 10, expected, EsbBrowsedMessage::getMessageId);
+   }
+
+
+
+   /** Wait for the broker browse API to expose the expected page. */
+   private void waitForBrowsedValues(String queue, int offset, int limit, List<String> expected,
+      Function<EsbBrowsedMessage, String> value) throws Exception
+   {
+      Instant deadline = Instant.now().plus(WAIT_TIMEOUT);
+      while(Instant.now().isBefore(deadline))
+      {
+         List<String> actual = EsbMessageBrowser.browse(PROVIDER_NAME, queue, offset, limit).stream().map(value).toList();
+         if(actual.size() == expected.size() && actual.containsAll(expected))
+         {
+            return;
+         }
+         Thread.sleep(100);
+      }
+      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, queue, offset, limit).stream().map(value).toList())
+         .containsExactlyInAnyOrderElementsOf(expected);
    }
 
 
@@ -506,10 +548,7 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
       pause(1500);
       EsbEvent first = sendEvent(QUEUE_NAME, Map.of("n", 1));
       EsbEvent second = sendEvent(QUEUE_NAME, Map.of("n", 2));
-      waitForMessageId(getBrokerQueueName(), first.getId());
-      waitForMessageId(getBrokerQueueName(), second.getId());
-      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, getBrokerQueueName(), 0, 10))
-         .extracting(message -> message.getEvent().getId()).contains(first.getId(), second.getId());
+      waitForBrowsedIds(getBrokerQueueName(), 0, 10, List.of(first.getId(), second.getId()));
       assertThat(RecordingStep.getRuns()).isEmpty();
 
       QContext.init(nodeB, new QSession());
@@ -560,16 +599,14 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
       assertThatThrownBy(() -> new RunProcessAction().execute(new RunProcessInput()
          .withProcessName("esbReplayDeadLetters").withValue("triggerName", QUEUE_TRIGGER_NAME).withValue("messageIds", messageId)))
          .isInstanceOf(QException.class);
-      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, deadLetterQueue, 0, 10))
-         .extracting(message -> message.getMessageId()).containsExactlyInAnyOrder(unselectedMessageId, messageId);
+      waitForBrowsedMessageIds(deadLetterQueue, List.of(unselectedMessageId, messageId));
 
       RecordingStep.reset();
       assertThat(new RunProcessAction().execute(new RunProcessInput()
          .withProcessName("esbReplayDeadLetters").withValue("triggerName", QUEUE_TRIGGER_NAME).withValue("messageIds", messageId))
          .getValue("count")).isEqualTo(1);
       assertThat(RecordingStep.getRuns()).singleElement().satisfies(run -> assertThat(run.getCausationId()).isEqualTo(event.getId()));
-      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, deadLetterQueue, 0, 10))
-         .extracting(message -> message.getMessageId()).containsExactly(unselectedMessageId);
+      waitForBrowsedMessageIds(deadLetterQueue, List.of(unselectedMessageId));
    }
 
 

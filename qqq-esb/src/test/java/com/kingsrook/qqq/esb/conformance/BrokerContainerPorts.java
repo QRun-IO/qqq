@@ -26,6 +26,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.Instant;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
 import org.testcontainers.containers.GenericContainer;
 
 
@@ -75,5 +79,28 @@ final class BrokerContainerPorts
                + " is unreachable from the test JVM", e);
          }
       }
+   }
+
+
+
+   /** Wait until a real JMS connection succeeds, beyond TCP or HTTP readiness. */
+   static void awaitJmsReady(ConnectionFactory factory, String brokerName) throws Exception
+   {
+      Instant deadline = Instant.now().plusSeconds(30);
+      JMSException lastFailure = null;
+      while(Instant.now().isBefore(deadline))
+      {
+         try(Connection connection = factory.createConnection())
+         {
+            connection.start();
+            return;
+         }
+         catch(JMSException e)
+         {
+            lastFailure = e;
+            Thread.sleep(200);
+         }
+      }
+      throw new IllegalStateException(brokerName + " JMS is not ready on its mapped port", lastFailure);
    }
 }

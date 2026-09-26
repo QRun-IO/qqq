@@ -27,11 +27,17 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
+import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
@@ -40,10 +46,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.module.api.actions.BaseAPIActionUtil;
 import com.kingsrook.qqq.backend.module.api.model.AuthorizationType;
 import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
 import com.kingsrook.qqq.backend.module.api.model.metadata.APITableBackendDetails;
+import com.kingsrook.qqq.backend.module.api.model.OutboundAPILog;
+import com.kingsrook.qqq.backend.module.api.model.OutboundAPILogMetaDataProvider;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.apache.http.client.methods.HttpRequestBase;
@@ -69,6 +78,7 @@ class SampleApiAuthenticationAcceptanceTest
    private static final String USER = "fixture-user";
    private static final String PASSWORD = "fixture-password-59381";
    private static final String TOKEN = "fixture-oauth-token-59381";
+   private static final String CUSTOM_SECRET = Base64.getEncoder().encodeToString(KEY.getBytes(StandardCharsets.UTF_8));
 
 
 
@@ -85,7 +95,7 @@ class SampleApiAuthenticationAcceptanceTest
          try(Fixture fixture = new Fixture(mode))
          {
             APIBackendMetaData backend = backend(fixture, mode, true);
-            assertEquals("accepted", read(backend), mode.toString());
+            assertEquals("accepted", read(backend, fixture), mode.toString());
             assertEquals(1, fixture.recordRequests.get(), mode.toString());
             assertEquals(mode == AuthorizationType.OAUTH2 ? 1 : 0, fixture.tokenRequests.get(), mode.toString());
          }
@@ -138,6 +148,8 @@ class SampleApiAuthenticationAcceptanceTest
          assertEquals(2, fixture.tokenRequests.get());
          assertEquals(2, fixture.recordRequests.get());
          assertEquals(1, fixture.acceptedRequests.get());
+         assertEquals("Bearer " + TOKEN + "-1", fixture.firstBearer.get());
+         assertEquals("Bearer " + TOKEN + "-2", fixture.lastBearer.get());
       }
    }
 
@@ -230,10 +242,25 @@ class SampleApiAuthenticationAcceptanceTest
     *******************************************************************************/
    private String read(APIBackendMetaData backend) throws Exception
    {
+      return read(backend, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** The optional fixture also checks the actual asynchronous log insert.
+    *******************************************************************************/
+   private String read(APIBackendMetaData backend, Fixture fixture) throws Exception
+   {
       QInstance instance = new QInstance();
       instance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData()
          .withName("mock").withType(QAuthenticationType.MOCK));
       instance.addBackend(backend);
+      if(fixture != null)
+      {
+         instance.addBackend(new QBackendMetaData().withName("logMemory").withBackendType(MemoryBackendModule.class));
+         OutboundAPILogMetaDataProvider.defineAll(instance, "logMemory", null);
+      }
       instance.addTable(new QTableMetaData().withName("fixtureRecord").withBackendName("fixtureApi")
          .withPrimaryKeyField("id")
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
@@ -245,12 +272,51 @@ class SampleApiAuthenticationAcceptanceTest
          GetInput input = new GetInput();
          input.setTableName("fixtureRecord");
          input.setPrimaryKey(7);
-         return new GetAction().execute(input).getRecord().getValueString("name");
+         String name = new GetAction().execute(input).getRecord().getValueString("name");
+         if(fixture != null)
+         {
+            assertPersistedLog(fixture);
+         }
+         return name;
       }
       finally
       {
          QContext.clear();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Inspect the row written by the API backend's asynchronous log action.
+    *******************************************************************************/
+   private void assertPersistedLog(Fixture fixture) throws Exception
+   {
+      QRecord log = null;
+      for(int attempt = 0; attempt < 100 && log == null; attempt++)
+      {
+         List<QRecord> rows = new QueryAction().execute(new QueryInput(OutboundAPILog.TABLE_NAME)).getRecords();
+         log = rows.stream().filter(row -> row.getValueString("url").startsWith(fixture.baseUrl())).findFirst().orElse(null);
+         if(log == null)
+         {
+            Thread.sleep(10);
+         }
+      }
+      assertTrue(log != null, "outbound log row was not persisted");
+      for(String field : List.of("url", "requestBody", "responseBody"))
+      {
+         String value = log.getValueString(field);
+         if(value != null)
+         {
+            assertTrue(!value.contains(KEY), field);
+            assertTrue(!value.contains(PASSWORD), field);
+            assertTrue(!value.contains(TOKEN), field);
+            assertTrue(!value.contains(CUSTOM_SECRET), field);
+         }
+      }
+      assertEquals("GET", log.getValueString("method"));
+      assertEquals(200, log.getValueInteger("statusCode"));
+      assertTrue(log.getValueString("responseBody").contains("accepted"));
    }
 
 
@@ -287,6 +353,8 @@ class SampleApiAuthenticationAcceptanceTest
       private final AtomicInteger recordRequests = new AtomicInteger();
       private final AtomicInteger acceptedRequests = new AtomicInteger();
       private final AtomicInteger tokenRequests = new AtomicInteger();
+      private final AtomicReference<String> firstBearer = new AtomicReference<>();
+      private final AtomicReference<String> lastBearer = new AtomicReference<>();
       private volatile boolean rejectFirstBearer;
       private volatile boolean malformedToken;
       private volatile boolean echoCredentialOnReject;
@@ -316,12 +384,12 @@ class SampleApiAuthenticationAcceptanceTest
        *******************************************************************************/
       private void token(HttpExchange exchange) throws IOException
       {
-         tokenRequests.incrementAndGet();
+         int tokenNumber = tokenRequests.incrementAndGet();
          String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
          boolean authorized = body.contains("grant_type=client_credentials")
             && body.contains("client_id=" + USER) && body.contains("client_secret=" + PASSWORD);
          respond(exchange, authorized ? 200 : 401,
-            malformedToken ? "{invalid token" : authorized ? "{\"access_token\":\"" + TOKEN + "\"}"
+            malformedToken ? "{invalid token" : authorized ? "{\"access_token\":\"" + TOKEN + "-" + tokenNumber + "\"}"
                : echoCredentialOnReject ? "denied " + body : "denied");
       }
 
@@ -330,17 +398,22 @@ class SampleApiAuthenticationAcceptanceTest
        *******************************************************************************/
       private void record(HttpExchange exchange) throws IOException
       {
-         int requestNumber = recordRequests.incrementAndGet();
+         recordRequests.incrementAndGet();
          String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+         if(mode == AuthorizationType.OAUTH2)
+         {
+            firstBearer.compareAndSet(null, authorization);
+            lastBearer.set(authorization);
+         }
          boolean authorized = switch(mode)
          {
             case API_KEY_HEADER -> KEY.equals(exchange.getRequestHeaders().getFirst("API-Key"));
             case API_TOKEN -> ("Token " + KEY).equals(authorization);
             case BASIC_AUTH_API_KEY -> basic(KEY).equals(authorization);
             case BASIC_AUTH_USERNAME_PASSWORD -> basic(USER + ":" + PASSWORD).equals(authorization);
-            case OAUTH2 -> ("Bearer " + TOKEN).equals(authorization) && (!rejectFirstBearer || requestNumber > 1);
+            case OAUTH2 -> ("Bearer " + TOKEN + (rejectFirstBearer ? "-2" : "-1")).equals(authorization);
             case API_KEY_QUERY_PARAM -> ("fixture_key=" + KEY).equals(exchange.getRequestURI().getRawQuery());
-            case CUSTOM -> KEY.equals(exchange.getRequestHeaders().getFirst("X-Fixture-Auth"));
+            case CUSTOM -> CUSTOM_SECRET.equals(exchange.getRequestHeaders().getFirst("X-Credential"));
             default -> false;
          };
          if(authorized)
@@ -348,7 +421,8 @@ class SampleApiAuthenticationAcceptanceTest
             acceptedRequests.incrementAndGet();
          }
          respond(exchange, authorized ? 200 : 401,
-            authorized ? "{\"id\":7,\"name\":\"accepted\"}"
+            authorized ? "{\"id\":7,\"name\":\"accepted\",\"credentialEcho\":\"" +
+               (mode == AuthorizationType.CUSTOM ? CUSTOM_SECRET : mode == AuthorizationType.OAUTH2 ? TOKEN + (rejectFirstBearer ? "-2" : "-1") : KEY) + "\"}"
                : echoCredentialOnReject ? "denied " + exchange.getRequestURI() : "denied");
       }
 
@@ -397,7 +471,8 @@ class SampleApiAuthenticationAcceptanceTest
       @Override
       protected void handleCustomAuthorization(HttpRequestBase request)
       {
-         request.setHeader("X-Fixture-Auth", backendMetaData.getApiKey());
+         request.setHeader("X-Credential", Base64.getEncoder().encodeToString(
+            String.valueOf(backendMetaData.getApiKey()).getBytes(StandardCharsets.UTF_8)));
       }
    }
 }

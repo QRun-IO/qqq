@@ -952,6 +952,15 @@ class BaseAPIActionUtilTest extends BaseTest
       response.setContent("rejected variant-token");
       OutboundAPILog bearerLog = mockApiActionUtils.generateOutboundApiLogRecord(bearerRequest, response);
       assertThat(bearerLog.getResponseBody()).doesNotContain("variant-token");
+
+      backend.setAuthorizationType(AuthorizationType.CUSTOM);
+      HttpPost customRequest = new HttpPost("http://localhost/records");
+      customRequest.setHeader("X-Credential", "custom-header-secret");
+      customRequest.setEntity(new StringEntity("sent custom-header-secret", StandardCharsets.UTF_8));
+      response.setContent("echo custom-header-secret");
+      OutboundAPILog customLog = mockApiActionUtils.generateOutboundApiLogRecord(customRequest, response);
+      assertThat(customLog.getRequestBody()).doesNotContain("custom-header-secret");
+      assertThat(customLog.getResponseBody()).doesNotContain("custom-header-secret");
    }
 
 

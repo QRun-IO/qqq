@@ -1479,7 +1479,9 @@ public class BaseAPIActionUtil
       for(Header header : request.getAllHeaders())
       {
          String name = header.getName().toLowerCase(Locale.ROOT);
-         if(name.contains("auth") || name.contains("key") || name.contains("token") || name.contains("secret"))
+         if(name.contains("auth") || name.contains("key") || name.contains("token") || name.contains("secret")
+            || (backendMetaData.getAuthorizationType() == AuthorizationType.CUSTOM
+               && !name.equals("accept") && !name.equals("content-type")))
          {
             safe = redactValue(safe, header.getValue());
             if(name.contains("auth") && header.getValue().contains(" "))

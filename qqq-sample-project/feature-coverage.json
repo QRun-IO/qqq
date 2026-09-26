@@ -4200,7 +4200,7 @@
       "negative_cases": [
         "Missing/rejected credential, expired token, malformed token response and secret-free diagnostic output"
       ],
-      "gap": "Disposable loopback HTTP fixtures exercise all seven configured modes through GetAction, missing and rejected credentials, OAuth refresh and malformed token responses. Rejected provider echoes, query keys and fetched bearer tokens stay out of exception text and API diagnostics.",
+      "gap": "Disposable loopback HTTP fixtures exercise all seven configured modes through GetAction, missing and rejected credentials, OAuth refresh with a distinct token, and malformed token responses. Each successful mode persists a secret-free outbound API log row; rejected provider echoes, query keys and fetched bearer tokens stay out of exception text and API diagnostics.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testSevenConfiguredOutboundModes",
         "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testMissingAndRejectedCredentials",

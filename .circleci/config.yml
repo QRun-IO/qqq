@@ -30,8 +30,22 @@ jobs:
           command: docker info
       - run:
           name: Run Artemis and RabbitMQ broker conformance
-          # Failsafe reports explicit skips for T9/T13/T14 cases until those tasks merge.
           command: mvn -B -s /tmp/circleci/mvn-settings.xml -pl qqq-esb -am clean verify
+      - run:
+          name: Require broker restart conformance on Linux
+          command: |
+            python3 - <<'PY'
+            from pathlib import Path
+            from xml.etree import ElementTree
+
+            reports = Path("qqq-esb/target/failsafe-reports")
+            for broker in ("Artemis", "RabbitMQ"):
+                path = reports / f"TEST-com.kingsrook.qqq.esb.conformance.{broker}ConformanceIT.xml"
+                suite = ElementTree.parse(path).getroot()
+                matches = [case for case in suite.findall("testcase") if case.get("name") == "reconnectsAfterBrokerRestart"]
+                assert len(matches) == 1, f"{broker}: broker restart test missing"
+                assert matches[0].find("skipped") is None, f"{broker}: broker restart test was skipped"
+            PY
       - store_test_results:
           path: qqq-esb/target/failsafe-reports
 

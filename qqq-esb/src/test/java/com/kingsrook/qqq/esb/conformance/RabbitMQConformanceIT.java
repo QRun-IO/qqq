@@ -22,12 +22,24 @@
 package com.kingsrook.qqq.esb.conformance;
 
 
+import java.time.Instant;
+import java.util.Map;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.esb.management.EsbBrokerAdapter;
+import com.kingsrook.qqq.esb.management.EsbBrokerAdapters;
 import com.kingsrook.qqq.esb.model.EsbProviderType;
+import com.kingsrook.qqq.esb.model.EsbTrigger;
+import com.kingsrook.qqq.esb.runtime.EsbTriggerState;
+import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
+import static org.assertj.core.api.Assertions.assertThat;
 
 
 /*******************************************************************************
@@ -114,6 +126,38 @@ class RabbitMQConformanceIT extends AbstractEsbConformanceTest
    protected String brokerPassword()
    {
       return (PASSWORD);
+   }
+
+
+
+   /*******************************************************************************
+    ** RabbitMQ JMS 3.9 synchronous receive polls with basicGet, rather than
+    ** registering a basicConsume subscription.  Broker management therefore
+    ** reports zero consumers even while a QQQ trigger is processing messages.
+    ** Bound the observation so a delayed management sample cannot masquerade
+    ** as this client limitation.
+    *******************************************************************************/
+   @Test
+   void synchronousJmsPollingDoesNotIncreaseBrokerConsumerCount() throws Exception
+   {
+      QInstance instance = defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME));
+      QContext.init(instance, new QSession());
+      QEsbRuntime runtime = startRuntime(instance);
+      waitForState(runtime, QUEUE_TRIGGER_NAME, EsbTriggerState.RUNNING);
+      sendEvent(QUEUE_NAME, Map.of("observed", true));
+      waitFor("RabbitMQ JMS run", () -> RecordingStep.getCompletedRuns().size() == 1);
+
+      EsbBrokerAdapter adapter = EsbBrokerAdapters.forProvider(PROVIDER_NAME).orElseThrow();
+      Instant deadline = Instant.now().plusSeconds(10);
+      int maximum = 0;
+      do
+      {
+         maximum = Math.max(maximum, adapter.getQueueInfo(getBrokerQueueName()).orElseThrow().consumerCount());
+         Thread.sleep(250);
+      }
+      while(Instant.now().isBefore(deadline));
+      assertThat(maximum).isZero();
+      assertThat(runtime.getRunner(QUEUE_TRIGGER_NAME).getState()).isEqualTo(EsbTriggerState.RUNNING);
    }
 
 }

@@ -88,9 +88,14 @@ public class RabbitConnectionFactoryBuilder implements EsbConnectionFactoryBuild
     ** queues.
     *******************************************************************************/
    @Override
-   public void configureSession(Session session)
+   public void configureSession(Session session) throws JMSException
    {
-      ((RMQSession) session).setQueueDeclareArguments(QUORUM_QUEUE_ARGUMENTS);
+      // Non-transacted control-topic consumers create exclusive, temporary
+      // queues, which RabbitMQ 4 cannot declare as quorum queues.
+      if(session.getTransacted())
+      {
+         ((RMQSession) session).setQueueDeclareArguments(QUORUM_QUEUE_ARGUMENTS);
+      }
    }
 
 

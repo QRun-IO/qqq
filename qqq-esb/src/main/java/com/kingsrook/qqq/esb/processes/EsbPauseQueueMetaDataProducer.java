@@ -19,24 +19,28 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.kingsrook.qqq.esb.management;
+package com.kingsrook.qqq.esb.processes;
 
 
 /*******************************************************************************
- * A broker queue's state, from the broker's management API, at the moment it
- * was asked.
- *
- * - messageCount: messages on the queue, including any delivered to a
- *   consumer but not yet acknowledged.
- * - consumerCount: consumers attached to the queue as reported by broker
- *   management, across all nodes. RabbitMQ JMS 3.9 polls synchronously with
- *   basicGet, so RabbitMQ reports zero here even while a QQQ trigger is
- *   polling and processing messages. Zero does not mean the trigger is
- *   inactive; use its runtime state and trigger metadata for the QQQ
- *   subscriber view.
- * - paused: whether delivery to the queue's consumers is paused on the broker
- *   (always false on a broker that can't pause a queue, e.g., RabbitMQ).
- *******************************************************************************/
-public record EsbQueueInfo(Long messageCount, Integer consumerCount, Boolean paused)
+ * Metadata producer for esbPauseQueue.
+ ******************************************************************************/
+public class EsbPauseQueueMetaDataProducer extends EsbOperateProcessMetaDataProducer
 {
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   public EsbPauseQueueMetaDataProducer()
+   {
+      super("esbPauseQueue", "Pause ESB queue", false, Step.class, "providerName", "brokerQueueName");
+   }
+
+
+   /*******************************************************************************
+    * Backend step for this process.
+    ******************************************************************************/
+   public static class Step extends EsbOperateStep
+   {
+   }
+
 }

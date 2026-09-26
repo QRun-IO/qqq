@@ -30,6 +30,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -45,6 +46,7 @@ import com.kingsrook.qqq.esb.stats.EsbCounterSnapshot;
 import com.kingsrook.qqq.esb.stats.EsbStats;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
@@ -296,7 +298,7 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
       Instant     start   = Instant.now();
       QEsbRuntime runtime = startRuntime(QContext.getQInstance());
       assertThat(Duration.between(start, Instant.now())).isLessThan(Duration.ofSeconds(1));
-      assertThat(runtime.isRunning()).isTrue();
+      assertThat(runtime.isRunning()).isFalse();
       assertThat(runtime.getRunner(QUEUE_TRIGGER_NAME).getState()).isEqualTo(EsbTriggerState.CONNECTING);
 
       pause(500);
@@ -304,6 +306,7 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
 
       startEmbeddedBroker();
       waitForState(runtime, QUEUE_TRIGGER_NAME, EsbTriggerState.RUNNING);
+      waitFor("runtime control listener after broker starts", runtime::isRunning);
 
       sendEvent(QUEUE_NAME, Map.of());
       waitFor("1 run", () -> RecordingStep.getCompletedRuns().size() == 1);
@@ -344,7 +347,7 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
    {
       QInstance   qInstance = defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME).withConcurrency(2));
       QEsbRuntime runtime   = startRuntime(qInstance);
-      assertThat(runtime.isRunning()).isTrue();
+      waitFor("runtime control listener", runtime::isRunning);
 
       EsbTriggerRunner runner = runtime.getRunner(QUEUE_TRIGGER_NAME);
       assertThat(runner.getTriggerName()).isEqualTo(QUEUE_TRIGGER_NAME);
@@ -373,17 +376,19 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
       runner.restartLocal();
       assertThat(runner.getState()).isEqualTo(EsbTriggerState.STOPPED);
 
-      QEsbRuntime emptyRuntime = startRuntime(defineInstance());
+      QInstance emptyInstance = defineInstance();
+      new QInstanceValidator().validate(emptyInstance);
+      QEsbRuntime emptyRuntime = startRuntime(emptyInstance);
       assertThat(emptyRuntime.isRunning()).isTrue();
       assertThat(emptyRuntime.getRunners()).isEmpty();
 
       ///////////////////////////////////////////////////////////////////////
-      // a trigger whose destination is unknown (not validated) is skipped //
+      // an unvalidated instance is refused before runners are built       //
       ///////////////////////////////////////////////////////////////////////
       QInstance unvalidated = defineInstance();
       unvalidated.addProcess(defineRecordingProcess(PROCESS_NAME, null, false)
          .withSupplementalMetaData(new EsbProcessMetaData().withTrigger(new EsbTrigger().withDestinationName("noSuchDestination"))));
-      assertThat(startRuntime(unvalidated).getRunners()).isEmpty();
+      assertThatThrownBy(() -> startRuntime(unvalidated)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("validated");
       assertThat(runtime.getRunner(null)).isNull();
 
       assertThat(QEsbRuntime.getInstance()).isSameAs(QEsbRuntime.getInstance());

@@ -16,13 +16,19 @@ python3 "$QQQ_SOURCE/qqq-sample-project/acceptance/run_starter_application.py" \
   --qqq-source "$QQQ_SOURCE" \
   --starter-source "$QQQ_STARTER_SOURCE" \
   --template-source "$QQQ_TEMPLATE_SOURCE" \
-  --maven-repo /tmp/qqq-acceptance-m2
+  --maven-repo /tmp/qqq-acceptance-m2 \
+  --live-mysql
 ```
 
 Populate the dedicated Maven cache from a normal Maven build first. The
 runner uses offline Maven to make the tested dependency set reproducible and
 prints all three source commit IDs. It fails when the generated QBit is not a
 valid live host integration; a successful compile alone is insufficient.
+The runner copies only tracked, non-secret-like source paths from the two
+first-party checkouts. Its work directory is removed on exit, including on
+failure. Supply a new path under the OS temporary directory with `--workdir`
+only when inspecting a failed fixture; this explicitly retains generated
+files and the starter server log. Never point `--workdir` at existing data.
 
 Current first-party template `ebc77b9` has two observed blockers against QQQ
 source `38f784fd9`: its two entity annotations only request possible-value
@@ -35,21 +41,15 @@ metadata. The copied starter fixture now tests metadata, HTTP startup,
 configured mock-auth denial, invalid configuration, duplicate registration,
 and missing host dependency.
 
-For the optional live database check, use a disposable loopback MySQL 8.4
-container with database `qqq_starter_test`, user/password `test`/`test`, and
-port 3306. Seed it with `starter-application-mysql.sql`, package the generated
-starter from the fixture directory, and start its JAR with `RDBMS_VENDOR=mysql`,
-`RDBMS_HOSTNAME=127.0.0.1`, `RDBMS_PORT=3306`,
-`RDBMS_DATABASE_NAME=qqq_starter_test`, and the disposable credentials. Then:
-
-```sh
-python3 "$QQQ_SOURCE/qqq-sample-project/acceptance/live_starter_application.py" \
-  --base-url http://127.0.0.1:8000
-```
-
-The live check reads, inserts, updates and deletes through the starter and
-generated parent/child HTTP APIs. Stop the copied server and remove the
-container afterward. Missing schema, unavailable database and absent DB
-environment variables were also exercised manually against disposable state.
-Both inventory rows remain pending until the corrected first-party template
-is integrated and these live checks are mapped to release-gate reports.
+`--live-mysql` requires Docker, the local `mysql:8.4` image, Java and free
+loopback ports 3306 and 8000. It creates and removes a disposable container,
+seeds its schema, packages and starts the copied starter, and performs real
+HTTP CRUD. Deletes must report one deleted record and leave no readable or
+queryable row. A separate live JUnit test proves an allowed insert persists
+and a denied insert returns 403 without a DB write. The runner then probes
+missing child schema, an unavailable DB, and absent DB environment variables.
+Every check is required when `--live-mysql` is selected. Without this switch,
+the runner covers compilation, metadata and no-DB auth behavior only; that
+shorter run is not generated-consumer acceptance. Both inventory rows remain
+pending until the corrected first-party template is integrated and these
+live checks are mapped to release-gate reports.

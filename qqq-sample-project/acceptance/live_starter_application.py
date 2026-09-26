@@ -4,6 +4,7 @@
 import argparse
 import json
 import uuid
+from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -63,7 +64,17 @@ def exercise(base_url):
         for table, record_id in (("orderDeskChildEntity", child_id),
                                  ("orderDeskEntity", parent_id), ("sampleTable", sample_id)):
             if record_id is not None:
-                request(base_url, "DELETE", f"/qqq/v1/table/{table}/{record_id}")
+                deleted = request(base_url, "DELETE", f"/qqq/v1/table/{table}/{record_id}")
+                require(deleted.get("deletedRecordCount") == 1, (table, deleted))
+                try:
+                    request(base_url, "GET", f"/qqq/v1/table/{table}/{record_id}")
+                except HTTPError as error:
+                    require(error.code == 404, (table, error.code))
+                else:
+                    raise AssertionError(f"deleted {table}/{record_id} remained readable")
+                remaining = request(base_url, "POST", f"/qqq/v1/table/{table}/query", {})
+                require(all(record["values"]["id"] != record_id for record in remaining["records"]),
+                        f"deleted {table}/{record_id} remained queryable")
     print("PASS: starter metadata and MySQL read/insert/update/delete; generated parent/child relationship")
 
 

@@ -3,10 +3,50 @@
 import tempfile
 import unittest
 import os
+import subprocess
+from unittest.mock import patch
 from pathlib import Path
 
-from run_starter_application import GENERATED_PACKAGE, stage_starter, stage_template
+from run_starter_application import GENERATED_PACKAGE, copy_tracked_source, main, stage_starter, stage_template
 from live_starter_application import exercise
+
+
+class DisposableCopyTest(unittest.TestCase):
+    def test_copies_only_safe_tracked_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            source = Path(root) / "source"
+            destination = Path(root) / "copy"
+            source.mkdir()
+            subprocess.run(["git", "init", "-q", str(source)], check=True)
+            for name in ("pom.xml", ".env", ".env.local", "config/credentials.json",
+                         "config/key.pem", "config/keystore.p12", ".npmrc", "settings.xml",
+                         "secrets/config.json", "application.local.properties", "id_rsa"):
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name)
+            subprocess.run(["git", "-C", str(source), "add", "-f", "."], check=True)
+            (source / "untracked-secret.txt").write_text("secret")
+            copy_tracked_source(source, destination)
+            self.assertEqual(["pom.xml"], [str(path.relative_to(destination))
+                                           for path in destination.rglob("*") if path.is_file()])
+
+    def test_default_fixture_is_removed_after_runner(self):
+        captured = []
+        arguments = ["runner", "--qqq-source", "/unused", "--starter-source", "/unused",
+                     "--template-source", "/unused", "--maven-repo", "/unused"]
+        with patch("sys.argv", arguments), patch("run_starter_application.execute",
+                                                side_effect=lambda args, path: captured.append(path)):
+            main()
+        self.assertEqual(1, len(captured))
+        self.assertFalse(captured[0].exists())
+
+    def test_existing_explicit_fixture_is_rejected(self):
+        with tempfile.TemporaryDirectory() as existing:
+            arguments = ["runner", "--qqq-source", "/unused", "--starter-source", "/unused",
+                         "--template-source", "/unused", "--maven-repo", "/unused",
+                         "--workdir", existing]
+            with patch("sys.argv", arguments), self.assertRaisesRegex(AssertionError, "must not already exist"):
+                main()
 
 
 @unittest.skipUnless(os.environ.get("QQQ_STARTER_SOURCE") and os.environ.get("QQQ_TEMPLATE_SOURCE"),

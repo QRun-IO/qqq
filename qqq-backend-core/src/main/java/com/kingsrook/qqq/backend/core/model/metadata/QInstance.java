@@ -145,6 +145,8 @@ public class QInstance
 
    private QCodeReference metaDataActionCustomizer = null;
 
+   private List<QCodeReference> processLifecycleListeners = new ArrayList<>();
+
    //////////////////////////////////////////////////////////////////////////////////////
    // todo - lock down the object (no more changes allowed) after it's been validated? //
    //  if doing so, may need to copy all of the collections into read-only versions... //
@@ -2023,6 +2025,54 @@ public class QInstance
          .filter(h -> CollectionUtils.nullSafeIsEmpty(h.getTableNames())
                       || h.getTableNames().contains(tableName))
          .toList();
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for processLifecycleListeners - code references to
+    ** ProcessLifecycleListenerInterface implementations.
+    *******************************************************************************/
+   public List<QCodeReference> getProcessLifecycleListeners()
+   {
+      return (this.processLifecycleListeners);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for processLifecycleListeners
+    *******************************************************************************/
+   public void setProcessLifecycleListeners(List<QCodeReference> processLifecycleListeners)
+   {
+      this.processLifecycleListeners = processLifecycleListeners;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for processLifecycleListeners
+    *******************************************************************************/
+   public QInstance withProcessLifecycleListeners(List<QCodeReference> processLifecycleListeners)
+   {
+      this.processLifecycleListeners = processLifecycleListeners;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent method to add one process lifecycle listener (a code reference to a
+    ** ProcessLifecycleListenerInterface implementation).
+    *******************************************************************************/
+   public QInstance withProcessLifecycleListener(QCodeReference processLifecycleListener)
+   {
+      if(this.processLifecycleListeners == null)
+      {
+         this.processLifecycleListeners = new ArrayList<>();
+      }
+      this.processLifecycleListeners.add(processLifecycleListener);
+      return (this);
    }
 
 }

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
@@ -171,8 +170,6 @@ class SampleAuditContractTest
       instance.getAuthentication().setCustomizer(new QCodeReference(LimitedAuditReads.class));
       instance.getTable("audit").withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
       GetAuditsForRecordProcess.setProcessPermissionToBeBasedOnAuditTableReadPermission(instance.getProcess(GetAuditsForRecordProcess.NAME));
-      Integer protectedPersonId = insertPerson("Protected");
-      assertFalse(auditsFor(protectedPersonId).isEmpty());
       SampleJavalinServer server = new SampleJavalinServer(new SampleMetaDataProvider()
       {
          @Override
@@ -187,12 +184,24 @@ class SampleAuditContractTest
       try
       {
          server.start();
-         HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + service.get().port()
-            + "/processes/" + GetAuditsForRecordProcess.NAME + "/run"))
-            .POST(HttpRequest.BodyPublishers.noBody()).build();
-         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-         assertEquals(403, response.statusCode(), response.body());
-         assertFalse(response.body().contains("audits"));
+         AuditAction.execute(PERSON, 1, Map.of(), "Protected audit event");
+         try(HttpClient client = HttpClient.newHttpClient())
+         {
+            String baseUrl = "http://127.0.0.1:" + service.get().port();
+            HttpRequest personRequest = HttpRequest.newBuilder(URI.create(baseUrl + "/data/person/1"))
+               .header("Cookie", "sessionId=person-only").GET().build();
+            HttpResponse<String> person = client.send(personRequest, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, person.statusCode(), person.body());
+            assertTrue(person.body().contains("Avery"), person.body());
+
+            HttpResponse<String> denied = requestAudits(client, baseUrl, "person-only");
+            assertEquals(403, denied.statusCode(), denied.body());
+            assertFalse(denied.body().contains("Protected audit event"));
+
+            HttpResponse<String> allowed = requestAudits(client, baseUrl, "audit-reader");
+            assertEquals(200, allowed.statusCode(), allowed.body());
+            assertTrue(allowed.body().contains("Protected audit event"), allowed.body());
+         }
       }
       finally
       {
@@ -203,7 +212,7 @@ class SampleAuditContractTest
 
 
    /*******************************************************************************
-    ** The mock caller can read Person but has no audit-table permission.
+    ** The two HTTP callers differ only in their audit-table read permission.
     *******************************************************************************/
    public static class LimitedAuditReads implements QAuthenticationModuleCustomizerInterface
    {
@@ -211,7 +220,24 @@ class SampleAuditContractTest
       public void customizeSession(QInstance instance, QSession session, Map<String, Object> context)
       {
          session.withPermissions("person.read");
+         if("audit-reader".equals(session.getUuid()))
+         {
+            session.withPermission("audit.read");
+         }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Run the same process with a valid record request and a caller cookie.
+    *******************************************************************************/
+   private HttpResponse<String> requestAudits(HttpClient client, String baseUrl, String caller) throws Exception
+   {
+      HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/processes/" + GetAuditsForRecordProcess.NAME + "/run"))
+         .header("Cookie", "sessionId=" + caller).header("Content-Type", "application/x-www-form-urlencoded")
+         .POST(HttpRequest.BodyPublishers.ofString("tableName=person&recordId=1")).build();
+      return client.send(request, HttpResponse.BodyHandlers.ofString());
    }
 
 

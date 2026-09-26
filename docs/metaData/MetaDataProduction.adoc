@@ -200,9 +200,16 @@ public class BackendMetaDataProducer implements MetaDataProducerInterface<QBacke
 
 === Failing fast on producer errors
 
-By default, `MetaDataProducerHelper` logs a warning and skips any class that fails while being
-evaluated as a producer (for example, its constructor throws), and any producer whose `produce`
-method throws.  The application then starts without that meta-data.
+By default, `MetaDataProducerHelper` logs a warning and skips any class it finds but can't use as a
+producer, and any producer whose `produce` method throws.  The application then starts without that
+meta-data.  Classes it can't use include:
+
+* a `MetaDataProducerInterface` without a public no-arg constructor, or whose constructor throws;
+* a `@QMetaDataProducingEntity` class that is not a `QRecordEntity`, or whose `TABLE_NAME` is not a
+`String`;
+* a `@QMetaDataProducingPossibleValueEnum` enum that is not a `PossibleValueEnum`;
+* a `@ChildTable` that asks for a `@ChildRecordListWidget` without its `@ChildJoin`, or whose child
+entity has no field with a possible value source naming the parent table.
 
 To make those errors stop startup instead, turn on fail-fast before processing producers, either on
 the `QInstance`, or with the system property `qqq.metaData.failOnProducerError=true`.  With either

@@ -92,6 +92,8 @@ class QApplicationJavalinServerTest
       }
       TestApplication.callCount = 0;
       System.clearProperty("qqq.javalin.enableStaticFilesFromJar");
+      System.clearProperty("qqq.javalin.sessionCookieHttpOnly");
+      QJavalinImplementation.setSessionCookieHttpOnly(false);
       Unirest.config().reset();
 
 
@@ -866,6 +868,70 @@ class QApplicationJavalinServerTest
          System.setProperty("qqq.javalin.frontend", "angular");
          QApplicationJavalinServer invalid = new QApplicationJavalinServer(getQqqApplication());
          assertThrows(IllegalArgumentException.class, invalid::getServeFrontendNext);
+      }
+      finally
+      {
+         if(original == null)
+         {
+            System.clearProperty("qqq.javalin.frontend");
+         }
+         else
+         {
+            System.setProperty("qqq.javalin.frontend", original);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Session cookies are HttpOnly unless the Material Dashboard (which reads
+    ** sessionUUID in the browser) is served; the explicit setting wins, then the
+    ** qqq.javalin.sessionCookieHttpOnly property; start() applies the choice to
+    ** the cookies QJavalinImplementation sets (QRun-IO/qqq#733).
+    *******************************************************************************/
+   @Test
+   void testSessionCookieHttpOnlySelection() throws QException
+   {
+      String original = System.getProperty("qqq.javalin.frontend");
+      try
+      {
+         System.clearProperty("qqq.javalin.frontend");
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly(), "Material is served (no Next jar on this classpath)");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).withServeFrontendNext(true).getSessionCookieHttpOnly());
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).withServeFrontendMaterialDashboard(false).getSessionCookieHttpOnly());
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).withServeFrontendNext(true).withServeFrontendMaterialDashboard(true).getSessionCookieHttpOnly());
+
+         System.setProperty("qqq.javalin.frontend", "next");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+         System.setProperty("qqq.javalin.frontend", "none");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+
+         System.setProperty("qqq.javalin.sessionCookieHttpOnly", "false");
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).withSessionCookieHttpOnly(true).getSessionCookieHttpOnly());
+         System.setProperty("qqq.javalin.frontend", "material");
+         System.setProperty("qqq.javalin.sessionCookieHttpOnly", "true");
+         assertTrue(new QApplicationJavalinServer(getQqqApplication()).getSessionCookieHttpOnly());
+         assertFalse(new QApplicationJavalinServer(getQqqApplication()).withSessionCookieHttpOnly(false).getSessionCookieHttpOnly());
+         System.clearProperty("qqq.javalin.sessionCookieHttpOnly");
+
+         //////////////////////////////////////////////////////////////////
+         // start() applies it: the v1 manageSession cookie is HttpOnly  //
+         //////////////////////////////////////////////////////////////////
+         System.clearProperty("qqq.javalin.frontend");
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+         javalinServer = new QApplicationJavalinServer(getQqqApplication())
+            .withPort(PORT)
+            .withServeFrontendMaterialDashboard(false);
+         javalinServer.start();
+         assertTrue(QJavalinImplementation.getSessionCookieHttpOnly());
+         HttpResponse<String> response = Unirest.post("http://localhost:" + PORT + "/qqq/v1/manageSession")
+            .header("Content-Type", "application/json")
+            .body("{\"accessToken\": \"abcdefg\"}")
+            .asString();
+         assertEquals(200, response.getStatus());
+         assertThat(response.getHeaders().get("Set-Cookie")).anyMatch(cookie -> cookie.startsWith("sessionUUID=") && cookie.contains("; HttpOnly"));
       }
       finally
       {

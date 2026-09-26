@@ -37,9 +37,11 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.TableBasedAuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import kong.unirest.HttpRequestWithBody;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONObject;
@@ -196,6 +198,127 @@ class TableBasedSessionSpecV1Test extends SpecTestBase
             .asString();
          assertEquals(401, replay.getStatus());
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** An empty manageSession request resumes the session named by the
+    ** sessionUUID cookie, without echoing its uuid, so a dashboard can resume an
+    ** HttpOnly session; without a valid cookie it is refused (QRun-IO/qqq#733).
+    *******************************************************************************/
+   @Test
+   void testResumeFromCookie() throws QException
+   {
+      String uuid = JsonUtils.toJSONObject(signIn(basic(USERNAME, PASSWORD)).getBody()).getString("uuid");
+
+      HttpResponse<String> resumed = resume("sessionUUID=" + uuid);
+      assertEquals(200, resumed.getStatus());
+      JSONObject body = JsonUtils.toJSONObject(resumed.getBody());
+      assertEquals(FULL_NAME, body.getJSONObject("values").getJSONObject("user").getString("name"));
+      assertFalse(body.has("uuid"), "a cookie resume must not hand the session token to script");
+      assertFalse(resumed.getBody().contains(uuid));
+      assertEquals(uuid, resumed.getCookies().getNamed("sessionUUID").getValue());
+      assertEquals(1, sessionCount());
+
+      ///////////////////////////////////////////////////////////////////////
+      // an explicit sessionUUID in the body is still resumed and echoed,  //
+      // and wins over the cookie                                          //
+      ///////////////////////////////////////////////////////////////////////
+      HttpResponse<String> explicit = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Content-Type", "application/json")
+         .header("Cookie", "sessionUUID=not-a-session")
+         .body(new JSONObject().put("sessionUUID", uuid).toString())
+         .asString();
+      assertEquals(200, explicit.getStatus());
+      assertEquals(uuid, JsonUtils.toJSONObject(explicit.getBody()).getString("uuid"));
+
+      ///////////////////////////////////////////////////////////////////
+      // no cookie, an unknown one, or a logged-out one: nothing to    //
+      // resume, and no session cookie is issued                       //
+      ///////////////////////////////////////////////////////////////////
+      assertEquals(401, resume(null).getStatus());
+      assertEquals(401, resume("sessionUUID=not-a-session").getStatus());
+      assertEquals(200, Unirest.post(getBaseUrlAndPath() + "/logout").header("Cookie", "sessionUUID=" + uuid).asString().getStatus());
+      HttpResponse<String> afterLogout = resume("sessionUUID=" + uuid);
+      assertEquals(401, afterLogout.getStatus());
+      assertThat(afterLogout.getHeaders().get("Set-Cookie")).noneMatch(cookie -> cookie.startsWith("sessionUUID=" + uuid));
+      assertEquals(0, sessionCount());
+   }
+
+
+
+   /*******************************************************************************
+    ** A password sign-in points both session cookies at the new session, so a
+    ** sessionId left from an earlier session (which the browser cannot clear
+    ** when it is HttpOnly) cannot shadow it (QRun-IO/qqq#733).
+    *******************************************************************************/
+   @Test
+   void testSignInReplacesEarlierSessionCookies() throws QException
+   {
+      String earlier = JsonUtils.toJSONObject(signIn(basic(USERNAME, PASSWORD)).getBody()).getString("uuid");
+
+      HttpResponse<String> signIn = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Authorization", "Basic " + basic(USERNAME, PASSWORD))
+         .header("Content-Type", "application/json")
+         .header("Cookie", "sessionId=" + earlier + "; sessionUUID=" + earlier)
+         .body("{}")
+         .asString();
+      assertEquals(200, signIn.getStatus());
+      String next = JsonUtils.toJSONObject(signIn.getBody()).getString("uuid");
+      assertThat(next).isNotEqualTo(earlier);
+      assertEquals(next, signIn.getCookies().getNamed("sessionUUID").getValue());
+      assertEquals(next, signIn.getCookies().getNamed("sessionId").getValue());
+      assertEquals(2, sessionCount());
+
+      ///////////////////////////////////////////////////
+      // an empty (resume) request leaves sessionId be //
+      ///////////////////////////////////////////////////
+      assertThat(resume("sessionUUID=" + next).getHeaders().get("Set-Cookie")).noneMatch(cookie -> cookie.startsWith("sessionId="));
+   }
+
+
+
+   /*******************************************************************************
+    ** Session cookies set by sign-in and resume are HttpOnly when configured.
+    *******************************************************************************/
+   @Test
+   void testHttpOnlySessionCookies()
+   {
+      try
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(true);
+         HttpResponse<String> signIn = signIn(basic(USERNAME, PASSWORD));
+         assertEquals(200, signIn.getStatus());
+         assertThat(signIn.getHeaders().get("Set-Cookie"))
+            .anyMatch(cookie -> cookie.startsWith("sessionUUID=") && cookie.contains("; HttpOnly"))
+            .anyMatch(cookie -> cookie.startsWith("sessionId=") && cookie.contains("; HttpOnly"));
+
+         assertFalse(JsonUtils.toJSONObject(signIn.getBody()).has("uuid"));
+         String uuid = signIn.getCookies().getNamed("sessionUUID").getValue();
+         assertThat(resume("sessionUUID=" + uuid).getHeaders().get("Set-Cookie"))
+            .anyMatch(cookie -> cookie.startsWith("sessionUUID=" + uuid) && cookie.contains("; HttpOnly"));
+      }
+      finally
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** POST manageSession with an empty body and the given Cookie header (or none)
+    ***************************************************************************/
+   private HttpResponse<String> resume(String cookie)
+   {
+      HttpRequestWithBody request = Unirest.post(getBaseUrlAndPath() + "/manageSession")
+         .header("Content-Type", "application/json");
+      if(cookie != null)
+      {
+         request = request.header("Cookie", cookie);
+      }
+      return (request.body("{}").asString());
    }
 
 

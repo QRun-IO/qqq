@@ -544,8 +544,10 @@ components:
     ManageSessionResponseV1:
       properties:
         uuid:
-          description: "Unique identifier of the session.  Required to be returned\
-            \ on subsequent requests in the sessionUUID Cookie, to prove authentication."
+          description: "Unique identifier of the session. Required to be returned\
+            \ on subsequent requests in the sessionUUID Cookie, to prove authentication.\
+            \ Not included when the cookie is HttpOnly or the session was resumed\
+            \ from that cookie."
           type: "string"
         values:
           additionalProperties: true
@@ -2629,7 +2631,11 @@ paths:
         \ credentials in an `Authorization: Basic` header (base64 of\n`username:password`,\
         \ UTF-8); the body may be empty.  The password is verified against the user\
         \ table and a\nsession row is stored; a `401` response means the credentials\
-        \ were refused."
+        \ were refused.\n\nTo resume the session the browser already holds (for example\
+        \ after a page reload), post an empty object:\na request with no credentials\
+        \ and no `sessionUUID` resumes the session named by the `sessionUUID` cookie,\n\
+        which may be `HttpOnly`.  That response carries the session's `values` but\
+        \ not its `uuid`; a `401`\nresponse means there is no valid session to resume."
       parameters:
       - description: "For `TABLE_BASED` authentication: `Basic ` followed by the base64\
           \ encoding of `username:password` (UTF-8).\nNot used by other authentication\
@@ -2661,8 +2667,9 @@ paths:
                   description: "Redirect URI the authorization `code` was issued to."
                   type: "string"
                 sessionUUID:
-                  description: "UUID of an existing session (from its sessionUUID\
-                    \ cookie), to resume it instead of signing in again."
+                  description: "UUID of an existing session, to resume it instead\
+                    \ of signing in again.  Omit it (and all credentials) to resume\
+                    \ the session named by the sessionUUID cookie."
                   type: "string"
               type: "object"
         required: true

@@ -39,6 +39,26 @@ def main():
         if feature.get('acceptance_stage') != expected_stage:
             parser.error('Invalid acceptance stage for ' + feature['id'] + ': expected ' + expected_stage)
 
+    try:
+        manifest = json.loads((sample / 'release-deferrals.json').read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        parser.error('Cannot read release deferrals: ' + str(error))
+    if not isinstance(manifest, dict) or manifest.get('schema_version') != 1 or not isinstance(manifest.get('deferrals'), list):
+        parser.error('Invalid release deferrals manifest')
+    by_id = {feature['id']: feature for feature in features}
+    release_deferrals = set()
+    for entry in manifest['deferrals']:
+        if (not isinstance(entry, dict)
+                or set(entry) != {'id', 'owner_approval', 'rationale', 'target_release'}
+                or any(not isinstance(value, str) or not value.strip() for value in entry.values())):
+            parser.error('Every release deferral needs an ID, owner approval, rationale, and target release')
+        feature_id = entry['id']
+        feature = by_id.get(feature_id)
+        if (feature_id in release_deferrals or feature is None
+                or feature['acceptance_stage'] != 'source' or feature['acceptance_status'] != 'pending'):
+            parser.error('Stale or invalid release deferral: ' + feature_id)
+        release_deferrals.add(feature_id)
+
     outcomes = {}
     for directory in ('surefire-reports', 'failsafe-reports'):
         for report in (sample / 'target' / directory).glob('TEST-*.xml'):
@@ -50,6 +70,7 @@ def main():
     gaps = []
     unsupported = []
     deferred = []
+    applied_release_deferrals = []
     for feature in features:
         if args.stage == 'source' and feature.get('acceptance_stage') == 'published':
             deferred.append(feature['id'])
@@ -66,6 +87,9 @@ def main():
                 unsupported.append({'id': feature['id'], 'reason': review['reason']})
                 continue
             reasons.append('unsupported disposition requires a reviewed enum-only boundary without test claims')
+        if args.stage == 'source' and feature['id'] in release_deferrals:
+            applied_release_deferrals.append(feature['id'])
+            continue
         if feature['acceptance_status'] != 'verified':
             reasons.append('scenario review is pending')
         if not tests:
@@ -77,11 +101,12 @@ def main():
             gaps.append({'id': feature['id'], 'reasons': reasons})
 
     result = {
-        'inventory_entries': len(features), 'features': len(features) - len(unsupported) - len(deferred),
-        'verified': len(features) - len(unsupported) - len(deferred) - len(gaps),
-        'unsupported': unsupported, 'deferred': deferred, 'stage': args.stage,
+        'inventory_entries': len(features), 'features': len(features) - len(unsupported) - len(deferred) - len(applied_release_deferrals),
+        'verified': len(features) - len(unsupported) - len(deferred) - len(applied_release_deferrals) - len(gaps),
+        'unsupported': unsupported, 'deferred': deferred,
+        'release_deferrals': applied_release_deferrals, 'stage': args.stage,
         'stage_passed': not gaps,
-        'complete': not args.report_only and not gaps and not deferred, 'gaps': gaps,
+        'complete': not args.report_only and not gaps and not deferred and not applied_release_deferrals, 'gaps': gaps,
         'scope': 'This checks recorded scenarios against these reports. Inventory completeness requires source review; use clean verify to avoid stale reports.',
     }
     output.parent.mkdir(parents=True, exist_ok=True)

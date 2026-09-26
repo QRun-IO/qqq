@@ -35,7 +35,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.esb.publish.EsbProcessLifecycleListener;
 import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
+import com.kingsrook.qqq.esb.runtime.EsbRuntimeService;
 
 
 /*******************************************************************************
@@ -102,8 +104,8 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    /*******************************************************************************
     ** Interpret ${env.*} (etc.) variables in each provider's connection fields,
-    ** and register the record change listener that publishes table events (once,
-    ** however many times the instance is enriched).
+    ** and register the table and process publishing listeners and trigger
+    ** runtime service once, however many times the instance is enriched.
     *******************************************************************************/
    @Override
    public void enrich(QInstance qInstance)
@@ -114,12 +116,31 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
          provider.interpretVariables(interpreter);
       }
 
-      boolean listenerRegistered = CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream()
-         .anyMatch(codeReference -> codeReference != null && EsbRecordChangeListener.class.getName().equals(codeReference.getName()));
-      if(!listenerRegistered)
+      if(!isRegistered(qInstance.getRecordChangeListeners(), EsbRecordChangeListener.class))
       {
          qInstance.withRecordChangeListener(new QCodeReference(EsbRecordChangeListener.class));
       }
+
+      if(!isRegistered(qInstance.getProcessLifecycleListeners(), EsbProcessLifecycleListener.class))
+      {
+         qInstance.withProcessLifecycleListener(new QCodeReference(EsbProcessLifecycleListener.class));
+      }
+
+      if(!isRegistered(qInstance.getRuntimeServices(), EsbRuntimeService.class))
+      {
+         qInstance.withRuntimeService(new QCodeReference(EsbRuntimeService.class));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a list of code references includes the given class.
+    *******************************************************************************/
+   private static boolean isRegistered(List<QCodeReference> codeReferences, Class<?> referenceClass)
+   {
+      return (CollectionUtils.nonNullList(codeReferences).stream()
+         .anyMatch(codeReference -> codeReference != null && referenceClass.getName().equals(codeReference.getName())));
    }
 
 

@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.metadata;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -34,9 +35,15 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
-import com.kingsrook.qqq.backend.core.model.metadata.producererrors.evaluate.TestThrowsInConstructorMetaDataProducer;
+import com.kingsrook.qqq.backend.core.model.metadata.producererrors.childjoinwithoutfield.TestChildJoinWithoutFieldEntity;
+import com.kingsrook.qqq.backend.core.model.metadata.producererrors.childwidgetwithoutjoin.TestChildWidgetWithoutJoinEntity;
+import com.kingsrook.qqq.backend.core.model.metadata.producererrors.constructorthrows.TestThrowsInConstructorMetaDataProducer;
+import com.kingsrook.qqq.backend.core.model.metadata.producererrors.noargconstructor.TestOnlyArgConstructorMetaDataProducer;
+import com.kingsrook.qqq.backend.core.model.metadata.producererrors.notpossiblevalueenum.TestNotPossibleValueEnum;
+import com.kingsrook.qqq.backend.core.model.metadata.producererrors.notrecordentity.TestNotRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.producererrors.produce.TestThrowsInProduceMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.producererrors.produce.TestWorkingMetaDataProducer;
+import com.kingsrook.qqq.backend.core.model.metadata.producererrors.tablenamenotstring.TestTableNameNotStringEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.TestAbstractMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.TestDisabledMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.TestImplementsMetaDataProducer;
@@ -51,8 +58,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -71,7 +82,7 @@ class MetaDataProducerHelperTest
    private static final String FAIL_ON_PRODUCER_ERROR_PROPERTY  = "qqq.metaData.failOnProducerError";
 
    private static final String PRODUCE_ERRORS_PACKAGE  = "com.kingsrook.qqq.backend.core.model.metadata.producererrors.produce";
-   private static final String EVALUATE_ERRORS_PACKAGE = "com.kingsrook.qqq.backend.core.model.metadata.producererrors.evaluate";
+   private static final String CONSTRUCTOR_THROWS_PACKAGE = "com.kingsrook.qqq.backend.core.model.metadata.producererrors.constructorthrows";
 
 
 
@@ -379,14 +390,14 @@ class MetaDataProducerHelperTest
     ** its constructor throws) is logged as a warning and skipped.
     *******************************************************************************/
    @Test
-   void testEvaluateErrorIsLoggedByDefault() throws QException
+   void testConstructorErrorIsLoggedByDefault() throws QException
    {
       QCollectingLogger collectingLogger = QLogger.activateCollectingLoggerForClass(MetaDataProducerHelper.class);
 
-      assertEquals(0, MetaDataProducerHelper.findProducers(EVALUATE_ERRORS_PACKAGE).size());
+      assertEquals(0, MetaDataProducerHelper.findProducers(CONSTRUCTOR_THROWS_PACKAGE).size());
 
       QInstance qInstance = new QInstance();
-      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EVALUATE_ERRORS_PACKAGE);
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, CONSTRUCTOR_THROWS_PACKAGE);
       assertFalse(qInstance.getTables().containsKey(TestThrowsInConstructorMetaDataProducer.NAME));
 
       assertTrue(collectingLogger.getCollectedMessages().stream().anyMatch(m -> m.getMessage().contains("Error evaluating a possible meta-data producer class")));
@@ -399,10 +410,10 @@ class MetaDataProducerHelperTest
     ** producer stops processing with a QException naming the class.
     *******************************************************************************/
    @Test
-   void testEvaluateErrorThrowsWithInstanceFlag()
+   void testConstructorErrorThrowsWithInstanceFlag()
    {
       QInstance  qInstance = new QInstance().withFailOnMetaDataProducerError(true);
-      QException exception = assertThrows(QException.class, () -> MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EVALUATE_ERRORS_PACKAGE));
+      QException exception = assertThrows(QException.class, () -> MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, CONSTRUCTOR_THROWS_PACKAGE));
 
       assertThat(exception.getMessage()).contains(TestThrowsInConstructorMetaDataProducer.class.getName());
       Throwable rootCause = ExceptionUtils.getRootCause(exception);
@@ -417,12 +428,87 @@ class MetaDataProducerHelperTest
     ** throws for a class that fails while being evaluated as a producer.
     *******************************************************************************/
    @Test
-   void testEvaluateErrorThrowsWithSystemProperty()
+   void testConstructorErrorThrowsWithSystemProperty()
    {
       System.setProperty(FAIL_ON_PRODUCER_ERROR_PROPERTY, "true");
 
-      QException exception = assertThrows(QException.class, () -> MetaDataProducerHelper.findProducers(EVALUATE_ERRORS_PACKAGE));
+      QException exception = assertThrows(QException.class, () -> MetaDataProducerHelper.findProducers(CONSTRUCTOR_THROWS_PACKAGE));
       assertThat(exception.getMessage()).contains(TestThrowsInConstructorMetaDataProducer.class.getName());
+   }
+
+
+
+   /***************************************************************************
+    * Classes that MetaDataProducerHelper finds but can't use as producers,
+    * without any exception being thrown - with the warning it logs for each.
+    ***************************************************************************/
+   static Stream<Arguments> unusableProducerClasses()
+   {
+      return (Stream.of(
+         Arguments.of(TestOnlyArgConstructorMetaDataProducer.class, "does not have a no-arg constructor"),
+         Arguments.of(TestNotRecordEntity.class, "but which is not a QRecordEntity"),
+         Arguments.of(TestTableNameNotStringEntity.class, "whose TABLE_NAME field is not a String"),
+         Arguments.of(TestNotPossibleValueEnum.class, "but which is not a PossibleValueEnum"),
+         Arguments.of(TestChildWidgetWithoutJoinEntity.class, "requested to produce a ChildRecordListWidget, but not produce a Join"),
+         Arguments.of(TestChildJoinWithoutFieldEntity.class, "Could not find field in")
+      ));
+   }
+
+
+
+   /*******************************************************************************
+    ** By default, a class that can't be used as a producer is logged as a
+    ** warning, and what it would have produced is dropped.
+    *******************************************************************************/
+   @ParameterizedTest
+   @MethodSource("unusableProducerClasses")
+   void testUnusableProducerClassIsLoggedByDefault(Class<?> unusableClass, String expectedWarning) throws QException
+   {
+      QCollectingLogger collectingLogger = QLogger.activateCollectingLoggerForClass(MetaDataProducerHelper.class);
+
+      QInstance qInstance = new QInstance();
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, unusableClass.getPackageName());
+
+      assertTrue(qInstance.getTables().isEmpty());
+      assertTrue(qInstance.getPossibleValueSources().isEmpty());
+      assertTrue(qInstance.getJoins().isEmpty());
+      assertTrue(qInstance.getWidgets().isEmpty());
+      assertTrue(collectingLogger.getCollectedMessages().stream().anyMatch(m -> Level.WARN.equals(m.getLevel()) && m.getMessage().contains(expectedWarning)));
+   }
+
+
+
+   /*******************************************************************************
+    ** With the QInstance flag on, a class that can't be used as a producer stops
+    ** processing with a QException naming the class, caused by the message that
+    ** would have been the warning.
+    *******************************************************************************/
+   @ParameterizedTest
+   @MethodSource("unusableProducerClasses")
+   void testUnusableProducerClassThrowsWithInstanceFlag(Class<?> unusableClass, String expectedWarning)
+   {
+      QInstance  qInstance = new QInstance().withFailOnMetaDataProducerError(true);
+      QException exception = assertThrows(QException.class, () -> MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, unusableClass.getPackageName()));
+
+      assertThat(exception.getMessage()).contains(unusableClass.getName());
+      assertThat(ExceptionUtils.getRootCause(exception).getMessage()).contains(expectedWarning);
+   }
+
+
+
+   /*******************************************************************************
+    ** With the system property on, findProducers (which takes no QInstance)
+    ** throws for a class that can't be used as a producer.
+    *******************************************************************************/
+   @ParameterizedTest
+   @MethodSource("unusableProducerClasses")
+   void testUnusableProducerClassThrowsWithSystemProperty(Class<?> unusableClass, String expectedWarning)
+   {
+      System.setProperty(FAIL_ON_PRODUCER_ERROR_PROPERTY, "true");
+
+      QException exception = assertThrows(QException.class, () -> MetaDataProducerHelper.findProducers(unusableClass.getPackageName()));
+      assertThat(exception.getMessage()).contains(unusableClass.getName());
+      assertThat(ExceptionUtils.getRootCause(exception).getMessage()).contains(expectedWarning);
    }
 
 
@@ -497,7 +583,7 @@ class MetaDataProducerHelperTest
       @Override
       public String getPackageNameForFindingMetaDataProducers()
       {
-         return (EVALUATE_ERRORS_PACKAGE);
+         return (CONSTRUCTOR_THROWS_PACKAGE);
       }
    }
 

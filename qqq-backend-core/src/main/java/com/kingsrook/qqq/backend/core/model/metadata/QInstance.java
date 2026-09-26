@@ -150,9 +150,9 @@ public class QInstance
    private List<QCodeReference> processLifecycleListeners = new ArrayList<>();
 
    ////////////////////////////////////////////////////////////////////////////////
-   // if true, MetaDataProducerHelper throws when a producer fails, instead of   //
-   // logging a warning and skipping it.  the system property                    //
-   // qqq.metaData.failOnProducerError=true turns this on too.                   //
+   // if true, MetaDataProducerHelper throws when it can't use or run a          //
+   // producer, instead of logging a warning and skipping it.  the system        //
+   // property qqq.metaData.failOnProducerError=true turns this on too.          //
    ////////////////////////////////////////////////////////////////////////////////
    private Boolean failOnMetaDataProducerError = false;
 
@@ -2125,7 +2125,8 @@ public class QInstance
 
    /*******************************************************************************
     ** Getter for failOnMetaDataProducerError - if true, MetaDataProducerHelper
-    ** throws when a meta-data producer fails, instead of logging a warning.
+    ** throws when it can't use or run a meta-data producer, instead of logging
+    ** a warning.
     *******************************************************************************/
    public Boolean getFailOnMetaDataProducerError()
    {

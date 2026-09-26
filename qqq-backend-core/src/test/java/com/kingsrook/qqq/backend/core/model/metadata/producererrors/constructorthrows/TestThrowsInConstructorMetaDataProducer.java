@@ -19,7 +19,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package com.kingsrook.qqq.backend.core.model.metadata.producererrors.evaluate;
+package com.kingsrook.qqq.backend.core.model.metadata.producererrors.constructorthrows;
 
 
 import com.kingsrook.qqq.backend.core.exceptions.QException;

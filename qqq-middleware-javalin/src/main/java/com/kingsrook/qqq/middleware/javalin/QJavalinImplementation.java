@@ -748,9 +748,12 @@ public class QJavalinImplementation
 
 
    /*******************************************************************************
-    **
+    ** Read the values of a record insert or update request into a record: a JSON
+    ** object body, or multipart form fields (with uploaded files for blob fields,
+    ** and an `associations` field in the legacy or record-v1 format).  Shared by
+    ** the legacy data routes and the v1 table insert and update specs.
     *******************************************************************************/
-   private static void setRecordValuesForInsertOrUpdate(Context context, QTableMetaData tableMetaData, QRecord record, AbstractTableActionInput input) throws IOException, QException
+   public static void setRecordValuesForInsertOrUpdate(Context context, QTableMetaData tableMetaData, QRecord record, AbstractTableActionInput input) throws IOException, QException
    {
       String  contentType       = Objects.requireNonNullElse(context.header("content-type"), "");
       boolean isContentTypeJson = contentType.toLowerCase().contains("json");

@@ -95,6 +95,9 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
       @OpenAPIDescription("Name of the next process step that needs to run (a frontend step).  If there are no more steps in the process, this field will not be included.  ")
       private String nextStep;
 
+      @OpenAPIDescription("Name of the step the process can go back to (restart at, by stepping with isStepBack=true), when the process declares one.  Omitted otherwise.")
+      private String backStep;
+
       @OpenAPIDescription("Current values for fields used by the process.Keys are Strings, values can be any type, as determined by the application & process.")
       private Map<String, Serializable> values;
 
@@ -110,6 +113,17 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
       public String getNextStep()
       {
          return nextStep;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for backStep
+       **
+       *******************************************************************************/
+      public String getBackStep()
+      {
+         return backStep;
       }
 
 
@@ -300,6 +314,20 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
     **
     ***************************************************************************/
    @Override
+   public void setBackStep(String backStep)
+   {
+      if(this.typedResponse instanceof ProcessStepComplete complete)
+      {
+         complete.backStep = backStep;
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
    public void setValues(Map<String, Serializable> values)
    {
       if(this.typedResponse instanceof ProcessStepComplete complete)
@@ -326,13 +354,23 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
          {
             complete.processMetaDataAdjustment = new ProcessMetaDataAdjustment();
 
-            Map<String, FieldMetaData> updatedFields = processMetaDataAdjustment.getUpdatedFields().entrySet()
-               .stream().collect(Collectors.toMap(e -> e.getKey(), f -> new FieldMetaData(f.getValue())));
-            complete.processMetaDataAdjustment.setUpdatedFields(updatedFields);
+            ////////////////////////////////////////////////////////////////////////////
+            // an adjustment may carry only fields or only steps (a route change sets //
+            // just the step list) - the other part is absent, not an error            //
+            ////////////////////////////////////////////////////////////////////////////
+            if(processMetaDataAdjustment.getUpdatedFields() != null)
+            {
+               Map<String, FieldMetaData> updatedFields = processMetaDataAdjustment.getUpdatedFields().entrySet()
+                  .stream().collect(Collectors.toMap(e -> e.getKey(), f -> new FieldMetaData(f.getValue())));
+               complete.processMetaDataAdjustment.setUpdatedFields(updatedFields);
+            }
 
-            List<FrontendStep> updatedFrontendSteps = processMetaDataAdjustment.getUpdatedFrontendStepList()
-               .stream().map(f -> new FrontendStep(f)).toList();
-            complete.processMetaDataAdjustment.setUpdatedFrontendStepList(updatedFrontendSteps);
+            if(processMetaDataAdjustment.getUpdatedFrontendStepList() != null)
+            {
+               List<FrontendStep> updatedFrontendSteps = processMetaDataAdjustment.getUpdatedFrontendStepList()
+                  .stream().map(f -> new FrontendStep(f)).toList();
+               complete.processMetaDataAdjustment.setUpdatedFrontendStepList(updatedFrontendSteps);
+            }
          }
       }
    }

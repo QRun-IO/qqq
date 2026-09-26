@@ -64,6 +64,17 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
          authContext.put(Auth0AuthenticationModule.BASIC_AUTH_KEY, input.getBasicAuthString());
       }
 
+      //////////////////////////////////////////////////////////////////////////////////
+      // the values the authentication modules read besides the access token: an OAuth2 //
+      // code exchange (code, codeVerifier, redirectUri) or resuming a session.        //
+      // Only these named values - not arbitrary body keys - reach the module.        //
+      //////////////////////////////////////////////////////////////////////////////////
+      putIfPresent(authContext, "code", input.getCode());
+      putIfPresent(authContext, "codeVerifier", input.getCodeVerifier());
+      putIfPresent(authContext, "redirectUri", input.getRedirectUri());
+      putIfPresent(authContext, "sessionUUID", input.getSessionUUID());
+      putIfPresent(authContext, "uuid", input.getSessionUUID());
+
       /////////////////////////////////
       // (try to) create the session //
       /////////////////////////////////
@@ -78,6 +89,19 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       {
          LinkedHashMap<String, Serializable> valuesForFrontend = new LinkedHashMap<>(session.getValuesForFrontend());
          output.setValues(valuesForFrontend);
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private static void putIfPresent(Map<String, String> authContext, String key, String value)
+   {
+      if(value != null)
+      {
+         authContext.put(key, value);
       }
    }
 

@@ -48,6 +48,7 @@ public class ProcessInitOrStepInput extends AbstractMiddlewareInput
    // todo - add (in next version?) startAtStep (for back)
 
    private RunProcessInput.FrontendStepBehavior frontendStepBehavior = RunProcessInput.FrontendStepBehavior.BREAK;
+   private String startAtStep;
 
    // todo - file??
 
@@ -290,6 +291,37 @@ public class ProcessInitOrStepInput extends AbstractMiddlewareInput
    public ProcessInitOrStepInput withStartAfterStep(String startAfterStep)
    {
       this.startAfterStep = startAfterStep;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for startAtStep
+    *******************************************************************************/
+   public String getStartAtStep()
+   {
+      return (startAtStep);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for startAtStep
+    *******************************************************************************/
+   public void setStartAtStep(String startAtStep)
+   {
+      this.startAtStep = startAtStep;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for startAtStep
+    *******************************************************************************/
+   public ProcessInitOrStepInput withStartAtStep(String startAtStep)
+   {
+      this.startAtStep = startAtStep;
       return (this);
    }
 

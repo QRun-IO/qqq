@@ -34,6 +34,7 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -77,6 +78,17 @@ class MetaDataSpecV1Test extends SpecTestBase
       assertThat(jsonObject.getJSONObject("processes").length()).isGreaterThanOrEqualTo(1);
       assertThat(jsonObject.getJSONObject("apps").length()).isGreaterThanOrEqualTo(1);
       assertThat(jsonObject.getJSONArray("appTree").length()).isGreaterThanOrEqualTo(1);
+
+      ////////////////////////////////////////////////////////////////////////
+      // widgets carry their full frontend meta-data (including permission) //
+      // and reports are listed with what a frontend needs to run them      //
+      ////////////////////////////////////////////////////////////////////////
+      JSONObject timezoneWidget = jsonObject.getJSONObject("widgets").getJSONObject("timezoneWidget");
+      assertTrue(timezoneWidget.getBoolean("hasPermission"));
+      assertTrue(timezoneWidget.has("isCard"));
+      JSONObject personsReport = jsonObject.getJSONObject("reports").getJSONObject("personsReport");
+      assertEquals("personsReport", personsReport.getString("name"));
+      assertTrue(personsReport.getBoolean("hasPermission"));
    }
 
 

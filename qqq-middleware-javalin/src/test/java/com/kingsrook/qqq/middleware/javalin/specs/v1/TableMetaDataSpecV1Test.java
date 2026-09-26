@@ -24,13 +24,16 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
@@ -38,6 +41,7 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.FieldMetaData;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.eclipse.jetty.http.HttpStatus;
@@ -137,6 +141,68 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          firstName.setHelpContents(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Versioned field metadata carries only the supplemental settings intended
+    ** for frontends, as the legacy QFrontendFieldMetaData does.
+    *******************************************************************************/
+   @Test
+   void testFrontendVisibleFieldSupplementalMetaData()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Map<String, QSupplementalFieldMetaData> original = firstName.getSupplementalMetaData();
+      try
+      {
+         firstName.setSupplementalMetaData(Map.of(
+            "visible", new TestSupplementalFieldMetaData("visible", true),
+            "private", new TestSupplementalFieldMetaData("private", false)));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONObject supplemental = fields.getJSONObject("firstName").getJSONObject("supplementalMetaData");
+         assertEquals("visible", supplemental.getJSONObject("visible").getString("type"));
+         assertFalse(supplemental.has("private"));
+         assertFalse(fields.getJSONObject("lastName").has("supplementalMetaData"));
+
+         assertThat(new FieldMetaData(new QFrontendFieldMetaData(firstName)).getSupplementalMetaData())
+            .containsOnlyKeys("visible");
+      }
+      finally
+      {
+         firstName.setSupplementalMetaData(original);
+      }
+   }
+
+
+
+   /** Supplemental field metadata with a selectable frontend visibility policy. */
+   public static class TestSupplementalFieldMetaData extends QSupplementalFieldMetaData
+   {
+      private final String type;
+      private final boolean frontendVisible;
+
+      /** Builds a test value for either the public or private metadata path. */
+      public TestSupplementalFieldMetaData(String type, boolean frontendVisible)
+      {
+         this.type = type;
+         this.frontendVisible = frontendVisible;
+      }
+
+      @Override
+      public String getType()
+      {
+         return type;
+      }
+
+      @Override
+      public boolean includeInFrontendMetaData()
+      {
+         return frontendVisible;
       }
    }
 

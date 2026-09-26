@@ -19,6 +19,44 @@ Press Ctrl+C to stop the application. Edit Java files under `qqq-sample/qqq-samp
 
 ## Framework development
 
+### Candidate bootstrap acceptance (#605)
+
+Run the source stage from this checkout after installing JDK 21 and Maven:
+
+```bash
+python3 qqq-sample-project/bootstrap_acceptance.py --stage source
+```
+
+It creates a fresh disposable cache under the OS temporary directory, installs the root
+framework there, then separately verifies the packaged sample. The bootstrap
+reports require seeded HTTP startup, a real write, a second clean startup
+with the original five rows, missing/duplicate configuration failures, and
+three unskipped test suites. A separate BOM consumer resolves every reviewed
+QQQ library at the same source revision. This is **source-install evidence**;
+the cache contains locally built artifacts. The focused bootstrap profile
+records its JaCoCo report but disables the full-suite coverage threshold;
+normal sample `verify` and CI remain responsible for that threshold.
+
+After the exact 4.1 release candidate is publicly available, set
+`QQQ_CANDIDATE_VERSION` to its published literal version and run:
+
+```bash
+python3 qqq-sample-project/bootstrap_acceptance.py --stage published --version "$QQQ_CANDIDATE_VERSION"
+```
+
+Use the candidate version actually published. This stage exports committed
+`HEAD`, creates an empty Maven cache and settings, imports the candidate
+`qqq-bom-pom` in a separate versionless consumer, and verifies each library
+JAR before building and starting the sample against public artifacts. Both
+stages reject missing BOM configuration, a mismatched candidate, incomplete
+test reports, and reuse of an explicit `--workdir`; evidence stays inside
+the new fixture. The prior published set contained 16 libraries; the live
+4.1 BOM adds `qqq-esb`, so this check requires all 17 and fails on BOM drift.
+Browser-specific behavior, native provider contracts, and the full feature
+ledger have their own gates; this bootstrap run certifies none of them.
+`sample.bootstrap` remains pending until the published stage passes at the
+reviewed candidate and its report is mapped into the ledger.
+
 Requires Java 21 and Maven 3.8 or later. This separate path builds the framework and runs its acceptance tests.
 
 From the QQQ repository root, install the framework modules, then build this separate sample:

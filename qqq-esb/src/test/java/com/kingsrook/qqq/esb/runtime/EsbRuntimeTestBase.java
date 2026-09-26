@@ -552,8 +552,9 @@ public abstract class EsbRuntimeTestBase extends EsbTestBase
       private static final AtomicInteger     currentRuns       = new AtomicInteger(0);
       private static final AtomicInteger     maxConcurrentRuns = new AtomicInteger(0);
 
-      private static volatile Boolean alwaysFail = false;
-      private static volatile Long    slowRunMs  = 0L;
+      private static volatile Boolean alwaysFail      = false;
+      private static volatile Boolean alwaysThrowError = false;
+      private static volatile Long    slowRunMs       = 0L;
 
 
 
@@ -571,6 +572,11 @@ public abstract class EsbRuntimeTestBase extends EsbTestBase
             if(slowRunsRemaining.getAndDecrement() > 0)
             {
                sleepInterruptibly(run);
+            }
+
+            if(alwaysThrowError)
+            {
+               throw (new AssertionError("error on run " + runs.size()));
             }
 
             if(alwaysFail || failuresRemaining.getAndDecrement() > 0)
@@ -619,6 +625,7 @@ public abstract class EsbRuntimeTestBase extends EsbTestBase
          currentRuns.set(0);
          maxConcurrentRuns.set(0);
          alwaysFail = false;
+         alwaysThrowError = false;
          slowRunMs = 0L;
       }
 
@@ -640,6 +647,16 @@ public abstract class EsbRuntimeTestBase extends EsbTestBase
       public static void failAlways()
       {
          alwaysFail = true;
+      }
+
+
+
+      /*******************************************************************************
+       ** Make every run throw an Error (not an Exception).
+       *******************************************************************************/
+      public static void throwErrorAlways()
+      {
+         alwaysThrowError = true;
       }
 
 

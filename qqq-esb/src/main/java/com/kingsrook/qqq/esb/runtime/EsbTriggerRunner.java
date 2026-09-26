@@ -98,9 +98,11 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * EsbConnectionManager reports a reconnect (QEsbRuntime passes that on).  When
  * the connection is lost, workers close their consumers and connect again.
  *
- * pauseLocal, resumeLocal and restartLocal act on this node only.  Pausing
- * closes the consumers - each after the run it is in, if any, and at most one
- * receive timeout (1 s) after the pause - so messages stay on the broker.
+ * pauseLocal, resumeLocal and restartLocal act on this node only (see
+ * EsbTriggerControl for every node).  Pausing closes the consumers - each after
+ * the run it is in, if any, and at most one receive timeout (1 s) after the
+ * pause - so messages stay on the broker.  A batch being collected is cut short
+ * by a pause, and runs with what it has.
  * Restarting makes each worker build a new session and consumer.
  *
  * Workers block in the broker client's receive, which (on Java 21) holds its
@@ -527,9 +529,10 @@ public class EsbTriggerRunner
 
 
    /*******************************************************************************
-    **
+    ** The consumers' generation: it goes up with each restart and reconnect, and
+    ** a worker's consumer is current only if built for the current generation.
     *******************************************************************************/
-   private Long getGeneration()
+   Long getGeneration()
    {
       lock.lock();
       try
@@ -736,7 +739,18 @@ public class EsbTriggerRunner
             closeQuietly(newSession);
             if(!lastConnectFailed)
             {
-               LOG.info("ESB trigger consumer could not connect; will keep trying", logPair("triggerName", triggerName), logPair("worker", index), logPair("error", e.getMessage()));
+               ////////////////////////////////////////////////////////////////////
+               // with the provider connected, this isn't an outage that a       //
+               // reconnect will end (e.g., the broker refused the subscription) //
+               ////////////////////////////////////////////////////////////////////
+               if(EsbConnectionManager.getInstance().isConnected(providerName))
+               {
+                  LOG.warn("ESB trigger consumer could not be set up though its provider is connected; will keep trying", e, logPair("triggerName", triggerName), logPair("worker", index));
+               }
+               else
+               {
+                  LOG.info("ESB trigger consumer could not connect; will keep trying", logPair("triggerName", triggerName), logPair("worker", index), logPair("error", e.getMessage()));
+               }
                lastConnectFailed = true;
             }
             return (false);
@@ -793,13 +807,13 @@ public class EsbTriggerRunner
 
       /*******************************************************************************
        ** Add to a batch until it has batchSize messages, or batchWaitMs have
-       ** passed since its first one (or the runner is stopping).
+       ** passed since its first one (or the runner is stopping or pausing).
        *******************************************************************************/
       private void collectBatch(List<Message> messages) throws JMSException
       {
          Integer batchSize  = trigger.getEffectiveBatchSize();
          long    deadlineMs = System.currentTimeMillis() + trigger.getEffectiveBatchWaitMs();
-         while(messages.size() < batchSize && isActive())
+         while(messages.size() < batchSize && isActive() && !isPaused())
          {
             long    remainingMs = deadlineMs - System.currentTimeMillis();
             Message next        = (remainingMs > 0) ? consumer.receive(Math.min(remainingMs, RECEIVE_TIMEOUT_MS)) : consumer.receiveNoWait();
@@ -968,9 +982,12 @@ public class EsbTriggerRunner
                   handler.runProcess(trigger, processName, events);
                   finished.set(true);
                }
-               catch(Exception e)
+               catch(Throwable t)
                {
-                  failure.set(e);
+                  //////////////////////////////////////////////////////////////
+                  // an Error fails the run too, keeping the Error as the cause //
+                  //////////////////////////////////////////////////////////////
+                  failure.set(t instanceof Exception exception ? exception : new QException(t.toString(), t));
                }
             });
 

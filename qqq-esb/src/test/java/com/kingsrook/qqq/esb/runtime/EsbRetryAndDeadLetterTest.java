@@ -133,6 +133,27 @@ class EsbRetryAndDeadLetterTest extends EsbRuntimeTestBase
 
 
    /*******************************************************************************
+    ** A run that throws an Error (not an Exception) fails like any other, and its
+    ** dead letter's qqqError names the Error.
+    *******************************************************************************/
+   @Test
+   void errorThrownByARunIsDeadLetteredWithItsMessage() throws Exception
+   {
+      EsbTrigger trigger = new EsbTrigger().withDestinationName(QUEUE_NAME).withMaxAttempts(1);
+      defineInstanceWithTrigger(trigger);
+      RecordingStep.throwErrorAlways();
+
+      sendEvent(QUEUE_NAME, Map.of("orderNo", "E-1"));
+      startRuntime(QContext.getQInstance());
+
+      List<Message> deadLetters = receiveAll(getDeadLetterQueueName(trigger), WAIT_TIMEOUT);
+      assertThat(deadLetters).hasSize(1);
+      assertThat(deadLetters.get(0).getStringProperty("qqqError")).contains("AssertionError").contains("error on run 1");
+   }
+
+
+
+   /*******************************************************************************
     ** With onDeadLetter DISCARD, the message is dropped after its last attempt:
     ** not dead-lettered, and not left on the queue.
     *******************************************************************************/

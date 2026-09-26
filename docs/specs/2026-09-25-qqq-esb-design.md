@@ -46,14 +46,14 @@ All new metadata is validated at boot by `QInstanceValidator` (unknown provider,
 | Field | Default | Meaning |
 |---|---|---|
 | `destinationName` | required | queue or topic to consume |
-| `subscriptionName` | `<process>.<destination>` | topics only; shared durable subscription name, unique per topic (both brokers name the subscription queue after it) |
+| `subscriptionName` | `<process>.<destination>` (broker-side destination name) | topics only; shared durable subscription name, unique per topic (both brokers name the subscription queue after it) |
 | `mode` | `SINGLE` | `SINGLE` = one message per run; `BATCH` = up to `batchSize` messages or `batchWaitMs` |
 | `batchSize`, `batchWaitMs` | 100, 1000 | batch mode only |
 | `concurrency` | 1 | consumers per node |
 | `maxAttempts` | 3 | attempts before dead-lettering |
 | `retryDelayMs`, `retryMultiplier`, `retryMaxDelayMs` | 0, 2.0, 60000 | backoff; 0 = immediate |
 | `onDeadLetter` | `DEAD_LETTER_QUEUE` | or `DISCARD` |
-| `deadLetterDestinationName` | `<destination>.dlq` (queue) / `<destination>.<subscription>.dlq` (topic) | where dead letters go |
+| `deadLetterDestinationName` | `<destination>.dlq` (queue) / `<destination>.<subscription>.dlq` (topic), using broker-side names | where dead letters go |
 | `runAsSessionSupplier` | system user session | `QCodeReference` to a `Supplier<QSession>` |
 | `timeoutMs` | none | per run |
 | `startPaused` | false | start without consuming |
@@ -65,7 +65,7 @@ Supplemental ESB metadata is **not** included in frontend metadata; the UI reads
 - JMS `TextMessage`; body is a CloudEvents 1.0 structured JSON event.
 - `id` (UUID), `source` (`qqq://<instance>/table/<name>` or `.../process/<name>`), `type`, `time`, `subject` (record primary key, table events only), `datacontenttype: application/json`, `data`.
 - Types: `qqq.table.<table>.inserted|updated|deleted`, `qqq.process.<process>.started|completed|failed`, or caller-supplied for explicit publishes.
-- Table `data`: `{ record }` for insert, `{ record, oldRecord }` for update, `{ oldRecord }` for delete. Record values use the `/qqq/v1` record JSON form.
+- Table `data`: `{ record }` for insert, `{ record, oldRecord }` for update (`record` is the full post-update record), `{ oldRecord }` for delete. Record values use the `/qqq/v1` record JSON form.
 - JMS properties mirror `ce_id`, `ce_type`, `ce_source`.
 - One message per record. A multi-record insert publishes all its messages on one JMS session.
 

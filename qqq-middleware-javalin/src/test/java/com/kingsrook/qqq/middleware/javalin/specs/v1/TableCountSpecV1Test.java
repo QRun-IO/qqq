@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperat
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
@@ -233,6 +234,30 @@ class TableCountSpecV1Test extends SpecTestBase
       assertEquals(500, response.getStatus());
       jsonObject = JsonUtils.toJSONObject(response.getBody());
       assertEquals("Could not find Backend Variant in table memoryVariantOptions with id '3'", jsonObject.getString("error"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A table without the TABLE_COUNT capability cannot be counted.
+    *******************************************************************************/
+   @Test
+   void testCountCapabilityDisabled()
+   {
+      serverQInstance.getTable("person").withoutCapability(Capability.TABLE_COUNT);
+      try
+      {
+         HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/table/person/count")
+            .contentType(ContentType.APPLICATION_JSON.getMimeType())
+            .body(JsonUtils.toJson(Map.of("filter", new QQueryFilter())))
+            .asString();
+         assertEquals(HttpStatus.FORBIDDEN_403, response.getStatus(), response.getBody());
+         assertFalse(JsonUtils.toJSONObject(response.getBody()).has("count"));
+      }
+      finally
+      {
+         serverQInstance.getTable("person").withCapability(Capability.TABLE_COUNT);
+      }
    }
 
 

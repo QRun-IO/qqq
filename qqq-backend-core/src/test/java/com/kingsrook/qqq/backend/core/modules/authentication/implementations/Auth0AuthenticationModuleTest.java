@@ -31,10 +31,15 @@ import java.util.List;
 import java.util.Map;
 import com.auth0.exception.Auth0Exception;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
@@ -42,10 +47,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticat
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionMetaDataProducer;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
 import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
 import com.kingsrook.qqq.backend.core.state.SimpleStateKey;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule.ACCESS_TOKEN_KEY;
@@ -603,5 +611,29 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       {
          super(message);
       }
+   }
+
+
+   /*******************************************************************************
+    ** Logout deletes the session's userSession record (and only that one), so the
+    ** logged-out session UUID cannot be resumed.
+    *******************************************************************************/
+   @Test
+   void testLogoutDeletesUserSession() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      if(qInstance.getTable(UserSession.TABLE_NAME) == null)
+      {
+         qInstance.addTable(new UserSessionMetaDataProducer(TestUtils.MEMORY_BACKEND_NAME).produce(qInstance));
+      }
+      new InsertAction().execute(new InsertInput(UserSession.TABLE_NAME).withRecords(List.of(
+         new QRecord().withValue("uuid", "logged-out-session").withValue("accessToken", "token-a").withValue("userId", "a@example.com"),
+         new QRecord().withValue("uuid", "other-session").withValue("accessToken", "token-b").withValue("userId", "b@example.com"))));
+
+      new Auth0AuthenticationModule().logout(qInstance, "logged-out-session");
+      new Auth0AuthenticationModule().logout(qInstance, null);
+
+      List<QRecord> remaining = new QueryAction().execute(new QueryInput(UserSession.TABLE_NAME).withShouldOmitHiddenFields(false).withShouldMaskPasswords(false)).getRecords();
+      assertEquals(List.of("other-session"), remaining.stream().map(record -> record.getValueString("uuid")).toList());
    }
 }

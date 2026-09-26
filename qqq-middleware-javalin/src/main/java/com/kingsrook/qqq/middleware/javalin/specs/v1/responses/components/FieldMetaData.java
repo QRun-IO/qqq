@@ -27,6 +27,7 @@ import java.util.List;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
@@ -223,7 +224,18 @@ public class FieldMetaData implements ToSchema
       return (fieldAdornments == null ? null : fieldAdornments.stream().map(a -> new FieldAdornment(a)).toList());
    }
 
-   // todo help content
+
+
+   /***************************************************************************
+    ** help content for the field (e.g., shown on view, edit and insert
+    ** screens, per each entry's roles), as in the legacy table meta-data.
+    ***************************************************************************/
+   @OpenAPIDescription("Help Contents for this field.")
+   public List<QHelpContent> getHelpContents()
+   {
+      return (this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents());
+   }
+
 
    // todo supplemental...
 

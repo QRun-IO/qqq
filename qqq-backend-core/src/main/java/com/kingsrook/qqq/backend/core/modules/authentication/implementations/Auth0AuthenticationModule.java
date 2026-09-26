@@ -49,6 +49,7 @@ import com.auth0.jwt.exceptions.TokenExpiredException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.net.Response;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -59,6 +60,7 @@ import com.kingsrook.qqq.backend.core.exceptions.AccessTokenException;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -490,6 +492,42 @@ public class Auth0AuthenticationModule implements QAuthenticationModuleInterface
          .execute();
 
       return (result.getBody().getAccessToken());
+   }
+
+
+
+   /*******************************************************************************
+    ** Invalidate a session at logout: delete its userSession record and forget the
+    ** cached access-token lookup, so the session UUID cannot be resumed.
+    *******************************************************************************/
+   @Override
+   public void logout(QInstance qInstance, String sessionUUID)
+   {
+      if(sessionUUID == null)
+      {
+         return;
+      }
+
+      QSession beforeSession = QContext.getQSession();
+      try
+      {
+         QContext.setQSession(new QSystemUserSession());
+         if(qInstance.getTable(UserSession.TABLE_NAME) != null)
+         {
+            new DeleteAction().execute(new DeleteInput(UserSession.TABLE_NAME)
+               .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.EQUALS, sessionUUID))));
+         }
+         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+         LOG.debug("Logged out session", logPair("sessionUUID", maskForLog(sessionUUID)));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error during logout", e, logPair("sessionUUID", maskForLog(sessionUUID)));
+      }
+      finally
+      {
+         QContext.setQSession(beforeSession);
+      }
    }
 
 

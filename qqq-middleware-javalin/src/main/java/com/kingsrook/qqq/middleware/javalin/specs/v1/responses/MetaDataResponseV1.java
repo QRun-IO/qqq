@@ -39,6 +39,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPILis
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppTreeNode;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.Branding;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ProcessMetaDataLight;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableMetaDataLight;
 
@@ -67,6 +68,9 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    @OpenAPIDescription("Map of all widgets within the QQQ Instance (that the user has permission to see that they exist).")
    @OpenAPIMapValueType(value = ProcessMetaDataLight.class, useRef = true)
    private Map<String, WidgetMetaData> widgets;
+
+   @OpenAPIDescription("Application identity (names, logo, icon, accent colors and banners), when the instance defines it.")
+   private Branding branding;
 
 
 
@@ -106,6 +110,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
          widgets.put(widget.getName(), new WidgetMetaData(widget));
       }
 
+      branding = metaDataOutput.getBranding() == null ? null : new Branding(metaDataOutput.getBranding());
    }
 
 
@@ -173,5 +178,16 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    public Map<String, WidgetMetaData> getWidgets()
    {
       return widgets;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for branding
+    **
+    *******************************************************************************/
+   public Branding getBranding()
+   {
+      return branding;
    }
 }

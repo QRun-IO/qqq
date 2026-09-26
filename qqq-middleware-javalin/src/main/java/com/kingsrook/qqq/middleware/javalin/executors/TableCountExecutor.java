@@ -33,9 +33,11 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.JoinedTablePermissions;
+import com.kingsrook.qqq.middleware.javalin.TableCapabilities;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableCountInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableCountOutputInterface;
 import org.apache.commons.lang3.BooleanUtils;
@@ -67,6 +69,7 @@ public class TableCountExecutor extends AbstractMiddlewareExecutor<TableCountInp
          countInput.setInputSource(QInputSource.USER);
 
          PermissionsHelper.checkTablePermissionThrowing(countInput, TablePermissionSubType.READ);
+         TableCapabilities.checkCapabilityThrowing(input.getTableName(), Capability.TABLE_COUNT);
 
          countInput.setFilter(input.getFilter());
          countInput.setQueryJoins(input.getJoins());

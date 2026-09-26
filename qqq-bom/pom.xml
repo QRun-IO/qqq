@@ -116,6 +116,12 @@
             <artifactId>qqq-utility-lambdas</artifactId>
             <version>${revision}</version>
          </dependency>
+         <!-- Default admin dashboard (QRun-IO/qqq-frontend-next), served at / by qqq-middleware-javalin -->
+         <dependency>
+            <groupId>com.kingsrook.qqq</groupId>
+            <artifactId>qqq-frontend-next</artifactId>
+            <version>0.2.1</version>
+         </dependency>
       </dependencies>
    </dependencyManagement>
 

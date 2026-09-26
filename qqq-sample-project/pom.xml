@@ -34,6 +34,7 @@
    </parent>
 
    <properties>
+      <qqq.frontend.next.version>0.2.1</qqq.frontend.next.version>
       <qqq.frontend.material-dashboard.version>0.41.0</qqq.frontend.material-dashboard.version>
       <!-- Skip deployment to Maven Central - this is a sample project, not a library -->
       <maven.deploy.skip>true</maven.deploy.skip>
@@ -67,6 +68,13 @@
          <artifactId>qqq-middleware-picocli</artifactId>
          <version>${revision}</version>
       </dependency>
+      <!-- default admin dashboard, served at / -->
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-frontend-next</artifactId>
+         <version>${qqq.frontend.next.version}</version>
+      </dependency>
+      <!-- Material Dashboard: widget metadata classes, and the UI with -Dqqq.javalin.frontend=material -->
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-frontend-material-dashboard</artifactId>
@@ -203,6 +211,10 @@
                   <version>3.5.4</version>
                   <configuration>
                      <argLine>@{jaCoCoArgLine}</argLine>
+                     <!-- The Selenium browser suites exercise the Material Dashboard, selected explicitly. -->
+                     <systemPropertyVariables>
+                        <qqq.javalin.frontend>material</qqq.javalin.frontend>
+                     </systemPropertyVariables>
                   </configuration>
                   <executions>
                      <execution>

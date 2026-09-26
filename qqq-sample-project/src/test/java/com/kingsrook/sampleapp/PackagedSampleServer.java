@@ -61,6 +61,17 @@ class PackagedSampleServer implements AutoCloseable
     *******************************************************************************/
    static PackagedSampleServer start(Class<?> launcher, Path directory, List<String> arguments) throws Exception
    {
+      String frontend = System.getProperty("qqq.javalin.frontend");
+      return start(launcher, directory, arguments, frontend == null ? List.of() : List.of("-Dqqq.javalin.frontend=" + frontend));
+   }
+
+
+
+   /*******************************************************************************
+    ** Run a public launcher with additional JVM options, such as a dashboard selection.
+    *******************************************************************************/
+   static PackagedSampleServer start(Class<?> launcher, Path directory, List<String> arguments, List<String> jvmOptions) throws Exception
+   {
       Path artifact = Path.of(SampleJavalinServer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
       assertTrue(Files.isRegularFile(artifact), "Acceptance must load the packaged sample");
       Path bundle = artifact.resolveSibling(artifact.getFileName().toString().replace(".jar", "-jar-with-dependencies.jar"));
@@ -71,6 +82,7 @@ class PackagedSampleServer implements AutoCloseable
       ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
          .filter(argument -> argument.startsWith("-javaagent:") && argument.contains("org.jacoco.agent"))
          .forEach(command::add);
+      command.addAll(jvmOptions);
       command.addAll(List.of(
          "-Dqqq.sample.mockAuthentication=true", "-Dqqq.sample.port=0",
          "-cp", bundle.toString(), launcher.getName()));

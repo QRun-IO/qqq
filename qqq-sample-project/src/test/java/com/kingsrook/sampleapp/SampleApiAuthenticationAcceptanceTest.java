@@ -26,16 +26,18 @@ import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.ConcurrentModificationException;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
-import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -49,10 +51,10 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.module.api.actions.BaseAPIActionUtil;
 import com.kingsrook.qqq.backend.module.api.model.AuthorizationType;
-import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
-import com.kingsrook.qqq.backend.module.api.model.metadata.APITableBackendDetails;
 import com.kingsrook.qqq.backend.module.api.model.OutboundAPILog;
 import com.kingsrook.qqq.backend.module.api.model.OutboundAPILogMetaDataProvider;
+import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
+import com.kingsrook.qqq.backend.module.api.model.metadata.APITableBackendDetails;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.apache.http.client.methods.HttpRequestBase;
@@ -295,8 +297,18 @@ class SampleApiAuthenticationAcceptanceTest
       QRecord log = null;
       for(int attempt = 0; attempt < 100 && log == null; attempt++)
       {
-         List<QRecord> rows = new QueryAction().execute(new QueryInput(OutboundAPILog.TABLE_NAME)).getRecords();
-         log = rows.stream().filter(row -> row.getValueString("url").startsWith(fixture.baseUrl())).findFirst().orElse(null);
+         try
+         {
+            List<QRecord> rows = new QueryAction().execute(new QueryInput(OutboundAPILog.TABLE_NAME)).getRecords();
+            log = rows.stream().filter(row -> row.getValueString("url").startsWith(fixture.baseUrl())).findFirst().orElse(null);
+         }
+         catch(QException e)
+         {
+            if(!(e.getCause() instanceof ConcurrentModificationException))
+            {
+               throw e;
+            }
+         }
          if(log == null)
          {
             Thread.sleep(10);
@@ -421,8 +433,8 @@ class SampleApiAuthenticationAcceptanceTest
             acceptedRequests.incrementAndGet();
          }
          respond(exchange, authorized ? 200 : 401,
-            authorized ? "{\"id\":7,\"name\":\"accepted\",\"credentialEcho\":\"" +
-               (mode == AuthorizationType.CUSTOM ? CUSTOM_SECRET : mode == AuthorizationType.OAUTH2 ? TOKEN + (rejectFirstBearer ? "-2" : "-1") : KEY) + "\"}"
+            authorized ? "{\"id\":7,\"name\":\"accepted\",\"credentialEcho\":\""
+               + (mode == AuthorizationType.CUSTOM ? CUSTOM_SECRET : mode == AuthorizationType.OAUTH2 ? TOKEN + (rejectFirstBearer ? "-2" : "-1") : KEY) + "\"}"
                : echoCredentialOnReject ? "denied " + exchange.getRequestURI() : "denied");
       }
 

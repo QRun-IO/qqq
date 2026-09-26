@@ -35,6 +35,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -108,6 +109,7 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.Level;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -118,6 +120,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class BaseAPIActionUtil
 {
+   private static final Set<String> SAFE_PROVIDER_ERROR_CODES = Set.of("AUTHENTICATION_ERROR", "TRACKER.INVALID");
    private final QLogger LOG = QLogger.getLogger(BaseAPIActionUtil.class);
 
    protected APIBackendMetaData       backendMetaData;
@@ -657,7 +660,46 @@ public class BaseAPIActionUtil
       }
 
       String warningMessage = "HTTP " + request.getMethod() + " for table [" + table.getName() + "] failed with status " + statusCode;
+      String providerCode = safeProviderErrorCode(response.getContent());
+      if(providerCode != null)
+      {
+         warningMessage += ": " + providerCode;
+      }
       throw (new QBadHttpResponseStatusException(warningMessage, response));
+   }
+
+
+
+   /*******************************************************************************
+    ** Only explicitly recognized provider codes may escape an error body.
+    *******************************************************************************/
+   private static String safeProviderErrorCode(String body)
+   {
+      if(!StringUtils.hasContent(body))
+      {
+         return null;
+      }
+
+      try
+      {
+         JSONObject error = new JSONObject(body).optJSONObject("error");
+         if(error != null)
+         {
+            for(String field : List.of("code", "message"))
+            {
+               String code = error.optString(field, null);
+               if(code != null && SAFE_PROVIDER_ERROR_CODES.contains(code))
+               {
+                  return code;
+               }
+            }
+         }
+      }
+      catch(JSONException e)
+      {
+         return null;
+      }
+      return null;
    }
 
 

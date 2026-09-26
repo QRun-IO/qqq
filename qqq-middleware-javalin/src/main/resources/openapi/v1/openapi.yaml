@@ -90,6 +90,17 @@ components:
           description: "The type of node (table, process, report, app)"
           type: "string"
       type: "object"
+    AssociatedScriptMetaData:
+      properties:
+        fieldName:
+          description: "Name of the field, in the record's table, that references\
+            \ the script."
+          type: "string"
+        scriptTypeId:
+          description: "Id of the script type (a scriptType record) of the scripts\
+            \ this field references."
+          type: "object"
+      type: "object"
     Association:
       properties:
         associatedTableName:
@@ -529,6 +540,17 @@ components:
           description: "Optional object with application-defined values."
           type: "object"
       type: "object"
+    MaterialDashboardInstanceSettings:
+      properties:
+        processNamesToAddToAllQueryAndViewScreens:
+          description: "Names of processes to offer on the query and record-view screens\
+            \ of every table, in their configured order.  Only processes that the\
+            \ user may see (i.e., that are in the meta-data's `processes` map) are\
+            \ listed, so the list may be empty."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
     MetaDataResponseV1:
       properties:
         appTree:
@@ -602,6 +624,25 @@ components:
             type: "object"
           description: "Map of all reports within the QQQ Instance (that the user\
             \ has permission to see that they exist)."
+          type: "object"
+        supplementalInstanceMetaData:
+          description: "Settings from supplemental modules that a frontend may use\
+            \ (an explicit allow-list - not the supplemental meta-data objects themselves).\
+            \  Omitted when the instance defines none of them."
+          properties:
+            materialDashboard:
+              description: "Settings from the instance's `materialDashboard` supplemental\
+                \ meta-data, when the instance defines it."
+              properties:
+                processNamesToAddToAllQueryAndViewScreens:
+                  description: "Names of processes to offer on the query and record-view\
+                    \ screens of every table, in their configured order.  Only processes\
+                    \ that the user may see (i.e., that are in the meta-data's `processes`\
+                    \ map) are listed, so the list may be empty."
+                  items:
+                    type: "string"
+                  type: "array"
+              type: "object"
           type: "object"
         tables:
           additionalProperties:
@@ -1244,6 +1285,117 @@ components:
           - "FULL"
           type: "string"
       type: "object"
+    RecordAssociatedScriptLogsResponseV1:
+      properties:
+        scriptLogRecords:
+          description: "The script revision's logs (scriptLog records, up to 100),\
+            \ newest (highest id) first.  Each record's values include `scriptLogLine`:\
+            \  the log's lines, as a list of records (each with its own `values`,\
+            \ e.g., `text`)."
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+      type: "object"
+    RecordAssociatedScriptStoreResponseV1:
+      properties:
+        scriptId:
+          description: "Id of the script (which is inserted, and referenced from the\
+            \ record, if the record did not yet reference one)."
+          type: "number"
+        scriptName:
+          description: "Name of the script."
+          type: "string"
+        scriptRevisionId:
+          description: "Id of the new script revision."
+          type: "number"
+        scriptRevisionSequenceNo:
+          description: "Sequence number of the new revision within the script (1 for\
+            \ its first revision)."
+          type: "number"
+      type: "object"
+    RecordDeveloperModeAssociatedScript:
+      properties:
+        associatedScript:
+          $ref: "#/components/schemas/AssociatedScriptMetaData"
+          description: "Definition of the associated script, from the table's meta-data."
+        script:
+          $ref: "#/components/schemas/OutputRecord"
+          description: "The script record that the record references.  Omitted if\
+            \ the record does not reference an existing script."
+        scriptRevisions:
+          description: "The script's revisions (scriptRevision records), newest (highest\
+            \ id) first.  Present (possibly empty) when script is."
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        scriptType:
+          $ref: "#/components/schemas/OutputRecord"
+          description: "The scriptType record of the associated script.  Omitted if\
+            \ there is no such record."
+        testInputFields:
+          description: "Input fields for testing the script.  Present (possibly empty)\
+            \ when the associated script has a script tester."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        testOutputFields:
+          description: "Output fields from testing the script.  Present (possibly\
+            \ empty) when the associated script has a script tester."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+      type: "object"
+    RecordDeveloperModeResponseV1:
+      properties:
+        associatedScripts:
+          description: "Each of the table's associated scripts, with the script the\
+            \ record references (if any).  Empty when the table has no associated\
+            \ scripts (or the instance has no script tables)."
+          items:
+            $ref: "#/components/schemas/RecordDeveloperModeAssociatedScript"
+          type: "array"
+        record:
+          description: "The record, with display values (and possible values translated)."
+          properties:
+            associatedRecords:
+              additionalProperties:
+                type: "array"
+              description: "Records associated with this record, keyed by association\
+                \ name.  Each value is a list of records with the same shape as this\
+                \ one.  Only present when associations were requested or written."
+              type: "object"
+            displayValues:
+              description: "Formatted string versions of the values that make up the\
+                \ record.  Keys are Strings, which match the table's field names.\
+                \ Values are all Strings."
+              type: "object"
+            errors:
+              description: "Messages for errors on this record (for example on an\
+                \ associated record that could not be written).  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
+            recordLabel:
+              description: "Label to identify the record to a user."
+              type: "string"
+            tableName:
+              description: "Name of the table that the record is from."
+              type: "string"
+            values:
+              description: "Raw values that make up the record.  Keys are Strings,\
+                \ which match the table's field names. Values can be any type, as\
+                \ per the table's fields.  Single-record responses (get, insert, update)\
+                \ include fields whose value is null; query results omit them."
+              type: "object"
+            warnings:
+              description: "Messages for warnings on this record.  Omitted when there\
+                \ are none."
+              items:
+                type: "string"
+              type: "array"
+          type: "object"
+      type: "object"
     RecordSearchResponseV1:
       properties:
         results:
@@ -1287,6 +1439,13 @@ components:
           description: "Process that runs this report, when it has one; otherwise\
             \ it runs from GET /reports/{reportName}."
           type: "string"
+      type: "object"
+    SupplementalInstanceMetaData:
+      properties:
+        materialDashboard:
+          $ref: "#/components/schemas/MaterialDashboardInstanceSettings"
+          description: "Settings from the instance's `materialDashboard` supplemental\
+            \ meta-data, when the instance defines it."
       type: "object"
     TableCountResponseV1:
       properties:
@@ -3227,6 +3386,229 @@ paths:
       summary: "Insert a record into a table"
       tags:
       - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}/developer:
+    get:
+      description: "Fetch a single record (with display values), along with each of\
+        \ its table's associated scripts:\nthe script type, the script that the record\
+        \ references (if any) with its revisions (newest first),\nand, for scripts\
+        \ that can be tested, the fields to test them with.\n\nRequires permission\
+        \ to read records from the table.  If the record is not found, a 404 is returned."
+      parameters:
+      - description: "Name of the table that the record is in."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    associatedScripts:
+                    - associatedScript:
+                        fieldName: "greetingScriptId"
+                        scriptTypeId: 1
+                      script:
+                        recordLabel: "Darin Kelkhoff - Greeting"
+                        tableName: "script"
+                        values:
+                          id: 7
+                          name: "Darin Kelkhoff - Greeting"
+                          scriptTypeId: 1
+                          currentScriptRevisionId: 12
+                      scriptRevisions:
+                      - tableName: "scriptRevision"
+                        values:
+                          id: 12
+                          scriptId: 7
+                          sequenceNo: 2
+                          commitMessage: "Say hello by name"
+                      scriptType:
+                        recordLabel: "Greeting"
+                        tableName: "scriptType"
+                        values:
+                          id: 1
+                          name: "Greeting"
+                      testInputFields:
+                      - displayFormat: "%s"
+                        isEditable: true
+                        isHeavy: false
+                        isHidden: false
+                        isRequired: false
+                        label: "Name"
+                        name: "name"
+                        type: "STRING"
+                      testOutputFields:
+                      - displayFormat: "%s"
+                        isEditable: true
+                        isHeavy: false
+                        isHidden: false
+                        isRequired: false
+                        label: "Message"
+                        name: "message"
+                        type: "STRING"
+                    record:
+                      displayValues:
+                        id: "1"
+                        firstName: "Darin"
+                        greetingScriptId: "7"
+                      recordLabel: "Darin Kelkhoff"
+                      tableName: "person"
+                      values:
+                        id: 1
+                        firstName: "Darin"
+                        greetingScriptId: 7
+              schema:
+                $ref: "#/components/schemas/RecordDeveloperModeResponseV1"
+          description: "The record, with its table's associated scripts"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get a record's associated scripts (developer mode)"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}/developer/associatedScript/{fieldName}:
+    post:
+      description: "Save new contents for the script that a record references in one\
+        \ of its table's associated script\nfields, as a new revision of that script.\
+        \  If the record does not yet reference a script, one is\ninserted (and the\
+        \ record is updated to reference it).\n\nRequires permission to edit records\
+        \ in the table."
+      parameters:
+      - description: "Name of the table that the record is in."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the associated script field (in the table) whose script\
+          \ is being stored."
+        example: "greetingScriptId"
+        in: "path"
+        name: "fieldName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                contents:
+                  description: "The script's new contents (its code)."
+                  example: "return (\"Hello, \" + input.getName());"
+                  type: "string"
+                commitMessage:
+                  description: "A message describing the change.  If not given, a\
+                    \ default message is used."
+                  example: "Say hello by name"
+                  type: "string"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    scriptId: 7
+                    scriptName: "Darin Kelkhoff - Greeting"
+                    scriptRevisionId: 13
+                    scriptRevisionSequenceNo: 3
+              schema:
+                $ref: "#/components/schemas/RecordAssociatedScriptStoreResponseV1"
+          description: "The script, and the revision that was stored"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Store a new revision of a record's associated script (developer mode)"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}/developer/associatedScript/{fieldName}/{scriptRevisionId}/logs:
+    get:
+      description: "Fetch the logs (up to 100, newest first) of runs of a script revision,\
+        \ each with its log lines.\n\nRequires permission to read records from the\
+        \ table, and the record must exist (else a 404 is returned)."
+      parameters:
+      - description: "Name of the table that the record is in."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the associated script field (in the table) whose script\
+          \ the revision is of."
+        example: "greetingScriptId"
+        in: "path"
+        name: "fieldName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Id of the script revision to get logs for."
+        example: "12"
+        in: "path"
+        name: "scriptRevisionId"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                TODO:
+                  value:
+                    scriptLogRecords:
+                    - tableName: "scriptLog"
+                      values:
+                        id: 101
+                        scriptRevisionId: 12
+                        startTimestamp: "2024-10-21T14:30:00Z"
+                        hadError: false
+                        scriptLogLine:
+                        - tableName: "scriptLogLine"
+                          values:
+                            id: 1001
+                            scriptLogId: 101
+                            timestamp: "2024-10-21T14:30:00Z"
+                            text: "Hello, Darin"
+              schema:
+                $ref: "#/components/schemas/RecordAssociatedScriptLogsResponseV1"
+          description: "The script revision's logs"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get the logs of a record's associated script revision (developer mode)"
+      tags:
+      - "Tables"
   /qqq/v1/table/{tableName}/possibleValues/{fieldName}:
     post:
       description: "Search for possible values associated with a field on a table.\n\
@@ -3516,6 +3898,14 @@ paths:
         required: true
         schema:
           type: "string"
+      - description: "For processes on tables that use variant backends, JSON object\
+          \ naming the variant to use (the same `type` and `id` as in table requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
+        schema:
+          type: "string"
       requestBody:
         content:
           multipart/form-data:
@@ -3570,6 +3960,12 @@ paths:
                     \ with an uploaded file."
                   format: "binary"
                   type: "string"
+                tableVariant:
+                  description: "For processes on tables that use variant backends,\
+                    \ JSON object naming the variant to use (the same `type` and `id`\
+                    \ as in table requests).  May also be given as a query parameter."
+                  example: "{\"type\":\"store\",\"id\":\"1\"}"
+                  type: "string"
               type: "object"
         required: false
       responses:
@@ -3599,8 +3995,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3611,8 +4007,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3678,6 +4074,14 @@ paths:
         required: true
         schema:
           type: "string"
+      - description: "For processes on tables that use variant backends, JSON object\
+          \ naming the variant to use (the same `type` and `id` as in table requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
+        schema:
+          type: "string"
       requestBody:
         content:
           multipart/form-data:
@@ -3700,6 +4104,12 @@ paths:
                   description: "A file upload, for process steps which expect an uploaded\
                     \ file."
                   format: "binary"
+                  type: "string"
+                tableVariant:
+                  description: "For processes on tables that use variant backends,\
+                    \ JSON object naming the variant to use (the same `type` and `id`\
+                    \ as in table requests).  May also be given as a query parameter."
+                  example: "{\"type\":\"store\",\"id\":\"1\"}"
                   type: "string"
               type: "object"
         required: false
@@ -3730,8 +4140,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3742,8 +4152,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3805,6 +4215,14 @@ paths:
         schema:
           format: "uuid"
           type: "string"
+      - description: "For processes on tables that use variant backends, JSON object\
+          \ naming the variant to use (the same `type` and `id` as in table requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
+        schema:
+          type: "string"
       responses:
         200:
           content:
@@ -3832,8 +4250,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -3844,8 +4262,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -3911,6 +4329,14 @@ paths:
         required: false
         schema:
           type: "integer"
+      - description: "For processes on tables that use variant backends, JSON object\
+          \ naming the variant to use (the same `type` and `id` as in table requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
+        schema:
+          type: "string"
       responses:
         200:
           content:

@@ -58,6 +58,7 @@ public class ProcessExecutorUtils
       // processInitOrStepOutput.setValues(getValuesForCaller(processName, runProcessOutput));
 
       runProcessOutput.getProcessState().getNextStepName().ifPresent(nextStep -> processInitOrStepOutput.setNextStep(nextStep));
+      runProcessOutput.getProcessState().getBackStepName().ifPresent(backStep -> processInitOrStepOutput.setBackStep(backStep));
 
       if(runProcessOutput.getProcessMetaDataAdjustment() != null)
       {

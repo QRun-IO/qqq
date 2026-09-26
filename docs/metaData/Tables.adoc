@@ -64,6 +64,18 @@ new QFieldMetaData("birthDate", QFieldType.DATE)
 .withRecordLabelFields(List.of("name", "birthDate"))
 ----
 
+* `searchFields` - *List of String* - Fields that record search matches a search term against (`RecordSearchAction`, and the v1 `POST /search` endpoint that the dashboard's global search uses).
+String fields (`STRING`, `TEXT`, `HTML`) match when they contain the term, ignoring case; integer fields (`INTEGER`, `LONG`) match when they equal a numeric term.
+A table without search fields is not searched.
+Search fields must be visible, non-password fields of the table, and the table's backend must not use variants.
+Record search only searches tables the user may read, applies record security locks, and returns a limited number of records per table.
+The table meta data lists `searchFields` only to users who may read the table, so a frontend searches only when some table declares them.
+
+[source,java]
+----
+.withSearchFields("firstName", "lastName", "email")
+----
+
 * `sections` - *List of <<QFieldSection>>* - Mechanism to organize fields within user interfaces, into logical sections.
 If any sections are present in the table meta data, then all fields in the table must be listed in exactly 1 section.
 If no sections are defined, then instance enrichment will define default sections.

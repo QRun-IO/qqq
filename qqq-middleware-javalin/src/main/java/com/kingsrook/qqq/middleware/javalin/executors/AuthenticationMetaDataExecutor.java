@@ -41,6 +41,7 @@ public class AuthenticationMetaDataExecutor extends AbstractMiddlewareExecutor<A
    public void execute(AuthenticationMetaDataInput input, AuthenticationMetaDataOutputInterface output) throws QException
    {
       output.setAuthenticationMetaData(QContext.getQInstance().getAuthentication());
+      output.setBranding(QContext.getQInstance().getBranding());
    }
 
 }

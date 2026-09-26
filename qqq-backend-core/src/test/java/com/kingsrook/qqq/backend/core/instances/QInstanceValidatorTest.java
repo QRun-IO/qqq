@@ -273,6 +273,39 @@ public class QInstanceValidatorTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Search fields: visible, non-password string or integer fields of the table,
+    ** listed once, on a table whose backend does not use variants.
+    *******************************************************************************/
+   @Test
+   void testTableSearchFields()
+   {
+      assertValidationSuccess((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("firstName", "lastName", "email", "id"));
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields(List.of()),
+         "Table person has an empty list of search fields");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("firstName", "notAField", "firstName"),
+         "Table person search field notAField is not a field on this table",
+         "Table person lists search field firstName more than once");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("birthDate", "cost", "ssn"),
+         "Table person search field birthDate must be a string",
+         "Table person search field cost must be a string",
+         "Table person search field ssn must be a string");
+
+      assertValidationFailureReasons((qInstance) ->
+      {
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON).getField("email").setIsHidden(true);
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON).withSearchFields("email");
+      }, "Table person search field email is hidden");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getTable(TestUtils.TABLE_NAME_MEMORY_VARIANT_DATA).withSearchFields("name"),
+         "Table memoryVariantData has search fields, but its backend uses variants");
+   }
+
+
+
+   /*******************************************************************************
     ** Test an instance with null backends - should throw.
     **
     *******************************************************************************/

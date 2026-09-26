@@ -1,0 +1,55 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package com.kingsrook.qqq.middleware.javalin.executors;
+
+
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.scripts.StoreAssociatedScriptInput;
+import com.kingsrook.qqq.middleware.javalin.executors.io.RecordAssociatedScriptStoreInput;
+import com.kingsrook.qqq.middleware.javalin.executors.io.RecordAssociatedScriptStoreOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.RecordDeveloperModeUtils;
+
+
+/*******************************************************************************
+ ** Store a new revision of a record's associated script - requiring EDIT
+ ** permission on the record's table, as the legacy developer route does.
+ *******************************************************************************/
+public class RecordAssociatedScriptStoreExecutor extends AbstractMiddlewareExecutor<RecordAssociatedScriptStoreInput, RecordAssociatedScriptStoreOutputInterface>
+{
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public void execute(RecordAssociatedScriptStoreInput input, RecordAssociatedScriptStoreOutputInterface output) throws QException
+   {
+      StoreAssociatedScriptInput storeAssociatedScriptInput = new StoreAssociatedScriptInput();
+      storeAssociatedScriptInput.setTableName(input.getTableName());
+      storeAssociatedScriptInput.setRecordPrimaryKey(input.getPrimaryKey());
+      storeAssociatedScriptInput.setFieldName(input.getFieldName());
+      storeAssociatedScriptInput.setCode(input.getContents());
+      storeAssociatedScriptInput.setCommitMessage(input.getCommitMessage());
+
+      output.setStoreAssociatedScriptOutput(RecordDeveloperModeUtils.storeAssociatedScript(storeAssociatedScriptInput));
+   }
+
+}

@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ManageSessionOutputInterface;
 
@@ -55,6 +56,25 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       authContext.put(Auth0AuthenticationModule.ACCESS_TOKEN_KEY, input.getAccessToken());
       authContext.put(Auth0AuthenticationModule.DO_STORE_USER_SESSION_KEY, "true");
 
+      ////////////////////////////////////////////////////////////////////////////
+      // username + password (Authorization: Basic), e.g. for TABLE_BASED auth //
+      ////////////////////////////////////////////////////////////////////////////
+      if(StringUtils.hasContent(input.getBasicAuthString()))
+      {
+         authContext.put(Auth0AuthenticationModule.BASIC_AUTH_KEY, input.getBasicAuthString());
+      }
+
+      //////////////////////////////////////////////////////////////////////////////////
+      // the values the authentication modules read besides the access token: an OAuth2 //
+      // code exchange (code, codeVerifier, redirectUri) or resuming a session.        //
+      // Only these named values - not arbitrary body keys - reach the module.        //
+      //////////////////////////////////////////////////////////////////////////////////
+      putIfPresent(authContext, "code", input.getCode());
+      putIfPresent(authContext, "codeVerifier", input.getCodeVerifier());
+      putIfPresent(authContext, "redirectUri", input.getRedirectUri());
+      putIfPresent(authContext, "sessionUUID", input.getSessionUUID());
+      putIfPresent(authContext, "uuid", input.getSessionUUID());
+
       /////////////////////////////////
       // (try to) create the session //
       /////////////////////////////////
@@ -69,6 +89,19 @@ public class ManageSessionExecutor extends AbstractMiddlewareExecutor<ManageSess
       {
          LinkedHashMap<String, Serializable> valuesForFrontend = new LinkedHashMap<>(session.getValuesForFrontend());
          output.setValues(valuesForFrontend);
+      }
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   private static void putIfPresent(Map<String, String> authContext, String key, String value)
+   {
+      if(value != null)
+      {
+         authContext.put(key, value);
       }
    }
 

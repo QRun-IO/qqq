@@ -126,7 +126,7 @@ public class QJavalinUtils
     ** the first one found, looking in that order, null if neither is found.
     ** uses try-catch on reading each of those, as they apparently can throw!
     ***************************************************************************/
-   static String getFormParamOrQueryParam(Context context, String parameterName)
+   public static String getFormParamOrQueryParam(Context context, String parameterName)
    {
       String value = null;
       try

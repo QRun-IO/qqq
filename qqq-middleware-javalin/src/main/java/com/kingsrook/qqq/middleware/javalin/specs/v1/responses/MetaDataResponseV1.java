@@ -29,6 +29,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -41,6 +42,8 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppMet
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppTreeNode;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.Branding;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ProcessMetaDataLight;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ReportMetaData;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.SupplementalInstanceMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableMetaDataLight;
 
 
@@ -66,11 +69,18 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    private Map<String, ProcessMetaDataLight> processes;
 
    @OpenAPIDescription("Map of all widgets within the QQQ Instance (that the user has permission to see that they exist).")
-   @OpenAPIMapValueType(value = ProcessMetaDataLight.class, useRef = true)
+   @OpenAPIMapValueType(value = WidgetMetaData.class)
    private Map<String, WidgetMetaData> widgets;
+
+   @OpenAPIDescription("Map of all reports within the QQQ Instance (that the user has permission to see that they exist).")
+   @OpenAPIMapValueType(value = ReportMetaData.class)
+   private Map<String, ReportMetaData> reports;
 
    @OpenAPIDescription("Application identity (names, logo, icon, accent colors and banners), when the instance defines it.")
    private Branding branding;
+
+   @OpenAPIDescription("Settings from supplemental modules that a frontend may use (an explicit allow-list - not the supplemental meta-data objects themselves).  Omitted when the instance defines none of them.")
+   private SupplementalInstanceMetaData supplementalInstanceMetaData;
 
 
 
@@ -110,7 +120,15 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
          widgets.put(widget.getName(), new WidgetMetaData(widget));
       }
 
+      reports = new HashMap<>();
+      for(QFrontendReportMetaData report : CollectionUtils.nonNullMap(metaDataOutput.getReports()).values())
+      {
+         reports.put(report.getName(), new ReportMetaData(report));
+      }
+
       branding = metaDataOutput.getBranding() == null ? null : new Branding(metaDataOutput.getBranding());
+
+      supplementalInstanceMetaData = SupplementalInstanceMetaData.of(metaDataOutput);
    }
 
 
@@ -183,11 +201,33 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 
 
    /*******************************************************************************
+    ** Getter for reports
+    **
+    *******************************************************************************/
+   public Map<String, ReportMetaData> getReports()
+   {
+      return reports;
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for branding
     **
     *******************************************************************************/
    public Branding getBranding()
    {
       return branding;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for supplementalInstanceMetaData
+    **
+    *******************************************************************************/
+   public SupplementalInstanceMetaData getSupplementalInstanceMetaData()
+   {
+      return supplementalInstanceMetaData;
    }
 }

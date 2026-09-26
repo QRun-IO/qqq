@@ -1078,6 +1078,8 @@ public class QInstanceValidator
                }
             }
 
+            validateTableSearchFields(qInstance, table);
+
             for(Map.Entry<String, QCodeReference> entry : CollectionUtils.nonNullMap(table.getCustomizers()).entrySet())
             {
                validateTableCustomizer(tableName, entry.getKey(), entry.getValue());
@@ -1267,6 +1269,41 @@ public class QInstanceValidator
                   }
                }
             }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Search fields must be distinct, visible, non-password string or integer
+    ** fields of the table, and the table's backend must not use variants (a
+    ** cross-table search has no variant to query with).
+    *******************************************************************************/
+   private void validateTableSearchFields(QInstance qInstance, QTableMetaData table)
+   {
+      if(table.getSearchFields() == null)
+      {
+         return;
+      }
+
+      String tableName = table.getName();
+      assertCondition(!table.getSearchFields().isEmpty(), "Table " + tableName + " has an empty list of search fields (leave it null to make the table unsearchable).");
+
+      QBackendMetaData backend = qInstance.getBackend(table.getBackendName());
+      assertCondition(backend == null || !BooleanUtils.isTrue(backend.getUsesVariants()), "Table " + tableName + " has search fields, but its backend uses variants, which record search does not support.");
+
+      Set<String> usedSearchFields = new HashSet<>();
+      for(String searchFieldName : table.getSearchFields())
+      {
+         assertCondition(usedSearchFields.add(searchFieldName), "Table " + tableName + " lists search field " + searchFieldName + " more than once.");
+
+         QFieldMetaData field = CollectionUtils.nonNullMap(table.getFields()).get(searchFieldName);
+         if(assertCondition(field != null, "Table " + tableName + " search field " + searchFieldName + " is not a field on this table."))
+         {
+            assertCondition(!field.getIsHidden(), "Table " + tableName + " search field " + searchFieldName + " is hidden (hidden fields may not be searched).");
+            assertCondition(field.getType() != null && (field.getType().isStringLike() || field.getType().isIntegral()) && !field.getType().needsMasked(),
+               "Table " + tableName + " search field " + searchFieldName + " must be a string (STRING, TEXT, HTML) or integer (INTEGER, LONG) field.");
          }
       }
    }

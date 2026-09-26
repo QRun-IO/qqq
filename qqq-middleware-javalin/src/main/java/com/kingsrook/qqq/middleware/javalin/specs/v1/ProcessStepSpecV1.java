@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
@@ -113,7 +114,9 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING))
             .withExample("inputForm")
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -143,6 +146,8 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
                   .withType(Type.STRING)
                   .withFormat("binary")
                   .withDescription("A file upload, for process steps which expect an uploaded file."))
+
+               .withProperty(ProcessSpecUtilsV1.TABLE_VARIANT_PARAM, ProcessSpecUtilsV1.defineTableVariantFormProperty())
             )
          );
    }
@@ -160,12 +165,30 @@ public class ProcessStepSpecV1 extends AbstractEndpointSpec<ProcessInitOrStepInp
 
       processInitOrStepInput.setProcessName(getRequestParam(context, "processName"));
       processInitOrStepInput.setProcessUUID(getRequestParam(context, "processUUID"));
-      processInitOrStepInput.setStartAfterStep(getRequestParam(context, "stepName"));
+      ///////////////////////////////////////////////////////////////////////////////////
+      // with isStepBack=true, the named step is the process's back step: restart at it //
+      ///////////////////////////////////////////////////////////////////////////////////
+      String stepName = getRequestParam(context, "stepName");
+      if("true".equalsIgnoreCase(context.queryParam("isStepBack")))
+      {
+         processInitOrStepInput.setStartAtStep(stepName);
+      }
+      else
+      {
+         processInitOrStepInput.setStartAfterStep(stepName);
+      }
       processInitOrStepInput.setStepTimeoutMillis(Objects.requireNonNullElse(getRequestParamInteger(context, "stepTimeoutMillis"), DEFAULT_ASYNC_STEP_TIMEOUT_MILLIS));
       processInitOrStepInput.setValues(getRequestParamMap(context, "values"));
+      processInitOrStepInput.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
 
-      // todo - uploaded files
-      // todo - archive uploaded files?
+      /////////////////////////////////////////////////////////////////////////
+      // uploaded files are stored and referenced from their process values //
+      /////////////////////////////////////////////////////////////////////////
+      if(processInitOrStepInput.getValues() == null)
+      {
+         processInitOrStepInput.setValues(new LinkedHashMap<>());
+      }
+      ProcessSpecUtilsV1.addUploadedFiles(context, processInitOrStepInput);
 
       return (processInitOrStepInput);
    }

@@ -45,6 +45,7 @@ import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardRouteProvider;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardSecurityHeaders;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.ProcessBasedRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SimpleFileSystemDirectoryRouter;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.SpaPathUtils;
@@ -98,6 +99,8 @@ public class QApplicationJavalinServer
    private Consumer<Javalin>                    javalinConfigurationCustomizer      = null;
    private Consumer<JavalinConfig>              javalinConfigCustomizer;
    private QJavalinMetaData                     javalinMetaData                     = null;
+
+   private Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer = null;
 
    private long                lastQInstanceHotSwapMillis;
    private long                millisBetweenHotSwaps = 2500;
@@ -168,7 +171,7 @@ public class QApplicationJavalinServer
 
       if(serveNext)
       {
-         addRouteProvider(new NextDashboardRouteProvider());
+         addRouteProvider(new NextDashboardRouteProvider().withSecurityHeadersCustomizer(nextDashboardSecurityHeadersCustomizer));
       }
 
       LOG.info("Admin dashboard selection", LogUtils.logPair("next", serveNext), LogUtils.logPair("materialDashboard", serveMaterial));
@@ -712,6 +715,40 @@ public class QApplicationJavalinServer
    public QApplicationJavalinServer withServeFrontendNext(boolean serveFrontendNext)
    {
       this.serveFrontendNext = serveFrontendNext;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for nextDashboardSecurityHeadersCustomizer
+    *******************************************************************************/
+   public Consumer<NextDashboardSecurityHeaders> getNextDashboardSecurityHeadersCustomizer()
+   {
+      return (this.nextDashboardSecurityHeadersCustomizer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for nextDashboardSecurityHeadersCustomizer: adjusts the
+    ** Content-Security-Policy and other security headers the Next dashboard is
+    ** served with (see NextDashboardSecurityHeaders). Set before start().
+    *******************************************************************************/
+   public void setNextDashboardSecurityHeadersCustomizer(Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer)
+   {
+      this.nextDashboardSecurityHeadersCustomizer = nextDashboardSecurityHeadersCustomizer;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for nextDashboardSecurityHeadersCustomizer, for example
+    ** {@code withNextDashboardSecurityHeadersCustomizer(headers -> headers.withSources("img-src", "https://cdn.example.com"))}.
+    *******************************************************************************/
+   public QApplicationJavalinServer withNextDashboardSecurityHeadersCustomizer(Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer)
+   {
+      this.nextDashboardSecurityHeadersCustomizer = nextDashboardSecurityHeadersCustomizer;
       return (this);
    }
 

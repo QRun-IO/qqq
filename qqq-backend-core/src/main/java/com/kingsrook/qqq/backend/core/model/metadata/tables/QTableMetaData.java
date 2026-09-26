@@ -98,6 +98,8 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
    private String       recordLabelFormat;
    private List<String> recordLabelFields;
 
+   private List<String> searchFields;
+
    private List<QFieldSection> sections;
 
    private List<AssociatedScript> associatedScripts;
@@ -1809,6 +1811,11 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
             clone.setRecordLabelFields(new ArrayList<>(recordLabelFields));
          }
 
+         if(searchFields != null)
+         {
+            clone.setSearchFields(new ArrayList<>(searchFields));
+         }
+
          if(sections != null)
          {
             List<QFieldSection> clonedSections = new ArrayList<>();
@@ -1998,6 +2005,59 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
          this.menus = new ArrayList<>();
       }
       this.menus.add(menu);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Getter for searchFields
+    * @see #withSearchFields(List)
+    *******************************************************************************/
+   public List<String> getSearchFields()
+   {
+      return (this.searchFields);
+   }
+
+
+
+   /*******************************************************************************
+    * Setter for searchFields
+    * @see #withSearchFields(List)
+    *******************************************************************************/
+   public void setSearchFields(List<String> searchFields)
+   {
+      this.searchFields = searchFields;
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for searchFields
+    *
+    * @param searchFields
+    * Names of the fields that record search (RecordSearchAction, the v1
+    * {@code /search} endpoint) matches a search term against.  String fields
+    * match when they contain the term (case-insensitively); integer fields match
+    * when they equal a numeric term.  A table with no search fields is not
+    * searched.  Hidden and password fields are not allowed.
+    * @return this
+    *******************************************************************************/
+   public QTableMetaData withSearchFields(List<String> searchFields)
+   {
+      this.searchFields = searchFields;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    * Fluent setter for searchFields
+    * @see #withSearchFields(List)
+    *******************************************************************************/
+   public QTableMetaData withSearchFields(String... searchFields)
+   {
+      this.searchFields = new ArrayList<>(Arrays.asList(searchFields));
       return (this);
    }
 

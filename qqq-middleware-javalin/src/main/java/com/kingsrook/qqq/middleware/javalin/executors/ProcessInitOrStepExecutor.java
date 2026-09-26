@@ -75,6 +75,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
 
       String processName    = input.getProcessName();
       String startAfterStep = input.getStartAfterStep();
+      String startAtStep    = input.getStartAtStep();
       String processUUID    = input.getProcessUUID();
 
       if(processUUID == null)
@@ -82,11 +83,23 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          processUUID = UUID.randomUUID().toString();
       }
 
-      LOG.info(startAfterStep == null ? "Initiating process [" + processName + "] [" + processUUID + "]"
-         : "Resuming process [" + processName + "] [" + processUUID + "] after step [" + startAfterStep + "]");
+      if(startAtStep != null)
+      {
+         LOG.info("Resuming process [" + processName + "] [" + processUUID + "] at step [" + startAtStep + "]");
+      }
+      else
+      {
+         LOG.info(startAfterStep == null ? "Initiating process [" + processName + "] [" + processUUID + "]"
+            : "Resuming process [" + processName + "] [" + processUUID + "] after step [" + startAfterStep + "]");
+      }
 
       try
       {
+         /////////////////////////////////////////////////////////////////////////
+         // a variant-backed table's process runs against the requested variant //
+         /////////////////////////////////////////////////////////////////////////
+         ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
          RunProcessInput runProcessInput = new RunProcessInput();
          QContext.pushAction(runProcessInput);
 
@@ -95,6 +108,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          runProcessInput.setFrontendStepBehavior(input.getFrontendStepBehavior());
          runProcessInput.setProcessUUID(processUUID);
          runProcessInput.setStartAfterStep(startAfterStep);
+         runProcessInput.setStartAtStep(startAtStep);
          runProcessInput.setValues(Objects.requireNonNullElseGet(input.getValues(), HashMap::new));
 
          if(input.getRecordsFilter() != null)
@@ -124,7 +138,7 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          }
 
          String reportName = ValueUtils.getValueAsString(runProcessInput.getValue("reportName"));
-         QJavalinAccessLogger.logStart(startAfterStep == null ? "processInit" : "processStep", logPair("processName", processName), logPair("processUUID", processUUID),
+         QJavalinAccessLogger.logStart(startAfterStep == null && startAtStep == null ? "processInit" : "processStep", logPair("processName", processName), logPair("processUUID", processUUID),
             StringUtils.hasContent(startAfterStep) ? logPair("startAfterStep", startAfterStep) : null,
             StringUtils.hasContent(reportName) ? logPair("reportName", reportName) : null);
 

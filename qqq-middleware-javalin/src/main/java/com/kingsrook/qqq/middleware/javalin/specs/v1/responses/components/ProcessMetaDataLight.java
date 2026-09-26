@@ -136,4 +136,37 @@ public class ProcessMetaDataLight implements ToSchema
       return (this.wrapped.getHasPermission());
    }
 
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Name of the process's icon.")
+   public String getIconName()
+   {
+      return (this.wrapped.getIconName());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Fewest input records the process runs with (for processes on a table's records).")
+   public Integer getMinInputRecords()
+   {
+      return (this.wrapped.getMinInputRecords());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Most input records the process runs with, when it has a maximum.")
+   public Integer getMaxInputRecords()
+   {
+      return (this.wrapped.getMaxInputRecords());
+   }
+
 }

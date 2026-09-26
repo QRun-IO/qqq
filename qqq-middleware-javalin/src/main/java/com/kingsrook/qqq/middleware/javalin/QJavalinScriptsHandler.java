@@ -29,40 +29,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
-import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
-import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.actions.scripts.StoreAssociatedScriptAction;
 import com.kingsrook.qqq.backend.core.actions.scripts.TestScriptActionInterface;
-import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
-import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
-import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
-import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.StoreAssociatedScriptInput;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.StoreAssociatedScriptOutput;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.TestScriptInput;
 import com.kingsrook.qqq.backend.core.model.actions.scripts.TestScriptOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeType;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.AssociatedScript;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
-import com.kingsrook.qqq.backend.core.model.scripts.Script;
-import com.kingsrook.qqq.backend.core.model.scripts.ScriptType;
-import com.kingsrook.qqq.backend.core.processes.utils.GeneralProcessUtils;
-import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.RecordDeveloperModeUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.RecordDeveloperModeUtils.AssociatedScriptDetails;
 import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -108,29 +91,8 @@ public class QJavalinScriptsHandler
 
          QJavalinImplementation.setupSession(context, getInput);
          QJavalinAccessLogger.logStart("getRecordDeveloperMode", logPair("table", tableName), logPair("primaryKey", primaryKey));
-         getInput.setTableName(tableName);
-         getInput.setShouldGenerateDisplayValues(true);
-         getInput.setShouldTranslatePossibleValues(true);
 
-         PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
-
-         // todo - validate that the primary key is of the proper type (e.g,. not a string for an id field)
-         //  and throw a 400-series error (tell the user bad-request), rather than, we're doing a 500 (server error)
-
-         getInput.setPrimaryKey(primaryKey);
-
-         GetAction getAction = new GetAction();
-         GetOutput getOutput = getAction.execute(getInput);
-
-         ///////////////////////////////////////////////////////
-         // throw a not found error if the record isn't found //
-         ///////////////////////////////////////////////////////
-         QRecord record = getOutput.getRecord();
-         if(record == null)
-         {
-            throw (new QNotFoundException("Could not find " + table.getLabel() + " with "
-               + table.getFields().get(table.getPrimaryKeyField()).getLabel() + " of " + primaryKey));
-         }
+         QRecord record = RecordDeveloperModeUtils.getRecord(getInput, tableName, primaryKey);
 
          Map<String, Serializable> rs = new HashMap<>();
          rs.put("record", record);
@@ -138,67 +100,24 @@ public class QJavalinScriptsHandler
          ArrayList<HashMap<String, Serializable>> associatedScripts = new ArrayList<>();
          rs.put("associatedScripts", associatedScripts);
 
-         QTableMetaData scriptTypeTable     = QContext.getQInstance().getTable(ScriptType.TABLE_NAME);
-         QTableMetaData scriptRevisionTable = QContext.getQInstance().getTable(ScriptType.TABLE_NAME);
-         QTableMetaData scriptTable         = QContext.getQInstance().getTable(Script.TABLE_NAME);
-         if(scriptTypeTable != null && scriptTable != null && scriptRevisionTable != null)
+         for(AssociatedScriptDetails details : RecordDeveloperModeUtils.getAssociatedScripts(table, record, input -> QJavalinImplementation.setupSession(context, input)))
          {
-            Map<Serializable, QRecord> scriptTypeMap = GeneralProcessUtils.loadTableToMap(ScriptType.TABLE_NAME, "id");
+            HashMap<String, Serializable> thisScriptData = new HashMap<>();
+            associatedScripts.add(thisScriptData);
+            thisScriptData.put("associatedScript", details.getAssociatedScript());
+            thisScriptData.put("scriptType", details.getScriptType());
 
-            ///////////////////////////////////////////////////////
-            // process each associated script type for the table //
-            ///////////////////////////////////////////////////////
-            QInstanceEnricher qInstanceEnricher = new QInstanceEnricher(QJavalinImplementation.qInstance);
-            for(AssociatedScript associatedScript : CollectionUtils.nonNullList(table.getAssociatedScripts()))
+            if(details.getScript() != null)
             {
-               HashMap<String, Serializable> thisScriptData = new HashMap<>();
-               associatedScripts.add(thisScriptData);
-               thisScriptData.put("associatedScript", associatedScript);
-               thisScriptData.put("scriptType", scriptTypeMap.get(associatedScript.getScriptTypeId()));
-
-               /////////////////////////////////////////////////////////////////////
-               // load the associated script and current revision from the record //
-               /////////////////////////////////////////////////////////////////////
-               String       fieldName = associatedScript.getFieldName();
-               Serializable scriptId  = record.getValue(fieldName);
-               if(scriptId != null)
-               {
-                  GetInput getScriptInput = new GetInput();
-                  QJavalinImplementation.setupSession(context, getScriptInput);
-                  getScriptInput.setTableName("script");
-                  getScriptInput.setPrimaryKey(scriptId);
-                  GetOutput getScriptOutput = new GetAction().execute(getScriptInput);
-                  if(getScriptOutput.getRecord() != null)
-                  {
-                     thisScriptData.put("script", getScriptOutput.getRecord());
-
-                     QueryInput queryInput = new QueryInput();
-                     QJavalinImplementation.setupSession(context, queryInput);
-                     queryInput.setTableName("scriptRevision");
-                     queryInput.setFilter(new QQueryFilter()
-                        .withCriteria(new QFilterCriteria("scriptId", QCriteriaOperator.EQUALS, List.of(getScriptOutput.getRecord().getValue("id"))))
-                        .withOrderBy(new QFilterOrderBy("id", false))
-                     );
-                     QueryOutput queryOutput = new QueryAction().execute(queryInput);
-                     thisScriptData.put("scriptRevisions", new ArrayList<>(queryOutput.getRecords()));
-                  }
-               }
-
-               ///////////////////////////////////////////////////////////
-               // load testing info about the script type, if available //
-               ///////////////////////////////////////////////////////////
-               QCodeReference scriptTesterCodeRef = associatedScript.getScriptTester();
-               if(scriptTesterCodeRef != null)
-               {
-                  TestScriptActionInterface scriptTester = QCodeLoader.getAdHoc(TestScriptActionInterface.class, scriptTesterCodeRef);
-                  thisScriptData.put("testInputFields", enrichFieldsToArrayList(qInstanceEnricher, scriptTester.getTestInputFields()));
-                  thisScriptData.put("testOutputFields", enrichFieldsToArrayList(qInstanceEnricher, scriptTester.getTestOutputFields()));
-               }
+               thisScriptData.put("script", details.getScript());
+               thisScriptData.put("scriptRevisions", new ArrayList<>(details.getScriptRevisions()));
             }
-         }
-         else
-         {
-            LOG.info("One or more script tables was not found in the instance.");
+
+            if(details.getTestInputFields() != null)
+            {
+               thisScriptData.put("testInputFields", new ArrayList<>(details.getTestInputFields()));
+               thisScriptData.put("testOutputFields", new ArrayList<>(details.getTestOutputFields()));
+            }
          }
 
          QJavalinAccessLogger.logEndSuccess();
@@ -209,29 +128,6 @@ public class QJavalinScriptsHandler
          QJavalinAccessLogger.logEndFail(e);
          QJavalinImplementation.handleException(context, e);
       }
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static Serializable enrichFieldsToArrayList(QInstanceEnricher qInstanceEnricher, List<QFieldMetaData> fields)
-   {
-      ArrayList<QFieldMetaData> rs = new ArrayList<>();
-
-      if(CollectionUtils.nullSafeIsEmpty(fields))
-      {
-         return (rs);
-      }
-
-      for(QFieldMetaData field : fields)
-      {
-         qInstanceEnricher.enrichField(field);
-         rs.add(field);
-      }
-
-      return (rs);
    }
 
 
@@ -251,20 +147,8 @@ public class QJavalinScriptsHandler
 
          getReferencedRecordToEnsureAccess(context);
 
-         queryInput.setTableName("scriptLog");
-         queryInput.setFilter(new QQueryFilter()
-            .withCriteria(new QFilterCriteria("scriptRevisionId", QCriteriaOperator.EQUALS, List.of(scriptRevisionId)))
-            .withOrderBy(new QFilterOrderBy("id", false))
-            .withLimit(100));
-         QueryOutput queryOutput = new QueryAction().execute(queryInput);
-
-         if(CollectionUtils.nullSafeHasContents(queryOutput.getRecords()))
-         {
-            GeneralProcessUtils.addForeignRecordsListToRecordList(queryOutput.getRecords(), "id", "scriptLogLine", "scriptLogId");
-         }
-
          Map<String, Serializable> rs = new HashMap<>();
-         rs.put("scriptLogRecords", new ArrayList<>(queryOutput.getRecords()));
+         rs.put("scriptLogRecords", new ArrayList<>(RecordDeveloperModeUtils.getScriptLogRecords(queryInput, scriptRevisionId)));
 
          QJavalinAccessLogger.logEndSuccess();
          context.result(JsonUtils.toJson(rs));
@@ -286,28 +170,7 @@ public class QJavalinScriptsHandler
       /////////////////////////////////////////////////////////////////////////////////
       // make sure user can get the record they're trying to do a related action for //
       /////////////////////////////////////////////////////////////////////////////////
-      String         tableName = context.pathParam("table");
-      QTableMetaData table     = QJavalinImplementation.qInstance.getTable(tableName);
-      GetInput       getInput  = new GetInput();
-      getInput.setTableName(tableName);
-      QJavalinImplementation.setupSession(context, getInput);
-      PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
-
-      String primaryKey = context.pathParam("primaryKey");
-      getInput.setPrimaryKey(primaryKey);
-
-      GetAction getAction = new GetAction();
-      GetOutput getOutput = getAction.execute(getInput);
-
-      ///////////////////////////////////////////////////////
-      // throw a not found error if the record isn't found //
-      ///////////////////////////////////////////////////////
-      QRecord record = getOutput.getRecord();
-      if(record == null)
-      {
-         throw (new QNotFoundException("Could not find " + table.getLabel() + " with "
-            + table.getFields().get(table.getPrimaryKeyField()).getLabel() + " of " + primaryKey));
-      }
+      RecordDeveloperModeUtils.checkRecordIsReadable(context.pathParam("table"), context.pathParam("primaryKey"), input -> QJavalinImplementation.setupSession(context, input));
    }
 
 
@@ -335,12 +198,7 @@ public class QJavalinScriptsHandler
          input.setRecordPrimaryKey(primaryKey);
          QJavalinAccessLogger.logStart("storeRecordAssociatedScript", logPair("table", table), logPair("fieldName", fieldName), logPair("primaryKey", primaryKey));
 
-         PermissionsHelper.checkTablePermissionThrowing(input, TablePermissionSubType.EDIT); // todo ... is this enough??
-
-         StoreAssociatedScriptOutput output = new StoreAssociatedScriptOutput();
-
-         StoreAssociatedScriptAction storeAssociatedScriptAction = new StoreAssociatedScriptAction();
-         storeAssociatedScriptAction.run(input, output);
+         StoreAssociatedScriptOutput output = RecordDeveloperModeUtils.storeAssociatedScript(input);
 
          QJavalinAccessLogger.logEndSuccess();
          context.result(JsonUtils.toJson(output));

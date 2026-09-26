@@ -30,6 +30,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -45,6 +46,7 @@ import com.kingsrook.qqq.esb.stats.EsbCounterSnapshot;
 import com.kingsrook.qqq.esb.stats.EsbStats;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
@@ -373,17 +375,19 @@ class EsbQueueTriggerTest extends EsbRuntimeTestBase
       runner.restartLocal();
       assertThat(runner.getState()).isEqualTo(EsbTriggerState.STOPPED);
 
-      QEsbRuntime emptyRuntime = startRuntime(defineInstance());
+      QInstance emptyInstance = defineInstance();
+      new QInstanceValidator().validate(emptyInstance);
+      QEsbRuntime emptyRuntime = startRuntime(emptyInstance);
       assertThat(emptyRuntime.isRunning()).isTrue();
       assertThat(emptyRuntime.getRunners()).isEmpty();
 
       ///////////////////////////////////////////////////////////////////////
-      // a trigger whose destination is unknown (not validated) is skipped //
+      // an unvalidated instance is refused before runners are built       //
       ///////////////////////////////////////////////////////////////////////
       QInstance unvalidated = defineInstance();
       unvalidated.addProcess(defineRecordingProcess(PROCESS_NAME, null, false)
          .withSupplementalMetaData(new EsbProcessMetaData().withTrigger(new EsbTrigger().withDestinationName("noSuchDestination"))));
-      assertThat(startRuntime(unvalidated).getRunners()).isEmpty();
+      assertThatThrownBy(() -> startRuntime(unvalidated)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("validated");
       assertThat(runtime.getRunner(null)).isNull();
 
       assertThat(QEsbRuntime.getInstance()).isSameAs(QEsbRuntime.getInstance());

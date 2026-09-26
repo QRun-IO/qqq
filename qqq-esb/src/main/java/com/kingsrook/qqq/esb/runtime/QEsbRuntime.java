@@ -56,7 +56,15 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *
  * start takes a validated instance, as an app has at boot (as with the
  * scheduler): the runtime's threads each put it in their QContext, which
- * would otherwise validate it on each of them at once.
+ * would otherwise validate it on each of them at once.  An unvalidated one is
+ * refused (IllegalArgumentException).  EsbInstanceMetaData.enrich registers
+ * EsbRuntimeService, so an application launcher starts and stops the node's
+ * runtime (getInstance) along with its server.
+ *
+ * Each start also opens an EsbControlChannel, which listens on the control
+ * topic of each provider its triggers use, and applies the pause, resume and
+ * restart messages that EsbTriggerControl sends (from any node) to this
+ * runtime's runners.
  *
  * start never blocks, even with the broker down: the runners connect on their
  * own threads, wait in CONNECTING while they can't, and rebuild their consumers
@@ -84,8 +92,9 @@ public class QEsbRuntime
    // guarded by this.  startCount lets a connection listener from an   //
    // earlier start (they can't be removed) know that it's out of date  //
    ///////////////////////////////////////////////////////////////////////
-   private Boolean running    = false;
-   private Long    startCount = 0L;
+   private Boolean           running        = false;
+   private Long              startCount     = 0L;
+   private EsbControlChannel controlChannel = null;
 
 
 
@@ -109,11 +118,17 @@ public class QEsbRuntime
 
 
    /*******************************************************************************
-    ** Start a runner for each trigger in the instance.  Doesn't block.  Ignored
-    ** (with a warning) if this runtime is already running.
+    ** Start a runner for each trigger in the (validated) instance, and the
+    ** control channel.  Doesn't block.  Ignored (with a warning) if this runtime
+    ** is already running.
     *******************************************************************************/
    public synchronized void start(QInstance qInstance)
    {
+      if(qInstance == null || !qInstance.getHasBeenValidated())
+      {
+         throw (new IllegalArgumentException("The ESB runtime must be started with a validated QInstance"));
+      }
+
       if(running)
       {
          LOG.warn("The ESB runtime is already running; ignoring start");
@@ -133,6 +148,8 @@ public class QEsbRuntime
          EsbConnectionManager.getInstance().addConnectionListener(providerName, () -> onReconnect(thisStart, providerName));
       }
 
+      controlChannel = new EsbControlChannel(this, qInstance);
+      controlChannel.start(providerNames);
       newRunners.values().forEach(EsbTriggerRunner::start);
       LOG.info("Started the ESB runtime", logPair("triggerCount", newRunners.size()));
    }
@@ -147,6 +164,7 @@ public class QEsbRuntime
    public void stop()
    {
       List<EsbTriggerRunner> runnersToStop;
+      EsbControlChannel      channelToClose;
       synchronized(this)
       {
          if(!running)
@@ -155,9 +173,13 @@ public class QEsbRuntime
          }
 
          running = false;
+         channelToClose = controlChannel;
+         controlChannel = null;
          runnersToStop = List.copyOf(runners.values());
          runnersToStop.forEach(EsbTriggerRunner::requestStop);
       }
+
+      channelToClose.close();
 
       Instant deadline = Instant.now().plusMillis(STOP_TIMEOUT_MS);
       for(EsbTriggerRunner runner : runnersToStop)
@@ -202,12 +224,24 @@ public class QEsbRuntime
 
 
    /*******************************************************************************
-    ** A provider reconnected: pass it on to its runners - if this listener is
-    ** from the current start.  Runs on the connection manager's thread.
+    ** The control channel of the current start - or null when not running.
+    *******************************************************************************/
+   synchronized EsbControlChannel getControlChannel()
+   {
+      return (controlChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** A provider reconnected: pass it on to its runners and the control channel
+    ** - if this listener is from the current start.  Runs on the connection
+    ** manager's thread.
     *******************************************************************************/
    private void onReconnect(Long fromStart, String providerName)
    {
       Map<String, EsbTriggerRunner> currentRunners;
+      EsbControlChannel             currentChannel;
       synchronized(this)
       {
          if(!running || !fromStart.equals(startCount))
@@ -215,7 +249,10 @@ public class QEsbRuntime
             return;
          }
          currentRunners = runners;
+         currentChannel = controlChannel;
       }
+
+      currentChannel.onReconnect(providerName);
 
       for(EsbTriggerRunner runner : currentRunners.values())
       {

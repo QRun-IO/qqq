@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
+import com.kingsrook.qqq.esb.runtime.EsbRuntimeService;
 
 
 /*******************************************************************************
@@ -102,8 +103,10 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    /*******************************************************************************
     ** Interpret ${env.*} (etc.) variables in each provider's connection fields,
-    ** and register the record change listener that publishes table events (once,
-    ** however many times the instance is enriched).
+    ** and register (once, however many times the instance is enriched) the
+    ** record change listener that publishes table events, and the runtime
+    ** service through which an application launcher starts and stops the
+    ** trigger runtime.
     *******************************************************************************/
    @Override
    public void enrich(QInstance qInstance)
@@ -119,6 +122,13 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       if(!listenerRegistered)
       {
          qInstance.withRecordChangeListener(new QCodeReference(EsbRecordChangeListener.class));
+      }
+
+      boolean runtimeServiceRegistered = CollectionUtils.nonNullList(qInstance.getRuntimeServices()).stream()
+         .anyMatch(codeReference -> codeReference != null && EsbRuntimeService.class.getName().equals(codeReference.getName()));
+      if(!runtimeServiceRegistered)
+      {
+         qInstance.withRuntimeService(new QCodeReference(EsbRuntimeService.class));
       }
    }
 

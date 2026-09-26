@@ -183,8 +183,9 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    /*******************************************************************************
     ** Adjust the security headers (for example extra CSP sources, or allowing the
     ** dashboard to be framed). The customizer receives the defaults with the
-    ** instance's identity provider and QuickSight origins already added, and runs
-    ** again whenever the QInstance is set or hot-swapped.
+    ** instance's identity provider, QuickSight, customComponent and configured
+    ** analytics origins already added, and runs again whenever the QInstance is
+    ** set or hot-swapped.
     **
     ** @param customizer changes the headers in place, or null for the defaults
     ** @return this
@@ -226,12 +227,32 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    {
       ////////////////////////////////////////////////////////////////////////
       // static files only; authentication happens in the API it calls. The //
-      // instance only decides which identity provider and embed origins    //
-      // the Content-Security-Policy allows.                                //
+      // instance only decides which identity provider, embed, extension    //
+      // and analytics origins the Content-Security-Policy allows.          //
       ////////////////////////////////////////////////////////////////////////
-      this.instanceOrigins = qInstance == null ? InstanceOrigins.NONE : new InstanceOrigins(identityProviderOrigins(qInstance),
-         hasQuickSightWidget(qInstance) ? Set.of(QUICKSIGHT_FRAME_SOURCE) : Set.of(), customComponentOrigins(qInstance));
+      this.instanceOrigins = qInstance == null ? InstanceOrigins.NONE : instanceOrigins(qInstance);
       this.securityHeaders.set(buildSecurityHeaders());
+   }
+
+
+
+   /*******************************************************************************
+    ** The origins an instance's metadata adds: its identity providers and its
+    ** configured analytics providers (connect-src), a QuickSight widget's embed
+    ** origin (frame-src), and its customComponent bundles' and configured
+    ** analytics scripts' origins (script-src).
+    *******************************************************************************/
+   private static InstanceOrigins instanceOrigins(QInstance qInstance)
+   {
+      NextDashboardAnalyticsOrigins analytics = new NextDashboardAnalyticsOrigins(qInstance.getEnvironmentValues());
+
+      Set<String> connect = new LinkedHashSet<>(identityProviderOrigins(qInstance));
+      connect.addAll(analytics.getConnect());
+
+      Set<String> script = new LinkedHashSet<>(customComponentOrigins(qInstance));
+      script.addAll(analytics.getScript());
+
+      return (new InstanceOrigins(connect, hasQuickSightWidget(qInstance) ? Set.of(QUICKSIGHT_FRAME_SOURCE) : Set.of(), script));
    }
 
 

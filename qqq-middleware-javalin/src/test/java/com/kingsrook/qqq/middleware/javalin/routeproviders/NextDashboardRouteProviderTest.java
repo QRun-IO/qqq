@@ -29,7 +29,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
@@ -244,6 +246,136 @@ class NextDashboardRouteProviderTest
       mock.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
       provider.setQInstance(mock);
       assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("connect-src"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Analytics providers extend the policy only when the instance configures
+    ** them (QRun-IO/qqq#730): no analytics settings leave the policy unchanged;
+    ** each configured provider adds exactly its own script and connect origins.
+    *******************************************************************************/
+   @Test
+   void testAnalyticsOrigins() throws Exception
+   {
+      NextDashboardRouteProvider provider = new NextDashboardRouteProvider("test-next-dashboard");
+      String                     base     = start(provider);
+      String                     strict   = header(get(base + "/login/"), "Content-Security-Policy");
+
+      ///////////////////////////////////////////////////////////////////////////
+      // nothing configured, or providers present but disabled or without ids: //
+      // the policy is byte-for-byte the default one                           //
+      ///////////////////////////////////////////////////////////////////////////
+      for(Map<String, String> unconfigured : List.of(
+         Map.<String, String>of(),
+         Map.of("ANALYTICS_PROVIDERS", "google,posthog"),
+         Map.of("GOOGLE_ANALYTICS_ENABLED", "false", "GOOGLE_ANALYTICS_TRACKING_ID", "G-OWNED"),
+         Map.of("GOOGLE_ANALYTICS_ENABLED", "true", "GOOGLE_ANALYTICS_TRACKING_ID", " "),
+         Map.of("POSTHOG_ENABLED", "TRUE", "POSTHOG_API_KEY", "phc_owned"),
+         Map.of("POSTHOG_ENABLED", "true", "POSTHOG_HOST", "https://eu.i.posthog.com"),
+         Map.of("ANALYTICS_PLUGIN_SCRIPTS", "/analytics/local.js"),
+         Map.of("ANALYTICS_PROVIDERS", "posthog", "GOOGLE_ANALYTICS_ENABLED", "true", "GOOGLE_ANALYTICS_TRACKING_ID", "G-OWNED"),
+         Map.of("ANALYTICS_PROVIDERS", "google;owned", "POSTHOG_ENABLED", "true", "POSTHOG_API_KEY", "phc_owned")))
+      {
+         provider.setQInstance(instanceWithEnvironment(unconfigured));
+         assertEquals(strict, header(get(base + "/login/"), "Content-Security-Policy"), unconfigured.toString());
+      }
+
+      ////////////////////////////////////////////////////////
+      // Google Analytics 4 (default provider list): gtag.js //
+      // and the origins it sends to                         //
+      ////////////////////////////////////////////////////////
+      provider.setQInstance(instanceWithEnvironment(Map.of("GOOGLE_ANALYTICS_ENABLED", "true", "GOOGLE_ANALYTICS_TRACKING_ID", "G-OWNED")));
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://www.googletagmanager.com");
+      assertThat(provider.getSecurityHeaders().getSources("connect-src"))
+         .containsExactly("'self'", "https://www.googletagmanager.com", "https://*.google-analytics.com", "https://*.analytics.google.com");
+      assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("frame-src"));
+      assertThat(header(get(base + "/login/"), "Content-Security-Policy"))
+         .contains("script-src 'self' https://www.googletagmanager.com 'sha256-")
+         .contains("connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com;");
+
+      ////////////////////////////////////////////////////////////////////
+      // PostHog: the default US cloud host, its assets host for scripts //
+      ////////////////////////////////////////////////////////////////////
+      provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_API_KEY", "phc_owned")));
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://us.i.posthog.com");
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://us-assets.i.posthog.com");
+
+      provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_PROJECT_API_KEY", "phc_owned", "POSTHOG_HOST", "https://EU.i.posthog.com/")));
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://eu.i.posthog.com");
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://eu-assets.i.posthog.com");
+
+      provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_API_KEY", "phc_owned", "POSTHOG_HOST", "https://i.posthog.com")));
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://i.posthog.com");
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://assets.i.posthog.com");
+
+      ///////////////////////////////////////////////////////////////////
+      // a proxy or self-hosted PostHog (here a loopback fake) serves  //
+      // both the API and the script                                   //
+      ///////////////////////////////////////////////////////////////////
+      provider.setQInstance(instanceWithEnvironment(Map.of("POSTHOG_ENABLED", "true", "POSTHOG_API_KEY", "phc_owned", "POSTHOG_HOST", "http://127.0.0.1:18995/ingest")));
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "http://127.0.0.1:18995");
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "http://127.0.0.1:18995");
+
+      //////////////////////////////////////////////////////////////////////
+      // plugin scripts (absolute ones on another origin), the fallback  //
+      // setting name, and everything together with a custom provider    //
+      //////////////////////////////////////////////////////////////////////
+      provider.setQInstance(instanceWithEnvironment(Map.of("ANALYTICS_PLUGIN_SCRIPT_URLS", "https://cdn.example.com/a.js\n/local/b.js; https://plugins.example.org:8443/c.js")));
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'", "https://cdn.example.com", "https://plugins.example.org:8443");
+      assertEquals(Set.of("'self'"), provider.getSecurityHeaders().getSources("connect-src"));
+
+      Map<String, String> everything = new LinkedHashMap<>();
+      everything.put("ANALYTICS_PROVIDERS", " Google , PostHog , owned ");
+      everything.put("ANALYTICS_PLUGIN_SCRIPTS", "https://cdn.example.com/owned.js");
+      everything.put("ANALYTICS_PLUGIN_SCRIPT_URLS", "https://ignored.example.com/ignored.js");
+      everything.put("GOOGLE_ANALYTICS_ENABLED", "true");
+      everything.put("GOOGLE_ANALYTICS_TRACKING_ID", "G-OWNED");
+      everything.put("POSTHOG_ENABLED", "true");
+      everything.put("POSTHOG_API_KEY", "phc_owned");
+      QInstance qInstance = instanceWithEnvironment(everything);
+      qInstance.withInstanceDefaultAuthentication(new OAuth2AuthenticationMetaData().withBaseUrl("https://idp.example.com").withName("oauth2"));
+      provider.setQInstance(qInstance);
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).containsExactly("'self'", "https://idp.example.com",
+         "https://www.googletagmanager.com", "https://*.google-analytics.com", "https://*.analytics.google.com", "https://us.i.posthog.com");
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).containsExactly("'self'",
+         "https://www.googletagmanager.com", "https://us-assets.i.posthog.com", "https://cdn.example.com");
+
+      /////////////////////////////////////////////////////////////////
+      // hot swapping to an instance without analytics removes them  //
+      /////////////////////////////////////////////////////////////////
+      provider.setQInstance(instanceWithEnvironment(Map.of()));
+      assertEquals(strict, header(get(base + "/login/"), "Content-Security-Policy"));
+   }
+
+
+
+   /*******************************************************************************
+    ** PostHog's script origin, as the dashboards build its array.js URL.
+    *******************************************************************************/
+   @Test
+   void testPostHogScriptOrigin()
+   {
+      assertEquals("https://us-assets.i.posthog.com", NextDashboardAnalyticsOrigins.postHogScriptOrigin("https://us.i.posthog.com"));
+      assertEquals("https://eu-assets.i.posthog.com", NextDashboardAnalyticsOrigins.postHogScriptOrigin("https://eu.i.posthog.com/some/path"));
+      assertEquals("https://assets.i.posthog.com", NextDashboardAnalyticsOrigins.postHogScriptOrigin("https://i.posthog.com"));
+      assertEquals("https://analytics.example.com", NextDashboardAnalyticsOrigins.postHogScriptOrigin("https://analytics.example.com/ingest"));
+      assertEquals("https://posthog.example.com:8443", NextDashboardAnalyticsOrigins.postHogScriptOrigin("https://posthog.example.com:8443"));
+      assertEquals("https://notposthog.com", NextDashboardAnalyticsOrigins.postHogScriptOrigin("https://notposthog.com"));
+      assertNull(NextDashboardAnalyticsOrigins.postHogScriptOrigin("/relative"));
+      assertNull(NextDashboardAnalyticsOrigins.postHogScriptOrigin(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** An instance with exactly the given environment values.
+    *******************************************************************************/
+   private static QInstance instanceWithEnvironment(Map<String, String> environmentValues)
+   {
+      QInstance qInstance = new QInstance();
+      qInstance.setEnvironmentValues(new LinkedHashMap<>(environmentValues));
+      return (qInstance);
    }
 
 

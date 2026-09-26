@@ -131,6 +131,13 @@ public class MongoDBTransaction extends QBackendTransaction
             this.clientSession.startTransaction();
          }
       }
+
+      ////////////////////////////////////////////////////////////////////////
+      // only reached if the commit succeeded (else the catch threw above). //
+      // without transaction support, writes were already durable, so the   //
+      // callbacks run then too.                                            //
+      ////////////////////////////////////////////////////////////////////////
+      runAfterCommitCallbacks();
    }
 
 
@@ -161,6 +168,12 @@ public class MongoDBTransaction extends QBackendTransaction
       }
       finally
       {
+         ///////////////////////////////////////////////////////////////////////
+         // base class discards after-commit callbacks - even if the rollback //
+         // failed (or isn't supported), they must not run on a later commit  //
+         ///////////////////////////////////////////////////////////////////////
+         super.rollback();
+
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // reset this - as after one commit, the transaction is essentially re-opened for any future statements that run on it //
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

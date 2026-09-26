@@ -116,6 +116,11 @@ public class RDBMSTransaction extends QBackendTransaction
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          openedAt = Instant.now();
       }
+
+      ///////////////////////////////////////////////////////////////////////
+      // only reached if the commit succeeded (else the catch threw above) //
+      ///////////////////////////////////////////////////////////////////////
+      runAfterCommitCallbacks();
    }
 
 
@@ -136,6 +141,14 @@ public class RDBMSTransaction extends QBackendTransaction
       {
          LOG.error("Error rolling back transaction", e);
          throw new QException("Error rolling back transaction: " + e.getMessage(), e);
+      }
+      finally
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // base class discards after-commit callbacks - even if the rollback //
+         // failed, their work was never committed                            //
+         ///////////////////////////////////////////////////////////////////////
+         super.rollback();
       }
    }
 

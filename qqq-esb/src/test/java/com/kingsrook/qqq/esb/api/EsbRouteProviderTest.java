@@ -109,7 +109,7 @@ class EsbRouteProviderTest extends EsbApiTestBase
       JSONObject destinationCounters = orderEvents.getJSONObject("counters");
       assertEquals(1, destinationCounters.getInt("published"));
       assertEquals(1, destinationCounters.getInt("publishFailures"));
-      assertEquals("broker down", destinationCounters.getString("lastError"));
+      assertEquals("An ESB operation failed.", destinationCounters.getString("lastError"));
       assertThat(Instant.parse(destinationCounters.getString("lastActivity"))).isNotNull();
 
       assertDestination(publications.getJSONObject(1).getJSONObject("destination"), DESTINATION_FULFILLMENT, "QUEUE", BROKER_NAME_FULFILLMENT);
@@ -151,6 +151,24 @@ class EsbRouteProviderTest extends EsbApiTestBase
       JSONObject fulfillOrder = subscribers.getJSONObject(1);
       assertEquals(TRIGGER_FULFILL_ORDER, fulfillOrder.getString("name"));
       assertTrue(fulfillOrder.isNull("subscription"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Counters must not send a broker URI's embedded credentials to clients.
+    *******************************************************************************/
+   @Test
+   void testCounterErrorDoesNotExposeBrokerCredentials() throws Exception
+   {
+      String error = "Could not connect to amqp://esbUser:esbSecret@broker.example/";
+      EsbStats.getInstance().publishFailed(DESTINATION_ORDER_EVENTS, new RuntimeException(error));
+
+      String body = get("/qqq/v1/esb/table/" + TABLE_NAME_ORDER).body();
+      assertThat(body).doesNotContain("esbUser", "esbSecret", "broker.example");
+      assertEquals("An ESB operation failed.", new JSONObject(body).getJSONArray("publications").getJSONObject(0)
+         .getJSONObject("destination").getJSONObject("counters").getString("lastError"));
+      assertEquals(error, EsbStats.getInstance().destination(DESTINATION_ORDER_EVENTS).lastError());
    }
 
 

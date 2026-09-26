@@ -191,6 +191,24 @@ class EsbPermissionsTest extends EsbApiTestBase
 
 
    /*******************************************************************************
+    ** Reading a table that publishes to a topic must not expose a hidden
+    ** process's subscription messages.
+    *******************************************************************************/
+   @Test
+   void testTopicMessagesRequireSelectedTriggerProcessAccess() throws Exception
+   {
+      String path = "/qqq/v1/esb/messages/" + DESTINATION_ORDER_EVENTS + "?trigger=" + TRIGGER_SYNC_ORDER;
+
+      setPermissions(ORDER_READ);
+      assertEquals(403, get(path).statusCode());
+
+      setPermissions(ORDER_READ, SYNC_ORDER_ACCESS);
+      assertEquals(200, get(path).statusCode());
+   }
+
+
+
+   /*******************************************************************************
     ** The esb app (and its overview widget) are in the meta-data only for a
     ** session with esbView.hasAccess; the instance with them is valid.
     *******************************************************************************/

@@ -310,7 +310,8 @@ public class EsbStatusBuilder
     ** topic, of one of its triggers' subscription queues (named by triggerName;
     ** required for a topic, ignored for a queue).  Needs esbView, or READ on a
     ** table that publishes to the destination, or access to a process that it
-    ** triggers.
+    ** triggers.  A topic subscription also requires access to its selected
+    ** trigger's process.
     *******************************************************************************/
    public Map<String, Object> browseMessages(String destinationName, String triggerName, Integer offset, Integer limit) throws QException
    {
@@ -336,6 +337,7 @@ public class EsbStatusBuilder
             throw (new QNotFoundException("Trigger " + triggerName + " was not found on " + destinationName + "."));
          }
 
+         PermissionsHelper.checkProcessPermissionThrowing(actionInput, triggerReference.process().getName());
          brokerQueueName = getSubscriptionQueueName(triggerReference);
       }
 
@@ -605,7 +607,8 @@ public class EsbStatusBuilder
 
 
    /*******************************************************************************
-    **
+    ** Counter values for the API.  Error details can contain broker URLs and
+    ** credentials, so only a generic error is exposed here.
     *******************************************************************************/
    private static Map<String, Object> buildCounters(EsbCounterSnapshot snapshot)
    {
@@ -621,7 +624,7 @@ public class EsbStatusBuilder
       result.put("lastActivity", snapshot.lastActivity() == null ? null : snapshot.lastActivity().toString());
       result.put("avgMs", snapshot.avgMs());
       result.put("maxMs", snapshot.maxMs());
-      result.put("lastError", snapshot.lastError());
+      result.put("lastError", snapshot.lastError() == null ? null : "An ESB operation failed.");
       return (result);
    }
 

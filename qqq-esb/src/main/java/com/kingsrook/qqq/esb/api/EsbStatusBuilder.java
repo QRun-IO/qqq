@@ -310,8 +310,8 @@ public class EsbStatusBuilder
     ** topic, of one of its triggers' subscription queues (named by triggerName;
     ** required for a topic, ignored for a queue).  Needs esbView, or READ on a
     ** table that publishes to the destination, or access to a process that it
-    ** triggers.  A topic subscription also requires access to its selected
-    ** trigger's process.
+    ** triggers.  A topic subscription requires access to its selected
+    ** trigger's process unless the user has service-level ESB view access.
     *******************************************************************************/
    public Map<String, Object> browseMessages(String destinationName, String triggerName, Integer offset, Integer limit) throws QException
    {
@@ -337,7 +337,10 @@ public class EsbStatusBuilder
             throw (new QNotFoundException("Trigger " + triggerName + " was not found on " + destinationName + "."));
          }
 
-         PermissionsHelper.checkProcessPermissionThrowing(actionInput, triggerReference.process().getName());
+         if(!PermissionsHelper.hasAppPermission(actionInput, EsbAppMetaDataProducer.NAME))
+         {
+            PermissionsHelper.checkProcessPermissionThrowing(actionInput, triggerReference.process().getName());
+         }
          brokerQueueName = getSubscriptionQueueName(triggerReference);
       }
 

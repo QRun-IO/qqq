@@ -209,6 +209,19 @@ class EsbPermissionsTest extends EsbApiTestBase
 
 
    /*******************************************************************************
+    ** Service-level ESB viewers can inspect a topic subscription even when
+    ** the selected process is not separately available to their session.
+    *******************************************************************************/
+   @Test
+   void testEsbViewBrowsesTopicWithoutProcessAccess() throws Exception
+   {
+      setPermissions(ESB_VIEW);
+      assertEquals(200, get("/qqq/v1/esb/messages/" + DESTINATION_ORDER_EVENTS + "?trigger=" + TRIGGER_SYNC_ORDER).statusCode());
+   }
+
+
+
+   /*******************************************************************************
     ** The esb app (and its overview widget) are in the meta-data only for a
     ** session with esbView.hasAccess; the instance with them is valid.
     *******************************************************************************/

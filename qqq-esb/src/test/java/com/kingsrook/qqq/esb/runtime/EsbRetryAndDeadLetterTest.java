@@ -25,6 +25,7 @@ package com.kingsrook.qqq.esb.runtime;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -43,10 +44,15 @@ import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
 import com.kingsrook.qqq.esb.stats.EsbCounterSnapshot;
 import com.kingsrook.qqq.esb.stats.EsbStats;
 import jakarta.jms.BytesMessage;
+import jakarta.jms.MapMessage;
 import jakarta.jms.Message;
+import jakarta.jms.MessageEOFException;
+import jakarta.jms.ObjectMessage;
+import jakarta.jms.StreamMessage;
 import jakarta.jms.TextMessage;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
@@ -175,6 +181,9 @@ class EsbRetryAndDeadLetterTest extends EsbRuntimeTestBase
     ** Messages that aren't CloudEvents (non-JSON text, JSON that isn't a
     ** CloudEvent, a non-text message) go straight to the dead-letter queue, with
     ** qqqError "unparseable message" and no retries; the process never runs.
+    ** Text, bytes, map, and stream bodies are copied to the dead letter.  An
+    ** object message's body is not deserialized, so its dead letter has no body,
+    ** and qqqBodyDropped true.
     *******************************************************************************/
    @Test
    void unparseableMessageDeadLettersImmediately() throws Exception
@@ -191,18 +200,44 @@ class EsbRetryAndDeadLetterTest extends EsbRuntimeTestBase
          bytesMessage.setStringProperty("custom", "kept");
          return (bytesMessage);
       });
+      sendMessage(QUEUE_NAME, session ->
+      {
+         MapMessage mapMessage = session.createMapMessage();
+         mapMessage.setString("orderNo", "A-1");
+         mapMessage.setInt("quantity", 7);
+         mapMessage.setBytes("raw", new byte[] { 1, 2, 3 });
+         mapMessage.setStringProperty("custom", "kept");
+         return (mapMessage);
+      });
+      sendMessage(QUEUE_NAME, session ->
+      {
+         StreamMessage streamMessage = session.createStreamMessage();
+         streamMessage.writeString("first");
+         streamMessage.writeLong(42L);
+         streamMessage.writeBoolean(true);
+         streamMessage.writeBytes(new byte[] { 4, 5 });
+         streamMessage.setStringProperty("custom", "kept");
+         return (streamMessage);
+      });
+      sendMessage(QUEUE_NAME, session ->
+      {
+         ObjectMessage objectMessage = session.createObjectMessage("a serialized payload");
+         objectMessage.setStringProperty("custom", "kept");
+         return (objectMessage);
+      });
 
       startRuntime(QContext.getQInstance());
-      waitFor("3 dead letters", () -> EsbStats.getInstance().trigger(QUEUE_TRIGGER_NAME).deadLettered() == 3);
+      waitFor("6 dead letters", () -> EsbStats.getInstance().trigger(QUEUE_TRIGGER_NAME).deadLettered() == 6);
 
       List<Message> deadLetters = receiveAll(getDeadLetterQueueName(trigger), WAIT_TIMEOUT);
-      assertThat(deadLetters).hasSize(3);
+      assertThat(deadLetters).hasSize(6);
       assertThat(deadLetters).allSatisfy(deadLetter ->
       {
          assertThat(deadLetter.getStringProperty("qqqError")).isEqualTo(UNPARSEABLE_MESSAGE_ERROR);
          assertThat(deadLetter.getIntProperty("qqqAttempts")).isEqualTo(1);
          assertThat(deadLetter.getStringProperty("qqqFailedTrigger")).isEqualTo(QUEUE_TRIGGER_NAME);
       });
+      assertThat(deadLetters.subList(0, 5)).allSatisfy(deadLetter -> assertThat(deadLetter.propertyExists("qqqBodyDropped")).isFalse());
 
       assertThat(((TextMessage) deadLetters.get(0)).getText()).isEqualTo("not json");
       assertThat(((TextMessage) deadLetters.get(1)).getText()).isEqualTo("{\"hello\": \"world\"}");
@@ -211,6 +246,26 @@ class EsbRetryAndDeadLetterTest extends EsbRuntimeTestBase
       bytesDeadLetter.readBytes(body);
       assertThat(new String(body, StandardCharsets.UTF_8)).isEqualTo("raw bytes");
       assertThat(bytesDeadLetter.getStringProperty("custom")).isEqualTo("kept");
+
+      MapMessage mapDeadLetter = (MapMessage) deadLetters.get(3);
+      assertThat(Collections.list(mapDeadLetter.getMapNames())).containsExactlyInAnyOrder("orderNo", "quantity", "raw");
+      assertThat(mapDeadLetter.getString("orderNo")).isEqualTo("A-1");
+      assertThat(mapDeadLetter.getInt("quantity")).isEqualTo(7);
+      assertThat(mapDeadLetter.getBytes("raw")).containsExactly(1, 2, 3);
+      assertThat(mapDeadLetter.getStringProperty("custom")).isEqualTo("kept");
+
+      StreamMessage streamDeadLetter = (StreamMessage) deadLetters.get(4);
+      assertThat(streamDeadLetter.readString()).isEqualTo("first");
+      assertThat(streamDeadLetter.readLong()).isEqualTo(42L);
+      assertThat(streamDeadLetter.readBoolean()).isTrue();
+      assertThat((byte[]) streamDeadLetter.readObject()).containsExactly(4, 5);
+      assertThatThrownBy(streamDeadLetter::readObject).isInstanceOf(MessageEOFException.class);
+      assertThat(streamDeadLetter.getStringProperty("custom")).isEqualTo("kept");
+
+      Message objectDeadLetter = deadLetters.get(5);
+      assertThat(objectDeadLetter).isNotInstanceOf(ObjectMessage.class);
+      assertThat(objectDeadLetter.getBooleanProperty("qqqBodyDropped")).isTrue();
+      assertThat(objectDeadLetter.getStringProperty("custom")).isEqualTo("kept");
 
       assertThat(RecordingStep.getRuns()).isEmpty();
       assertThat(EsbStats.getInstance().trigger(QUEUE_TRIGGER_NAME).retried()).isZero();

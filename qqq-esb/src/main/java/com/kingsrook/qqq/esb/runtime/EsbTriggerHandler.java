@@ -59,8 +59,12 @@ import com.kingsrook.qqq.esb.model.EsbTrigger;
 import com.kingsrook.qqq.esb.model.EsbTriggerMode;
 import jakarta.jms.BytesMessage;
 import jakarta.jms.JMSException;
+import jakarta.jms.MapMessage;
 import jakarta.jms.Message;
+import jakarta.jms.MessageEOFException;
+import jakarta.jms.ObjectMessage;
 import jakarta.jms.Session;
+import jakarta.jms.StreamMessage;
 import jakarta.jms.TextMessage;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -102,6 +106,7 @@ public class EsbTriggerHandler
    public static final String PROPERTY_FAILED_TRIGGER = "qqqFailedTrigger";
    public static final String PROPERTY_ATTEMPTS       = "qqqAttempts";
    public static final String PROPERTY_FAILED_AT      = "qqqFailedAt";
+   public static final String PROPERTY_BODY_DROPPED   = "qqqBodyDropped";
 
    public static final String  ERROR_UNPARSEABLE = "unparseable message";
    public static final Integer MAX_ERROR_LENGTH  = 2000;
@@ -355,30 +360,18 @@ public class EsbTriggerHandler
    /*******************************************************************************
     ** A dead letter for a received message, made on the session that received it
     ** (so it is sent, and the original acknowledged, in one commit): a copy of
-    ** the original (the body of a text or bytes message, and its properties, but
-    ** not the JMS-defined or provider-internal ones), plus the qqqError,
-    ** qqqFailedTrigger, qqqAttempts and qqqFailedAt properties.
+    ** the original (its body - see copyBody - and its properties, but not the
+    ** JMS-defined or provider-internal ones), plus the qqqError,
+    ** qqqFailedTrigger, qqqAttempts and qqqFailedAt properties - and, for an
+    ** object message (whose body isn't copied), qqqBodyDropped true.
     *******************************************************************************/
    static Message buildDeadLetter(Session session, Message original, String triggerName, String error, Integer attempts) throws JMSException
    {
-      Message deadLetter;
-      if(original instanceof TextMessage textMessage)
+      Message deadLetter = copyBody(session, original);
+      if(original instanceof ObjectMessage)
       {
-         deadLetter = session.createTextMessage(textMessage.getText());
-      }
-      else if(original instanceof BytesMessage bytesMessage)
-      {
-         bytesMessage.reset();
-         byte[] body = new byte[(int) bytesMessage.getBodyLength()];
-         bytesMessage.readBytes(body);
-
-         BytesMessage bytesDeadLetter = session.createBytesMessage();
-         bytesDeadLetter.writeBytes(body);
-         deadLetter = bytesDeadLetter;
-      }
-      else
-      {
-         deadLetter = session.createMessage();
+         LOG.warn("Dead-lettering an ObjectMessage without its body, which is not deserialized", logPair("triggerName", triggerName), logPair("messageId", original.getJMSMessageID()));
+         deadLetter.setBooleanProperty(PROPERTY_BODY_DROPPED, true);
       }
 
       copyProperties(original, deadLetter);
@@ -390,6 +383,64 @@ public class EsbTriggerHandler
       deadLetter.setIntProperty(PROPERTY_ATTEMPTS, attempts);
       deadLetter.setStringProperty(PROPERTY_FAILED_AT, Instant.now().toString());
       return (deadLetter);
+   }
+
+
+
+   /*******************************************************************************
+    ** A new message (made on the session) with a copy of the original's body -
+    ** for a text, bytes, map, or stream message.  An object message's body is
+    ** not copied, since reading it would deserialize an untrusted payload, so
+    ** it (like a message of any other type) gets a message with no body.
+    *******************************************************************************/
+   private static Message copyBody(Session session, Message original) throws JMSException
+   {
+      if(original instanceof TextMessage textMessage)
+      {
+         return (session.createTextMessage(textMessage.getText()));
+      }
+
+      if(original instanceof BytesMessage bytesMessage)
+      {
+         bytesMessage.reset();
+         byte[] body = new byte[(int) bytesMessage.getBodyLength()];
+         bytesMessage.readBytes(body);
+
+         BytesMessage copy = session.createBytesMessage();
+         copy.writeBytes(body);
+         return (copy);
+      }
+
+      if(original instanceof MapMessage mapMessage)
+      {
+         MapMessage     copy  = session.createMapMessage();
+         Enumeration<?> names = mapMessage.getMapNames();
+         while(names.hasMoreElements())
+         {
+            String name = String.valueOf(names.nextElement());
+            copy.setObject(name, mapMessage.getObject(name));
+         }
+         return (copy);
+      }
+
+      if(original instanceof StreamMessage streamMessage)
+      {
+         streamMessage.reset();
+         StreamMessage copy = session.createStreamMessage();
+         try
+         {
+            while(true)
+            {
+               copy.writeObject(streamMessage.readObject());
+            }
+         }
+         catch(MessageEOFException e)
+         {
+            return (copy);
+         }
+      }
+
+      return (session.createMessage());
    }
 
 

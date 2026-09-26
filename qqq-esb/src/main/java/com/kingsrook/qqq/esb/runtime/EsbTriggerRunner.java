@@ -84,6 +84,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * - a message that isn't a CloudEvent: dead-letter it at once (qqqError
  *   "unparseable message"), without retries.  In a batch, the other messages
  *   still run.
+ * Dead letters copy the body of a text, bytes, map, or stream message.  An
+ * object message's body is not deserialized, so its dead letter has no body,
+ * and a qqqBodyDropped property of true.
  * A batch fails as a unit, so every message in it is dead-lettered when the
  * batch reaches maxAttempts, each with its own attempt count.  A session
  * commits or rolls back everything it received, so when a batch's run fails

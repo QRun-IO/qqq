@@ -22,6 +22,9 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
+
+
 /*******************************************************************************
  ** Middleware input for cancelling a process.
  *******************************************************************************/
@@ -29,6 +32,8 @@ public class ProcessCancelInput extends AbstractMiddlewareInput
 {
    private String processName;
    private String processUUID;
+
+   private TableVariant tableVariant;
 
 
 
@@ -89,6 +94,37 @@ public class ProcessCancelInput extends AbstractMiddlewareInput
    public ProcessCancelInput withProcessUUID(String processUUID)
    {
       this.processUUID = processUUID;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tableVariant
+    *******************************************************************************/
+   public TableVariant getTableVariant()
+   {
+      return (this.tableVariant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tableVariant
+    *******************************************************************************/
+   public void setTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tableVariant
+    *******************************************************************************/
+   public ProcessCancelInput withTableVariant(TableVariant tableVariant)
+   {
+      this.tableVariant = tableVariant;
       return (this);
    }
 

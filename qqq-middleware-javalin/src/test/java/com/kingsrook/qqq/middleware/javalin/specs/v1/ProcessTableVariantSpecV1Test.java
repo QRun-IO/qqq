@@ -25,6 +25,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -64,13 +65,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /*******************************************************************************
  ** The v1 process routes honor a table variant (as the v1 table routes do):
- ** init and step run against the requested variant, and the records and
- ** status routes put it in the session.
+ ** init, step and cancel run against the requested variant, and the records
+ ** and status routes put it in the session.
  *******************************************************************************/
 class ProcessTableVariantSpecV1Test extends SpecTestBase
 {
    private static final String PROCESS_NAME = "variantDataProcess";
    private static final String SESSION_ID   = "v1-variant-session";
+
+   ////////////////////////////////////////////////////////////////////////
+   // how many variant records the process's cancel step read (-1: none) //
+   ////////////////////////////////////////////////////////////////////////
+   private static final AtomicInteger CANCEL_STEP_COUNT = new AtomicInteger(-1);
 
    private static final String VARIANT_PEOPLE  = "{\"type\":\"" + TestUtils.TABLE_NAME_MEMORY_VARIANT_OPTIONS + "\",\"id\":1}";
    private static final String VARIANT_PLANETS = "{\"type\":\"" + TestUtils.TABLE_NAME_MEMORY_VARIANT_OPTIONS + "\",\"id\":\"2\"}";
@@ -94,7 +100,7 @@ class ProcessTableVariantSpecV1Test extends SpecTestBase
    @Override
    protected List<AbstractEndpointSpec<?, ?, ?>> getAdditionalSpecs()
    {
-      return List.of(new ProcessStepSpecV1(), new ProcessRecordsSpecV1(), new ProcessStatusSpecV1());
+      return List.of(new ProcessStepSpecV1(), new ProcessRecordsSpecV1(), new ProcessStatusSpecV1(), new ProcessCancelSpecV1());
    }
 
 
@@ -136,7 +142,11 @@ class ProcessTableVariantSpecV1Test extends SpecTestBase
             .withCode(new QCodeReferenceLambda<BackendStep>((runBackendStepInput, runBackendStepOutput) ->
                runBackendStepOutput.addValue("reloadCount", new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_MEMORY_VARIANT_DATA)).getRecords().size()))))
          .withStep(new QFrontendStepMetaData()
-            .withName("result")));
+            .withName("result"))
+         .withCancelStep(new QBackendStepMetaData()
+            .withName("cancel")
+            .withCode(new QCodeReferenceLambda<BackendStep>((runBackendStepInput, runBackendStepOutput) ->
+               CANCEL_STEP_COUNT.set(new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_MEMORY_VARIANT_DATA)).getRecords().size())))));
       return (qInstance);
    }
 
@@ -149,6 +159,7 @@ class ProcessTableVariantSpecV1Test extends SpecTestBase
    void afterEach()
    {
       QContext.clear();
+      CANCEL_STEP_COUNT.set(-1);
    }
 
 
@@ -225,6 +236,46 @@ class ProcessTableVariantSpecV1Test extends SpecTestBase
          .multiPartContent().field("stepTimeoutMillis", "10000").asString().getBody());
       assertEquals("COMPLETE", step.getString("type"), step.toString());
       assertEquals(3, step.getJSONObject("values").getInt("reloadCount"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Cancel (and the process's cancel step) runs with the variant the process
+    ** started with; another variant, or none, is denied the process's state
+    ** before the cancel step can run.
+    *******************************************************************************/
+   @Test
+   void testCancelUsesVariant() throws QException
+   {
+      insertVariantData();
+
+      JSONObject init = JsonUtils.toJSONObject(Unirest.post(getBaseUrlAndPath() + "/processes/" + PROCESS_NAME + "/init")
+         .cookie("sessionId", SESSION_ID)
+         .multiPartContent().field("stepTimeoutMillis", "10000").field("tableVariant", VARIANT_PLANETS).asString().getBody());
+      assertEquals(3, init.getJSONObject("values").getInt("loadCount"));
+      String cancelUrl = getBaseUrlAndPath() + "/processes/" + PROCESS_NAME + "/" + init.getString("processUUID") + "/cancel";
+
+      HttpResponse<String> otherVariant = Unirest.post(cancelUrl)
+         .cookie("sessionId", SESSION_ID)
+         .queryString("tableVariant", VARIANT_PEOPLE)
+         .asString();
+      assertEquals(403, otherVariant.getStatus(), otherVariant.getBody());
+      assertThat(JsonUtils.toJSONObject(otherVariant.getBody()).getString("error")).contains("Permission denied for process state");
+
+      HttpResponse<String> noVariant = Unirest.post(cancelUrl)
+         .cookie("sessionId", SESSION_ID)
+         .asString();
+      assertEquals(403, noVariant.getStatus(), noVariant.getBody());
+      assertEquals(-1, CANCEL_STEP_COUNT.get());
+
+      HttpResponse<String> matchingVariant = Unirest.post(cancelUrl)
+         .cookie("sessionId", SESSION_ID)
+         .queryString("tableVariant", VARIANT_PLANETS)
+         .asString();
+      assertEquals(200, matchingVariant.getStatus(), matchingVariant.getBody());
+      assertEquals("{}", matchingVariant.getBody());
+      assertEquals(3, CANCEL_STEP_COUNT.get());
    }
 
 

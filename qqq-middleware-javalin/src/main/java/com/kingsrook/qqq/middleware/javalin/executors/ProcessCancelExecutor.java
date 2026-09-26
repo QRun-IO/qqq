@@ -43,6 +43,11 @@ public class ProcessCancelExecutor extends AbstractMiddlewareExecutor<ProcessCan
    @Override
    public void execute(ProcessCancelInput input, EmptyMiddlewareOutputInterface output) throws QException
    {
+      /////////////////////////////////////////////////////////////////////////
+      // the process's state belongs to the variant the process started with //
+      /////////////////////////////////////////////////////////////////////////
+      ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
+
       //////////////////////////////////////////////////////////////////////
       // only the session that ran the process may cancel it: another    //
       // user's process state is refused before its cancel step can run //

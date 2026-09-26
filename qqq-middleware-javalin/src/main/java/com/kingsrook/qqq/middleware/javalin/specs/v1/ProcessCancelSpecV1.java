@@ -84,7 +84,9 @@ public class ProcessCancelSpecV1 extends AbstractEndpointSpec<ProcessCancelInput
             .withRequired(true)
             .withSchema(new Schema().withType(Type.STRING).withFormat("uuid"))
             .withExample(ProcessSpecUtilsV1.EXAMPLE_PROCESS_UUID)
-            .withIn(In.PATH)
+            .withIn(In.PATH),
+
+         ProcessSpecUtilsV1.defineTableVariantQueryParameter()
       );
    }
 
@@ -99,6 +101,7 @@ public class ProcessCancelSpecV1 extends AbstractEndpointSpec<ProcessCancelInput
       ProcessCancelInput input = new ProcessCancelInput();
       input.setProcessName(getRequestParam(context, "processName"));
       input.setProcessUUID(getRequestParam(context, "processUUID"));
+      input.setTableVariant(ProcessSpecUtilsV1.getTableVariantParam(context));
       return (input);
    }
 

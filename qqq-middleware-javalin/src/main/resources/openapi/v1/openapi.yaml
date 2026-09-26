@@ -4370,6 +4370,14 @@ paths:
         schema:
           format: "uuid"
           type: "string"
+      - description: "For processes on tables that use variant backends, JSON object\
+          \ naming the variant to use (the same `type` and `id` as in table requests)."
+        example: "{\"type\":\"store\",\"id\":\"1\"}"
+        in: "query"
+        name: "tableVariant"
+        required: false
+        schema:
+          type: "string"
       responses:
         200:
           content:

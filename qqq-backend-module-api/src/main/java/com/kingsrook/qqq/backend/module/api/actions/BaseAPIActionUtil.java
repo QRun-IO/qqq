@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -84,6 +85,7 @@ import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendVariantSett
 import com.kingsrook.qqq.backend.module.api.model.metadata.APITableBackendDetails;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.BooleanUtils;
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.HttpResponse;
@@ -1266,11 +1268,11 @@ public class BaseAPIActionUtil
                int statusCode = qResponse.getStatusCode();
                if(statusCode == HttpStatus.SC_TOO_MANY_REQUESTS)
                {
-                  throw (new RateLimitException(qResponse.getContent()));
+                  throw (new RateLimitException("HTTP 429 rate limit"));
                }
                else if(shouldBeRetryableServerErrorException(qResponse))
                {
-                  throw (new RetryableServerErrorException(statusCode, qResponse.getContent()));
+                  throw (new RetryableServerErrorException(statusCode, "HTTP " + statusCode + " server error"));
                }
                else if(statusCode >= 400)
                {
@@ -1452,9 +1454,64 @@ public class BaseAPIActionUtil
          .withMethod(request.getMethod())
          .withUrl(url)
          .withTimestamp(Instant.now())
-         .withRequestBody(requestBody)
+         .withRequestBody(redactOutboundCredentials(requestBody, request))
          .withStatusCode(response.getStatusCode())
-         .withResponseBody(response.getContent());
+         .withResponseBody(redactOutboundCredentials(response.getContent(), request));
+   }
+
+
+
+   /*******************************************************************************
+    ** Providers can echo credentials in bodies; never persist those echoes.
+    *******************************************************************************/
+   protected String redactOutboundCredentials(String body, HttpRequestBase request)
+   {
+      if(body == null)
+      {
+         return null;
+      }
+
+      String safe = redactValue(body, backendMetaData.getApiKey());
+      safe = redactValue(safe, backendMetaData.getPassword());
+      safe = redactValue(safe, backendMetaData.getClientSecret());
+      safe = redactValue(safe, ValueUtils.getValueAsString(backendMetaData.getCustomValue("accessToken")));
+
+      for(Header header : request.getAllHeaders())
+      {
+         String name = header.getName().toLowerCase(Locale.ROOT);
+         if(name.contains("auth") || name.contains("key") || name.contains("token") || name.contains("secret"))
+         {
+            safe = redactValue(safe, header.getValue());
+            if(name.contains("auth") && header.getValue().contains(" "))
+            {
+               safe = redactValue(safe, header.getValue().substring(header.getValue().indexOf(' ') + 1));
+            }
+         }
+      }
+
+      String query = request.getURI().getRawQuery();
+      String keyName = backendMetaData.getApiKeyQueryParamName();
+      if(query != null && StringUtils.hasContent(keyName))
+      {
+         for(String parameter : query.split("&"))
+         {
+            if(parameter.startsWith(keyName + "="))
+            {
+               safe = redactValue(safe, parameter.substring(keyName.length() + 1));
+            }
+         }
+      }
+      return safe;
+   }
+
+
+
+   /*******************************************************************************
+    ** Plain replacement avoids treating credential characters as regex syntax.
+    *******************************************************************************/
+   private static String redactValue(String text, String value)
+   {
+      return StringUtils.hasContent(value) ? text.replace(value, "******") : text;
    }
 
 

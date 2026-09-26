@@ -77,7 +77,9 @@ import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.entity.StringEntity;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -591,16 +593,17 @@ class BaseAPIActionUtilTest extends BaseTest
       // specifically, that after too many 429's we get an error                                //
       ////////////////////////////////////////////////////////////////////////////////////////////
       mockApiUtilsHelper.setUseMock(false);
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
 
       GetInput getInput = new GetInput();
       getInput.setTableName(TestUtils.MOCK_TABLE_NAME);
       getInput.setPrimaryKey(3);
 
-      assertThatThrownBy(() -> new GetAction().execute(getInput)).hasRootCauseInstanceOf(RateLimitException.class);
+      assertThatThrownBy(() -> new GetAction().execute(getInput)).hasRootCauseInstanceOf(RateLimitException.class)
+         .rootCause().hasMessageNotContaining("secret-echo-59381");
    }
 
 
@@ -931,11 +934,24 @@ class BaseAPIActionUtilTest extends BaseTest
 
       MockApiActionUtils mockApiActionUtils = new MockApiActionUtils();
       mockApiActionUtils.setBackendMetaData(backend);
-      OutboundAPILog outboundAPILog = mockApiActionUtils.generateOutboundApiLogRecord(new HttpGet("...?apikey=9876-WXYZ"), new QHttpResponse());
+      HttpPost request = new HttpPost("...?apikey=9876-WXYZ");
+      request.setEntity(new StringEntity("echo 9876-WXYZ", StandardCharsets.UTF_8));
+      QHttpResponse response = new QHttpResponse();
+      response.setContent("rejected 9876-WXYZ");
+      OutboundAPILog outboundAPILog = mockApiActionUtils.generateOutboundApiLogRecord(request, response);
 
       assertThat(outboundAPILog.getUrl())
          .doesNotContain("9876-WXYZ")
          .contains("?apikey=*****");
+      assertThat(outboundAPILog.getRequestBody()).doesNotContain("9876-WXYZ");
+      assertThat(outboundAPILog.getResponseBody()).doesNotContain("9876-WXYZ");
+
+      backend.setAuthorizationType(AuthorizationType.OAUTH2);
+      HttpGet bearerRequest = new HttpGet("http://localhost/records");
+      bearerRequest.setHeader("Authorization", "Bearer variant-token");
+      response.setContent("rejected variant-token");
+      OutboundAPILog bearerLog = mockApiActionUtils.generateOutboundApiLogRecord(bearerRequest, response);
+      assertThat(bearerLog.getResponseBody()).doesNotContain("variant-token");
    }
 
 

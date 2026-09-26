@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from run_starter_application import GENERATED_PACKAGE, stage_starter, stage_template
+from live_starter_application import exercise
 
 
 @unittest.skipUnless(os.environ.get("QQQ_STARTER_SOURCE") and os.environ.get("QQQ_TEMPLATE_SOURCE"),
@@ -30,6 +31,11 @@ class StarterApplicationFixtureTest(unittest.TestCase):
             self.assertNotIn("com.kingsrook.qbits.example", contents)
         self.assertIn("<artifactId>orderdesk-app</artifactId>",
                       (self.root / "application/pom.xml").read_text())
+        upstream_test = self.template / "src/test/java/com/kingsrook/qbits/example/ExampleAppQBitProducerTest.java"
+        if upstream_test.exists():
+            renamed_test = self.root / "application/src/test/java/com/qrunio/acceptance/orderdesk/OrderDeskAppQBitProducerTest.java"
+            self.assertTrue(renamed_test.exists())
+            self.assertIn("class OrderDeskAppQBitProducerTest", renamed_test.read_text())
 
     def test_stages_host_registration_and_dependency(self):
         stage_starter(self.starter, self.root / "starter")
@@ -39,6 +45,10 @@ class StarterApplicationFixtureTest(unittest.TestCase):
         self.assertIn('produce(qInstance, "acceptance")', provider)
         self.assertIn("withBackendName(RDBMS_BACKEND_NAME)", provider)
         self.assertNotIn("orderdesk-app", (self.starter / "pom.xml").read_text())
+
+    def test_live_probe_rejects_non_loopback_urls(self):
+        with self.assertRaises(ValueError):
+            exercise("https://example.invalid")
 
 
 if __name__ == "__main__":

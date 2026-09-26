@@ -20,12 +20,27 @@
 
 package com.kingsrook.qqq.starterapp;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.qrunio.acceptance.orderdesk.OrderDeskAppQBitConfig;
 import com.qrunio.acceptance.orderdesk.OrderDeskAppQBitProducer;
+import io.javalin.Javalin;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -76,5 +91,46 @@ class StarterApplicationAcceptanceTest
             .withConfig(new OrderDeskAppQBitConfig().withBackendName(StarterAppMetaDataProvider.RDBMS_BACKEND_NAME))
             .produce(instance, "acceptance"));
       assertTrue(duplicate.getMessage().contains("second qBit"));
+   }
+
+   @Test
+   void configuredMockAuthenticationDeniesUnpermittedInsert() throws Exception
+   {
+      QInstance instance = new StarterAppMetaDataProvider().defineQInstance();
+      instance.withInstanceDefaultAuthentication(new QAuthenticationMetaData()
+         .withName("mock").withType(QAuthenticationType.MOCK));
+      instance.getTable("orderDeskEntity").setPermissionRules(
+         QPermissionRules.defaultInstance().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
+      QApplicationJavalinServer server = new QApplicationJavalinServer(new AbstractQQQApplication()
+      {
+         @Override
+         public QInstance defineQInstance()
+         {
+            return instance;
+         }
+      });
+      AtomicReference<Javalin> service = new AtomicReference<>();
+      server.setPort(0);
+      server.withJavalinConfigurationCustomizer(service::set);
+      try
+      {
+         server.start();
+         URI uri = URI.create("http://localhost:" + service.get().port() + "/qqq/v1/table/orderDeskEntity");
+         try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+         {
+            HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(5))
+               .header("Content-Type", "application/json")
+               .POST(HttpRequest.BodyPublishers.ofString("{\"name\":\"Denied\"}"))
+               .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(403, response.statusCode(), response.body());
+            assertFalse(response.body().contains("\"record\""));
+         }
+      }
+      finally
+      {
+         server.stop();
+         QContext.clear();
+      }
    }
 }

@@ -62,6 +62,15 @@ jobs:
             python3 qqq-sample-project/test_feature_coverage.py
             mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
       - run:
+          name: Verify generated infrastructure extension in a separate host
+          command: |
+            git clone https://github.com/QRun-IO/qbit-template-extension.git /tmp/sample-extension-template
+            git -C /tmp/sample-extension-template checkout --detach 92f2ec557bd9c908127d289172b00cd205e6d802
+            python3 qqq-sample-project/acceptance/extension/run_extension.py \
+              --qqq-source . \
+              --template-source /tmp/sample-extension-template \
+              --report-dir qqq-sample-project/target/surefire-reports
+      - run:
           name: Report sample feature coverage
           when: always
           command: python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only

@@ -776,12 +776,15 @@ not start a scheduler, Javalin or Artemis; Person ESB publication is disabled on
 on the private fixture instance.
 
 Invalid provider linkage/status-field metadata and missing/unknown table or
-ambiguous implicit provider inputs are rejected without data changes. One runtime
-gap remains at source base `7bc761154`: an explicitly unknown provider name returns
-`ok=true` and leaves pending rows unprocessed. A rejection regression reproduces
-that false-success response in `/private/tmp/qqq-567-unknown-provider-red.log`;
-the retained test characterizes it and proves a subsequent valid-provider call
-consumes the same pending work. No production fix or policy change is included.
+ambiguous implicit provider inputs are rejected without data changes.
+The correction for [#845](https://github.com/QRun-IO/qqq/issues/845) fixes the false-success
+response reproduced at source base `7bc761154`: an explicit unknown provider now
+throws the existing `QException` before work or status changes. The native sample
+regression compares all Person rows before/after rejection, then verifies that a
+valid-provider retry changes that row to OK with one persisted handler invocation.
+Null/blank provider selection still chooses the sole configured provider and rejects zero
+or multiple providers; a known provider with no applicable work remains a no-op.
+No new API, provider or runtime policy is introduced.
 PRE_DELETE remains documented unsupported/excluded; scheduler timing, competing
 workers, atomic rollback and exactly-once delivery are not claimed. The ledger
 retains all 130 requirements and the `pending` source status and existing 4.0
@@ -795,10 +798,19 @@ mvn -o -f qqq-sample-project/pom.xml -Dmaven.repo.local="$AUTOMATION_ACCEPTANCE_
 python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
 ```
 
-The initial nine-case focused run passes with zero failures/errors/skips and zero
-Checkstyle violations (`/private/tmp/qqq-567-focused-final.log`). Test-owned fault
-injection was checked red-to-green for code and child-process failures; deliberately
-reversing priority and changing batch size to three produces two native-oracle
-failures (`/private/tmp/qqq-567-priority-batch-mutation.log`), then restoration passes.
-No full sample run was started for this branch; it requires the coordinated full
-verification slot (and any separately reviewed packaged-child port helper).
+The #845 rejection regressions fail against the original implementation in both
+core and sample (`/private/tmp/qqq-845-{core,sample}-red.log`), then pass after the
+provider check: core 7/7 and sample 9/9, with zero Checkstyle violations. Root core
+`clean install` through the unchanged verify gates passes 2,067 total tests (2,056
+executed and 11 existing skips), zero failures/errors, 97.23% class coverage and
+82.32% instruction coverage (`/private/tmp/qqq-845-core-full-install.log`). SpotBugs
+and PMD run under the existing report-only defaults and retain advisory findings;
+this is not a zero-warning claim. The sample uses the identical built/installed
+core JAR in the owned cache (`/private/tmp/qqq-845-sample-green.log`); 46 Python
+checks also pass (`/private/tmp/qqq-845-python.log`).
+
+The original fixture's deliberately reversed priority and changed batch size
+produced two native-oracle failures before restoration
+(`/private/tmp/qqq-567-priority-batch-mutation.log`). No full sample run was started
+for this branch; independent review and the coordinated full verification slot
+remain required (including any separately reviewed packaged-child port helper).

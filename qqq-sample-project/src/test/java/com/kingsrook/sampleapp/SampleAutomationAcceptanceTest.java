@@ -132,20 +132,21 @@ class SampleAutomationAcceptanceTest
 
 
    /*******************************************************************************
-    ** Characterize the known false-success boundary; this is not provider rejection.
+    ** Reject an unknown provider without writes; the same pending record can recover.
     *******************************************************************************/
    @Test
-   void testUnknownRuntimeProviderLeavesPendingWorkDespiteSuccess() throws Exception
+   void testUnknownRuntimeProviderRejectsWithoutWritesAndValidRetryRecovers() throws Exception
    {
       try(Fixture fixture = new Fixture())
       {
          fixture.actions(code("insert", TriggerEvent.POST_INSERT, "I"));
          int id = fixture.insert("Eligible");
-         RunProcessOutput output = fixture.process(RunTableAutomationsProcessStep.NAME,
-            Map.of("tableName", "person", "automationProviderName", "missingProvider"));
+         List<List<String>> before = fixture.rows("SELECT * FROM person ORDER BY id");
+         QException failure = assertThrows(QException.class, () -> fixture.process(RunTableAutomationsProcessStep.NAME,
+            Map.of("tableName", "person", "automationProviderName", "missingProvider")));
+         assertEquals("Unrecognized automationProviderName: missingProvider", failure.getMessage());
+         assertEquals(before, fixture.rows("SELECT * FROM person ORDER BY id"));
          assertEquals(List.of(List.of("1", "", "0")), fixture.rows("SELECT automation_status,automation_trace,automation_attempts FROM person WHERE id=" + id));
-         assertTrue(output.getException().isEmpty());
-         assertEquals("true", output.getValueString("ok"));
          fixture.poll();
          assertEquals(List.of(List.of("7", "I", "1")), fixture.rows("SELECT automation_status,automation_trace,automation_attempts FROM person WHERE id=" + id));
       }

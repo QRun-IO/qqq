@@ -1438,10 +1438,10 @@
       "negative_cases": [
         "Handler failure, retries/duplicate work, invalid status/provider; PRE_DELETE is documented unimplemented and excluded"
       ],
-      "gap": "Nine source-only sample acceptance cases exercise public Person/Pet record APIs, code/process handlers, priority/re-filtering, batches, associations and status recovery with native H2 SQL oracles. Failed batches can retain and repeat partial writes; completed polling does not repeat work. Invalid metadata and ambiguous implicit providers reject; unknown/null persisted statuses remain untouched. Known runtime gap: an explicit unknown provider returns ok=true without consuming pending work. PRE_DELETE remains unsupported/excluded. Independent review and full sample verification remain pending; no scheduler, concurrent-worker or exactly-once guarantee is claimed.",
+      "gap": "Nine source-only sample acceptance cases exercise public Person/Pet record APIs, code/process handlers, priority/re-filtering, batches, associations and status recovery with native H2 SQL oracles. Failed batches can retain and repeat partial writes; completed polling does not repeat work. Invalid metadata and ambiguous implicit providers reject; unknown/null persisted statuses remain untouched. Regression #845 rejects an explicit unknown provider without changing pending rows, then verifies valid-provider recovery. Existing null/blank single-provider defaults and known-provider no-op behavior are preserved. PRE_DELETE remains unsupported/excluded. Independent review and full sample verification remain pending; no scheduler, concurrent-worker or exactly-once guarantee is claimed.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInsertUpdateAndCompletedWorkIsNotRepeated",
-        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testUnknownRuntimeProviderLeavesPendingWorkDespiteSuccess",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testUnknownRuntimeProviderRejectsWithoutWritesAndValidRetryRecovers",
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testPriorityFiltersAndAssociationLoading",
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testProcessHandlerRespectsBatchSizeAndSelectedRecords",
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testFailedInsertBatchRequiresRecoveryAndRepeatsPartialWork",

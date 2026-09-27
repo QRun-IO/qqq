@@ -822,3 +822,65 @@ python3 qqq-sample-project/test_feature_coverage.py
 ```
 
 On source base `4da034600`, the focused clean run passed **8 maintenance +9 reused column-statistics tests**, with zero failures/errors/skips and Checkstyle zero. No product defect was confirmed. `core.maintenance` remains **pending** until independent review and the required full `-Pacceptance-tests clean verify` pass. Full sample execution must have the shared broker's exclusive slot; no full run was started for this change. When also enabling `data-qbit-acceptance`, first build the matching `qqq-sample-data-qbit` source fixture into that same cache; its six additional host tests are source-only evidence.
+
+### Merge duplicate Person acceptance (#568 / #843)
+
+`SampleMergeAcceptanceTest` registers the actual `MergeDuplicatesProcess` against
+sample Person/Pet/Pet Note metadata in a uniquely named, owned H2 database. Its
+application transform groups people by email, accepts an explicit survivor ID,
+combines worked days and a chosen first name, and queues existing pets for
+reassignment. Duplicate discovery, preview/resume, writes, deletes and transaction
+ownership remain framework operations. Independent JDBC connections inspect
+committed rows; failure cases compare every column of all three native tables.
+This is a Java process acceptance fixture, not browser interaction or a new
+framework rule for choosing survivors.
+
+Original [#568](https://github.com/QRun-IO/qqq/issues/568) requirements map to these
+methods in `com.kingsrook.sampleapp.SampleMergeAcceptanceTest`:
+
+| Original scenario | Runnable methods and native oracle |
+| --- | --- |
+| Select duplicates and choose survivor | `selectedDuplicateMergesFieldsAndPreservesAssociations` selects only Person 1 and discovers Person 2 by email; `choosingSecondSurvivorPreservesAllPetsAndGrandchildren` keeps Person 2 instead. JDBC observes exactly the selected survivor and combined fields. |
+| Merge fields/associations and verify persistence | Both survivor tests preserve all six pets and both nested notes; unrelated people are unchanged. `selectedSurvivorAndFieldsPersistWithoutAssociationMoves` verifies a field-only merge and repeat no-op. `previewDoesNotWriteAndConfirmationPersistsMerge` snapshots all tables before confirmation and checks persistence after resuming the same process. |
+| Unrelated records | `unrelatedSelectionAndInvalidSurvivorDoNotMutate` proves distinct email groups and a survivor outside the duplicate group leave all native rows unchanged. |
+| Denied record | `readDeniedDuplicateIsNotMerged` excludes a denied duplicate even when explicitly selected. `writeDeniedSurvivorDoesNotConsumeDuplicate`, `deniedAssociationReassignmentRollsBackMerge` and `deniedDuplicateDeletionRollsBackMerge` assert an error and unchanged native tables; reassignment includes both allowed and denied child updates and exercises process/page transactions. |
+| Unique conflict | `uniqueConflictDoesNotConsumeDuplicate` installs a fixture-only native unique constraint and corresponding QQQ key; a conflicting survivor field fails without consuming the duplicate or its children. |
+| Failed merge rollback | `thrownLoadFailureRollsBackAlreadyUpdatedSurvivor` observes the survivor and reparented pet inside the live native transaction, then throws from the existing pre-delete customizer; independent JDBC proves rollback. The denied-write cases also test error-bearing output records, not only thrown exceptions. |
+
+Additional boundary tests distinguish the existing transaction modes:
+`autocommitFailureStopsDeletionWithoutClaimingRollback` proves that an earlier
+survivor update remains committed under autocommit, while the duplicate, children
+and notes survive the failed reassignment. No cross-backend, distributed or
+whole-job-across-pages atomicity is claimed. `cleanupFailuresDoNotMaskThrownMergeFailure`
+and `cleanupFailuresDoNotMaskErrorBearingReassignment` use the existing load
+extension point with a native H2 transaction that performs real rollback/close
+before raising controlled cleanup errors. Both process/page paths retain the exact
+primary exception and suppressed rollback/close diagnostics.
+`repeatedPrimaryInstanceIsNotSuppressedOntoItself` guards self-suppression;
+`successfulMergeSurfacesCloseFailure` and `successfulPageMergeSurfacesCloseFailure`
+prove close failures remain visible after successful commits, with committed native
+rows rather than a false rollback claim.
+
+The original compiling red cases exposed persisted association loss and continued
+deletions after rejected writes. [#843](https://github.com/QRun-IO/qqq/issues/843)
+tracks the correction: the merge load step stores/reassigns related records before
+deleting duplicates, rejects record-level action errors, and relies on the existing
+ETL transaction to roll back. The ETL owner now retains primary failures when cleanup
+also fails. No dependencies, public APIs, shared sample schema or provider policies
+are added. Focused validation is **17 native cases, zero failures/errors/skips**;
+the full core `clean install` also passes **2,063 tests, zero failures/errors and
+11 existing skips**, with configured quality checks unchanged. The ledger row
+remains **pending** for independent review and a combined full sample run.
+
+Run the focused fixture after installing matching source artifacts into an isolated
+Maven repository:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml -Dtest=SampleMergeAcceptanceTest test
+```
+
+The fixture starts no HTTP server, broker or container. It removes its own process
+state, shuts down its unique H2 database, resets connection providers and restores
+caller context. The full `-Pacceptance-tests,data-qbit-acceptance clean verify` gate
+remains separately scheduled with the shared sample broker owner.

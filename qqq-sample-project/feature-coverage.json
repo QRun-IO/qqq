@@ -1819,8 +1819,26 @@
       "negative_cases": [
         "Unrelated records, denied record, unique conflict and failed merge rollback"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Seventeen first-party registered-process H2 cases cover selection/survivor/fields, child and grandchild persistence, unrelated/denied/unique-conflict cases, supported transaction rollback and cleanup-error precedence. #843 corrects confirmed association loss and ignored write errors. Independent review and combined full sample verification remain pending; autocommit can retain earlier writes, and cross-backend atomicity/browser interaction are not claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#selectedDuplicateMergesFieldsAndPreservesAssociations",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#choosingSecondSurvivorPreservesAllPetsAndGrandchildren",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#previewDoesNotWriteAndConfirmationPersistsMerge",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#selectedSurvivorAndFieldsPersistWithoutAssociationMoves",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#unrelatedSelectionAndInvalidSurvivorDoNotMutate",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#readDeniedDuplicateIsNotMerged",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#writeDeniedSurvivorDoesNotConsumeDuplicate",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#uniqueConflictDoesNotConsumeDuplicate",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#thrownLoadFailureRollsBackAlreadyUpdatedSurvivor",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#deniedAssociationReassignmentRollsBackMerge",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#deniedDuplicateDeletionRollsBackMerge",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#autocommitFailureStopsDeletionWithoutClaimingRollback",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#cleanupFailuresDoNotMaskThrownMergeFailure",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#cleanupFailuresDoNotMaskErrorBearingReassignment",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#successfulMergeSurfacesCloseFailure",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#successfulPageMergeSurfacesCloseFailure",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#repeatedPrimaryInstanceIsNotSuppressedOntoItself"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/568",

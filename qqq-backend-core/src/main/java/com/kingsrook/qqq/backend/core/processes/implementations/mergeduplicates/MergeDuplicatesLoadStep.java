@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.LoadViaInsertOrUpdateStep;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 
 
@@ -63,6 +64,7 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
    public void runOnePage(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput) throws QException
    {
       super.runOnePage(runBackendStepInput, runBackendStepOutput);
+      assertSuccessfulRecords(runBackendStepOutput.getRecords(), "survivor write");
 
       @SuppressWarnings("unchecked")
       ListingHash<String, Serializable> otherTableIdsToDelete = (ListingHash<String, Serializable>) runBackendStepInput.getValue("otherTableIdsToDelete");
@@ -73,33 +75,11 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
       @SuppressWarnings("unchecked")
       ListingHash<String, QRecord> otherTableRecordsToStore = (ListingHash<String, QRecord>) runBackendStepInput.getValue("otherTableRecordsToStore");
 
-      if(otherTableIdsToDelete != null)
-      {
-         for(String tableName : otherTableIdsToDelete.keySet())
-         {
-            DeleteInput deleteInput = new DeleteInput();
-            deleteInput.setTableName(tableName);
-            deleteInput.setPrimaryKeys(new ArrayList<>(otherTableIdsToDelete.get(tableName)));
-            getTransaction().ifPresent(deleteInput::setTransaction);
-            new DeleteAction().execute(deleteInput);
-         }
-      }
-
-      if(otherTableFiltersToDelete != null)
-      {
-         for(String tableName : otherTableFiltersToDelete.keySet())
-         {
-            for(QQueryFilter filter : otherTableFiltersToDelete.get(tableName))
-            {
-               DeleteInput deleteInput = new DeleteInput();
-               deleteInput.setTableName(tableName);
-               deleteInput.setQueryFilter(filter);
-               getTransaction().ifPresent(deleteInput::setTransaction);
-               new DeleteAction().execute(deleteInput);
-            }
-         }
-      }
-
+      /////////////////////////////////////////////////////////////////////////
+      // Reassign children before deleting duplicates: DeleteAction cascades //
+      // through their associations. A failed write must stop this merge so  //
+      // the existing ETL transaction can roll back instead of losing data.  //
+      /////////////////////////////////////////////////////////////////////////
       if(otherTableRecordsToStore != null)
       {
          for(String tableName : otherTableRecordsToStore.keySet())
@@ -115,13 +95,40 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
             insertInput.setTableName(tableName);
             insertInput.setRecords(recordsToInsert);
             getTransaction().ifPresent(insertInput::setTransaction);
-            new InsertAction().execute(insertInput);
+            assertSuccessfulRecords(new InsertAction().execute(insertInput).getRecords(), "related record insert");
 
             UpdateInput updateInput = new UpdateInput();
             updateInput.setTableName(tableName);
             updateInput.setRecords(recordsToUpdate);
             getTransaction().ifPresent(updateInput::setTransaction);
-            new UpdateAction().execute(updateInput);
+            assertSuccessfulRecords(new UpdateAction().execute(updateInput).getRecords(), "related record update");
+         }
+      }
+
+      if(otherTableIdsToDelete != null)
+      {
+         for(String tableName : otherTableIdsToDelete.keySet())
+         {
+            DeleteInput deleteInput = new DeleteInput();
+            deleteInput.setTableName(tableName);
+            deleteInput.setPrimaryKeys(new ArrayList<>(otherTableIdsToDelete.get(tableName)));
+            getTransaction().ifPresent(deleteInput::setTransaction);
+            assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
+         }
+      }
+
+      if(otherTableFiltersToDelete != null)
+      {
+         for(String tableName : otherTableFiltersToDelete.keySet())
+         {
+            for(QQueryFilter filter : otherTableFiltersToDelete.get(tableName))
+            {
+               DeleteInput deleteInput = new DeleteInput();
+               deleteInput.setTableName(tableName);
+               deleteInput.setQueryFilter(filter);
+               getTransaction().ifPresent(deleteInput::setTransaction);
+               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
+            }
          }
       }
 
@@ -131,6 +138,26 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
          // todo exec async?
          new AuditAction().execute(auditInput);
          runBackendStepInput.addValue("auditInput", null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Merge writes depend on each other. Surface record-level errors as load
+    ** failures so the configured transaction owner can roll back the merge.
+    *******************************************************************************/
+   private void assertSuccessfulRecords(List<QRecord> records, String operation) throws QException
+   {
+      if(records != null)
+      {
+         for(QRecord record : records)
+         {
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+            {
+               throw new QException("Merge failed during " + operation);
+            }
+         }
       }
    }
 

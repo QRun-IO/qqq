@@ -98,7 +98,7 @@ def main():
         release_deferrals.add(feature_id)
 
     outcomes = {}
-    for directory in ('surefire-reports', 'failsafe-reports'):
+    for directory in ('surefire-reports', 'failsafe-reports', 'starter-application-junit'):
         for report in (sample / 'target' / directory).glob('TEST-*.xml'):
             for case in ET.parse(report).getroot().iter('testcase'):
                 name = case.attrib['classname'] + '#' + case.attrib['name']

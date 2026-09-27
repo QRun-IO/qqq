@@ -4947,12 +4947,16 @@
       "negative_cases": [
         "Database unavailable/missing schema, missing environment variables and denied operation"
       ],
-      "gap": "Run starter acceptance with QRun-owned disposable fixtures and exact candidate dependency evidence; do not count its tests as sample coverage.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Published-artifact consumption remains separate from this source-generated starter acceptance.",
+      "verified_tests": [
+        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes",
+        "com.kingsrook.qqq.starterapp.StarterApplicationLivePermissionTest#deniedInsertHasAllowedControlAndNoDatabaseWrite",
+        "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#configuredMockAuthenticationDeniesUnpermittedInsert"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/607",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source-generated starter acceptance is required in sample_acceptance before publication; published BOM consumption remains a separate check."
     },
     {
       "id": "train.application",
@@ -4971,12 +4975,17 @@
       "negative_cases": [
         "Duplicate metadata names, missing host dependency and invalid configuration"
       ],
-      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Published-artifact consumption remains separate from this source-generated application acceptance.",
+      "verified_tests": [
+        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes",
+        "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#generatedQBitIsRegisteredInRealStarterHost",
+        "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#invalidConfigurationAndDuplicateRegistrationFail",
+        "com.qrunio.acceptance.orderdesk.OrderDeskAppQBitProducerTest#orderDeskProcessTransformsPendingRecord"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/608",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source-generated application acceptance is required in sample_acceptance before publication; published BOM consumption remains a separate check."
     },
     {
       "id": "train.data",

@@ -142,6 +142,32 @@ jobs:
             - attach_workspace:
                 at: qqq-sample-project/target
       - run:
+          name: Require source-generated starter and application acceptance with live MySQL
+          no_output_timeout: 30m
+          command: |
+            set -euo pipefail
+            consumer_root=$(mktemp -d /tmp/qqq-starter-acceptance-XXXXXX)
+            trap 'rm -rf "$consumer_root"' EXIT
+            git clone https://github.com/QRun-IO/qqq-app-starter.git "$consumer_root/starter"
+            git -C "$consumer_root/starter" checkout --detach 2fb62378fa76da1950dc9e67984c18fd0491ae3f
+            test "$(git -C "$consumer_root/starter" rev-parse HEAD)" = 2fb62378fa76da1950dc9e67984c18fd0491ae3f
+            git clone https://github.com/QRun-IO/qbit-template-application.git "$consumer_root/template"
+            git -C "$consumer_root/template" fetch origin refs/pull/5/head
+            git -C "$consumer_root/template" checkout --detach FETCH_HEAD
+            test "$(git -C "$consumer_root/template" rev-parse HEAD)" = 4ff4ddbd9a38d633d846d6762217994a04925a8d
+            docker pull mysql:8.4
+            QQQ_STARTER_SOURCE="$consumer_root/starter" QQQ_TEMPLATE_SOURCE="$consumer_root/template" \
+              python3 -m unittest discover -s qqq-sample-project/acceptance -p test_starter_application.py -v
+            python3 qqq-sample-project/acceptance/run_starter_application.py \
+              --qqq-source . --starter-source "$consumer_root/starter" \
+              --template-source "$consumer_root/template" \
+              --candidate-version 0.0.0-sample-acceptance \
+              --maven-repo "$consumer_root/m2" --online \
+              --maven-settings /tmp/circleci/mvn-settings.xml --live-mysql \
+              --junit-dir qqq-sample-project/target/starter-application-junit
+            python3 qqq-sample-project/verify-feature-coverage.py --stage source \
+              --require-feature train.starter --require-feature train.application
+      - run:
           name: Report sample feature coverage
           when: always
           command: python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
@@ -163,6 +189,8 @@ jobs:
             done
       - store_test_results:
           path: qqq-sample-project/target/junit-results
+      - store_test_results:
+          path: qqq-sample-project/target/starter-application-junit
       - store_artifacts:
           path: qqq-sample-project/target/browser-acceptance
       - store_artifacts:

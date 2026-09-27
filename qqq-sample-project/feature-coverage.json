@@ -2641,8 +2641,20 @@
       "negative_cases": [
         "Invalid code/parameters, script exception, permission denial and test run must not persist"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Eleven focused source scenarios cover real sample Store/Test/Run actions, revision history/current and pinned code, record/process inputs and outputs, native SQL persistence/log oracles, batches and summaries, invalid parameters/code, runtime failures, permission denial and recovery. Draft revisions/logs and implicit local record mutations do not persist. Explicit writes in Test mode DO persist: native red reproduction is tracked in #849 (https://github.com/QRun-IO/qqq/issues/849); this requirement is not verified and no sandbox/rollback guarantee is claimed. The normal sample gate depends on the test-scoped JavaScript provider owned by #591; focused execution supplied matching existing jars through Surefire CLI, with no dependency changes here. Independent review and combined full verification remain pending. Existing post-4.0 disposition is unchanged and grants no new release approval.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testAdHocPinnedRevisionAndInvalidReferences",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRunRecordProcessPersistsSelectedRecordsAndSummarizesBatches",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testInvalidDraftCodeParametersAndAssociatedReference",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordDraftLocalMutationDoesNotPersist",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testStoreRevisionsAndRunCurrentAssociatedScript",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRunRecordProcessReportsScriptFailuresWithoutImplicitWrites",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testAssociatedDraftReturnsOutputWithoutPersistingRevisionOrLogs",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordScriptPermissionDeniedThenGrantedWrite",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testStoredSyntaxAndRuntimeFailuresThenValidRevisionRecovery",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testStoreRevisionDeniedByRecordLockThenAuthorized",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testAdHocRecordInputsOutputsAndExplicitPersistence"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/572",

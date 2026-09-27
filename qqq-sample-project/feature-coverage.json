@@ -1214,7 +1214,7 @@
         "Disabled capability/manager, thresholds, consumer/storage failures and collection recursion do not fabricate or leak statistics",
         "No cross-instance/session state or worker leakage; failed/terminated reads have an explicit truthful statistics outcome"
       ],
-      "gap": "Owned H2 evidence now covers direct/plain/association-buffered counts including tails, exact native timing/session/filter/order/join metadata, explicit and scheduled storage, caller context including an actual transaction and the identical named-object map, isolated supplier/storage objects and unchanged caller audit accumulation, disabled/threshold/consumer/storage failures, two-instance isolation across restart, repeated-start cleanup, in-flight flush/restart and consumer-generation isolation, and flush self-observation suppression/recovery. Seven former failing probes for #833\u2013#837 pass and run in ordinary discovery. Backend measurements remain valid after post-query rejection; no whole-request success is inferred. The row remains pending for independent review, combined full-sample verification and unproven concurrent query cancellation/termination scope. Failed storage batches are still dropped; counts are consumer-only, and structured order direction/join type and persistent request outcomes are not provided. High #525/#526 and deferred #527\u2013#531 remain unchanged.",
+      "gap": "Owned H2 evidence now covers direct/plain/association-buffered counts including tails, exact native timing/session/filter/order/join metadata, explicit and scheduled storage, caller context including an actual transaction and the identical named-object map, isolated supplier/storage objects and unchanged caller audit accumulation, disabled/threshold/consumer/storage failures, two-instance isolation across restart, repeated-start cleanup, in-flight flush/restart and consumer-generation isolation, and flush self-observation suppression/recovery. Seven former failing probes for #833\u2013#837 pass and run in ordinary discovery. Backend measurements remain valid after post-query rejection; no whole-request success is inferred. Independent review and combined full-sample verification passed. The row remains pending for unproven concurrent query cancellation/termination scope. Failed storage batches are still dropped; counts are consumer-only, and structured order direction/join type and persistent request outcomes are not provided. High #525/#526 and deferred #527\u2013#531 remain unchanged.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testNativeFlushPreservesAndIsolatesNamedObjects",
         "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testFailedNativeFlushPreservesAndIsolatesNamedObjects",
@@ -2547,14 +2547,14 @@
       "negative_cases": [
         "Malformed HTML, missing asset and conversion failure; no external private resources"
       ],
-      "gap": "Four source sample scenarios now reopen serialized PDF bytes with the existing PDFBox parser and assert page-specific text, pagination and embedded-image presence. Native OpenHTMLToPDF controls distinguish strict malformed-XML rejection from QQQ HTML repair, tolerated missing local images from successful image loading, and an output-sink IOException from QQQ exception wrapping. All resources are owned and local; the failure case confirms subsequent conversion succeeds, not output rollback. No visual-fidelity, custom-font, remote-asset, publication or release certification is claimed. Independent review and full sample verification remain pending; existing post-4.0 deferral is unchanged and grants no new 4.1 approval.",
+      "gap": "Four source sample scenarios now reopen serialized PDF bytes with the existing PDFBox parser and assert page-specific text, pagination and embedded-image presence. Native OpenHTMLToPDF controls distinguish strict malformed-XML rejection from QQQ HTML repair, tolerated missing local images from successful image loading, and an output-sink IOException from QQQ exception wrapping. All resources are owned and local; the failure case confirms subsequent conversion succeeds, not output rollback. No visual-fidelity, custom-font, remote-asset, publication or release certification is claimed. Independent review and combined full sample verification passed; existing post-4.0 disposition remains unchanged and grants no new release approval.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testSampleTemplateProducesTwoReadablePagesAndLocalImage",
         "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testMalformedHtmlIsRepairedWithoutLosingText",
         "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testMissingLocalAssetPreservesTextWithoutImage",
         "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testOutputFailureRetainsCauseAndNextConversionSucceeds"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/571",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
@@ -2616,7 +2616,7 @@
       "negative_cases": [
         "Nonexpired/denied records untouched, empty table and invalid configuration"
       ],
-      "gap": "Focused source scenarios pass; the required full sample acceptance profile and independent review remain pending. No published-candidate or scheduler evidence is claimed.",
+      "gap": "Independent review, focused source scenarios and the combined full sample acceptance profiles passed. No published-candidate or scheduler evidence is claimed.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testConfiguredExpiryAndRepeatPreserveNonexpiredRecords",
         "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testExplicitCutoffPreservesEqualAndLaterDates",
@@ -2630,11 +2630,11 @@
         "com.kingsrook.sampleapp.SampleAggregateColumnStatsContractTest#testUserBaseReadScopeReachesBothAggregates",
         "com.kingsrook.sampleapp.SampleAggregateColumnStatsContractTest#testJoinedTableReadPermissionForTargetAndFilter"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/574",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
-      "acceptance_review": "Source base 4da03460068dd9cabea50caf65bf5405754d716f: 8 maintenance and 9 existing column-statistics tests pass with zero failures/errors/skips in an isolated matching-source Maven cache. Registered garbage collection uses the sample Field Lab metadata and existing schema in an owned H2 database; native JDBC snapshots check configured expiry, exact cutoff, repeat execution, READ/WRITE-denied and null-owner preservation, empty tables, invalid expiry field and column-statistics configuration. Reused registered column-statistics SQL oracles compare counts/groups/sum/average/extrema and scoped READ behavior. No schedule, cascade, external database or published-artifact claim; full acceptance and independent review are pending."
+      "acceptance_review": "Source base 4da03460068dd9cabea50caf65bf5405754d716f: 8 maintenance and 9 existing column-statistics tests pass with zero failures/errors/skips in an isolated matching-source Maven cache. Registered garbage collection uses the sample Field Lab metadata and existing schema in an owned H2 database; native JDBC snapshots check configured expiry, exact cutoff, repeat execution, READ/WRITE-denied and null-owner preservation, empty tables, invalid expiry field and column-statistics configuration. Reused registered column-statistics SQL oracles compare counts/groups/sum/average/extrema and scoped READ behavior. No schedule, cascade, external database or published-artifact claim; independent review and combined full acceptance passed at fd7743b3773e02cb0ee59e570191ede2e48b40f2 (817 regular +110 integration tests, zero failures/errors/skips)."
     },
     {
       "id": "core.widget.alert",

@@ -759,7 +759,7 @@ env -u JAVA_TOOL_OPTIONS mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" \
 ```
 
 
-### PDF source acceptance (#571, pending)
+### PDF source acceptance (#571, verified)
 
 `SamplePdfAcceptanceTest` renders a first-party HTML report in real sample metadata
 context and reopens the serialized bytes with the existing transitive PDFBox parser.
@@ -790,11 +790,11 @@ mvn -o -f qqq-sample-project/pom.xml \
 
 All 46 top-level Python checks pass (`/private/tmp/qqq-571-python.log`). The ledger
 report resolves all four fully qualified test bindings; its required-feature gate
-correctly exits 1 solely because scenario review is pending. Independent review and
-full sample verification remain pending; no full run was attempted while another
-agent owns the broker reservation. The ledger stays pending
-at source stage and retains its existing post-4.0 deferral; this is no new 4.1 release
-approval. PDFBox is also used by the renderer internally, so parsing is an independent
+initially exited 1 solely because scenario review was pending. Independent review
+and the combined full sample run now pass: 817 regular plus 110 integration tests,
+zero failures/errors/skips, at `fd7743b3773e02cb0ee59e570191ede2e48b40f2`.
+The source ledger is verified; its existing post-4.0 disposition is unchanged and
+this grants no new release approval. PDFBox is also used by the renderer internally, so parsing is an independent
 output assertion, not a second rendering engine or visual-fidelity certification.
 Custom-font behavior, remote assets and published-candidate acceptance are not claimed.
 
@@ -821,7 +821,7 @@ mvn -B -ntp -Dmaven.repo.local="$MAINTENANCE_M2" -f qqq-sample-project/pom.xml \
 python3 qqq-sample-project/test_feature_coverage.py
 ```
 
-On source base `4da034600`, the focused clean run passed **8 maintenance +9 reused column-statistics tests**, with zero failures/errors/skips and Checkstyle zero. No product defect was confirmed. `core.maintenance` remains **pending** until independent review and the required full `-Pacceptance-tests clean verify` pass. Full sample execution must have the shared broker's exclusive slot; no full run was started for this change. When also enabling `data-qbit-acceptance`, first build the matching `qqq-sample-data-qbit` source fixture into that same cache; its six additional host tests are source-only evidence.
+On source base `4da034600`, the focused clean run passed **8 maintenance +9 reused column-statistics tests**, with zero failures/errors/skips and Checkstyle zero. No product defect was confirmed. Independent review and the combined full acceptance/data-QBit run now pass at `fd7743b3773e02cb0ee59e570191ede2e48b40f2`: **817 regular +110 integration tests**, zero failures/errors/skips. `core.maintenance` is verified at source stage. The packaged launcher tests also verify propagation of the run's isolated broker port. When also enabling `data-qbit-acceptance`, first build the matching `qqq-sample-data-qbit` source fixture into that same cache; its six additional host tests are source-only evidence.
 
 
 ## Query statistics: bounded source evidence (#564)
@@ -916,8 +916,7 @@ Checkstyle violations (`/private/tmp/qqq-564-full-core-install.log`). PMD report
 non-blocking warnings under the unchanged repository configuration. The first
 sandboxed full-core attempt had seven socket/Docker setup errors and was rerun
 with access to the required fixtures; it is not counted as a passing run.
-Full sample/browser fixtures require an exclusive 61616 reservation and have not
-been run for this increment.
+This earlier focused checkpoint preceded the full combined verification recorded below.
 
 Review follow-up for #834: `CapturedContext` omits named objects. Flush now saves
 that map separately, detaches it before calling the supplier, and restores the
@@ -936,5 +935,13 @@ manager/context/audit/pipe tests and 25 sample/query-contract tests, all without
 failures/errors/skips (`/private/tmp/qqq-834-objects-core-green.log` and
 `/private/tmp/qqq-834-objects-native-green.log`). Artifact-only installation into
 the isolated cache used `-DskipTests -Djacoco.skip=true`; built/installed jar
-SHA-256 hashes match. No full core/sample run was repeated for this review fix;
-full verification and independent re-review remain pending.
+SHA-256 hashes match. Independent re-review and composition review passed. On the
+combined source, full core/RDBMS installation passed 2,072/274 tests with 11/5
+existing skips and no failures/errors; both installed JARs match the built artifacts.
+All 25 focused query cases and the full sample acceptance/data-QBit profiles passed
+at `fd7743b3773e02cb0ee59e570191ede2e48b40f2`: **817 regular +110 integration tests**,
+zero failures/errors/skips, and all 41 sample classes covered. The 46 Python checks
+also pass. Logs are `/private/tmp/qqq-798-wave8-{core-rdbms,query-focused,sample,python}.log`;
+archived reports are `/private/tmp/qqq-798-wave8-final-reports`. The query-statistics
+row remains pending solely for its unproven concurrent query cancellation scope;
+no requirement, release disposition or threshold is relaxed.

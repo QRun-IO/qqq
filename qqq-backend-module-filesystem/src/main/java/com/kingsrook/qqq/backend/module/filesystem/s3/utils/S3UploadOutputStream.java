@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
 import com.amazonaws.services.s3.model.CompleteMultipartUploadResult;
@@ -144,6 +145,7 @@ public class S3UploadOutputStream extends OutputStream
    @Override
    public void write(byte[] b, int off, int len) throws IOException
    {
+      Objects.checkFromIndexSize(off, len, b.length);
       int bytesToWrite = len;
 
       while(bytesToWrite > buffer.length - offset)
@@ -156,7 +158,7 @@ public class S3UploadOutputStream extends OutputStream
          bytesToWrite -= size;
       }
 
-      int size = len - off;
+      int size = bytesToWrite;
       System.arraycopy(b, off, buffer, offset, size);
       offset += size;
       uploadIfNeeded();

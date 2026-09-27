@@ -725,6 +725,21 @@ public class SampleS3AcceptanceIT
 
 
    /*******************************************************************************
+    ** OutputStream offsets describe a slice length, independently of its start.
+    ******************************************************************************/
+   @Test
+   void rawStorageOffsetWritesExactSlice() throws Exception
+   {
+      try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference("slice.bin")))
+      {
+         output.write(bytes("0123456789"), 2, 5);
+      }
+      assertEquals("23456", new String(nativeBytes(prefix + "/files/slice.bin"), StandardCharsets.UTF_8));
+   }
+
+
+
+   /*******************************************************************************
     ** Hand-authored UTF-8 bytes are independent of provider conversion logic.
     ******************************************************************************/
    private static byte[] bytes(String value)

@@ -472,8 +472,8 @@ bindings; original requirements and supported-case assertions are preserved.
 `localstack/localstack:1.4` container with dynamically mapped ports, a unique bucket
 and a separate namespace per case. It reuses the sample QInstance and Field Lab
 metadata. A test-only backend subtype injects the emulator endpoint through the
-existing `S3Utils` setter; production action implementations and the AWS SDK remain
-unchanged. A separate SDK client reads native objects, keys, metadata and multipart
+existing `S3Utils` setter; calls use the actual production action implementations
+and AWS SDK. A separate SDK client reads native objects, keys, metadata and multipart
 uploads. Cleanup aborts owned uploads, deletes and verifies empty namespaces, deletes
 the owned bucket, closes both clients and stops only the owned container. No real
 AWS credentials or shared service are used.
@@ -488,16 +488,21 @@ AWS credentials or shared service are used.
 | Failures | Owned HTTP fixtures return `AccessDenied`, `InvalidAccessKeyId` and `SignatureDoesNotMatch` for read/write and hold a received request for a bounded 500 ms socket-read timeout. These verify SDK/provider propagation, not actual IAM, signing enforcement, or connection-establishment timeout. |
 | Partial write | An input source fails after six bytes; closing the real output stream publishes that prefix over the old object. This documents non-atomic storage (#459); it does not claim rollback, failed-multipart abort, or cancellation. |
 
-The row `backend.filesystem.s3` stays **pending**. A confirmed raw-output defect is
-preserved in `src/test/resources/s3/offset-write-reproduction.patch`: writing UTF-8
-`0123456789` with `write(bytes, 2, 5)` then closing stores `234`, not `23456`.
-The expected-contract assertion failed against independent native SDK readback;
-it is a separate reproduction, not a passing acceptance binding or a disabled test.
-Apply the patch in an isolated checkout and run
-`-Dtest=SampleS3AcceptanceIT#rawStorageOffsetWritesExactSlice test` to reproduce.
-No production correction accompanies this fixture. Strict invalid-key/reference
-policy, failed-multipart cleanup, live AWS authorization and published-candidate
-acceptance remain unverified. Existing provider and release deferrals are unchanged.
+The row `backend.filesystem.s3` stays **pending**. The active native regression
+`rawStorageOffsetWritesExactSlice` first failed against the old production stream:
+writing UTF-8 `0123456789` with `write(bytes, 2, 5)` and closing stored `234`, not
+`23456`. [#829](https://github.com/QRun-IO/qqq/issues/829) corrects the final copy to
+use the remaining byte count and validates the entire slice with
+`Objects.checkFromIndexSize` before copying or uploading. Module regressions cover
+nonzero offsets (including offset greater than length), zero-length slices,
+null/negative/out-of-range/overflowing bounds, and multipart crossings from both
+empty and accumulated buffers. Invalid large slices previously started an upload;
+the regression now requires no upload and unchanged buffered contents. The obsolete
+reproduction patch is removed in favor of these executable tests.
+
+Strict invalid-key/reference policy, failed-multipart cleanup, live AWS authorization
+and published-candidate acceptance remain unverified. Slice validation does not
+change those policies. Existing provider and release deferrals are unchanged.
 
 The reviewed [#826](https://github.com/QRun-IO/qqq/pull/826) dependency is merged for
 its JSON-null fix; its local-filesystem evidence remains separate. After installing
@@ -515,7 +520,11 @@ sample verification is still required before push and must be scheduled exclusiv
 because other sample classes share embedded Artemis port 61616. Focused verification
 does not claim that full gate or clean-cache public-artifact acceptance.
 
-Focused source validation: 12/12 S3 cases pass through both explicit Surefire
-selection and the acceptance Failsafe profile, with zero failures, errors or skips
-and zero Checkstyle violations. The 23 Python ledger tests pass. Requiring the S3
-row explicitly still fails the feature gate, as intended while its gaps remain.
+After #829, the focused acceptance Failsafe run passes 13/13 S3 cases, including
+the previously failing native slice regression, with zero failures, errors or skips.
+The full filesystem module `clean install` (including verify) passes 110 tests with
+four existing skips, zero Checkstyle violations and all coverage checks satisfied.
+Existing non-blocking analysis still reports 38 SpotBugs and 329 PMD findings; no
+gates were relaxed. The module JAR and the isolated-cache JAR used by the sample
+match byte-for-byte. All 23 Python ledger tests pass. Requiring the S3 row explicitly
+still fails the feature gate, as intended while its remaining gaps are open.

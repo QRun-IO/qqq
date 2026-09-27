@@ -21,10 +21,12 @@
 package com.kingsrook.qqq.backend.core.actions.tables.helpers;
 
 
+import java.io.Serializable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -439,10 +441,13 @@ public class QueryStatManager
        *******************************************************************************/
       private void store()
       {
-         CapturedContext callerContext = QContext.capture();
+         CapturedContext           callerContext = QContext.capture();
+         Map<String, Serializable> callerObjects = QContext.getObjects();
          storingStats.set(true);
          try
          {
+            QContext.setObjects(null);
+
             /////////////////////////////////////////////////////////////////////////////////////
             // every time we re-run, check if we've been turned off - if so, stop the service. //
             /////////////////////////////////////////////////////////////////////////////////////
@@ -547,6 +552,10 @@ public class QueryStatManager
          {
             storingStats.remove();
             QContext.clear();
+            if(callerObjects != null)
+            {
+               QContext.setObjects(callerObjects);
+            }
             if(callerContext.qInstance() != null || callerContext.qSession() != null || callerContext.qBackendTransaction() != null || callerContext.actionStack() != null)
             {
                QContext.init(callerContext);

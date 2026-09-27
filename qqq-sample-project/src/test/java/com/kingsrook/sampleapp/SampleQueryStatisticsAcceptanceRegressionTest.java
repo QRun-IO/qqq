@@ -22,20 +22,28 @@ package com.kingsrook.sampleapp;
 
 
 import java.io.InputStreamReader;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
+import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.actions.audits.AuditDetailAccumulator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -48,10 +56,13 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.tables.QQQTablesMetaDataProvider;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.SimpleConnectionProvider;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.h2.tools.RunScript;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -60,6 +71,137 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  ******************************************************************************/
 class SampleQueryStatisticsAcceptanceRegressionTest extends SampleQueryStatisticsAcceptanceFixture
 {
+   /*******************************************************************************
+    ** A real statistics insert gets private named objects, preserving caller audit
+    ** accumulation, mutable values and map identity across successful storage.
+    ******************************************************************************/
+   @Test
+   void testNativeFlushPreservesAndIsolatesNamedObjects() throws Exception
+   {
+      assertNativeNamedObjectIsolation(false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Native storage failure must restore the caller map without leaking objects
+    ** created by customization or changing the existing dropped-batch policy.
+    ******************************************************************************/
+   @Test
+   void testFailedNativeFlushPreservesAndIsolatesNamedObjects() throws Exception
+   {
+      assertNativeNamedObjectIsolation(true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Observe and mutate only through the normal pre-insert customization seam;
+    ** native JDBC independently proves whether the real storage write succeeded.
+    ******************************************************************************/
+   private void assertNativeNamedObjectIsolation(boolean failStorage) throws Exception
+   {
+      NamedObjectStorageObserver.observations.clear();
+      manager.start(instance, () ->
+      {
+         QContext.setObject("flushSupplier", "owned supplier value");
+         return new QSession();
+      });
+      instance.getTable("queryStat").withCustomizer(TableCustomizers.PRE_INSERT_RECORD, new QCodeReference(NamedObjectStorageObserver.class));
+      var details = (RDBMSTableBackendDetails) instance.getTable("queryStat").getBackendDetails();
+      if(failStorage)
+      {
+         details.setTableName("missing_owned_query_stat");
+      }
+      try
+      {
+         new QueryAction().execute(new QueryInput("person"));
+         var payload = new ArrayList<>(List.of("owned by caller"));
+         var audit = new AuditDetailAccumulator("owned caller audit");
+         audit.addAuditDetail("person", new QRecord().withValue("id", 1), "existing detail");
+         Map<String, Serializable> callerObjects = new HashMap<>();
+         QContext.setObjects(callerObjects);
+         QContext.setObject("callerPayload", payload);
+         audit.setInContext();
+         var expected = new HashMap<>(callerObjects);
+         var caller = QContext.capture();
+
+         manager.storeStatsNow();
+         assertEquals(failStorage ? 0 : 1, rows("SELECT id FROM query_stat").size());
+         assertEquals(1, NamedObjectStorageObserver.observations.size());
+         var storage = NamedObjectStorageObserver.observations.get(0);
+         assertNotSame(callerObjects, storage.objects());
+         assertEquals("owned supplier value", storage.objects().get("flushSupplier"));
+         assertEquals("owned by flush", storage.objects().get("flushOnly"));
+         assertNull(storage.payload(), "Storage inherited a caller-owned mutable value");
+         assertNull(storage.audit(), "Storage inherited the caller audit accumulator");
+         assertSame(callerObjects, QContext.getObjects());
+         assertEquals(expected, callerObjects);
+         assertSame(payload, QContext.getObject("callerPayload"));
+         assertEquals(List.of("owned by caller"), payload);
+         assertSame(audit, AuditDetailAccumulator.getFromContext().orElseThrow());
+         assertEquals(1, audit.getAccumulatedAuditSingleInputs().size());
+         assertNull(QContext.getObject("flushOnly"));
+         assertNull(QContext.getObject("flushSupplier"));
+         assertEquals(caller, QContext.capture());
+
+         details.setTableName("query_stat");
+         manager.storeStatsNow();
+         assertSame(callerObjects, QContext.getObjects());
+         assertEquals(expected, callerObjects);
+         assertEquals(failStorage ? 0 : 1, rows("SELECT id FROM query_stat").size(), "A dropped batch must not be retried");
+      }
+      finally
+      {
+         NamedObjectStorageObserver.observations.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The real insert continues after observing and changing its own object map.
+    ******************************************************************************/
+   public static class NamedObjectStorageObserver implements TableCustomizerInterface
+   {
+      static final List<NamedObjectObservation> observations = new ArrayList<>();
+
+
+
+      /*******************************************************************************
+       ** Attempt changes to visible objects so accidental sharing is observable.
+       ******************************************************************************/
+      @Override
+      public List<QRecord> preInsert(InsertInput input, List<QRecord> records, boolean preview)
+      {
+         var audit = AuditDetailAccumulator.getFromContext().orElse(null);
+         Serializable payload = QContext.getObject("callerPayload");
+         observations.add(new NamedObjectObservation(QContext.getObjects(), payload, audit));
+         if(audit != null)
+         {
+            audit.clear();
+         }
+         if(payload instanceof ArrayList<?> list)
+         {
+            list.clear();
+         }
+         QContext.setObject("callerPayload", "storage replacement");
+         QContext.setObject("flushOnly", "owned by flush");
+         return records;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Retain observed identities until the test asserts isolation and clears them.
+    ******************************************************************************/
+   private record NamedObjectObservation(Map<String, Serializable> objects, Serializable payload, AuditDetailAccumulator audit)
+   {
+   }
+
+
+
    /*******************************************************************************
     ** A short association buffer must report the delivered tail.
     ******************************************************************************/

@@ -478,7 +478,7 @@ fixtures use no persistence mocks, network listeners, broker, new dependencies o
 launched application changes. They restore manager settings, stop/join workers,
 clear context and close owned databases. New Java files carry Apache-2.0 headers.
 
-Twenty sample methods cover direct, plain and association-buffered counts (including
+Twenty-two sample methods cover direct, plain and association-buffered counts (including
 3/100/105-row batches and tails); exact UTC timing/session/SQL and criterion/order/join
 records; backend/table opt-outs; disabled startup; thresholds and throwing consumers;
 actual native query/storage failures; preterminated plain pipes; explicit and
@@ -553,7 +553,7 @@ The unique cache copied dependency downloads, removed copied QQQ
 `4.1.0-SNAPSHOT` artifacts, then rebuilt the matching source reactor. Later
 artifact-only core installation used `-DskipTests -Djacoco.skip=true` because
 focused coverage data cannot meet the full-module threshold; that preparation is
-not claimed as full verification. Full core `clean install` then passed with normal gates: 2,069 tests, zero
+not claimed as full verification. At `95ad06c28`, full core `clean install` passed with normal gates: 2,069 tests, zero
 failures/errors, eleven existing skips, 527/542 classes covered (97.23%) and zero
 Checkstyle violations (`/private/tmp/qqq-564-full-core-install.log`). PMD reports
 non-blocking warnings under the unchanged repository configuration. The first
@@ -561,3 +561,23 @@ sandboxed full-core attempt had seven socket/Docker setup errors and was rerun
 with access to the required fixtures; it is not counted as a passing run.
 Full sample/browser fixtures require an exclusive 61616 reservation and have not
 been run for this increment.
+
+Review follow-up for #834: `CapturedContext` omits named objects. Flush now saves
+that map separately, detaches it before calling the supplier, and restores the
+exact original map after clearing its own objects. Core regressions cover null,
+empty, populated and object-only caller contexts on empty/disabled exits and
+supplier failure. Native regressions preserve the caller's mutable payload and
+`AuditDetailAccumulator` through real successful and failed SQL inserts, prove
+supplier-created objects are available only within storage, and check that
+flush-created objects do not leak. The scheduled fixture checks named-object
+cleanup between jobs. No public context API or storage-failure policy changed.
+
+The new core cases first failed 3/3 and native cases failed 2/2 on assertions
+without errors/skips (`/private/tmp/qqq-834-objects-core-red.log` and
+`/private/tmp/qqq-834-objects-native-red.log`). Focused green runs passed 32 core
+manager/context/audit/pipe tests and 25 sample/query-contract tests, all without
+failures/errors/skips (`/private/tmp/qqq-834-objects-core-green.log` and
+`/private/tmp/qqq-834-objects-native-green.log`). Artifact-only installation into
+the isolated cache used `-DskipTests -Djacoco.skip=true`; built/installed jar
+SHA-256 hashes match. No full core/sample run was repeated for this review fix;
+full verification and independent re-review remain pending.

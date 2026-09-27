@@ -429,10 +429,11 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
       manager.start(instance, () ->
       {
          calls.incrementAndGet();
-         if(QContext.getQInstance() != null || QContext.getQSession() != null)
+         if(QContext.getQInstance() != null || QContext.getQSession() != null || QContext.getObjects() != null)
          {
             dirtyWorker.set(true);
          }
+         QContext.setObject("flushOwned", "owned scheduled flush");
          return storageSession;
       });
       try
@@ -596,6 +597,7 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
             manager.storeStatsNow();
             assertNull(QContext.getQInstance());
             assertNull(QContext.getQSession());
+            assertNull(QContext.getObjects());
          }).get(5, TimeUnit.SECONDS);
       }
    }

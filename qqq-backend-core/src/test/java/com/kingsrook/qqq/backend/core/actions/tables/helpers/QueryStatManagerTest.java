@@ -23,7 +23,9 @@ package com.kingsrook.qqq.backend.core.actions.tables.helpers;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -60,6 +62,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,6 +73,114 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class QueryStatManagerTest extends BaseTest
 {
+   /*******************************************************************************
+    ** An empty flush still uses a private object map and restores null/empty/maps.
+    *******************************************************************************/
+   @Test
+   void testEmptyFlushPreservesAndIsolatesNamedObjects()
+   {
+      assertNamedObjectIsolation("empty");
+   }
+
+
+
+   /*******************************************************************************
+    ** A supplier failure must neither mutate nor discard caller-owned objects.
+    *******************************************************************************/
+   @Test
+   void testSupplierFailurePreservesAndIsolatesNamedObjects()
+   {
+      assertNamedObjectIsolation("failure");
+   }
+
+
+
+   /*******************************************************************************
+    ** Disabled flush cleanup must preserve the exact caller map without a supplier.
+    *******************************************************************************/
+   @Test
+   void testDisabledFlushPreservesNamedObjects()
+   {
+      assertNamedObjectIsolation("disabled");
+   }
+
+
+
+   /*******************************************************************************
+    ** Exercise null, empty, mutable and object-only contexts through the public seam.
+    *******************************************************************************/
+   private void assertNamedObjectIsolation(String mode)
+   {
+      var manager = QueryStatManager.getInstance();
+      var caller = QContext.capture();
+      var originalObjects = QContext.getObjects();
+      String enabled = System.getProperty("qqq.queryStatManager.enabled");
+      try
+      {
+         for(int variant = 0; variant < 4; variant++)
+         {
+            System.setProperty("qqq.queryStatManager.enabled", "true");
+            manager.stop();
+            var observed = new ArrayList<Map<String, Serializable>>();
+            manager.start(caller.qInstance(), () ->
+            {
+               observed.add(QContext.getObjects());
+               QContext.setObject("callerPayload", "storage replacement");
+               QContext.setObject("flushOnly", "owned by flush");
+               if(mode.equals("failure"))
+               {
+                  throw new IllegalStateException("owned supplier failure after named objects");
+               }
+               return caller.qSession();
+            });
+            Map<String, Serializable> callerObjects = variant == 0 ? null : new HashMap<>();
+            var payload = new ArrayList<>(List.of("owned by caller"));
+            if(variant >= 2)
+            {
+               callerObjects.put("callerPayload", payload);
+            }
+            Map<String, Serializable> expected = callerObjects == null ? null : new HashMap<>(callerObjects);
+            if(variant == 3)
+            {
+               QContext.clear();
+            }
+            QContext.setObjects(callerObjects);
+            var expectedContext = QContext.capture();
+            if(mode.equals("disabled"))
+            {
+               System.setProperty("qqq.queryStatManager.enabled", "false");
+            }
+            manager.storeStatsNow();
+            assertEquals(expectedContext, QContext.capture());
+            assertSame(callerObjects, QContext.getObjects());
+            assertEquals(expected, callerObjects);
+            assertEquals(List.of("owned by caller"), payload);
+            assertNull(QContext.getObject("flushOnly"));
+            assertEquals(mode.equals("disabled") ? 0 : 1, observed.size());
+            if(!observed.isEmpty())
+            {
+               assertNull(observed.get(0), "Supplier inherited caller objects");
+            }
+         }
+      }
+      finally
+      {
+         manager.stop();
+         QContext.init(caller);
+         QContext.setObjects(originalObjects);
+         if(enabled == null)
+         {
+            System.clearProperty("qqq.queryStatManager.enabled");
+         }
+         else
+         {
+            System.setProperty("qqq.queryStatManager.enabled", enabled);
+         }
+      }
+   }
+
+
+
    /*******************************************************************************
     ** A consumer finishing after restart must not enqueue an old-generation stat.
     *******************************************************************************/

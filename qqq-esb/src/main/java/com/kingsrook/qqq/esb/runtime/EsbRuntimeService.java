@@ -1,0 +1,73 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package com.kingsrook.qqq.esb.runtime;
+
+
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.QRuntimeServiceInterface;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+
+
+/*******************************************************************************
+ ** The runtime service (QInstance.withRuntimeService) through which an
+ ** application launcher starts the node's ESB trigger runtime
+ ** (QEsbRuntime.getInstance) with its server, and stops it at shutdown.
+ ** EsbInstanceMetaData.enrich registers it.
+ *******************************************************************************/
+public class EsbRuntimeService implements QRuntimeServiceInterface
+{
+   public static final String NAME = "esbRuntime";
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public String getName()
+   {
+      return (NAME);
+   }
+
+
+
+   /*******************************************************************************
+    ** Start the node's runtime (doesn't block).
+    *******************************************************************************/
+   @Override
+   public void start(QInstance qInstance) throws QException
+   {
+      QEsbRuntime.getInstance().start(qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** Stop the node's runtime.
+    *******************************************************************************/
+   @Override
+   public void stop()
+   {
+      QEsbRuntime.getInstance().stop();
+   }
+
+}

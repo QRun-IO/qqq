@@ -37,6 +37,7 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.esb.publish.EsbProcessLifecycleListener;
 import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
+import com.kingsrook.qqq.esb.runtime.EsbRuntimeService;
 
 
 /*******************************************************************************
@@ -103,9 +104,8 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    /*******************************************************************************
     ** Interpret ${env.*} (etc.) variables in each provider's connection fields,
-    ** and register the listeners that publish table events and process
-    ** lifecycle events (each once, however many times the instance is
-    ** enriched).
+    ** and register the table and process publishing listeners and trigger
+    ** runtime service once, however many times the instance is enriched.
     *******************************************************************************/
    @Override
    public void enrich(QInstance qInstance)
@@ -125,17 +125,22 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       {
          qInstance.withProcessLifecycleListener(new QCodeReference(EsbProcessLifecycleListener.class));
       }
+
+      if(!isRegistered(qInstance.getRuntimeServices(), EsbRuntimeService.class))
+      {
+         qInstance.withRuntimeService(new QCodeReference(EsbRuntimeService.class));
+      }
    }
 
 
 
    /*******************************************************************************
-    ** Whether a list of listener code references includes the listener class.
+    ** Whether a list of code references includes the given class.
     *******************************************************************************/
-   private static boolean isRegistered(List<QCodeReference> listenerCodeReferences, Class<?> listenerClass)
+   private static boolean isRegistered(List<QCodeReference> codeReferences, Class<?> referenceClass)
    {
-      return (CollectionUtils.nonNullList(listenerCodeReferences).stream()
-         .anyMatch(codeReference -> codeReference != null && listenerClass.getName().equals(codeReference.getName())));
+      return (CollectionUtils.nonNullList(codeReferences).stream()
+         .anyMatch(codeReference -> codeReference != null && referenceClass.getName().equals(codeReference.getName())));
    }
 
 

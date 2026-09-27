@@ -943,8 +943,9 @@ at `fd7743b3773e02cb0ee59e570191ede2e48b40f2`: **817 regular +110 integration te
 zero failures/errors/skips, and all 41 sample classes covered. The 46 Python checks
 also pass. Logs are `/private/tmp/qqq-798-wave8-{core-rdbms,query-focused,sample,python}.log`;
 archived reports are `/private/tmp/qqq-798-wave8-final-reports`. The query-statistics
-row remains pending solely for its unproven concurrent query cancellation scope;
-no requirement, release disposition or threshold is relaxed.
+row at that checkpoint remained pending for concurrent query cancellation; the
+sidecar and combined run below complete that source requirement. No requirement,
+release disposition or threshold is relaxed.
 
 
 #### Provider-contract follow-up for original #588
@@ -1071,12 +1072,12 @@ Latches establish ordering rather than elapsed sleeps. Backend counts remain
 consumer-only; no request-success/outcome column is invented. The existing
 post-query rejection regression continues to retain completed backend SQL stats.
 
-The row stays **pending**. This evidence covers the three named controlled H2
-paths, not arbitrary thread interruption or termination of an already blocked,
+The row is **verified at source stage** after the combined run recorded below.
+This evidence covers the three named controlled H2 paths, not arbitrary thread interruption or termination of an already blocked,
 full or association-buffered pipe. It does not claim exhaustive race detection or
-other JDBC drivers. Independent review and combined full verification of this
-increment remain required; no full sample, HTTP fixture or broker was started.
-No runtime defect was demonstrated in these three paths.
+other JDBC drivers. Independent requirement and composition reviews passed; the
+combined full run is recorded below. The sidecar itself starts no HTTP fixture or
+broker. No runtime defect was demonstrated in these three paths.
 
 Reproduce from this worktree using Java 21 and matching-source artifacts:
 
@@ -1104,7 +1105,14 @@ five rows (`/private/tmp/qqq-564-cancellation-negative-controls.log`). Restoring
 those calls and running the final focused set passed **28 tests, zero
 failures/errors/skips**, with zero Checkstyle violations in 11.045 seconds
 (`/private/tmp/qqq-564-cancellation-focused.log`). No production edits were needed.
-The 23 Python ledger tests passed; the required-feature command exited 1,
-with this row blocked only by `scenario review is pending`. All 130 IDs and all
+At that focused checkpoint, the 23 Python ledger tests passed; the required-feature
+command exited 1 because scenario review was still pending. All 130 IDs and all
 requirement, negative-case, stage and deferral fields remain unchanged. The new
 Java file has an Apache-2.0 header.
+
+
+### Combined query verification and timestamp precision (#564, #846)
+
+The matching combined run at `64fd0466b4911cff66e20b34fb4b5e7425662f90` passed **821 regular +117 integration tests (938 total)** with zero failures/errors/skips and all41 sample classes covered. All29 focused query cases and46 Python checks passed. Original-requirement review confirms the direct/plain/association-buffered reads, persistence, lifecycle, failures and controlled cancellation outcomes cover the source contract; it does not require an exhaustive cross-product of every interruption mode. Query statistics is now source-verified. Consumer-only counts, dropped failed storage batches, backend-measurement semantics and #525/#526/#527–531 dispositions remain unchanged.
+
+Linux CI exposed nanosecond Instant values being compared with rounded H2 TIMESTAMP values. The #846 fixture-only correction uses native JDBC casting as the precision oracle; fixed nanosecond inputs independently prove rounding down, up and across a second boundary through real manager persistence. Its deterministic assertion failed before the correction and passed afterward. No production schema, precision, tolerance, retry or timeout changed. Evidence: `/private/tmp/qqq-846-timestamp-{red,green}.log`, `/private/tmp/qqq-798-wave11-{query-focused,sample,python}.log` and archived `/private/tmp/qqq-798-wave11-final-reports`. Public-candidate and other release gates remain separate.

@@ -79,9 +79,14 @@ import com.kingsrook.qqq.esb.runtime.EsbRuntimeTestBase;
 import com.kingsrook.qqq.esb.runtime.EsbTriggerControl;
 import com.kingsrook.qqq.esb.runtime.EsbTriggerState;
 import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
+import com.kingsrook.qqq.esb.stats.EsbStats;
 import jakarta.jms.Message;
+import jakarta.jms.MessageConsumer;
 import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
+import jakarta.jms.Topic;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -242,6 +247,112 @@ public abstract class AbstractEsbConformanceTest extends EsbRuntimeTestBase
       assertThat(deadLetters.get(0).getIntProperty("qqqAttempts")).isEqualTo(3);
       assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, deadLetterQueue, 0, 10)).isEmpty();
       assertThat(event.getId()).isEqualTo(RecordingStep.getRuns().get(2).getEvents().get(0).getId());
+   }
+
+
+
+   /*******************************************************************************
+    ** A failing durable subscription must not rebroadcast retries to an independent
+    ** healthy subscription. Native JMS observes the healthy side independently of
+    ** QQQ processing, including prefetched duplicates and the broker delivery count.
+    ******************************************************************************/
+   @Test
+   @Timeout(120)
+   void distinctDurableTopicSubscriptionsIsolateRetriesAndDeadLetters() throws Exception
+   {
+      String failingSubscription = "failing." + getBrokerTopicName();
+      String healthySubscription = "healthy." + getBrokerTopicName();
+      EsbTrigger trigger = new EsbTrigger().withDestinationName(TOPIC_NAME)
+         .withSubscriptionName(failingSubscription).withMaxAttempts(3).withRetryDelayMs(200);
+      QInstance instance = defineInstanceWithTrigger(trigger);
+      RecordingStep.failAlways();
+      QEsbRuntime runtime = startRuntime(instance);
+      waitForState(runtime, TOPIC_TRIGGER_NAME, EsbTriggerState.RUNNING);
+      EsbConnectionManager manager = EsbConnectionManager.getInstance();
+      var destination = EsbInstanceMetaData.of(instance).getDestination(TOPIC_NAME);
+      String deadLetterQueue = trigger.getEffectiveDeadLetterDestinationName(PROCESS_NAME, destination);
+      String failingQueue = EsbBrokerNames.subscriptionQueue(providerType(), getBrokerTopicName(), failingSubscription);
+      String healthyQueue = EsbBrokerNames.subscriptionQueue(providerType(), getBrokerTopicName(), healthySubscription);
+      assertThat(failingQueue).isNotEqualTo(healthyQueue);
+
+      try(Session session = manager.openSession(PROVIDER_NAME, false))
+      {
+         try(MessageConsumer healthy = session.createSharedDurableConsumer((Topic) manager.resolve(session, destination), healthySubscription))
+         {
+            EsbBrokerAdapter adapter = EsbBrokerAdapters.forProvider(PROVIDER_NAME).orElseThrow();
+            waitForQueueDepth(adapter, failingQueue, 0L);
+            waitForQueueDepth(adapter, healthyQueue, 0L);
+            EsbEvent event = EsbEventFactory.custom("test", "test/topic-isolation", "qqq.test.isolated",
+               Map.of("orderId", 852, "description", "only the failing subscription retries"));
+            String originalBody = EsbEventCodec.toJson(event);
+            Instant sentAt = Instant.now();
+            sendMessage(TOPIC_NAME, sendingSession ->
+            {
+               TextMessage message = EsbEventCodec.toMessage(sendingSession, event);
+               message.setStringProperty("isolationMarker", "owned-852");
+               message.setJMSCorrelationID("correlation-852");
+               message.setJMSType("topic-isolation");
+               return (message);
+            });
+
+            Message received = healthy.receive(WAIT_TIMEOUT.toMillis());
+            assertThat(received).isInstanceOf(TextMessage.class);
+            assertThat(((TextMessage) received).getText()).isEqualTo(originalBody);
+            assertThat(received.getStringProperty("ce_id")).isEqualTo(event.getId());
+            assertThat(received.getIntProperty("JMSXDeliveryCount")).isEqualTo(1);
+            assertThat(received.getJMSRedelivered()).isFalse();
+
+            List<Message> deadLetters = receiveAll(deadLetterQueue, WAIT_TIMEOUT);
+            assertThat(deadLetters).hasSize(1);
+            Message deadLetter = deadLetters.get(0);
+            assertThat(deadLetter).isInstanceOf(TextMessage.class);
+            assertThat(((TextMessage) deadLetter).getText()).isEqualTo(originalBody);
+            assertThat(deadLetter.getStringProperty("ce_id")).isEqualTo(event.getId());
+            assertThat(deadLetter.getStringProperty("ce_type")).isEqualTo("qqq.test.isolated");
+            assertThat(deadLetter.getStringProperty("ce_source")).isEqualTo("qqq://test/test/topic-isolation");
+            assertThat(deadLetter.getStringProperty("isolationMarker")).isEqualTo("owned-852");
+            assertThat(deadLetter.getJMSCorrelationID()).isEqualTo("correlation-852");
+            assertThat(deadLetter.getJMSType()).isEqualTo("topic-isolation");
+            assertThat(deadLetter.getStringProperty("qqqFailedTrigger")).isEqualTo(TOPIC_TRIGGER_NAME);
+            assertThat(deadLetter.getStringProperty("qqqError")).contains("boom on run 3");
+            // qqqAttempts preserves the failed subscription's final broker delivery count;
+            // the DLQ copy itself is a new message, delivered here for the first time.
+            assertThat(deadLetter.getIntProperty("qqqAttempts")).isEqualTo(3);
+            assertThat(deadLetter.getIntProperty("JMSXDeliveryCount")).isEqualTo(1);
+            assertThat(Instant.parse(deadLetter.getStringProperty("qqqFailedAt"))).isBetween(sentAt, Instant.now());
+
+            waitFor("failed subscription committed its dead letter", () -> EsbStats.getInstance().trigger(TOPIC_TRIGGER_NAME).deadLettered() == 1L);
+            runtime.stop();
+            assertThat(RecordingStep.getRuns()).hasSize(3);
+            assertThat(RecordingStep.getCompletedRuns()).isEmpty();
+            assertThat(RecordingStep.getRuns()).allSatisfy(run ->
+            {
+               assertThat(run.getEvents()).singleElement().satisfies(observed ->
+               {
+                  assertThat(observed.getId()).isEqualTo(event.getId());
+                  assertThat(observed.getData()).containsExactlyInAnyOrderEntriesOf(event.getData());
+               });
+            });
+            assertThat(Duration.between(RecordingStep.getRuns().get(0).getStartedAt(),
+               RecordingStep.getRuns().get(2).getStartedAt())).isGreaterThanOrEqualTo(Duration.ofMillis(350));
+            assertThat(EsbStats.getInstance().trigger(TOPIC_TRIGGER_NAME).retried()).isEqualTo(2L);
+            assertThat(EsbStats.getInstance().trigger(TOPIC_TRIGGER_NAME).failed()).isEqualTo(3L);
+            assertThat(EsbStats.getInstance().trigger(TOPIC_TRIGGER_NAME).consumed()).isEqualTo(3L);
+
+            // The failing producer is now stopped: check both the native consumer's
+            // prefetch buffer and broker queues, rather than a momentary run count.
+            assertThat(healthy.receive(1000)).as("healthy subscriber must not receive a retry rebroadcast").isNull();
+            waitForQueueDepth(adapter, healthyQueue, 0L);
+            waitForQueueDepth(adapter, failingQueue, 0L);
+            assertThat(receiveAll(deadLetterQueue, Duration.ofMillis(300))).isEmpty();
+         }
+         finally
+         {
+            runtime.stop();
+            session.unsubscribe(healthySubscription);
+            session.unsubscribe(failingSubscription);
+         }
+      }
    }
 
 

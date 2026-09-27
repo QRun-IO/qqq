@@ -4855,12 +4855,39 @@
       "negative_cases": [
         "Missing dependency/configuration, fixture collision, stale artifact resolution and persistent writes outside owned fixtures"
       ],
-      "gap": "Add candidate-resolved acceptance profile covering all 16 published libraries; keep source/reactor tests distinct from published-artifact consumption.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Source-installed candidate bootstrap is verified by a fresh-cache runner and packaged sample tests. Public release-candidate consumption remains a separate pending row.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleBootstrapTest#testResetRefusesAnotherDatabaseWithTheSameBackendName",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testBundledApplicationAndJsonAdditions",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testRepeatStartupReseedsInSeparateOwnedFixtures",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testInvalidConfigurationHasNonzeroExit",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testDuplicateMetadataHasNonzeroExit"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
+      "acceptance_note": "The dedicated source bootstrap CI job runs bootstrap_acceptance.py against a new empty Maven cache and maps its SHA-bound acceptance.json plus the listed unskipped Java reports. It resolves all 17 current BOM libraries, rejects missing BOM and wrong candidate models, and exercises packaged seed, restart, write, invalid configuration, duplicate metadata and fixture ownership controls. This is local source-install evidence only.",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/605",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+    },
+    {
+      "id": "sample.bootstrap.published",
+      "feature": "Published candidate sample bootstrap and artifact provenance",
+      "source_paths": [
+        "qqq-sample-project/bootstrap_acceptance.py",
+        "qqq-sample-project/README.md"
+      ],
+      "owning_module": "qqq-sample-project",
+      "acceptance_cases": [
+        "Resolve all reviewed QQQ libraries and the packaged sample from an exact public RC or release with empty Maven settings/cache"
+      ],
+      "negative_cases": [
+        "Missing BOM, wrong candidate version, stale artifact and incomplete packaged sample reports must fail"
+      ],
+      "gap": "Run the published stage against the exact public 4.1 RC when available; do not infer publication from the source-installed cache.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "acceptance_stage": "published",
+      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/605"
     },
     {
       "id": "dashboard.acceptance",

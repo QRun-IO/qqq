@@ -251,15 +251,6 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
    @Override
    public void deleteFile(QTableMetaData table, String fileReference) throws FilesystemException
    {
-      try
-      {
-         validateTableFilePath(QContext.getQInstance().getBackend(table.getBackendName()), table, fileReference);
-      }
-      catch(IOException e)
-      {
-         throw new FilesystemException("Invalid path for deleting file", e);
-      }
-
       File file = new File(fileReference);
       if(!file.exists())
       {
@@ -269,6 +260,15 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
          //////////////////////////////////////////////////////////////////////////////////////////////
          LOG.debug("Not deleting file, because it does not exist.", logPair("file", file));
          return;
+      }
+
+      try
+      {
+         validateTableFilePath(QContext.getQInstance().getBackend(table.getBackendName()), table, fileReference);
+      }
+      catch(IOException e)
+      {
+         throw new FilesystemException("Invalid path for deleting file", e);
       }
 
       if(!file.delete())

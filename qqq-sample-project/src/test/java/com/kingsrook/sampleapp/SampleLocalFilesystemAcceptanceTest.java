@@ -60,6 +60,8 @@ import com.kingsrook.qqq.backend.module.filesystem.base.actions.AbstractPostRead
 import com.kingsrook.qqq.backend.module.filesystem.base.actions.FilesystemTableCustomizers;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.Cardinality;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.RecordFormat;
+import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
+import com.kingsrook.qqq.backend.module.filesystem.local.actions.AbstractFilesystemAction;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemBackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemTableBackendDetails;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
@@ -542,6 +544,33 @@ class SampleLocalFilesystemAcceptanceTest
          .withRecord(new QRecord().withValue("path", "../outside.txt").withValue("contents", "overwrite"))).get(0);
       assertEquals("sentinel", Files.readString(outside), "Record path must not escape the table directory");
       assertFalse(output.getErrors().isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Missing-file deletion is idempotent; existing outside targets remain confined.
+    *******************************************************************************/
+   @Test
+   void testFileDeleteMissingOutsideTargetIsNoop() throws Exception
+   {
+      AbstractFilesystemAction action = new AbstractFilesystemAction();
+      QTableMetaData table = QContext.getQInstance().getTable(ONE);
+      Path outside = directory.resolve("outside.txt");
+      Path link = directory.resolve("one/outside-link.txt");
+      Files.createSymbolicLink(link, outside);
+      for(int attempt = 0; attempt < 2; attempt++)
+      {
+         action.deleteFile(table, outside.toString());
+         action.deleteFile(table, link.toString());
+         assertFalse(Files.exists(outside));
+         assertTrue(Files.isSymbolicLink(link));
+      }
+      Files.writeString(outside, "sentinel");
+      assertThrows(FilesystemException.class, () -> action.deleteFile(table, outside.toString()));
+      assertThrows(FilesystemException.class, () -> action.deleteFile(table, link.toString()));
+      assertEquals("sentinel", Files.readString(outside));
+      assertTrue(Files.isSymbolicLink(link));
    }
 
 

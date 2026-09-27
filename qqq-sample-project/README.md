@@ -349,6 +349,14 @@ three defects. Minimal corrections accompany the acceptance fixture:
   regressions preserve their sentinels, with a successful in-table symlink control.
   All probes stay inside the owned outer temporary directory.
 
+Review regression: low-level `deleteFile` retains its idempotent missing-file no-op
+before resolving context or checking confinement. The new test repeats deletion of
+an absent outside path and dangling symlink, then creates that target and requires
+both deletion attempts to fail while preserving the target and link. The original
+`FilesystemBackendModuleTest` assertions remain intact; its existing-file test now
+initializes/clears QContext for backend resolution. The S3 module fixture uses the
+existing Localstack random-port option to avoid another run's fixed ports.
+
 Unsupported mutations and non-atomic streams keep their existing behavior. File
 customizers remain MANY-only, and parsed numeric type conversion remains lazy. The
 adapter's documented collision limitation for pre-suffixed CSV headers remains; the
@@ -357,6 +365,10 @@ fixture certifies identical duplicate headers (`name`, `name`) and missing cells
 With the checkout's source dependencies installed in a new task-owned Maven cache:
 
 ```sh
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" \
+  -pl qqq-backend-module-filesystem clean verify
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" \
+  -pl qqq-backend-core -Dtest=JsonToQRecordAdapterTest test
 mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
   -Dtest=SampleLocalFilesystemAcceptanceTest test
 mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
@@ -368,9 +380,26 @@ python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-on
 The full-profile command is required; plain `verify` omits the packaged/browser
 evidence needed for the sample coverage gate. No test or coverage threshold is lowered.
 
-Verification: all 22 new filesystem methods pass. Full `-Pacceptance-tests clean
-verify` passes 740 unit + 78 integration/browser tests with zero failures, errors or
-skips; Checkstyle is clean and class coverage is 39/41 (95.12%), meeting the unchanged
-threshold. The affected existing suites pass 9 JSON-adapter, 24 local-filesystem and
-4 disposable-SFTP path-matching tests. Only `backend.filesystem.local` and
-`backend.filesystem.formats` receive these source bindings.
+Review-fix verification: all 23 filesystem methods and 9 JSON-adapter tests pass.
+The entire filesystem module `clean verify` succeeds: 110 discovered tests, 106
+passed and four existing disabled JSON-serialization tests in the local/S3 metadata
+classes. Checkstyle and coverage checks pass unchanged. The module's existing
+non-blocking static-analysis configuration reports 38 SpotBugs and 329 PMD findings;
+these checks were not disabled or made less strict. Python ledger tests pass 23/23.
+
+The prior `1caf01bcd` full-profile run passed 740 unit + 78 integration/browser tests
+with class coverage 39/41 (95.12%). The review-fix full-profile rerun ran 741 unit
+tests: 740 passed and one errored (no skips); Failsafe and the final coverage check
+were not reached. The error was HTTP header EOF in `SampleInteractiveProcessTest.testLegacyBackAndUnknownResumeDoNotRunWork`.
+Its test log shows HTTP `0.0.0.0:49202` and Artemis `127.0.0.1:61616`; this alone does
+not prove the same-port collision reported in #823. No blind retry or #823
+cherry-pick was performed. Full-profile completion for this fix remains pending;
+prior coverage results are not claimed as a current full-profile pass.
+
+Local review logs are retained under `/private/tmp/qqq-587-acceptance.fB6Bs0/`:
+`backend-module-red.log`, `missing-delete-sample-red.log`,
+`filesystem-full-verify.log`, `core-adapter-rereview.log`,
+`sample-filesystem-rereview.log`, `sample-full-rereview.log`,
+`http-error-port-evidence.txt` and `listeners-at-sample-error.log`.
+Only `backend.filesystem.local` and `backend.filesystem.formats` receive these source
+bindings; original requirements and supported-case assertions are preserved.

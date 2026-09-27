@@ -114,6 +114,12 @@
       </dependency>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-api</artifactId>
+         <version>${revision}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-backend-module-sqlite</artifactId>
          <version>${revision}</version>
          <scope>test</scope>
@@ -179,6 +185,16 @@
       <plugins>
          <!-- plugins specifically for this module -->
 
+         <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+               <systemPropertyVariables>
+                  <qqq.sample.effectiveVersion>${project.version}</qqq.sample.effectiveVersion>
+               </systemPropertyVariables>
+            </configuration>
+         </plugin>
+
          <!-- qqq-sample-project is not part of the main qqq reactor; PMD ruleset.xml
               is at the qqq root and resolves via maven.multiModuleProjectDirectory when
               run from within the full build, but requires an explicit path override here
@@ -228,6 +244,7 @@
                      <!-- The Selenium browser suites exercise the Material Dashboard, selected explicitly. -->
                      <systemPropertyVariables>
                         <qqq.javalin.frontend>material</qqq.javalin.frontend>
+                        <qqq.sample.effectiveVersion>${project.version}</qqq.sample.effectiveVersion>
                      </systemPropertyVariables>
                   </configuration>
                   <executions>

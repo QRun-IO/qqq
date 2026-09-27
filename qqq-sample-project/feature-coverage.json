@@ -4991,6 +4991,8 @@
       "id": "train.data",
       "feature": "Generated reference-data QBit",
       "source_paths": [
+        "qqq-sample-data-qbit/README.md",
+        "qqq-sample-data-qbit/src/main/java/com/kingsrook/qbits/reference/ReferenceDataQBit.java",
         "../qbit-template-data/README.md",
         "../qbit-template-data/docs/00-getting-started.md",
         "../qbit-template-data/docs/01-data-qbit-architecture.md",
@@ -5004,12 +5006,18 @@
       "negative_cases": [
         "Duplicate/bad source key, failed sync, invalid prefix and repeat-run idempotence"
       ],
-      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testHostMetadataAndPrefixIsolation",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testNaturalKeySyncLifecycle",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testBadSourceRejectedBeforeWrites",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testLiquibaseGenerationAndFailedSyncBoundary",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testBundledSyncProcess",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testLiquibaseMigrationOnRealHost"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
-      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/609",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/609"
     },
     {
       "id": "train.extension",

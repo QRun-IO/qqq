@@ -135,7 +135,10 @@ jobs:
           command: |
             python3 qqq-sample-project/test_feature_coverage.py
             python3 -m unittest discover -s qqq-sample-project -p test_published_bom.py
-            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
+            python3 qqq-sample-project/test_data_qbit_packaging.py
+            # This QBit is a source-only fixture, installed into this job's local cache.
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -DskipTests -f qqq-sample-data-qbit/pom.xml clean install
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
       - when:
           condition: << parameters.require_complete_coverage >>
           steps:

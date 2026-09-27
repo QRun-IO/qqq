@@ -4,15 +4,41 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
 
-# Reviewed 129-feature scope, including query statistics; change only after reviewing the source
+# Reviewed 130-feature scope, including separate source/published bootstrap; change only after reviewing the source
 # inventory delta. The digest prevents accidental removal/renaming from passing.
-INVENTORY_IDS_SHA256 = '7ccabc35400e3c2231cbb4156db8c1af9c6d27c2a6ac18d3efb2acecf6b7f64c'
-PUBLISHED_FEATURES = {'train.bom'}
+INVENTORY_IDS_SHA256 = 'db7f1a1afd740afab1e3e5cc5287f93e9c2fe9cf8a567b4318d76d83d6e361bf'
+PUBLISHED_FEATURES = {'sample.bootstrap.published', 'train.bom'}
 UNSUPPORTED_FEATURES = {'core.widget.generic'}
+
+
+def bootstrap_source_reasons(sample):
+    path = sample / 'target' / 'bootstrap-acceptance.json'
+    try:
+        report = json.loads(path.read_text())
+        sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=sample,
+                                      text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return ['source bootstrap acceptance report is missing or invalid']
+    if (report.get('stage') != 'source' or report.get('source_sha') != sha
+            or report.get('worktree_dirty') is not False or not report.get('complete')):
+        return ['source bootstrap report is incomplete or from another revision']
+    if report.get('cache_origin') != 'new empty cache' or report.get('library_count') != 17:
+        return ['source bootstrap cache or reviewed library count is invalid']
+    for step in ('root_install', 'candidate_resolution', 'sample_verify'):
+        if report.get(step, {}).get('exit_code') != 0:
+            return ['source bootstrap step did not pass: ' + step]
+    for step in ('missing_bom', 'mismatched_candidate'):
+        if report.get('negative_models', {}).get(step, {}).get('exit_code', 0) == 0:
+            return ['source bootstrap negative boundary did not fail: ' + step]
+    for suite in ('SampleBootstrapTest', 'SampleJavalinServerTest', 'SamplePackagedConfigurationIT'):
+        if report.get('test_reports', {}).get(suite, {}).get('tests', 0) < 1:
+            return ['source bootstrap test report is missing: ' + suite]
+    return []
 
 
 def main():
@@ -20,6 +46,8 @@ def main():
     parser.add_argument('--stage', choices=('source', 'published'), default='published',
                         help='Source checks defer only explicitly marked public-artifact acceptance')
     parser.add_argument('--report-only', action='store_true', help='List gaps without certifying acceptance')
+    parser.add_argument('--require-feature', action='append', default=[],
+                        help='Require each named reviewed feature even with --report-only')
     args = parser.parse_args()
     sample = Path(__file__).resolve().parent
     output = sample / 'target' / 'feature-coverage-result.json'
@@ -34,6 +62,9 @@ def main():
     digest = hashlib.sha256('\n'.join(sorted(identifiers)).encode()).hexdigest()
     if digest != INVENTORY_IDS_SHA256:
         parser.error('Feature IDs differ from the reviewed scope; review the source inventory delta before updating its digest')
+    for required in args.require_feature:
+        if required not in identifiers:
+            parser.error('Unknown required feature: ' + required)
     for feature in features:
         expected_stage = 'published' if feature['id'] in PUBLISHED_FEATURES else 'source'
         if feature.get('acceptance_stage') != expected_stage:
@@ -73,21 +104,26 @@ def main():
         for test in tests:
             if not outcomes.get(test, False):
                 reasons.append('test did not pass in these reports: ' + test)
+        if feature['id'] == 'sample.bootstrap' and args.stage == 'source':
+            reasons.extend(bootstrap_source_reasons(sample))
         if reasons:
             gaps.append({'id': feature['id'], 'reasons': reasons})
 
+    unavailable = set(deferred) | {item['id'] for item in unsupported} | {gap['id'] for gap in gaps}
+    required_passed = all(required not in unavailable for required in args.require_feature)
     result = {
         'inventory_entries': len(features), 'features': len(features) - len(unsupported) - len(deferred),
         'verified': len(features) - len(unsupported) - len(deferred) - len(gaps),
         'unsupported': unsupported, 'deferred': deferred, 'stage': args.stage,
         'stage_passed': not gaps,
+        'required_features': args.require_feature, 'required_passed': required_passed,
         'complete': not args.report_only and not gaps and not deferred, 'gaps': gaps,
         'scope': 'This checks recorded scenarios against these reports. Inventory completeness requires source review; use clean verify to avoid stale reports.',
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + '\n')
     print(f"Sample features verified ({args.stage}): {result['verified']}/{result['features']}; report: {output}")
-    return 0 if args.report_only or result['stage_passed'] else 1
+    return 0 if (required_passed if args.require_feature else (args.report_only or result['stage_passed'])) else 1
 
 
 if __name__ == '__main__':

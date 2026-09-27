@@ -36,6 +36,18 @@ QQQ library at the same source revision. This is **source-install evidence**;
 the cache contains locally built artifacts. The focused bootstrap profile
 records its JaCoCo report but disables the full-suite coverage threshold;
 normal sample `verify` and CI remain responsible for that threshold.
+CircleCI runs this proof in the dedicated `sample_bootstrap_source` job on
+feature, develop, release, tag and hotfix workflows. Publishing jobs require
+it to pass. The job retains the runner report, Maven logs and JUnit reports,
+then checks the report's commit and negative boundaries through the ledger.
+Locally, copy the runner's `acceptance.json` to
+`qqq-sample-project/target/bootstrap-acceptance.json`, then run:
+
+```bash
+python3 qqq-sample-project/verify-feature-coverage.py --stage source --require-feature sample.bootstrap
+```
+
+That focused check does not claim the full feature inventory is complete.
 
 After the exact 4.1 release candidate is publicly available, set
 `QQQ_CANDIDATE_VERSION` to its published literal version and run:
@@ -54,8 +66,9 @@ the new fixture. The prior published set contained 16 libraries; the live
 4.1 BOM adds `qqq-esb`, so this check requires all 17 and fails on BOM drift.
 Browser-specific behavior, native provider contracts, and the full feature
 ledger have their own gates; this bootstrap run certifies none of them.
-`sample.bootstrap` remains pending until the published stage passes at the
-reviewed candidate and its report is mapped into the ledger.
+`sample.bootstrap` records source-installed evidence only.
+`sample.bootstrap.published` remains pending until the published stage passes
+at the reviewed public candidate and its report is mapped into the ledger.
 
 Requires Java 21 and Maven 3.8 or later. This separate path builds the framework and runs its acceptance tests.
 
@@ -169,7 +182,7 @@ The MongoDB checks exercise selected CRUD, native keys and type round trips, fie
 
 To validate a separately built dashboard candidate, add `-Dqqq.frontend.material-dashboard.version=<candidate-version>` to the acceptance command. Install that candidate under its own version with its freshly built assets and resolved QQQ dependency versions, and verify that the assembled sample contains the same assets. An overridden local run is source compatibility evidence; public-artifact acceptance must use the versions actually published.
 
-The checker pins the reviewed set of feature IDs and allows only `train.bom` to wait for published artifacts. Removing/renaming a feature or changing that boundary requires a source review and an explicit checker change. This prevents accidental scope shrinkage; it does not prove the inventory is exhaustive. Always run a clean Maven verification immediately before checking the ledger, because XML test reports alone do not identify the source revision they exercised.
+The checker pins the reviewed set of feature IDs and allows only `train.bom` and `sample.bootstrap.published` to wait for published artifacts. Removing/renaming a feature or changing that boundary requires a source review and an explicit checker change. This prevents accidental scope shrinkage; it does not prove the inventory is exhaustive. Always run a clean Maven verification immediately before checking the ledger, because XML test reports alone do not identify the source revision they exercised.
 
 CI runs the complete sample test suite for feature changes and before publication. For 4.0, the maintainer deferred comprehensive feature coverage under [#534](https://github.com/QRun-IO/qqq/issues/534): CI reports source-stage gaps without making them publication blockers. Public-artifact acceptance still requires a clean-cache test run against the published versions. Run `python3 qqq-sample-project/test_feature_coverage.py` to check the ledger verifier itself.
 

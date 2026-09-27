@@ -33,9 +33,11 @@ class BootstrapAcceptanceTest(unittest.TestCase):
             with self.subTest(version=version), self.assertRaises(ValueError):
                 validate_version(version, "published")
         self.assertEqual("4.1.0-RC.1", validate_version("4.1.0-RC.1", "published"))
-        with self.assertRaises(ValueError):
-            validate_version("4.1.0", "source")
+        self.assertEqual("4.1.0", validate_version("4.1.0", "source"))
+        self.assertEqual("4.1.0-RC.1", validate_version("4.1.0-RC.1", "source"))
         self.assertEqual("4.1.0-SNAPSHOT", validate_version("4.1.0-SNAPSHOT", "source"))
+        with self.assertRaises(ValueError):
+            validate_version("${revision}", "source")
 
     def test_consumer_imports_candidate_bom_and_declares_every_library_without_versions(self):
         with tempfile.TemporaryDirectory() as root:

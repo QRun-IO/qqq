@@ -18,6 +18,43 @@ commands:
             printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-qqq-ci.conf >/dev/null
 
 jobs:
+  sample_bootstrap_source:
+    executor: qqq-orb/java
+    steps:
+      - configure-package-install
+      - qqq-orb/install_java
+      - checkout
+      - run:
+          name: Check bootstrap runner and ledger regressions
+          command: |
+            python3 qqq-sample-project/test_bootstrap_acceptance.py
+            python3 qqq-sample-project/test_feature_coverage.py
+      - run:
+          name: Prove source bootstrap from an empty Maven cache
+          command: python3 qqq-sample-project/bootstrap_acceptance.py --stage source --workdir /tmp/qqq-bootstrap-source
+      - run:
+          name: Require current source bootstrap evidence
+          when: always
+          command: |
+            mkdir -p qqq-sample-project/target/bootstrap-evidence qqq-sample-project/target/junit-results
+            if [ -f /tmp/qqq-bootstrap-source/acceptance.json ]; then
+              cp /tmp/qqq-bootstrap-source/acceptance.json qqq-sample-project/target/bootstrap-acceptance.json
+              cp /tmp/qqq-bootstrap-source/acceptance.json qqq-sample-project/target/bootstrap-evidence/
+            fi
+            for log in /tmp/qqq-bootstrap-source/*.log; do
+              if [ -f "$log" ]; then cp "$log" qqq-sample-project/target/bootstrap-evidence/; fi
+            done
+            for report in qqq-sample-project/target/surefire-reports/TEST-*.xml qqq-sample-project/target/failsafe-reports/TEST-*.xml; do
+              if [ -f "$report" ]; then cp "$report" qqq-sample-project/target/junit-results/; fi
+            done
+            python3 qqq-sample-project/verify-feature-coverage.py --stage source --require-feature sample.bootstrap
+      - store_test_results:
+          path: qqq-sample-project/target/junit-results
+      - store_artifacts:
+          path: qqq-sample-project/target/bootstrap-evidence
+      - store_artifacts:
+          path: qqq-sample-project/target/feature-coverage-result.json
+
   sample_acceptance:
     executor: qqq-orb/java
     parameters:
@@ -96,6 +133,12 @@ workflows:
 
   test_only:
     jobs:
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
       - sample_acceptance:
           name: sample_acceptance
           require_complete_coverage: false
@@ -126,6 +169,11 @@ workflows:
 
   publish_snapshot:
     jobs:
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - develop
       - sample_acceptance:
           name: snapshot_sample_acceptance
           require_complete_coverage: false
@@ -134,7 +182,7 @@ workflows:
               only:
                 - develop
       - qqq-orb/mvn_publish:
-          requires: [snapshot_sample_acceptance]
+          requires: [snapshot_sample_acceptance, sample_bootstrap_source]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
@@ -154,6 +202,13 @@ workflows:
 
   publish_feature:
     jobs:
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
       - sample_acceptance:
           name: feature_sample_acceptance
           require_complete_coverage: false
@@ -164,7 +219,7 @@ workflows:
             tags:
               only: [/publish.*/]
       - qqq-orb/mvn_publish:
-          requires: [feature_sample_acceptance]
+          requires: [feature_sample_acceptance, sample_bootstrap_source]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials]
@@ -178,6 +233,11 @@ workflows:
 
   publish_release_candidate:
     jobs:
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - /release\/.*/
       - sample_acceptance:
           name: candidate_sample_acceptance
           require_complete_coverage: false
@@ -199,7 +259,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release_candidate
-          requires: [candidate_static_analysis, candidate_sample_acceptance]
+          requires: [candidate_static_analysis, candidate_sample_acceptance, sample_bootstrap_source]
           filters:
             branches:
               only:
@@ -207,6 +267,12 @@ workflows:
 
   publish_release:
     jobs:
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
       - sample_acceptance:
           name: release_sample_acceptance
           require_complete_coverage: false
@@ -230,7 +296,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release
-          requires: [release_static_analysis, release_sample_acceptance]
+          requires: [release_static_analysis, release_sample_acceptance, sample_bootstrap_source]
           filters:
             branches:
               ignore: /.*/
@@ -239,6 +305,11 @@ workflows:
 
   publish_hotfix_release:
     jobs:
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
       - sample_acceptance:
           name: hotfix_sample_acceptance
           require_complete_coverage: false
@@ -247,7 +318,7 @@ workflows:
               only:
                 - /hotfix\/.*/
       - qqq-orb/mvn_publish:
-          requires: [hotfix_sample_acceptance]
+          requires: [hotfix_sample_acceptance, sample_bootstrap_source]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]

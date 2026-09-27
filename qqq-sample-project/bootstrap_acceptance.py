@@ -38,9 +38,10 @@ def expected_libraries(bom_path):
 
 
 def validate_version(version, stage):
-    pattern = r"\d+\.\d+\.\d+(?:-RC\.\d+)?" if stage == "published" else r"\d+\.\d+\.\d+-SNAPSHOT"
+    pattern = (r"\d+\.\d+\.\d+(?:-RC\.\d+)?" if stage == "published"
+               else r"\d+\.\d+\.\d+(?:-RC\.\d+|-SNAPSHOT)?")
     if not re.fullmatch(pattern, version or ""):
-        raise ValueError(f"{stage} candidate must have a literal {'release or RC' if stage == 'published' else 'SNAPSHOT'} version")
+        raise ValueError(f"{stage} candidate must have a literal {'release or RC' if stage == 'published' else 'release, RC or SNAPSHOT'} version")
     return version
 
 

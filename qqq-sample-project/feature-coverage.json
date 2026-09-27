@@ -1465,7 +1465,7 @@
       "negative_cases": [
         "Handler failure, retries/duplicate work, invalid status/provider; PRE_DELETE is documented unimplemented and excluded"
       ],
-      "gap": "Nine source-only sample acceptance cases exercise public Person/Pet record APIs, code/process handlers, priority/re-filtering, batches, associations and status recovery with native H2 SQL oracles. Failed batches can retain and repeat partial writes; completed polling does not repeat work. Invalid metadata and ambiguous implicit providers reject; unknown/null persisted statuses remain untouched. Regression #845 rejects an explicit unknown provider without changing pending rows, then verifies valid-provider recovery. Existing null/blank single-provider defaults and known-provider no-op behavior are preserved. PRE_DELETE remains unsupported/excluded. Independent review and full sample verification remain pending; no scheduler, concurrent-worker or exactly-once guarantee is claimed.",
+      "gap": "Nine source-only sample acceptance cases exercise public Person/Pet record APIs, code/process handlers, priority/re-filtering, batches, associations and status recovery with native H2 SQL oracles. Failed batches can retain and repeat partial writes; completed polling does not repeat work. Invalid metadata and ambiguous implicit providers reject; unknown/null persisted statuses remain untouched. Regression #845 rejects an explicit unknown provider without changing pending rows, then verifies valid-provider recovery. Existing null/blank single-provider defaults and known-provider no-op behavior are preserved. PRE_DELETE remains unsupported/excluded. Independent requirement/composition review and the combined 975-test sample run passed; no scheduler, concurrent-worker or exactly-once guarantee is claimed.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInsertUpdateAndCompletedWorkIsNotRepeated",
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testUnknownRuntimeProviderRejectsWithoutWritesAndValidRetryRecovers",
@@ -1477,7 +1477,7 @@
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInvalidProviderAndStatusMetadataRejectedWithoutWrites",
         "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInvalidManualProcessInputsPreservePendingWork"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/567",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
@@ -1856,7 +1856,7 @@
       "negative_cases": [
         "Unrelated records, denied record, unique conflict and failed merge rollback"
       ],
-      "gap": "Twenty-seven first-party registered-process H2 cases cover selection/survivor/fields, child and grandchild persistence, ID/filter delete-before-replacement and unique-name reuse in process/page transactions, unrelated/denied/unique-conflict cases, supported transaction rollback and cleanup-error precedence. #843 corrects confirmed association loss and ignored write errors. Independent review and combined full sample verification remain pending; autocommit can retain earlier writes, and cross-backend atomicity/browser interaction are not claimed.",
+      "gap": "Twenty-seven first-party registered-process H2 cases cover selection/survivor/fields, child and grandchild persistence, ID/filter delete-before-replacement and unique-name reuse in process/page transactions, unrelated/denied/unique-conflict cases, supported transaction rollback and cleanup-error precedence. #843 corrects confirmed association loss and ignored write errors. Independent requirement/composition review and the combined 975-test sample run passed; autocommit can retain earlier writes, and cross-backend atomicity/browser interaction are not claimed.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#selectedDuplicateMergesFieldsAndPreservesAssociations",
         "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#choosingSecondSurvivorPreservesAllPetsAndGrandchildren",
@@ -1886,7 +1886,7 @@
         "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#replacementExceptionRollsBackDeletes",
         "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#replacementRecordErrorRollsBackDeletes"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/568",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."

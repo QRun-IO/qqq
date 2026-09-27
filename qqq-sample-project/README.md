@@ -1176,8 +1176,9 @@ ETL transaction to roll back. The ETL owner now retains primary failures when cl
 also fails. No dependencies, public APIs, shared sample schema or provider policies
 are added. Focused validation is **27 native cases, zero failures/errors/skips**;
 the full core `clean install` also passes **2,063 tests, zero failures/errors and
-11 existing skips**, with configured quality checks unchanged. The ledger row
-remains **pending** for independent review and a combined full sample run.
+11 existing skips**, with configured quality checks unchanged. Independent input
+and composition review passed; the ledger row is now **verified at source stage**
+after the combined full sample run recorded below.
 
 Run the focused fixture after installing matching source artifacts into an isolated
 Maven repository:
@@ -1221,8 +1222,9 @@ or multiple providers; a known provider with no applicable work remains a no-op.
 No new API, provider or runtime policy is introduced.
 PRE_DELETE remains documented unsupported/excluded; scheduler timing, competing
 workers, atomic rollback and exactly-once delivery are not claimed. The ledger
-retains all 130 requirements and the `pending` source status and existing 4.0
-deferral; neither independent review nor full sample/release gates are complete.
+retains all 130 requirements and the existing 4.0 deferral. Independent requirement
+and composition review passed, and this row is now **verified at source stage**
+after the combined full run below. Publication gates remain separate.
 
 Focused reproduction with matching source artifacts in an isolated Maven cache:
 
@@ -1246,5 +1248,15 @@ checks also pass (`/private/tmp/qqq-845-python.log`).
 The original fixture's deliberately reversed priority and changed batch size
 produced two native-oracle failures before restoration
 (`/private/tmp/qqq-567-priority-batch-mutation.log`). No full sample run was started
-for this branch; independent review and the coordinated full verification slot
-remain required (including any separately reviewed packaged-child port helper).
+on the original isolated branch. Its reviewed changes are now included in the
+combined verification below, including the packaged-child port helper.
+
+The reviewed integration at `2770fbf5d` passed **858 regular +117 integration tests
+(975 total)** with zero failures/errors/skips and all 41 sample classes covered.
+Matching-source core/RDBMS gates passed 2,076/274 tests with 11/5 existing skips;
+46 focused SQLite/merge/automation tests and 46 Python checks passed. Merge and
+automation are source-verified. The test-only #848 correction asserts logical
+connection closure and native reuse of a one-slot SQLite pool; a latch-controlled
+case proves asynchronous check-in without changing production pool settings.
+Required CI, public-artifact consumption, remaining ESB requirements and separately
+owned Next acceptance still govern release; this checkpoint is not release certification.

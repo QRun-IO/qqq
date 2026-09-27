@@ -5026,12 +5026,21 @@
       "negative_cases": [
         "Missing host prerequisite, disabled configuration and unrelated metadata must stay unchanged"
       ],
-      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.qrunio.acceptance.extension.ExtensionHostAcceptanceTest#generatedExtensionChangesOnlyConfiguredHostTable",
+        "com.qrunio.acceptance.extension.ExtensionHostAcceptanceTest#disabledConfigurationLeavesHostBehaviorUnchanged",
+        "com.qrunio.acceptance.extension.ExtensionHostAcceptanceTest#missingTargetAndMissingRequiredFieldFailBeforeRegistration"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/610",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-26",
+        "issue": "https://github.com/QRun-IO/qqq/issues/610",
+        "scope": "Disposable rename of first-party extension template main into a distinct QBit, with consumer-owned implementation in its documented customization hook. A separately built host resolves that artifact and proves PRE_INSERT_RECORD changes persisted memory-backend data only on the configured table. Disabled configuration leaves inserts unchanged; missing table/name-field prerequisites fail before QBit registration; unrelated table metadata and inserts remain unchanged. Removing the generated dependency makes the host fail compilation. This verifies source integration, not template example behavior without implementation or registry publication."
+      }
     },
     {
       "id": "train.migration",

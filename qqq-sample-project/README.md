@@ -465,3 +465,75 @@ Local review logs are retained under `/private/tmp/qqq-587-acceptance.fB6Bs0/`:
 reports under `exclusive-823-reports/`.
 Only `backend.filesystem.local` and `backend.filesystem.formats` receive these source
 bindings; original requirements and supported-case assertions are preserved.
+
+
+## Query statistics: bounded source evidence (#564)
+
+`SampleQueryStatisticsAcceptanceTest` uses canonical sample `person`/`pet` metadata,
+a unique H2 database per case, the real `QueryStatManager`, its public consumer
+interface, and `QueryStatMetaDataProvider`/`QQQTablesMetaDataProvider`. Explicit SQL
+creates the statistics schema; native JDBC readback independently checks stored
+rows. There are no persistence mocks, network listeners, broker fixtures, new
+dependencies, or changes to the launched application. Fixtures restore manager
+settings, stop/join normal workers, clear context, and close the owned database.
+Every new Java file carries the Apache-2.0 header.
+
+The 11 passing methods cover direct consumer snapshots; plain pipes with 0, 3,
+100 and 105 rows; exact UTC timing/session/SQL and criterion/order/join records;
+backend/table opt-out and disabled startup; storage thresholds with a throwing
+consumer; explicit metadata-table opt-outs preventing recursion; actual missing
+storage/native tables; preterminated plain pipes; scheduled insertion using an
+owned storage session; and disabled/normal stop and sequential restart cleanup.
+The joined query verifies actual descending child-name delivery, not just SQL text.
+Result counts are consumer-only fields, not persisted columns. Structured order
+records retain field names, not direction; join records retain table IDs, not join
+type. SQL text provides additional detail. A failed storage batch is dropped and
+is not retried; the test explicitly proves that boundary and fresh-query recovery.
+
+`core.observability.query_statistics` remains **pending**. The separate
+`SampleQueryStatisticsAcceptanceDefectProbe` preserves desired-contract assertions
+for six reproducible defects/boundaries on source `e74cb40ed5dfca7e0d4cdc2a623cd1a70f5fb8e9`:
+
+| Probe | Observed result and impact |
+| --- | --- |
+| `testAssociationShortTailCount`, `testAssociationFullBatchCount`, `testAssociationFullBatchAndTailCount` | Native rows, delivered rows and child associations are correct; consumer counts are 0 instead of 3/100/105, corrupting buffered-query counts. |
+| `testExplicitFlushPreservesCallerContext` | `storeStatsNow()` clears the caller's `QContext`, so subsequent operations lose instance/session context. The passing flush helper uses its own thread; this is a test boundary, not a product fix. |
+| `testForeignInstanceDoesNotWriteToStartedInstance` | A query from a second instance/database is stored in the first instance's statistics table with the foreign session ID. |
+| `testPostQueryFailureHasNoSuccessStatistic` | A rejected post-query customization still reaches consumers and storage as a success-shaped statistic without a failure outcome. |
+| `testRepeatedStartThenStopLeavesNoWorker` | Two starts followed by one stop leave one manager worker alive. A bounded child JVM demonstrates the leak and exits so it cannot contaminate the acceptance process. |
+| `testStatisticsTableDoesNotCollectItsOwnWrites` | Enabling `QUERY_STATS` on the statistics table makes the second flush persist a self-generated row. Passing fixtures explicitly opt metadata tables out; automatic recursion prevention is not certified. |
+
+The eight probe methods intentionally fail; they have no `@Disabled`, assumptions,
+expected-failure conversion, or production workaround. Their class name ends in
+`Probe`, so ordinary Surefire discovery does not run them; use the explicit command
+below. They are not listed as passing inventory evidence. The pending status keeps
+the required-feature gate red even when all 11 mapped methods pass. Independent
+review, defect triage/fixes, concurrent termination/race evidence and combined full
+verification remain outstanding. Existing #525/#526 and #527–#531 boundaries remain.
+
+Reproduce from this branch with Java 21 and a dedicated Maven cache. Build the
+matching source modules first (not jars installed by another worktree):
+
+```sh
+QUERY_STATS_M2=/private/tmp/qqq-564-e74cb40e-m2
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_M2" -DskipTests install
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleQueryStatisticsAcceptanceTest,SampleQueryContractTest test
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_M2" -pl qqq-backend-core \
+  -Dtest=QueryStatManagerTest test
+# Diagnostic command: expected nonzero exit on this source, eight assertion failures.
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleQueryStatisticsAcceptanceDefectProbe test
+# Expected nonzero exit: this feature is still pending, even with --report-only.
+PYTHONDONTWRITEBYTECODE=1 python3 qqq-sample-project/verify-feature-coverage.py \
+  --stage source --report-only --require-feature core.observability.query_statistics
+```
+
+Local 2026-09-27 results: source reactor install passed (tests skipped for artifact
+preparation); 11 new sample methods plus 3 existing query-contract methods passed;
+7 existing core manager methods passed; 8 diagnostic probes failed on assertions
+with zero errors/skips. Checkstyle ran without violations. The task cache copied
+available dependency downloads, removed every copied QQQ `4.1.0-SNAPSHOT` artifact,
+and rebuilt the reactor from this source. Evidence is in the module Surefire reports
+and `/private/tmp/qqq-564-{reactor-install,focused-final,core-regression,probes-final}.log`.
+No full sample/browser suite or broker-bound fixture was run for this increment.

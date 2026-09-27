@@ -1214,8 +1214,20 @@
         "Disabled capability/manager, thresholds, consumer/storage failures and collection recursion do not fabricate or leak statistics",
         "No cross-instance/session state or worker leakage; failed/terminated reads have an explicit truthful statistics outcome"
       ],
-      "gap": "Final selected-source acceptance remains open. High #525/#526 retained; independent provider refinements #527\u2013#531 deferred. Original requirements remain; historical evidence is source-specific.",
-      "verified_tests": [],
+      "gap": "Owned H2 sample evidence covers direct/plain-pipe snapshots, metadata timing/filter/order/join persistence, explicit worker and scheduled flush, opt-outs, thresholds, consumer and storage failures, preterminated plain pipes, and normal stop/restart cleanup. Source acceptance remains pending: eight explicitly runnable desired-contract probes reproduce association-buffer counts of zero for 3/100/105 delivered rows, caller-context loss on explicit flush, foreign-instance statistics persisted in the started instance, success-shaped statistics after post-query failure, a worker surviving repeated start/stop, and self-generated statistics without metadata-table opt-outs. See README query-statistics section for exact commands and impacts; production is unchanged and defect triage is separate from #564. Failed storage batches are dropped, metadata omits structured order direction/join type and persistent result counts/outcomes, and concurrent termination/race behavior is not certified. High #525/#526 and deferred #527\u2013#531 remain unchanged.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testDirectQuerySnapshotAndExplicitNativeStorage",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testPlainPipeCountsEmptyFullBatchesAndTails",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testNativeTimingFilterOrderAndJoinMetadata",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testDisabledCapabilitiesAndManager",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testThresholdAndThrowingConsumerDoNotBreakRead",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testExplicitMetadataOptOutPreventsRecursiveCollection",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testStorageFailureDropsBatchAndFreshReadRecovers",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testFailedNativeQueryHasNoSuccessStatistic",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testPreterminatedPlainPipeRecordsZeroDeliveredRows",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testScheduledFlushUsesOwnedSessionAndStopsWithoutWorkerLeak",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testStopDropsPendingBatchAndSequentialRestartKeepsSessionIdentity"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "review_note": "Source scope reviewed in query-statistics-inventory-scope-review.md. Separate from column statistics, widgets, DML audit and the common Query output contract; all previous128 IDs retained.",

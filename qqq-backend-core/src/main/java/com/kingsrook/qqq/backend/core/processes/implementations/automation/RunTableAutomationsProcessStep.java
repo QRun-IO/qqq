@@ -118,9 +118,9 @@ public class RunTableAutomationsProcessStep implements BackendStep, MetaDataProd
       // get the automation provider name to use - either as the only-one-in-instance, or via param //
       ////////////////////////////////////////////////////////////////////////////////////////////////
       String automationProviderName = runBackendStepInput.getValueString("automationProviderName");
+      Map<String, QAutomationProviderMetaData> automationProviders = CollectionUtils.nonNullMap(qInstance.getAutomationProviders());
       if(!StringUtils.hasContent(automationProviderName))
       {
-         Map<String, QAutomationProviderMetaData> automationProviders = CollectionUtils.nonNullMap(qInstance.getAutomationProviders());
          if(automationProviders.size() == 1)
          {
             automationProviderName = automationProviders.keySet().iterator().next();
@@ -129,6 +129,11 @@ public class RunTableAutomationsProcessStep implements BackendStep, MetaDataProd
          {
             throw (new QException("Missing required input value: automationProviderName (and there is not exactly 1 in the active instance)"));
          }
+      }
+
+      if(!automationProviders.containsKey(automationProviderName))
+      {
+         throw (new QException("Unrecognized automationProviderName: " + automationProviderName));
       }
 
       /////////////////////////////////////////////

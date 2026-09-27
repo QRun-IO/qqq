@@ -1191,3 +1191,60 @@ The fixture starts no HTTP server, broker or container. It removes its own proce
 state, shuts down its unique H2 database, resets connection providers and restores
 caller context. The full `-Pacceptance-tests,data-qbit-acceptance clean verify` gate
 remains separately scheduled with the shared sample broker owner.
+
+
+### Automation source acceptance (#567)
+
+`SampleAutomationAcceptanceTest` runs nine source-only cases on the real sample
+Person/Pet metadata, with test-only evidence columns in a UUID-named H2 database.
+Public Insert/Update and registered manual automation/recovery processes drive the
+scenario; independent native SQL checks pending/running/final statuses, persisted
+handler effects, filtered associations, reverse-declared priorities and child
+process batches of 2/2/1. A failed filtered action marks its whole batch failed;
+later actions still execute, partial writes remain, and explicit recovery can
+repeat those writes. Completed rows are not processed again by another poll.
+Recovery preview is read-only; failed/stale running states are requeued while
+recent running, OK, unknown and null states remain untouched. Fixtures close their
+database, remove owned parent/child process states and restore QContext. They do
+not start a scheduler, Javalin or Artemis; Person ESB publication is disabled only
+on the private fixture instance.
+
+Invalid provider linkage/status-field metadata and missing/unknown table or
+ambiguous implicit provider inputs are rejected without data changes.
+The correction for [#845](https://github.com/QRun-IO/qqq/issues/845) fixes the false-success
+response reproduced at source base `7bc761154`: an explicit unknown provider now
+throws the existing `QException` before work or status changes. The native sample
+regression compares all Person rows before/after rejection, then verifies that a
+valid-provider retry changes that row to OK with one persisted handler invocation.
+Null/blank provider selection still chooses the sole configured provider and rejects zero
+or multiple providers; a known provider with no applicable work remains a no-op.
+No new API, provider or runtime policy is introduced.
+PRE_DELETE remains documented unsupported/excluded; scheduler timing, competing
+workers, atomic rollback and exactly-once delivery are not claimed. The ledger
+retains all 130 requirements and the `pending` source status and existing 4.0
+deferral; neither independent review nor full sample/release gates are complete.
+
+Focused reproduction with matching source artifacts in an isolated Maven cache:
+
+```sh
+mvn -o -f qqq-sample-project/pom.xml -Dmaven.repo.local="$AUTOMATION_ACCEPTANCE_M2" \
+  -Dtest=SampleAutomationAcceptanceTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+```
+
+The #845 rejection regressions fail against the original implementation in both
+core and sample (`/private/tmp/qqq-845-{core,sample}-red.log`), then pass after the
+provider check: core 7/7 and sample 9/9, with zero Checkstyle violations. Root core
+`clean install` through the unchanged verify gates passes 2,067 total tests (2,056
+executed and 11 existing skips), zero failures/errors, 97.23% class coverage and
+82.32% instruction coverage (`/private/tmp/qqq-845-core-full-install.log`). SpotBugs
+and PMD run under the existing report-only defaults and retain advisory findings;
+this is not a zero-warning claim. The sample uses the identical built/installed
+core JAR in the owned cache (`/private/tmp/qqq-845-sample-green.log`); 46 Python
+checks also pass (`/private/tmp/qqq-845-python.log`).
+
+The original fixture's deliberately reversed priority and changed batch size
+produced two native-oracle failures before restoration
+(`/private/tmp/qqq-567-priority-batch-mutation.log`). No full sample run was started
+for this branch; independent review and the coordinated full verification slot
+remain required (including any separately reviewed packaged-child port helper).

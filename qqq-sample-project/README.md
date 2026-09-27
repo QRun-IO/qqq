@@ -266,7 +266,7 @@ run from the repository root:
 ```sh
 mvn -B -ntp -Dmaven.repo.local="$API_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
   -Dtest=SampleApiMappingAcceptanceTest test
-mvn -B -ntp -Dmaven.repo.local="$API_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml clean verify
+mvn -B -ntp -Dmaven.repo.local="$API_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
 python3 -m unittest discover -s qqq-sample-project -p test_feature_coverage.py
 python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
 ```
@@ -275,9 +275,11 @@ Only `backend.api.mapping` receives these method bindings. Source evidence uses 
 source-built dependencies from the reviewed #803 base `9a526e330`; published artifacts
 and the combined release integration remain separate gates.
 
-On this base the plain `clean verify` run passes 692 unit tests, including all 11 new
-API contracts, then stops at the class coverage gate (90% against 95%). The existing
-`-Pacceptance-tests` profile adds browser/packaged-server evidence used by the full
-sample gate. That broader profile was not run for this bounded API sidecar; this does
-not claim a full release-gate pass or a new production coverage defect. The source
-report remains incomplete for other rows.
+Full `-Pacceptance-tests clean verify` passes on this base: 692 unit tests (including
+all 11 new API contracts) and 61 integration/browser tests, with zero failures,
+errors or skips. Checkstyle reports zero violations and class coverage is 38/40
+(95%), meeting the unchanged gate. This run uses the task-owned Maven cache,
+source-built QQQ artifacts and the POM-default Material 0.41.0 dependency. The earlier
+plain `verify` run omitted this required profile; its 90% class coverage was not a
+new production gap. The source inventory report remains incomplete for other rows;
+combined release and published-candidate validation remain separate.

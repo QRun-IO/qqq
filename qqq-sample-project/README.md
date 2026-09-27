@@ -314,3 +314,63 @@ The renderer accepts strings; the consumer loads resources with the JDK and reje
 | Reuse, timeout/cancellation, cleanup | `testPoolReuseCheckoutTimeoutAndOwnedCleanup` verifies physical PostgreSQL PID reuse, bounded pool exhaustion, rollback/reset when an unfinished pooled transaction closes, and native session disappearance. Existing Count/Query tests observe actual blocked PostgreSQL requests before timeout/cancellation, verify their removal and prove recovery. |
 
 Boundaries: autocommit batches can retain earlier successful statements; callers must supply and roll back a transaction for atomic row changes. PostgreSQL sequence allocation is not rolled back. `ConnectionManager.resetConnectionProviders()` clears the registry without closing pools: the fixture explicitly destroys only its uniquely named C3P0 pool and verifies server-side cleanup. PostgreSQL has relational CRUD/aggregate/join support but no file-storage interface. These two ledger rows record source evidence only; no authentication/UI behavior, full release verification, or published-candidate resolution is claimed.
+
+### Local filesystem acceptance (#587 / #590)
+
+`SampleLocalFilesystemAcceptanceTest` uses the sample QInstance, real QQQ record and
+storage actions, and JUnit-owned temporary directories. Independent `Files` reads
+check stored bytes, preserved source files and failed-write effects. Its Apache-2.0
+fixture adds no production dependencies. Source evidence is limited to the two local
+filesystem rows; combined release and published-candidate validation remain separate.
+
+| Requirement | Evidence and boundary |
+|---|---|
+| ONE insert/query/count/delete | Real files, nested names, byte contents, file size/base name, heavy-field selection and native deletion readback. |
+| CSV/JSON and cardinality | MANY parses CSV and JSON objects/arrays, Unicode/quotes/newlines, CSV empty/missing cells and omitted JSON values; glob selection and count are checked. ONE retains whole bytes for either format and does not invoke the MANY-only post-read hook. Explicit JSON null remains a null field. |
+| Update and MANY mutation | All filesystem updates and MANY insert/delete are explicitly unimplemented; tests require the native refusal and unchanged files. |
+| Storage | Binary streams, shorter replacement, nested Unicode/space paths, file URL, missing input, canonical traversal/symlink refusal and native byte readback. Record query/insert/delete confinement also rejects outside-table targets; an in-table symlink remains usable. |
+| Parsing failures | Malformed/truncated CSV/JSON and wrong JSON element type fail without source changes. Duplicate CSV headers are suffixed (`name`, `name 2`); a missing cell is null. CSV/JSON adapters preserve source numeric values; invalid numeric text raises `QValueException` on typed access, with no claim of eager whole-file type validation. |
+| Customizers | MANY post-read transformation affects returned records while preserving file bytes; thrown customizer exceptions abort query/count. |
+| OS failures | Owned files have POSIX permissions removed, independently confirmed unreadable/unwritable, then restored before cleanup. Run as an unprivileged user; elevated/root execution cannot certify OS denial. |
+| Partial failures | A middle ONE insert fails against a file-as-parent while earlier/later writes persist. A failing source copied through the actual storage output stream leaves its prefix and truncates old contents. Storage is non-atomic; existing [#459](https://github.com/QRun-IO/qqq/issues/459) remains unchanged. |
+
+Local files have no transport credential or connection-timeout contract. SFTP/S3
+transport acceptance belongs to its separate inventory rows. No network failure is
+simulated to fill those inapplicable local cases.
+
+The initial source-built `d1dac171a` run reproduced seven failing assertions across
+three defects. Minimal corrections accompany the acceptance fixture:
+
+- `JsonToQRecordAdapter` translates explicit JSON null before the Serializable cast.
+- `SharedFilesystemBackendModuleUtils` treats filenames as filesystem paths rather
+  than concatenating unescaped URI text; space and Unicode queries now pass.
+- `AbstractFilesystemAction` checks canonical table confinement for local listing,
+  writes and deletes. Traversal insert/delete and outside-target symlink read/write
+  regressions preserve their sentinels, with a successful in-table symlink control.
+  All probes stay inside the owned outer temporary directory.
+
+Unsupported mutations and non-atomic streams keep their existing behavior. File
+customizers remain MANY-only, and parsed numeric type conversion remains lazy. The
+adapter's documented collision limitation for pre-suffixed CSV headers remains; the
+fixture certifies identical duplicate headers (`name`, `name`) and missing cells.
+
+With the checkout's source dependencies installed in a new task-owned Maven cache:
+
+```sh
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleLocalFilesystemAcceptanceTest test
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Pacceptance-tests clean verify
+python3 -m unittest discover -s qqq-sample-project -p test_feature_coverage.py
+python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+```
+
+The full-profile command is required; plain `verify` omits the packaged/browser
+evidence needed for the sample coverage gate. No test or coverage threshold is lowered.
+
+Verification: all 22 new filesystem methods pass. Full `-Pacceptance-tests clean
+verify` passes 740 unit + 78 integration/browser tests with zero failures, errors or
+skips; Checkstyle is clean and class coverage is 39/41 (95.12%), meeting the unchanged
+threshold. The affected existing suites pass 9 JSON-adapter, 24 local-filesystem and
+4 disposable-SFTP path-matching tests. Only `backend.filesystem.local` and
+`backend.filesystem.formats` receive these source bindings.

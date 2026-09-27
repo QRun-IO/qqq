@@ -21,9 +21,12 @@
 package com.kingsrook.qqq.esb.runtime;
 
 
+import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -93,6 +96,7 @@ public class EsbControlChannel
    ////////////////////////////////////////////////////////////////////
    private final Map<String, Session> sessions = new HashMap<>();
    private       Boolean              open     = true;
+   private final List<Thread>          workers  = new CopyOnWriteArrayList<>();
 
 
 
@@ -134,18 +138,50 @@ public class EsbControlChannel
 
 
    /*******************************************************************************
-    ** Stop listening, on every provider.
+    ** Stop setup before the application owner closes provider connections. Interrupt
+    ** before acquiring the setup lock so a native session open can be cancelled.
+    ** Never close JMS sessions or join workers while holding the channel lock.
     *******************************************************************************/
    void close()
    {
+      workers.forEach(Thread::interrupt);
       Map<String, Session> sessionsToClose;
+      List<Thread> workersToStop;
       synchronized(this)
       {
          open = false;
          sessionsToClose = Map.copyOf(sessions);
          sessions.clear();
+         workersToStop = List.copyOf(workers);
       }
+      workersToStop.forEach(Thread::interrupt);
       sessionsToClose.values().forEach(EsbControlChannel::closeQuietly);
+      long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+      boolean interrupted = false;
+      for(Thread worker : workersToStop)
+      {
+         while(worker != Thread.currentThread() && worker.isAlive())
+         {
+            long remaining = deadline - System.nanoTime();
+            if(remaining <= 0)
+            {
+               LOG.warn("ESB control worker did not finish before shutdown deadline", logPair("worker", worker.getName()));
+               break;
+            }
+            try
+            {
+               worker.join(Duration.ofNanos(remaining));
+            }
+            catch(InterruptedException e)
+            {
+               interrupted = true;
+            }
+         }
+      }
+      if(interrupted)
+      {
+         Thread.currentThread().interrupt();
+      }
    }
 
 
@@ -200,9 +236,13 @@ public class EsbControlChannel
     ** holds the instance, for the connection manager).  A failed setup or lost
     ** connection is retried without waiting for another reconnect callback.
     *******************************************************************************/
-   private void listenInBackground(String providerName)
+   private synchronized void listenInBackground(String providerName)
    {
-      Thread.ofVirtual().name("qqq-esb-control-" + providerName).start(() ->
+      if(!open)
+      {
+         return;
+      }
+      Thread worker = Thread.ofVirtual().name("qqq-esb-control-" + providerName).unstarted(() ->
       {
          try
          {
@@ -227,8 +267,11 @@ public class EsbControlChannel
          finally
          {
             QContext.clear();
+            workers.remove(Thread.currentThread());
          }
       });
+      workers.add(worker);
+      worker.start();
    }
 
 
@@ -253,7 +296,16 @@ public class EsbControlChannel
       try
       {
          EsbConnectionManager manager = EsbConnectionManager.getInstance();
-         newSession = manager.openSession(providerName, false);
+         // Admission and provider creation must be atomic with close. The later
+         // session installation check alone cannot prevent recreating a provider.
+         synchronized(this)
+         {
+            if(!open)
+            {
+               return;
+            }
+            newSession = manager.openSession(providerName, false);
+         }
          newSession.createConsumer(manager.resolve(newSession, controlDestination(providerName))).setMessageListener(this::onMessage);
       }
       catch(QException | JMSException | RuntimeException e)

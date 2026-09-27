@@ -346,6 +346,66 @@ components:
         helpContents:
           description: "Help Contents for this field."
           type: "array"
+        inlinePossibleValueSource:
+          description: "Inline possible-value source for this field; enumValues supply\
+            \ choices without a separate lookup."
+          properties:
+            customCodeReference:
+              properties:
+                codeType:
+                  enum:
+                  - "JAVA"
+                  - "JAVA_SCRIPT"
+                  type: "string"
+                inlineCode:
+                  type: "string"
+                name:
+                  type: "string"
+              type: "object"
+            enumValues:
+              type: "array"
+            idType:
+              enum:
+              - "STRING"
+              - "INTEGER"
+              - "LONG"
+              - "DECIMAL"
+              - "BOOLEAN"
+              - "DATE"
+              - "TIME"
+              - "DATE_TIME"
+              - "TEXT"
+              - "HTML"
+              - "PASSWORD"
+              - "BLOB"
+              type: "string"
+            label:
+              type: "string"
+            name:
+              type: "string"
+            orderByFields:
+              type: "array"
+            overrideIdField:
+              type: "string"
+            searchFields:
+              type: "array"
+            tableName:
+              type: "string"
+            type:
+              enum:
+              - "ENUM"
+              - "TABLE"
+              - "CUSTOM"
+              type: "string"
+            valueFields:
+              type: "array"
+            valueFieldsIfNotFound:
+              type: "array"
+            valueFormat:
+              type: "string"
+            valueFormatIfNotFound:
+              type: "string"
+          type: "object"
         isEditable:
           description: "Indicate if user may edit the value in this field."
           type: "boolean"
@@ -373,6 +433,10 @@ components:
           description: "If this field's values should come from a possible value source,\
             \ then that PVS is named here."
           type: "string"
+        supplementalMetaData:
+          description: "Additional frontend-visible metadata for this field, keyed\
+            \ by supplemental type."
+          type: "object"
         type:
           description: "Data-type for this field"
           type: "string"
@@ -564,6 +628,10 @@ components:
           items:
             type: "string"
           type: "array"
+        recordViewActionsPlacement:
+          description: "Where the record view puts its actions: IN_IDENTITY_SECTION\
+            \ or INLINE_WITH_PAGE_TITLE.  When set, this overrides each table's placement."
+          type: "string"
         weekdayCriteriaSettings:
           $ref: "#/components/schemas/MaterialDashboardWeekdayCriteriaSettings"
           description: "Weekday criteria settings for the query screens (day is any\
@@ -628,12 +696,6 @@ components:
               description: "Path or URL of the application's logo image."
               type: "string"
           type: "object"
-        helpContents:
-          additionalProperties: true
-          description: "Instance-level help content, by slot name (for example the\
-            \ query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource\
-            \ slots).  Omitted when the instance defines none."
-          type: "object"
         environmentValues:
           additionalProperties:
             type: "string"
@@ -643,6 +705,12 @@ components:
             \ POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other\
             \ ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit\
             \ allow-list - never the whole environment.  Omitted when none are set."
+          type: "object"
+        helpContents:
+          additionalProperties: true
+          description: "Instance-level help content, by slot name (for example the\
+            \ query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource\
+            \ slots).  Omitted when the instance defines none."
           type: "object"
         processes:
           additionalProperties:
@@ -690,6 +758,11 @@ components:
                   items:
                     type: "string"
                   type: "array"
+                recordViewActionsPlacement:
+                  description: "Where the record view puts its actions: IN_IDENTITY_SECTION\
+                    \ or INLINE_WITH_PAGE_TITLE.  When set, this overrides each table's\
+                    \ placement."
+                  type: "string"
                 weekdayCriteriaSettings:
                   description: "Weekday criteria settings for the query screens (day\
                     \ is any of, day is none of).  Omitted when the material dashboard\
@@ -1647,6 +1720,48 @@ components:
             type: "string"
           type: "array"
       type: "object"
+    TableMenu:
+      properties:
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon of the menu's button."
+        items:
+          description: "The menu's items, in order."
+          items:
+            $ref: "#/components/schemas/TableMenuItem"
+          type: "array"
+        label:
+          description: "User-facing label of the menu's button."
+          type: "string"
+        slot:
+          description: "Where the menu goes: VIEW_SCREEN_ACTIONS, VIEW_SCREEN_ADDITIONAL,\
+            \ QUERY_SCREEN_ACTIONS or QUERY_SCREEN_ADDITIONAL (or a slot the application\
+            \ defines)."
+          type: "string"
+      type: "object"
+    TableMenuItem:
+      properties:
+        icon:
+          $ref: "#/components/schemas/Icon"
+          description: "Icon of the item, when it overrides the frontend's default."
+        itemType:
+          description: "What the item is and how a frontend handles it: BUILT_IN (a\
+            \ standard action named by values.option, such as NEW, COPY, EDIT, DELETE,\
+            \ DEVELOPER_MODE, AUDIT, THIS_TABLE_PROCESS_LIST or ALL_TABLES_PROCESS_LIST),\
+            \ RUN_PROCESS (values.processName), DOWNLOAD_FILE (values.fieldName),\
+            \ SUB_MENU and SUB_LIST (values.items), or DIVIDER."
+          type: "string"
+        label:
+          description: "User-facing label of the item, when it overrides the frontend's\
+            \ default."
+          type: "string"
+        values:
+          additionalProperties: true
+          description: "Item-type specific values: option for BUILT_IN, processName\
+            \ for RUN_PROCESS, fieldName for DOWNLOAD_FILE, and items (a list of menu\
+            \ items of this same shape) for SUB_MENU and SUB_LIST."
+          type: "object"
+      type: "object"
     TableMetaData:
       properties:
         associations:
@@ -1696,6 +1811,14 @@ components:
         label:
           description: "User-facing name for this table"
           type: "string"
+        menus:
+          description: "Menus the table defines for screen slots (for example the\
+            \ record view's VIEW_SCREEN_ACTIONS menu, which replaces the default actions\
+            \ menu, and VIEW_SCREEN_ADDITIONAL menus).  Omitted when the table defines\
+            \ none."
+          items:
+            $ref: "#/components/schemas/TableMenu"
+          type: "array"
         name:
           description: "Unique name for this table within the QQQ Instance"
           type: "string"
@@ -1866,6 +1989,14 @@ components:
         label:
           description: "User-facing name for this table"
           type: "string"
+        menus:
+          description: "Menus the table defines for screen slots (for example the\
+            \ record view's VIEW_SCREEN_ACTIONS menu, which replaces the default actions\
+            \ menu, and VIEW_SCREEN_ADDITIONAL menus).  Omitted when the table defines\
+            \ none."
+          items:
+            $ref: "#/components/schemas/TableMenu"
+          type: "array"
         name:
           description: "Unique name for this table within the QQQ Instance"
           type: "string"
@@ -1934,6 +2065,19 @@ components:
       type: "object"
     TableSection:
       properties:
+        alternatives:
+          additionalProperties:
+            $ref: "#/components/schemas/TableSection"
+          description: "Alternative versions of this section for specific screens,\
+            \ keyed by alternative type (for example RECORD_VIEW or RECORD_EDIT).\
+            \  A screen of that type uses the alternative in place of this definition.\
+            \  Omitted when there are none."
+          type: "object"
+        collapsible:
+          $ref: "#/components/schemas/TableSectionCollapsible"
+          description: "Whether screens that can collapse sections may collapse this\
+            \ one, and whether it starts open.  Omitted when the section defines no\
+            \ collapsible behavior."
         fieldNames:
           description: "List of field names to include in this section."
           type: "array"
@@ -1960,6 +2104,17 @@ components:
           description: "Name of a widget in this QQQ instance to include in this section\
             \ (instead of fields)."
           type: "string"
+      type: "object"
+    TableSectionCollapsible:
+      properties:
+        initiallyOpen:
+          description: "Whether a collapsible section starts open, before the user\
+            \ has opened or closed it."
+          type: "boolean"
+        isCollapsible:
+          description: "Whether screens that can collapse sections let the user collapse\
+            \ and expand this one."
+          type: "boolean"
       type: "object"
     TableUpdateResponseV1:
       properties:
@@ -2062,6 +2217,66 @@ components:
         helpContents:
           description: "Help Contents for this field."
           type: "array"
+        inlinePossibleValueSource:
+          description: "Inline possible-value source for this field; enumValues supply\
+            \ choices without a separate lookup."
+          properties:
+            customCodeReference:
+              properties:
+                codeType:
+                  enum:
+                  - "JAVA"
+                  - "JAVA_SCRIPT"
+                  type: "string"
+                inlineCode:
+                  type: "string"
+                name:
+                  type: "string"
+              type: "object"
+            enumValues:
+              type: "array"
+            idType:
+              enum:
+              - "STRING"
+              - "INTEGER"
+              - "LONG"
+              - "DECIMAL"
+              - "BOOLEAN"
+              - "DATE"
+              - "TIME"
+              - "DATE_TIME"
+              - "TEXT"
+              - "HTML"
+              - "PASSWORD"
+              - "BLOB"
+              type: "string"
+            label:
+              type: "string"
+            name:
+              type: "string"
+            orderByFields:
+              type: "array"
+            overrideIdField:
+              type: "string"
+            searchFields:
+              type: "array"
+            tableName:
+              type: "string"
+            type:
+              enum:
+              - "ENUM"
+              - "TABLE"
+              - "CUSTOM"
+              type: "string"
+            valueFields:
+              type: "array"
+            valueFieldsIfNotFound:
+              type: "array"
+            valueFormat:
+              type: "string"
+            valueFormatIfNotFound:
+              type: "string"
+          type: "object"
         isEditable:
           description: "Indicate if user may edit the value in this field."
           type: "boolean"
@@ -2097,6 +2312,10 @@ components:
           description: "If this field's values should come from a possible value source,\
             \ then that PVS is named here."
           type: "string"
+        supplementalMetaData:
+          description: "Additional frontend-visible metadata for this field, keyed\
+            \ by supplemental type."
+          type: "object"
         type:
           description: "Data-type for this field"
           type: "string"
@@ -2342,6 +2561,66 @@ components:
                   helpContents:
                     description: "Help Contents for this field."
                     type: "array"
+                  inlinePossibleValueSource:
+                    description: "Inline possible-value source for this field; enumValues\
+                      \ supply choices without a separate lookup."
+                    properties:
+                      customCodeReference:
+                        properties:
+                          codeType:
+                            enum:
+                            - "JAVA"
+                            - "JAVA_SCRIPT"
+                            type: "string"
+                          inlineCode:
+                            type: "string"
+                          name:
+                            type: "string"
+                        type: "object"
+                      enumValues:
+                        type: "array"
+                      idType:
+                        enum:
+                        - "STRING"
+                        - "INTEGER"
+                        - "LONG"
+                        - "DECIMAL"
+                        - "BOOLEAN"
+                        - "DATE"
+                        - "TIME"
+                        - "DATE_TIME"
+                        - "TEXT"
+                        - "HTML"
+                        - "PASSWORD"
+                        - "BLOB"
+                        type: "string"
+                      label:
+                        type: "string"
+                      name:
+                        type: "string"
+                      orderByFields:
+                        type: "array"
+                      overrideIdField:
+                        type: "string"
+                      searchFields:
+                        type: "array"
+                      tableName:
+                        type: "string"
+                      type:
+                        enum:
+                        - "ENUM"
+                        - "TABLE"
+                        - "CUSTOM"
+                        type: "string"
+                      valueFields:
+                        type: "array"
+                      valueFieldsIfNotFound:
+                        type: "array"
+                      valueFormat:
+                        type: "string"
+                      valueFormatIfNotFound:
+                        type: "string"
+                    type: "object"
                   isEditable:
                     description: "Indicate if user may edit the value in this field."
                     type: "boolean"
@@ -2369,6 +2648,10 @@ components:
                     description: "If this field's values should come from a possible\
                       \ value source, then that PVS is named here."
                     type: "string"
+                  supplementalMetaData:
+                    description: "Additional frontend-visible metadata for this field,\
+                      \ keyed by supplemental type."
+                    type: "object"
                   type:
                     description: "Data-type for this field"
                     type: "string"

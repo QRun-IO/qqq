@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,9 +39,23 @@ import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMeta
 import com.kingsrook.qqq.backend.core.model.metadata.help.HelpFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpRole;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.CollapsibleMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenuSlot;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemBuiltIn;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemDivider;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemDownloadFile;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemRunProcess;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubList;
+import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSectionAlternativeType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -279,6 +294,112 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       {
          firstName.setGridColumns(originalGridColumns);
          firstName.setBehaviors(originalBehaviors);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Sections publish their collapsible behavior and their per-screen
+    ** alternatives; a section without either omits both keys.
+    *******************************************************************************/
+   @Test
+   void testSectionCollapsibleAndAlternatives()
+   {
+      QTableMetaData      person   = serverQInstance.getTable("person");
+      List<QFieldSection> original = person.getSections();
+      try
+      {
+         List<QFieldSection> sections = new ArrayList<>(original);
+         sections.add(new QFieldSection("folded", "Folded", new QIcon("expand"), Tier.T2, List.of("firstName"))
+            .withCollapsible(CollapsibleMetaData.INITIALLY_CLOSED)
+            .withAlternative(QFieldSectionAlternativeType.RECORD_VIEW, new QFieldSection("folded", "Folded For Viewing", new QIcon("visibility"), Tier.T2, List.of("lastName"))
+               .withCollapsible(CollapsibleMetaData.INITIALLY_OPEN)));
+         person.setSections(sections);
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus(), response.getBody());
+         JSONArray  published = JsonUtils.toJSONObject(response.getBody()).getJSONArray("sections");
+         JSONObject folded    = published.getJSONObject(published.length() - 1);
+         assertEquals("folded", folded.getString("name"));
+         assertTrue(folded.getJSONObject("collapsible").getBoolean("isCollapsible"));
+         assertFalse(folded.getJSONObject("collapsible").getBoolean("initiallyOpen"));
+
+         JSONObject recordView = folded.getJSONObject("alternatives").getJSONObject("RECORD_VIEW");
+         assertEquals("Folded For Viewing", recordView.getString("label"));
+         assertEquals(List.of("lastName"), recordView.getJSONArray("fieldNames").toList());
+         assertTrue(recordView.getJSONObject("collapsible").getBoolean("initiallyOpen"));
+         assertEquals("visibility", recordView.getJSONObject("icon").getString("name"));
+
+         JSONObject first = published.getJSONObject(0);
+         assertFalse(first.has("collapsible"));
+         assertFalse(first.has("alternatives"));
+      }
+      finally
+      {
+         person.setSections(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Table menus are published with their slot and items: built-in options,
+    ** processes, file downloads, sub-lists, sub-menus and dividers.
+    *******************************************************************************/
+   @Test
+   void testMenus()
+   {
+      QTableMetaData person = serverQInstance.getTable("person");
+      assertFalse(JsonUtils.toJSONObject(Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString().getBody()).has("menus"));
+
+      try
+      {
+         person.withMenus(List.of(
+            new QMenu().withLabel("Record Actions").withIcon(new QIcon("bolt")).withSlot(QMenuSlot.VIEW_SCREEN_ACTIONS)
+               .withItem(new QMenuItemSubList()
+                  .withItem(new QMenuItemBuiltIn(QMenuItemBuiltIn.DefaultOptions.EDIT))
+                  .withItem(new QMenuItemBuiltIn(QMenuItemBuiltIn.DefaultOptions.DEVELOPER_MODE)))
+               .withItem(new QMenuItemDivider())
+               .withItem(new QMenuItemRunProcess(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE)),
+            new QMenu().withLabel("Files").withSlot(QMenuSlot.VIEW_SCREEN_ADDITIONAL)
+               .withItem(new QMenuItemDownloadFile("firstName").withLabel("Download Name"))
+               .withItem(new QMenuItemSubMenu().withLabel("More").withItem(new QMenuItemBuiltIn(QMenuItemBuiltIn.DefaultOptions.AUDIT)))));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus(), response.getBody());
+         JSONArray menus = JsonUtils.toJSONObject(response.getBody()).getJSONArray("menus");
+         assertEquals(2, menus.length());
+
+         JSONObject actions = menus.getJSONObject(0);
+         assertEquals("Record Actions", actions.getString("label"));
+         assertEquals("VIEW_SCREEN_ACTIONS", actions.getString("slot"));
+         assertEquals("bolt", actions.getJSONObject("icon").getString("name"));
+         JSONArray actionItems = actions.getJSONArray("items");
+         assertEquals("SUB_LIST", actionItems.getJSONObject(0).getString("itemType"));
+         assertEquals("DIVIDER", actionItems.getJSONObject(1).getString("itemType"));
+         assertEquals("RUN_PROCESS", actionItems.getJSONObject(2).getString("itemType"));
+         JSONArray subList = actionItems.getJSONObject(0).getJSONObject("values").getJSONArray("items");
+         assertEquals("BUILT_IN", subList.getJSONObject(0).getString("itemType"));
+         assertEquals("EDIT", subList.getJSONObject(0).getJSONObject("values").getString("option"));
+         assertEquals("DEVELOPER_MODE", subList.getJSONObject(1).getJSONObject("values").getString("option"));
+         assertEquals(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE, actionItems.getJSONObject(2).getJSONObject("values").getString("processName"));
+         assertEquals(serverQInstance.getProcess(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE).getLabel(), actionItems.getJSONObject(2).getString("label"));
+
+         JSONObject additional = menus.getJSONObject(1);
+         assertEquals("VIEW_SCREEN_ADDITIONAL", additional.getString("slot"));
+         JSONObject download = additional.getJSONArray("items").getJSONObject(0);
+         assertEquals("DOWNLOAD_FILE", download.getString("itemType"));
+         assertEquals("Download Name", download.getString("label"));
+         assertEquals("firstName", download.getJSONObject("values").getString("fieldName"));
+         JSONObject subMenu = additional.getJSONArray("items").getJSONObject(1);
+         assertEquals("SUB_MENU", subMenu.getString("itemType"));
+         assertEquals("More", subMenu.getString("label"));
+         assertEquals("AUDIT", subMenu.getJSONObject("values").getJSONArray("items").getJSONObject(0).getJSONObject("values").getString("option"));
+      }
+      finally
+      {
+         person.setMenus(null);
       }
    }
 

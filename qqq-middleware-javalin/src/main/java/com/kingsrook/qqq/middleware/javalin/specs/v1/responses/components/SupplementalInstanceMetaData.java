@@ -75,6 +75,9 @@ public class SupplementalInstanceMetaData implements ToSchema
 
    @OpenAPIExclude()
    private static final String WEEKDAY_CRITERIA_SETTINGS_GETTER = "getWeekdayCriteriaSettings";
+
+   @OpenAPIExclude()
+   private static final String ACTIONS_PLACEMENT_GETTER = "getRecordViewActionsPlacement";
    ///////////////////////////////////////////////////////////////////////////////
    // the theme properties a frontend may read: every visual property of the    //
    // material dashboard's theme meta-data, and nothing else.  An allow-list: a  //
@@ -179,7 +182,23 @@ public class SupplementalInstanceMetaData implements ToSchema
 
       return (new MaterialDashboardInstanceSettings()
          .withProcessNamesToAddToAllQueryAndViewScreens(new ArrayList<>(processNames))
-         .withWeekdayCriteriaSettings(getWeekdayCriteriaSettings(materialDashboard)));
+         .withWeekdayCriteriaSettings(getWeekdayCriteriaSettings(materialDashboard))
+         .withRecordViewActionsPlacement(getConfiguredActionsPlacement(materialDashboard)));
+   }
+
+
+
+   /*******************************************************************************
+    ** The configured placement's enum name, when this optional setting exists.
+    *******************************************************************************/
+   private static String getConfiguredActionsPlacement(QSupplementalInstanceMetaData materialDashboard)
+   {
+      Object value = invokeGetter(materialDashboard, ACTIONS_PLACEMENT_GETTER);
+      if(value instanceof Enum<?> constant)
+      {
+         return (constant.name());
+      }
+      return (value instanceof String string ? string : null);
    }
 
 

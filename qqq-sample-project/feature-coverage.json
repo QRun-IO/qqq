@@ -4136,7 +4136,7 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending. Pending: complete String-key lookup/CRUD, join behavior (#524 can ignore aggregate joins), selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending under validation-policy issue #820. Pending: complete String-key lookup/CRUD, join behavior (#524 can ignore aggregate joins), selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMissingCollectionStartsEmptyAndIsCreatedByInsert",
@@ -4176,7 +4176,7 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, server-entered query timeout and fresh-action recovery, and uncommitted close/client rejection. Pending: complete pool/connection accounting and selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, server-entered query timeout and fresh-action recovery, and uncommitted close/client rejection. Pending: server-operation cancellation (currentOp is not inspected), complete client/session ownership and failure cleanup (#821), and combined-source verification; retain High #525/#526 and deferred #527\u2013#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",

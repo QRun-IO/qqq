@@ -21,10 +21,10 @@
 package com.kingsrook.qqq.middleware.health;
 
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,7 +44,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** Executor that runs health indicators and aggregates results.
  **
  ** This class handles:
- ** - Running multiple indicators (potentially in parallel)
+ ** - Running indicators concurrently on at most ten workers
  ** - Enforcing timeouts on individual indicators
  ** - Aggregating results into overall health status
  ** - Handling exceptions gracefully
@@ -102,25 +102,55 @@ public class HealthCheckExecutor
                .withDetail("message", "No health indicators configured"));
       }
 
-      ///////////////////////////////////////////
-      // Execute each indicator (with timeout) //
-      ///////////////////////////////////////////
-      for(HealthIndicator indicator : indicators)
+      int timeoutMs = config.getTimeoutMs() == null ? DEFAULT_TIMEOUT_MS : config.getTimeoutMs();
+      List<SubmittedCheck> submittedChecks = new ArrayList<>();
+      try
       {
-         String indicatorName = indicator.getName();
-
-         try
+         /////////////////////////////////////////////////////////////////
+         // Submit all checks before waiting; queue time counts toward  //
+         // each check's budget, rather than starting a fresh wait per  //
+         // result. Use a monotonic clock for deadlines and durations. //
+         /////////////////////////////////////////////////////////////////
+         for(HealthIndicator indicator : indicators)
          {
-            HealthCheckResult result = executeWithTimeout(indicator);
-            checkResults.put(indicatorName, result);
+            String indicatorName = indicator.getName();
+            try
+            {
+               long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+               Future<HealthCheckResult> future = executorService.submit(() -> runIndicator(indicator, deadline));
+               submittedChecks.add(new SubmittedCheck(indicatorName, deadline, future));
+            }
+            catch(Exception e)
+            {
+               checkResults.put(indicatorName, failureResult(indicatorName, e));
+            }
          }
-         catch(Exception e)
+
+         for(SubmittedCheck check : submittedChecks)
          {
-            LOG.warn("Health indicator failed", logPair("indicator", indicatorName), e);
-            checkResults.put(indicatorName, new HealthCheckResult()
-               .withStatus(HealthStatus.UNKNOWN)
-               .withDetail("error", e.getMessage())
-               .withDetail("exceptionType", e.getClass().getSimpleName()));
+            try
+            {
+               checkResults.put(check.name(), awaitResult(check, timeoutMs));
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               checkResults.put(check.name(), failureResult(check.name(), e));
+            }
+            catch(Exception e)
+            {
+               checkResults.put(check.name(), failureResult(check.name(), e));
+            }
+         }
+      }
+      finally
+      {
+         for(SubmittedCheck check : submittedChecks)
+         {
+            if(!check.future().isDone())
+            {
+               check.future().cancel(true);
+            }
          }
       }
 
@@ -141,59 +171,91 @@ public class HealthCheckExecutor
 
 
    /*******************************************************************************
-    ** Execute a single indicator with timeout.
-    **
-    ** @param indicator the indicator to execute
-    ** @return health check result
-    ** @throws Exception if execution fails or times out
+    ** A check and its submission deadline, including time spent in the queue.
     *******************************************************************************/
-   private HealthCheckResult executeWithTimeout(HealthIndicator indicator) throws Exception
+   private record SubmittedCheck(String name, long deadline, Future<HealthCheckResult> future)
    {
-      Integer timeoutMs = config.getTimeoutMs();
-      if(timeoutMs == null)
+   }
+
+
+
+   /*******************************************************************************
+    ** Run one check, recording its duration and rejecting late completion even
+    ** if its future is already complete when the collecting thread reaches it.
+    *******************************************************************************/
+   private HealthCheckResult runIndicator(HealthIndicator indicator, long deadline) throws TimeoutException
+   {
+      long startTime = System.nanoTime();
+      if(startTime - deadline >= 0)
       {
-         timeoutMs = DEFAULT_TIMEOUT_MS; // Default 5 second timeout
+         throw new TimeoutException();
       }
 
-      Callable<HealthCheckResult> task = () ->
-      {
-         long              startTime = System.currentTimeMillis();
-         HealthCheckResult result    = indicator.check(qInstance);
-
-         //////////////////////////////////////////////////
-         // Set duration if not already set by indicator //
-         //////////////////////////////////////////////////
-         if(result.getDurationMs() == null)
-         {
-            result.withDurationMs(System.currentTimeMillis() - startTime);
-         }
-
-         return result;
-      };
-
-      Future<HealthCheckResult> future = executorService.submit(task);
-
+      HealthCheckResult result;
       try
       {
-         return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+         result = indicator.check(qInstance);
+         if(result.getDurationMs() == null)
+         {
+            result.withDurationMs(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime));
+         }
       }
-      catch(TimeoutException e)
+      catch(Exception e)
       {
-         future.cancel(true);
-         LOG.warn("Health indicator timed out",
-            logPair("indicator", indicator.getName()),
-            logPair("timeoutMs", timeoutMs));
+         result = failureResult(indicator.getName(), new Exception("Indicator execution failed", e));
+      }
 
-         return new HealthCheckResult()
-            .withStatus(HealthStatus.UNKNOWN)
-            .withDurationMs((long) timeoutMs)
-            .withDetail("error", "Health check timed out")
-            .withDetail("timeoutMs", timeoutMs);
+      if(System.nanoTime() - deadline >= 0)
+      {
+         throw new TimeoutException();
+      }
+      return result;
+   }
+
+
+
+   /*******************************************************************************
+    ** Collect a submitted check using only its remaining budget. A result that
+    ** finished within budget remains valid even if collected after the deadline.
+    *******************************************************************************/
+   private HealthCheckResult awaitResult(SubmittedCheck check, int timeoutMs) throws Exception
+   {
+      try
+      {
+         return check.future().get(Math.max(0, check.deadline() - System.nanoTime()), TimeUnit.NANOSECONDS);
       }
       catch(ExecutionException e)
       {
-         throw new Exception("Indicator execution failed", e.getCause());
+         if(!(e.getCause() instanceof TimeoutException))
+         {
+            throw new Exception("Indicator execution failed", e.getCause());
+         }
       }
+      catch(TimeoutException e)
+      {
+         check.future().cancel(true);
+      }
+
+      LOG.warn("Health indicator timed out", logPair("indicator", check.name()), logPair("timeoutMs", timeoutMs));
+      return new HealthCheckResult()
+         .withStatus(HealthStatus.UNKNOWN)
+         .withDurationMs((long) timeoutMs)
+         .withDetail("error", "Health check timed out")
+         .withDetail("timeoutMs", timeoutMs);
+   }
+
+
+
+   /*******************************************************************************
+    ** Preserve the existing UNKNOWN response and exception details for failures.
+    *******************************************************************************/
+   private HealthCheckResult failureResult(String indicatorName, Exception e)
+   {
+      LOG.warn("Health indicator failed", logPair("indicator", indicatorName), e);
+      return new HealthCheckResult()
+         .withStatus(HealthStatus.UNKNOWN)
+         .withDetail("error", e.getMessage())
+         .withDetail("exceptionType", e.getClass().getSimpleName());
    }
 
 

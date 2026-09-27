@@ -4651,7 +4651,7 @@
       "negative_cases": [
         "Disabled route, failing/throwing/timed-out indicator and no thread leak"
       ],
-      "gap": "The required within-request concurrency regression fails: HealthCheckExecutor submits and waits for each indicator before starting the next. Other endpoint scenarios pass; no runtime change or requirement deferral is included.",
+      "gap": "All listed source requirements pass through local HTTP, including the retained within-request concurrency regression, failures/timeouts, and worker/request-context cleanup. Broader sample class coverage and published-stage acceptance remain separate gates.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAutoloadedDefaultEndpoint",
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testConfiguredEndpointPath",
@@ -4662,10 +4662,10 @@
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testConcurrentHttpRequestsReleaseTheirWorkers",
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testTimeoutCancelsIndicatorAndCleansUpRequest"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/599",
-      "release_disposition": "Source acceptance remains blocked on the mapped concurrency regression under #599; the requirement is retained."
+      "release_disposition": "All endpoint requirements have mapped passing source evidence after the bounded concurrent executor fix; no requirement is deferred. This does not certify unrelated sample coverage or published artifacts."
     },
     {
       "id": "health.indicators",
@@ -4683,7 +4683,7 @@
       "negative_cases": [
         "Unreachable database, exceeded thresholds, invalid path/configuration and timeout"
       ],
-      "gap": "Listed source scenarios pass using owned H2 TCP, disk, heap-threshold and custom-indicator fixtures. The separate health.endpoint concurrency requirement remains blocked.",
+      "gap": "Listed source scenarios pass using owned H2 TCP, disk, heap-threshold and custom-indicator fixtures. The separate health.endpoint concurrency requirement now has passing source evidence.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testOwnedDatabaseConnectivityAndUnavailableService",
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testMemoryThresholdsAndInvalidConfiguration",

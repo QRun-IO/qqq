@@ -5014,7 +5014,7 @@
         "Removed APIs must not remain in sample/generated source; mismatched module versions",
         "Legacy variant, JSON and process methods must fail compilation; external consumer must fail without the packaged candidate"
       ],
-      "gap": "Expanded source-stage guide, BOM/toolchain and packaged-consumer evidence awaits independent review; no further source implementation gap is identified.",
+      "gap": "",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMigration40ContractTest#testDocumentedAfterExamplesCompile",
         "com.kingsrook.sampleapp.SampleMigration40ContractTest#testRemovedMigrationApisDoNotCompile",
@@ -5028,7 +5028,7 @@
         "com.kingsrook.sampleapp.SampleHttpLifecycleTest#testProviderConfigurationAndServiceObservationOrder",
         "com.kingsrook.sampleapp.SampleCustomRouteTest#testMethodsAndDecodedRequestData"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "acceptance_note": "The guide's concrete BREAK-03/04 Java replacements compile against resolved source-candidate modules, including subclass-only APIs; non-Java BOM, Java 21 and Qodana entries are checked against source configuration. Negative compiler fixtures reject selected legacy APIs and mismatched candidate dependencies. Existing HTTP tests verify Javalin provider/configuration ordering, service observation and String method values; resolved Jetty core/EE10 versions align. A separate process compiles and runs against the packaged source-candidate bundle, confirms embedded module versions against Maven's effective project version, and fails compilation without the bundle. Its process output is captured without a pipe deadlock. This row records source acceptance only. Public candidate consumption belongs to the separate #800 train.bom and #605 sample.bootstrap.published gates before GA.",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/611",

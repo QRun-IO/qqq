@@ -46,7 +46,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * Sends ESB events to a destination (spec section 5): one PERSISTENT JMS
  * TextMessage per event, all on one session.
  *
- * Each publish call opens one transacted session on the destination's provider
+ * Each publish call leases one transacted session on the destination's provider
  * (whose connection EsbConnectionManager keeps open), sends every event, and
  * commits once.  So a call sends all of its events or none of them, and a bulk
  * write's thousands of messages wait on the broker once, at the commit, rather
@@ -162,26 +162,24 @@ public final class EsbPublisher
 
 
    /*******************************************************************************
-    ** Send the events on one transacted session, committed once.  Closing the
-    ** session without a commit (after a failed send) rolls back what was sent.
+    ** Send on an exclusive pooled session. Close the producer before committing;
+    ** any send, producer cleanup, or commit failure discards the whole lease.
     *******************************************************************************/
    private static void send(QEsbDestinationMetaData destination, List<EsbEvent> events) throws QException, JMSException
    {
       EsbConnectionManager connectionManager = EsbConnectionManager.getInstance();
-      Session              session           = connectionManager.openSession(destination.getProviderName(), true);
-      try
+      try(EsbConnectionManager.PublishingSessionLease lease = connectionManager.borrowPublishingSession(destination.getProviderName()))
       {
-         MessageProducer producer = session.createProducer(connectionManager.resolve(session, destination));
-         producer.setDeliveryMode(DeliveryMode.PERSISTENT);
-         for(EsbEvent event : events)
+         Session session = lease.getSession();
+         try(MessageProducer producer = session.createProducer(connectionManager.resolve(session, destination)))
          {
-            producer.send(EsbEventCodec.toMessage(session, event));
+            producer.setDeliveryMode(DeliveryMode.PERSISTENT);
+            for(EsbEvent event : events)
+            {
+               producer.send(EsbEventCodec.toMessage(session, event));
+            }
          }
-         session.commit();
-      }
-      finally
-      {
-         closeQuietly(session);
+         lease.commit();
       }
    }
 
@@ -206,24 +204,6 @@ public final class EsbPublisher
       }
 
       return (destination);
-   }
-
-
-
-   /*******************************************************************************
-    ** Close a session, after it has committed (or failed) - logging, rather than
-    ** throwing, if closing fails, since by then the outcome is decided.
-    *******************************************************************************/
-   private static void closeQuietly(Session session)
-   {
-      try
-      {
-         session.close();
-      }
-      catch(Exception e)
-      {
-         LOG.debug("Error closing an ESB publishing session", e);
-      }
    }
 
 

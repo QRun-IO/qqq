@@ -429,14 +429,13 @@ class SampleMigration40ContractTest
       }
       String root = Files.readString(Path.of(System.getProperty("basedir"), "../pom.xml"));
       String sample = Files.readString(Path.of(System.getProperty("basedir"), "pom.xml"));
-      Matcher revision = Pattern.compile("<revision>([^<]+)</revision>").matcher(root);
-      assertTrue(revision.find());
-      String candidateVersion = revision.group(1);
+      String candidateVersion = System.getProperty("qqq.sample.effectiveVersion");
+      assertTrue(candidateVersion != null && !candidateVersion.isBlank(), "Maven must pass its effective project version");
       assertTrue(root.contains("<artifactId>jetty-bom</artifactId>"));
       assertTrue(root.contains("<artifactId>jetty-ee10-bom</artifactId>"));
       for(Class<?> module : List.of(QInstance.class, QJavalinImplementation.class, QPicoCliImplementation.class))
       {
-         assertTrue(artifact(module).contains(candidateVersion), module.getName());
+         assertTrue(artifact(module).endsWith("-" + candidateVersion + ".jar"), module.getName());
       }
       assertTrue(candidateModuleCount(sample) >= 5);
       assertEquals(List.of(), mismatchedCandidates(sample));

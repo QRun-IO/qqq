@@ -53,8 +53,9 @@ class SampleMigrationPackagedConsumerIT
       Path artifact = Path.of(SampleJavalinServer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
       Path bundle = artifact.resolveSibling(artifact.getFileName().toString().replace(".jar", "-jar-with-dependencies.jar"));
       assertTrue(Files.isRegularFile(bundle), "Package the sample before running the consumer");
-      String candidateVersion = artifact.getFileName().toString()
-         .replace("qqq-sample-project-", "").replace(".jar", "");
+      String candidateVersion = System.getProperty("qqq.sample.effectiveVersion");
+      assertTrue(candidateVersion != null && !candidateVersion.isBlank(), "Maven must pass its effective project version");
+      assertEquals("qqq-sample-project-" + candidateVersion + ".jar", artifact.getFileName().toString());
       try(ZipFile packaged = new ZipFile(bundle.toFile()))
       {
          for(String module : List.of("qqq-backend-core", "qqq-backend-module-rdbms",
@@ -111,17 +112,46 @@ class SampleMigrationPackagedConsumerIT
    }
 
    /*******************************************************************************
+    ** A noisy compiler or child process must not stall on a full output pipe.
+    *******************************************************************************/
+   @Test
+   void testOwnedCommandDrainsLargeOutput() throws Exception
+   {
+      Path source = directory.resolve("Noisy.java");
+      Files.writeString(source, """
+         class Noisy {
+            public static void main(String[] args) { System.out.print("x".repeat(1_048_576)); }
+         }
+         """);
+      ProcessResult result = command(List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+         source.toString()), Duration.ofSeconds(5));
+      assertEquals(0, result.exitCode(), result.output());
+      assertEquals(1_048_576, result.output().length());
+   }
+
+   /*******************************************************************************
     ** Run an owned subprocess with a bounded wait and captured output.
     *******************************************************************************/
    private ProcessResult command(List<String> arguments) throws Exception
    {
-      Process process = new ProcessBuilder(arguments).directory(directory.toFile()).redirectErrorStream(true).start();
-      if(!process.waitFor(Duration.ofSeconds(30).toMillis(), TimeUnit.MILLISECONDS))
+      return command(arguments, Duration.ofSeconds(30));
+   }
+
+   /*******************************************************************************
+    ** Bound a child process to the requested wait time.
+    *******************************************************************************/
+   private ProcessResult command(List<String> arguments, Duration timeout) throws Exception
+   {
+      Path log = Files.createTempFile(directory, "consumer-command-", ".log");
+      Process process = new ProcessBuilder(arguments).directory(directory.toFile())
+         .redirectErrorStream(true).redirectOutput(log.toFile()).start();
+      if(!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS))
       {
          process.destroyForcibly();
-         throw new AssertionError("Consumer process timed out");
+         process.waitFor(5, TimeUnit.SECONDS);
+         throw new AssertionError("Consumer process timed out; inspect " + log);
       }
-      return new ProcessResult(process.exitValue(), new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+      return new ProcessResult(process.exitValue(), Files.readString(log, StandardCharsets.UTF_8));
    }
 
    /*******************************************************************************

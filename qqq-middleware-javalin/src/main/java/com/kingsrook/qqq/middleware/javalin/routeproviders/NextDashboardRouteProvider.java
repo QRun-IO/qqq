@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.routeproviders;
@@ -183,8 +182,9 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    /*******************************************************************************
     ** Adjust the security headers (for example extra CSP sources, or allowing the
     ** dashboard to be framed). The customizer receives the defaults with the
-    ** instance's identity provider and QuickSight origins already added, and runs
-    ** again whenever the QInstance is set or hot-swapped.
+    ** instance's identity provider, QuickSight, customComponent and configured
+    ** analytics origins already added, and runs again whenever the QInstance is
+    ** set or hot-swapped.
     **
     ** @param customizer changes the headers in place, or null for the defaults
     ** @return this
@@ -226,12 +226,32 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    {
       ////////////////////////////////////////////////////////////////////////
       // static files only; authentication happens in the API it calls. The //
-      // instance only decides which identity provider and embed origins    //
-      // the Content-Security-Policy allows.                                //
+      // instance only decides which identity provider, embed, extension    //
+      // and analytics origins the Content-Security-Policy allows.          //
       ////////////////////////////////////////////////////////////////////////
-      this.instanceOrigins = qInstance == null ? InstanceOrigins.NONE : new InstanceOrigins(identityProviderOrigins(qInstance),
-         hasQuickSightWidget(qInstance) ? Set.of(QUICKSIGHT_FRAME_SOURCE) : Set.of(), customComponentOrigins(qInstance));
+      this.instanceOrigins = qInstance == null ? InstanceOrigins.NONE : instanceOrigins(qInstance);
       this.securityHeaders.set(buildSecurityHeaders());
+   }
+
+
+
+   /*******************************************************************************
+    ** The origins an instance's metadata adds: its identity providers and its
+    ** configured analytics providers (connect-src), a QuickSight widget's embed
+    ** origin (frame-src), and its customComponent bundles' and configured
+    ** analytics scripts' origins (script-src).
+    *******************************************************************************/
+   private static InstanceOrigins instanceOrigins(QInstance qInstance)
+   {
+      NextDashboardAnalyticsOrigins analytics = new NextDashboardAnalyticsOrigins(qInstance.getEnvironmentValues());
+
+      Set<String> connect = new LinkedHashSet<>(identityProviderOrigins(qInstance));
+      connect.addAll(analytics.getConnect());
+
+      Set<String> script = new LinkedHashSet<>(customComponentOrigins(qInstance));
+      script.addAll(analytics.getScript());
+
+      return (new InstanceOrigins(connect, hasQuickSightWidget(qInstance) ? Set.of(QUICKSIGHT_FRAME_SOURCE) : Set.of(), script));
    }
 
 

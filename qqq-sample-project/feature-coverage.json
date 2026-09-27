@@ -4371,7 +4371,7 @@
       "negative_cases": [
         "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
       ],
-      "gap": "Thirteen source fixture methods exercise real QQQ actions against owned LocalStack 1.4 with independent AWS SDK key/byte/ACL and multipart readback, including unsupported update/MANY mutations, CSV/JSON and post-read, missing/malformed inputs, invalid glob, partial-copy persistence, and scripted credential/permission responses plus bounded socket-read timeout. The active native slice regression covers the minimal #829 remaining-byte/bounds fix. Remains pending: strict invalid S3 key/reference policy and connection-establishment timeout are not certified; scripted 403s and emulator ACLs do not prove AWS IAM/credential enforcement. Failed multipart abort/rollback is not certified, and storage is non-atomic (#459). Full sample verification at 8fe813138 passes 760 unit plus 102 integration/browser tests with zero failures/errors/skips; published-candidate/AWS sandbox acceptance remains separate. Reviewed #826 dependency supplies JSON-null parsing fixes; no new provider policy is introduced by #829.",
+      "gap": "Seventeen source fixture methods exercise real QQQ actions against owned LocalStack 1.4 with independent SDK object/upload/part oracles. #829 covers slice bounds and remaining-byte writes. #838 now covers explicit write-part/final-part/completion failures: abort the owned upload once, preserve the original exception, and prohibit stream retry/reuse. The abort-failure case verifies a suppressed cleanup exception and honestly retained native parts before independent fixture teardown. Original source-copy partial publication remains non-atomic (#459). S3 remains pending against original #588 requirements: actual invalid S3 key/reference cases (without rejecting valid opaque dot segments), metadata-to-SDK credential propagation, and connection-establishment timeout still need evidence. Current injected HTTP failures prove error propagation, not AWS IAM enforcement. General IAM certification and ambiguous successful-completion/lost-response rollback are not newly imposed requirements; both remain outside these proofs. The prior full sample result at 8fe813138 was 760 unit plus 102 integration/browser cases; the new #838 full sample run still requires an exclusive broker reservation. Published-candidate/AWS sandbox acceptance remains separate.",
       "verified_tests": [
         "SampleS3AcceptanceIT#oneRecordRoundTripAndUnsupportedUpdate",
         "SampleS3AcceptanceIT#manyCsvJsonAndPostReadHaveNativeOracles",
@@ -4385,7 +4385,11 @@
         "SampleS3AcceptanceIT#failedCopyPublishesPrefixAndPreservesOtherKeys",
         "SampleS3AcceptanceIT#permissionAndCredentialResponsesPropagateWithoutNativeWrites",
         "SampleS3AcceptanceIT#readTimeoutPropagatesWithoutNativeMutation",
-        "SampleS3AcceptanceIT#rawStorageOffsetWritesExactSlice"
+        "SampleS3AcceptanceIT#rawStorageOffsetWritesExactSlice",
+        "SampleS3AcceptanceIT#failedMultipartWriteAbortsUploadAndPreservesExistingObject",
+        "SampleS3AcceptanceIT#failedMultipartFinalPartAbortsUploadWithoutPublishing",
+        "SampleS3AcceptanceIT#failedMultipartCompletionAbortsUploadAndPreservesExistingObject",
+        "SampleS3AcceptanceIT#failedMultipartAbortPreservesOriginalAndResidualParts"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",

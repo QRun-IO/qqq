@@ -4406,13 +4406,43 @@
       "negative_cases": [
         "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
       ],
-      "gap": "Focused native SFTP sample passes 23/23 with #830 glob and #831 table-root bounds fixes. Preserve failing-before evidence; full filesystem module clean verify passes (112 tests, four pre-existing skips). Exclusive sample -Pacceptance-tests clean verify is still required before verifying this row.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testOneCrudAndNativeReadback",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testManyFormatsAndCounts",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testNamesPathsAndNonrecursiveListing",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testStorageStreamsAndReplacement",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testUnsupportedOperationsPreserveFiles",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testConfiguredGlobExcludesNonRecords",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testMissingAndMalformedFiles",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testPostReadCustomizationAndFailures",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testBadCredentialsAndRecovery",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRealPermissionsAndRecovery",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testOneRawFormatsAndPostReadBoundary",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testInvalidPathsAndPartialRecordBatch",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testPartialStreamFailurePreservesActualPrefix",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testSilentPeerConnectionTimeoutAndRecovery",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRecordPathCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testStoragePathCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testGlobAppliesToExplicitNestedPaths",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRecordAndStorageReadCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRecordDeleteCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testOutsideSymlinkTargetsPreserveSentinels",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testNewFilesThroughLinkedParents",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testConfiguredRootsAndTableRootSymlink",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testInTableSymlinkControl"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/589",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
-      "acceptance_note": "SampleSftpAcceptanceTest uses the sample QInstance, actual QQQ record/storage APIs, existing Apache SSHD 2.16.0, owned dynamic loopback ports/temporary roots and native Files oracles. Original 19 cases reproduced five failures; all 23 current cases pass without skips. Bounds resolve remote links/existing parents and preserve in-table controls; raw SSHD separately reproduces its existing inability to delete through a symlinked parent, which remains an explicit negative control. Missing delete remains an error; updates/MANY mutations/public URLs remain unsupported. Listings are nonrecursive, parents must exist, writes are non-atomic, and server permissions remain authoritative. The timeout case lowers/restores the existing SSHD auth-timeout against a silent owned peer; no new QQQ timeout policy. #459/#463 remain separate. No public-candidate or complete release-gate claim."
+      "acceptance_note": "SampleSftpAcceptanceTest uses the sample QInstance, actual QQQ record/storage APIs, existing Apache SSHD 2.16.0, owned dynamic loopback ports/temporary roots and native Files oracles. Original 19 cases reproduced five failures; all 23 current cases pass without skips. Bounds resolve remote links/existing parents and preserve in-table controls; raw SSHD separately reproduces its existing inability to delete through a symlinked parent, which remains an explicit negative control. Missing delete remains an error; updates/MANY mutations/public URLs remain unsupported. Listings are nonrecursive, parents must exist, writes are non-atomic, and server permissions remain authoritative. The timeout case lowers/restores the existing SSHD auth-timeout against a silent owned peer; no new QQQ timeout policy. #459/#463 remain separate. No public-candidate or complete release-gate claim.",
+      "acceptance_review": {
+        "at": "2026-09-27T05:54:52.498179+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/589",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleSftpAcceptanceTest.xml",
+        "scope": "Source head cbbddae72: 23 native SFTP methods pass, including regressions for #830 globs and #831 remote table bounds. Matching data-QBit fixture built in the owned cache; full -Pacceptance-tests,data-qbit-acceptance clean verify passes 772 unit tests (766 ordinary plus six data-QBit host tests) and 78 ITs, zero failures/errors/skips, 39/41 class coverage (95.12%) and clean Checkstyle. Filesystem module clean verify passes 108 executed tests plus four pre-existing skips (112 total). Initial full failure was solely a 76-character JVM banner introduced by JAVA_TOOL_OPTIONS diagnostics; exact child comparison and unchanged focused method verified the Maven-property invocation correction, with original reports retained. Existing SSHD symlinked-parent delete limitation and unsupported transport operations remain explicit. No published-candidate or complete release-gate claim."
+      }
     },
     {
       "id": "backend.filesystem.formats",

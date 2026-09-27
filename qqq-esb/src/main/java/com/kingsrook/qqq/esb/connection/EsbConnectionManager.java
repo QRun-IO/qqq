@@ -21,9 +21,14 @@
 package com.kingsrook.qqq.esb.connection;
 
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -50,7 +55,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * A provider's connection is made, from the provider's meta-data in the
  * QContext's instance, on the first openSession for that provider, and is kept
  * until closeAll.  Each openSession call opens a new session on it; callers
- * close the sessions they open.
+ * close the sessions they open. Publishing uses a separate bounded pool of
+ * exclusive transacted leases, invalidated whenever the connection is lost.
  *
  * Connecting waits at most EsbConnectionFactoryBuilder.CONNECT_TIMEOUT_MS
  * (5 s).  When a connection can't be made, or is lost (reported to the JMS
@@ -64,6 +70,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public final class EsbConnectionManager
 {
    private static final QLogger LOG = QLogger.getLogger(EsbConnectionManager.class);
+
+   private static final Integer MAX_PUBLISHING_SESSIONS = 8;
 
    private static final Long INITIAL_RECONNECT_DELAY_MS = 1000L;
    private static final Long MAX_RECONNECT_DELAY_MS     = 30_000L;
@@ -106,6 +114,19 @@ public final class EsbConnectionManager
    public Session openSession(String providerName, boolean transacted) throws QException
    {
       return (getOrCreateProviderConnection(providerName).openSession(transacted));
+   }
+
+
+
+   /*******************************************************************************
+    ** Exclusively borrow a transacted publishing session. Capacity is bounded per
+    ** provider; exhaustion fails immediately instead of blocking record writes.
+    ** Close the producer before committing the lease. Closing an uncommitted
+    ** lease rolls back and discards it. Consumer openSession ownership is separate.
+    *******************************************************************************/
+   public PublishingSessionLease borrowPublishingSession(String providerName) throws QException
+   {
+      return (getOrCreateProviderConnection(providerName).borrowPublishingSession());
    }
 
 
@@ -303,18 +324,108 @@ public final class EsbConnectionManager
 
 
    /*******************************************************************************
+    ** One exclusive publication. The session must not escape this lease or be
+    ** used after commit/close. Only commit success permits reuse; any other exit
+    ** rolls back and discards the session, including failed producer cleanup.
+    *******************************************************************************/
+   public static final class PublishingSessionLease implements AutoCloseable
+   {
+      private final ProviderConnection owner;
+      private final Connection         connection;
+      private final Session            session;
+      private boolean                  committed;
+      private boolean                  commitAttempted;
+      private boolean                  closed;
+
+
+
+      /*******************************************************************************
+       ** Only the provider can create a lease.
+       *******************************************************************************/
+      private PublishingSessionLease(ProviderConnection owner, Connection connection, Session session)
+      {
+         this.owner = owner;
+         this.connection = connection;
+         this.session = session;
+      }
+
+
+
+      /*******************************************************************************
+       ** The JMS session is owned exclusively by this publication.
+       *******************************************************************************/
+      public Session getSession()
+      {
+         if(closed || commitAttempted)
+         {
+            throw (new IllegalStateException("Publishing lease is already complete"));
+         }
+         return (session);
+      }
+
+
+
+      /*******************************************************************************
+       ** Commit once, only while this connection generation remains current.
+       *******************************************************************************/
+      public void commit() throws JMSException
+      {
+         getSession();
+         commitAttempted = true;
+         if(!owner.isCurrent(connection))
+         {
+            throw (new jakarta.jms.IllegalStateException("Publishing connection is no longer current"));
+         }
+         session.commit();
+         committed = true;
+      }
+
+
+
+      /*******************************************************************************
+       ** Never return an unsuccessful or obsolete session to the pool.
+       *******************************************************************************/
+      @Override
+      public void close()
+      {
+         if(closed)
+         {
+            return;
+         }
+         closed = true;
+         if(!committed)
+         {
+            try
+            {
+               session.rollback();
+            }
+            catch(Exception e)
+            {
+               LOG.debug("Error rolling back an ESB publishing session", e);
+            }
+         }
+         owner.returnPublishingSession(connection, session, committed);
+      }
+   }
+
+
+
+   /*******************************************************************************
     * One provider's connection, and its background reconnecting.
     *
     * connection is null while there is none: before the first connect, while
     * reconnecting (reconnectThread is then set), and after close.
     *******************************************************************************/
-   private static class ProviderConnection
+   static class ProviderConnection
    {
       private final String                      providerName;
       private final EsbConnectionFactoryBuilder connectionFactoryBuilder;
       private final ConnectionFactory           connectionFactory;
       private final EsbDestinationResolver      destinationResolver;
       private final Runnable                    onReconnect;
+
+      private final Deque<Session> idlePublishingSessions = new ArrayDeque<>();
+      private final Set<Session>   publishingSessions = Collections.newSetFromMap(new IdentityHashMap<>());
 
       private Connection connection;
       private Thread     reconnectThread;
@@ -374,6 +485,93 @@ public final class EsbConnectionManager
 
 
       /*******************************************************************************
+       ** Pool creation and checkout are serialized; no session can be borrowed
+       ** twice. The connection object is the generation token, including across
+       ** manager reset (which creates an entirely new provider owner).
+       *******************************************************************************/
+      synchronized PublishingSessionLease borrowPublishingSession() throws QException
+      {
+         Connection currentConnection = getOrConnect();
+         Session session = idlePublishingSessions.pollFirst();
+         if(session == null)
+         {
+            if(publishingSessions.size() >= MAX_PUBLISHING_SESSIONS)
+            {
+               throw (new QException("Publishing session pool exhausted for ESB provider " + providerName));
+            }
+            session = openSession(true);
+            if(!isCurrent(currentConnection))
+            {
+               closeQuietly(session);
+               throw (new QException("Publishing connection changed for ESB provider " + providerName));
+            }
+            publishingSessions.add(session);
+         }
+         return (new PublishingSessionLease(this, currentConnection, session));
+      }
+
+
+
+      /*******************************************************************************
+       ** Failed sessions keep their capacity slot until cleanup finishes. A stale
+       ** return must never replenish a replacement connection's pool.
+       *******************************************************************************/
+      void returnPublishingSession(Connection leaseConnection, Session session, boolean committed)
+      {
+         synchronized(this)
+         {
+            if(committed && isCurrent(leaseConnection))
+            {
+               idlePublishingSessions.addLast(session);
+               return;
+            }
+         }
+         try
+         {
+            session.close();
+         }
+         catch(JMSException | RuntimeException e)
+         {
+            /////////////////////////////////////////////////////////////////////
+            // A session that cannot close may still own broker resources.     //
+            // Retire its connection rather than replenish capacity around it. //
+            /////////////////////////////////////////////////////////////////////
+            onConnectionLost(leaseConnection, e);
+         }
+         finally
+         {
+            synchronized(this)
+            {
+               publishingSessions.remove(session);
+            }
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Identity, rather than provider name, fences late returns after reconnect.
+       *******************************************************************************/
+      synchronized boolean isCurrent(Connection candidate)
+      {
+         return (!closed && connection == candidate);
+      }
+
+
+
+      /*******************************************************************************
+       ** The owning connection closes these sessions, including borrowed ones.
+       ** Forget references immediately so reconnect cannot hand out an old lease.
+       *******************************************************************************/
+      private void invalidatePublishingSessions()
+      {
+         idlePublishingSessions.clear();
+         publishingSessions.clear();
+      }
+
+
+
+      /*******************************************************************************
        **
        *******************************************************************************/
       EsbDestinationResolver getDestinationResolver()
@@ -403,6 +601,7 @@ public final class EsbConnectionManager
          synchronized(this)
          {
             closed = true;
+            invalidatePublishingSessions();
             connectionToClose = connection;
             connection = null;
             threadToStop = reconnectThread;
@@ -500,6 +699,7 @@ public final class EsbConnectionManager
 
          LOG.warn("Lost connection to ESB provider; reconnecting", exception, logPair("providerName", providerName));
          connection = null;
+         invalidatePublishingSessions();
          startReconnecting(failedConnection);
       }
 

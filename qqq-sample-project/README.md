@@ -465,3 +465,57 @@ Local review logs are retained under `/private/tmp/qqq-587-acceptance.fB6Bs0/`:
 reports under `exclusive-823-reports/`.
 Only `backend.filesystem.local` and `backend.filesystem.formats` receive these source
 bindings; original requirements and supported-case assertions are preserved.
+
+### S3 source acceptance (#588)
+
+`SampleS3AcceptanceIT` runs real QQQ actions against an owned
+`localstack/localstack:1.4` container with dynamically mapped ports, a unique bucket
+and a separate namespace per case. It reuses the sample QInstance and Field Lab
+metadata. A test-only backend subtype injects the emulator endpoint through the
+existing `S3Utils` setter; production action implementations and the AWS SDK remain
+unchanged. A separate SDK client reads native objects, keys, metadata and multipart
+uploads. Cleanup aborts owned uploads, deletes and verifies empty namespaces, deletes
+the owned bucket, closes both clients and stops only the owned container. No real
+AWS credentials or shared service are used.
+
+| Contract | Source evidence and boundary |
+|---|---|
+| ONE record APIs | Insert/query/count/delete, whole CSV/JSON bytes, nested Unicode/space names, size/base name, heavy-field selection and exact native readback. Update refuses with the provider's `NotImplementedException` and leaves native objects unchanged. |
+| MANY record APIs | CSV rows and JSON arrays/objects, quoted multiline Unicode CSV, long values, explicit JSON null, count, post-read transformation and customizer failure. MANY insert/delete refuse without changing source objects. |
+| Raw storage | Binary round trip, shorter replacement, content type, URL mapping and native ACL metadata. Emulator ACL changes do not establish public AWS access or IAM enforcement. |
+| Multipart | A 6 MiB + 17 byte write has an in-progress native upload and no published object before close; completion yields exact bytes and no remaining upload. |
+| Missing/malformed | Missing prefix is empty; missing bucket/key retain native diagnostics; malformed CSV/JSON and invalid glob fail without mutation. Invalid glob is a configuration check, not comprehensive S3 key validation. |
+| Failures | Owned HTTP fixtures return `AccessDenied`, `InvalidAccessKeyId` and `SignatureDoesNotMatch` for read/write and hold a received request for a bounded 500 ms socket-read timeout. These verify SDK/provider propagation, not actual IAM, signing enforcement, or connection-establishment timeout. |
+| Partial write | An input source fails after six bytes; closing the real output stream publishes that prefix over the old object. This documents non-atomic storage (#459); it does not claim rollback, failed-multipart abort, or cancellation. |
+
+The row `backend.filesystem.s3` stays **pending**. A confirmed raw-output defect is
+preserved in `src/test/resources/s3/offset-write-reproduction.patch`: writing UTF-8
+`0123456789` with `write(bytes, 2, 5)` then closing stores `234`, not `23456`.
+The expected-contract assertion failed against independent native SDK readback;
+it is a separate reproduction, not a passing acceptance binding or a disabled test.
+Apply the patch in an isolated checkout and run
+`-Dtest=SampleS3AcceptanceIT#rawStorageOffsetWritesExactSlice test` to reproduce.
+No production correction accompanies this fixture. Strict invalid-key/reference
+policy, failed-multipart cleanup, live AWS authorization and published-candidate
+acceptance remain unverified. Existing provider and release deferrals are unchanged.
+
+The reviewed [#826](https://github.com/QRun-IO/qqq/pull/826) dependency is merged for
+its JSON-null fix; its local-filesystem evidence remains separate. After installing
+matching source artifacts into an isolated task Maven cache, the focused Docker
+fixture can run without the shared embedded Artemis port:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local="$S3_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Pacceptance-tests -Dit.test=SampleS3AcceptanceIT \
+  clean test-compile failsafe:integration-test failsafe:verify
+```
+
+Normal `-Pacceptance-tests clean verify` discovers the same IT class. Full combined
+sample verification is still required before push and must be scheduled exclusively
+because other sample classes share embedded Artemis port 61616. Focused verification
+does not claim that full gate or clean-cache public-artifact acceptance.
+
+Focused source validation: 12/12 S3 cases pass through both explicit Surefire
+selection and the acceptance Failsafe profile, with zero failures, errors or skips
+and zero Checkstyle violations. The 23 Python ledger tests pass. Requiring the S3
+row explicitly still fails the feature gate, as intended while its gaps remain.

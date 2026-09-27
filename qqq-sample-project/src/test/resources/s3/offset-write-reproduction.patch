@@ -1,0 +1,24 @@
+--- a/qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleS3AcceptanceIT.java
++++ b/qqq-sample-project/src/test/java/com/kingsrook/sampleapp/SampleS3AcceptanceIT.java
+@@ -129,6 +129,21 @@
+ @Execution(ExecutionMode.SAME_THREAD)
+ public class SampleS3AcceptanceIT
+ {
++    ** OutputStream offsets describe a slice length, independently of its start.
++    ******************************************************************************/
++   @Test
++   void rawStorageOffsetWritesExactSlice() throws Exception
++   {
++      try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference("slice.bin")))
++      {
++         output.write(bytes("0123456789"), 2, 5);
++      }
++      assertArrayEquals(bytes("23456"), nativeBytes(prefix + "/files/slice.bin"));
++   }
++
++
++
++   /*******************************************************************************
+    private static final String BACKEND = "sampleS3Acceptance";
+    private static final String FILES = "sampleS3Files";
+    private static final String CSV = "sampleS3Csv";

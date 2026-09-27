@@ -81,6 +81,11 @@ class PackagedSampleServer implements AutoCloseable
       ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
          .filter(argument -> argument.startsWith("-javaagent:") && argument.contains("org.jacoco.agent"))
          .forEach(command::add);
+      String brokerPort = System.getProperty("qqq.sample.esb.port");
+      if(brokerPort != null)
+      {
+         command.add("-Dqqq.sample.esb.port=" + brokerPort);
+      }
       command.addAll(jvmOptions);
       command.addAll(List.of(
          "-Dqqq.sample.mockAuthentication=true", "-Dqqq.sample.port=0",

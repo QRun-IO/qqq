@@ -414,7 +414,7 @@ public class QuartzScheduler implements QSchedulerInterface
             .withDescription(schedulableIdentity.getDescription() + " - " + getScheduleDescriptionForTrigger(scheduleMetaData))
             .forJob(jobKey)
             .withSchedule(scheduleBuilder)
-            // .startAt(startAt)
+            .startAt(startAt)
             .build();
 
          ///////////////////////////////////////

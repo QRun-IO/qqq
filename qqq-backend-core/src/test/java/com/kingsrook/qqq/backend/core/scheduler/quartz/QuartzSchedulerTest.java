@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.scheduler.quartz;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -30,6 +31,7 @@ import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.scheduleing.QScheduleMetaData;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJobType;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
@@ -62,6 +64,41 @@ class QuartzSchedulerTest extends BaseTest
    void afterEach()
    {
       SchedulerTestUtils.afterEach();
+   }
+
+
+
+   /*******************************************************************************
+    ** Native trigger dates honor existing millis/seconds/default precedence without
+    ** waiting for dispatch, and zero remains an explicit immediate-start request.
+    *******************************************************************************/
+   @Test
+   void nativeTriggerHonorsComputedInitialDelay() throws Exception
+   {
+      QInstance instance = QContext.getQInstance();
+      QuartzTestUtils.setupInstanceForQuartzTests();
+      QuartzScheduler scheduler = QuartzScheduler.initInstance(instance, QuartzTestUtils.QUARTZ_SCHEDULER_NAME,
+         QuartzTestUtils.getQuartzProperties(), () -> QContext.getQSession());
+      scheduler.doNotStart();
+      List<QScheduleMetaData> schedules = List.of(
+         new QScheduleMetaData().withRepeatMillis(100).withInitialDelayMillis(10000),
+         new QScheduleMetaData().withRepeatMillis(100).withInitialDelaySeconds(10),
+         new QScheduleMetaData().withRepeatMillis(100).withInitialDelayMillis(0),
+         new QScheduleMetaData().withRepeatMillis(100),
+         new QScheduleMetaData().withRepeatMillis(100).withInitialDelayMillis(0).withInitialDelaySeconds(10));
+      List<Long> delays = List.of(10000L, 10000L, 0L, 3000L, 0L);
+      for(int index = 0; index < schedules.size(); index++)
+      {
+         String identity = "delay" + index;
+         long before = System.currentTimeMillis();
+         scheduler.setupSchedulable(new BasicSchedulableIdentity(identity, null),
+            instance.getSchedulableType(ScheduledJobType.PROCESS.name()), Map.of(), schedules.get(index), true);
+         long after = System.currentTimeMillis();
+         long start = scheduler.queryQuartz().stream().filter(job -> job.jobDetail().getKey().getName().equals(identity))
+            .findFirst().orElseThrow().trigger().getStartTime().getTime();
+         assertTrue(start >= before + delays.get(index), "Native trigger ignored configured delay " + delays.get(index));
+         assertTrue(start <= after + delays.get(index));
+      }
    }
 
 

@@ -604,9 +604,8 @@ The combined reviewed base is `4da03460068dd9cabea50caf65bf5405754d716f`; change
 source dependencies were rebuilt into the task-owned cache, and the installed
 filesystem JAR matches the tested module JAR byte-for-byte. Green logs are
 `/private/tmp/qqq-838-filesystem-verify-install.log` and
-`/private/tmp/qqq-838-native-green.log`. Full sample verification of this new cleanup
-change is still pending an explicitly reserved broker slot; the earlier full sample
-result above does not certify this delta.
+`/private/tmp/qqq-838-native-green.log`. The full sample verification below certifies
+this cleanup delta separately from the earlier #829 run.
 
 
 #### Remaining original #588 scope
@@ -642,6 +641,32 @@ and proved; these are proposed checks, not passing-test claims:
   cause plus native no-mutation/recovery. Connection refusal or an injected exception
   alone must not be labeled a real connection timeout.
 
-The full sample verify for #838 also remains pending its exclusive broker reservation.
 No requirements, existing negative cases or pending status were removed by this
 reassessment; no blanket dot-segment rejection or new provider policy was added.
+
+
+#### Full sample verification of #838
+
+At independently reviewed runtime commit `ecaccd04645430262c566424535438dc59bb31e0`,
+one exclusive full run passed **760 regular tests plus 107 integration/browser tests**
+(**867 total, zero failures/errors/skips**). This includes all 17 native S3 cases and
+the data-QBit profile. Maven completed `clean verify` with **BUILD SUCCESS in 9:11**;
+Checkstyle reported zero violations, and JaCoCo gates passed with 39/41 classes
+(95.12%) and 877/969 lines (90.51%) covered.
+
+```sh
+env -u JAVA_TOOL_OPTIONS mvn -B -o -nsu \
+  -Dmaven.repo.local="$S3_ACCEPTANCE_M2" \
+  -Djdk.httpclient.HttpClient.log=errors,channel \
+  -f qqq-sample-project/pom.xml \
+  -Pacceptance-tests,data-qbit-acceptance clean verify
+```
+
+The task-owned cache contained matching source artifacts, including the rebuilt
+filesystem and Mongo modules; this was not a fresh empty-cache or published-artifact
+check. Run handle `44447` reached exit 0 without restart; the broker reservation was
+then released to MAIN/Sartre. The log is `/private/tmp/qqq-838-sample-full-verify.log`,
+with counts/coverage in `/private/tmp/qqq-838-full-acceptance-summary.json` and copied
+reports in `/private/tmp/qqq-838-full-reports`. These are source-verification results.
+The S3 row remains pending for the original-scope gaps listed above; this full run
+does not turn provider limitations or proposed checks into passing evidence.

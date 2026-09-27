@@ -31,6 +31,7 @@ public final class ReferenceDataLiquibaseGenerator
 {
    private static final String TEMPLATE_PATH = "/db/reference-category-changelog.xml";
 
+   /** Prevent construction of this changelog generator utility. */
    private ReferenceDataLiquibaseGenerator()
    {
    }

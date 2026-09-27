@@ -74,7 +74,7 @@ mvn -B -o -Dmaven.repo.local="$health_maven_repo" \
   -Dtest=HealthCheckExecutorConcurrencyTest,HealthCheckExecutorTest test
 mvn -B -nsu -Dmaven.repo.local="$health_maven_repo" \
   -Drevision=0.0.0-health-acceptance -pl qqq-middleware-health install
-mvn -B -o -Dmaven.repo.local="$health_maven_repo" \
+mvn -B -nsu -Dmaven.repo.local="$health_maven_repo" \
   -Drevision=0.0.0-health-acceptance -Dqqq.version=0.0.0-health-acceptance \
   -f qqq-sample-project/pom.xml -Dtest=SampleHealthAcceptanceTest test
 mvn -B -nsu -Dmaven.repo.local="$health_maven_repo" \

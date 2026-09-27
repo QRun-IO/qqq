@@ -581,3 +581,66 @@ failures/errors/skips (`/private/tmp/qqq-834-objects-core-green.log` and
 the isolated cache used `-DskipTests -Djacoco.skip=true`; built/installed jar
 SHA-256 hashes match. No full core/sample run was repeated for this review fix;
 full verification and independent re-review remain pending.
+
+
+### Query statistics: concurrent cancellation sidecar (#564)
+
+This test-only increment starts from reviewed `d78bce1c1` in a separate worktree.
+`SampleQueryStatisticsAcceptanceCancellationTest` uses the existing owned H2
+fixture, `QueryAction.cancel()`, a real `NonPersistedAsyncJobCallback`, and
+`RecordPipe.terminate()`. No production behavior, dependency or schema contract
+changes. Test-only H2 alias/view objects pause actual statement execution through
+latches; a normal table customizer separately pauses real row delivery. Neither
+substitutes a backend, connection or persistence operation.
+
+| Passing method | Exact outcome |
+| --- | --- |
+| `testNativeStatementCancellationDoesNotPublishCompletedStatistic` | Cancellation after entry into real JDBC execution raises `Query was cancelled.`; neither the consumer nor native `query_stat` contains a completed measurement. |
+| `testAsyncCancellationDuringDeliveryRetainsExactPartialMeasurement` | A concurrent callback cancellation request stops the backend after its current row. Exactly the first native row reaches the plain pipe; the normal backend return retains count 1 and persists its SQL/session metadata. |
+| `testConcurrentPlainPipeTerminationRetainsZeroDeliveryMeasurement` | Termination while SQL is active, before delivery starts, discards all delivery. SQL still completes and retains count 0. An independent native count proves the gated view has 20,480 rows; terminating a pipe is not statement cancellation. |
+
+Each case verifies native connection cleanup (only the owned oracle remains),
+unchanged native person count, session ownership, cleared context on reuse of the
+query worker, bounded worker shutdown, and a fresh five-row recovery read and
+statistic. The inherited fixture stops and joins the statistics scheduler.
+Latches establish ordering rather than elapsed sleeps. Backend counts remain
+consumer-only; no request-success/outcome column is invented. The existing
+post-query rejection regression continues to retain completed backend SQL stats.
+
+The row stays **pending**. This evidence covers the three named controlled H2
+paths, not arbitrary thread interruption or termination of an already blocked,
+full or association-buffered pipe. It does not claim exhaustive race detection or
+other JDBC drivers. Independent review and combined full verification of this
+increment remain required; no full sample, HTTP fixture or broker was started.
+No runtime defect was demonstrated in these three paths.
+
+Reproduce from this worktree using Java 21 and matching-source artifacts:
+
+```sh
+QUERY_STATS_CANCEL_M2=/private/tmp/qqq-564-cancellation-d78-m2
+# Prepare a fresh dedicated cache from this source if not already prepared.
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_CANCEL_M2" -DskipTests install
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_CANCEL_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleQueryStatisticsAcceptanceTest,SampleQueryStatisticsAcceptanceRegressionTest,SampleQueryStatisticsAcceptanceCancellationTest,SampleQueryContractTest test
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+  -s qqq-sample-project -p test_feature_coverage.py
+# Expected nonzero: required pending feature cannot be certified by report-only.
+PYTHONDONTWRITEBYTECODE=1 python3 qqq-sample-project/verify-feature-coverage.py \
+  --stage source --report-only --require-feature core.observability.query_statistics
+```
+
+Local 2026-09-27 evidence: the baseline passed 25 tests. The sidecar cache was an
+isolated copy of the existing matching d78 source cache; this is not a clean-cache
+bootstrap or published-artifact proof. Initial fixture setup had two null backend
+metadata errors, corrected before outcome validation. All three new cases then
+passed. Temporarily removing the three cancellation/termination calls made all
+three assertions fail, with zero errors/skips: cancelled SQL returned normally,
+terminated delivery became 20,480 rows, and callback cancellation delivered all
+five rows (`/private/tmp/qqq-564-cancellation-negative-controls.log`). Restoring
+those calls and running the final focused set passed **28 tests, zero
+failures/errors/skips**, with zero Checkstyle violations in 11.045 seconds
+(`/private/tmp/qqq-564-cancellation-focused.log`). No production edits were needed.
+The 23 Python ledger tests passed; the required-feature command exited 1,
+with this row blocked only by `scenario review is pending`. All 130 IDs and all
+requirement, negative-case, stage and deferral fields remain unchanged. The new
+Java file has an Apache-2.0 header.

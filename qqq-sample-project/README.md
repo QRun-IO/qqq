@@ -953,7 +953,8 @@ Simple scheduler and registered application processes. Actual QQQ actions update
 sample Person records; independent JDBC connections verify committed results and
 unrelated rows. The real application launcher uses an owned ephemeral HTTP port; no
 shared sample broker is started. A separate owned H2 database exercises Quartz's
-actual JDBC job store. The legacy queue
+actual JDBC job store. The fixture removes only its Person table's unrelated ESB
+publication, so scheduler writes cannot connect to a shared sample broker. The legacy queue
 runner uses its real SDK against a disposable loopback, in-memory protocol fixture
 with synthetic credentials, not an SQS account or a claim about AWS delivery/IAM.
 
@@ -970,7 +971,7 @@ Original [#569](https://github.com/QRun-IO/qqq/issues/569) coverage maps as foll
 | Variant serial / parallel | `serialVariantsPersistDistinctRowsWithoutOverlap` and `parallelVariantsOverlapWithIsolatedSessionsAndRows` use latches to prove one-at-a-time versus concurrent execution, native job counts, per-variant sessions and distinct persisted rows. |
 | Invalid cron | `invalidCronPreservesNativeScheduleAndData` proves invalid new/replacement definitions do not replace native jobs or mutate data. Existing setup logs rejection; this is not a promise of caller-visible exceptions. Simple metadata correctly declares cron unsupported. |
 | Job exception | `failedProcessDoesNotPreventNextInterval` verifies the runner's actual logged diagnostic and later successful persistence. The existing process runner catches errors; native Quartz exception propagation is not claimed (see existing #502). |
-| Timeout / shutdown cleanup | `observerTimeoutDoesNotCancelAndShutdownWaitsForOwnedWork` holds an entered application step with an owned latch. A bounded observer wait times out while writes remain absent; releasing the latch allows native shutdown and persistence to complete. There is no configurable execution deadline in the inspected scheduling API, and this test does not claim forced job cancellation. |
+| Timeout / shutdown cleanup | `SampleSchedulingTimeoutAcceptanceIT#actualSimpleStopTimeoutRetainsWorkThenCleansUp` holds a real registered Simple job on an owned latch and invokes the actual `StandardScheduledExecutor.stop()`. After its existing 300-second wait, `stop()` returns `false` with `STOPPING` while the worker remains alive and native data unchanged. Release permits one QQQ write, exact prior worker context restoration and actual worker termination. The API retains `STOPPING` afterward; no forced cancellation or application deadline is claimed. `observerTimeoutDoesNotCancelAndShutdownWaitsForOwnedWork` separately covers orderly Quartz shutdown waiting, not this timeout path. |
 | Context isolation | `quartzContextSuccessIsolatedAndRestored`, `quartzContextFailureRestoresAndNextRunRecovers`, and the corresponding `simpleContext...` methods prove a job cannot inherit or mutate the prior named-object map. They verify exact map/instance/session identity, user/thread restoration, no mutation on failed work, and native persistence on the next run. Quartz uses native listener hooks; Simple wraps its unchanged registered runnable in a real `StandardScheduledExecutor` to seed/observe worker context. |
 
 Additional controls preserve existing boundaries. `disabledManagerDoesNotRegisterOrDispatch`
@@ -998,10 +999,9 @@ nullable worker map, start the job with an empty map, and restore the exact prio
 map in finally. Global `CapturedContext` and public APIs remain unchanged.
 
 The scheduling row remains **pending**: independent review and full combined sample
-verification are outstanding. The actual `StandardScheduledExecutor.stop()`
-300-second timeout (`false` return with `STOPPING` state) remains unverified;
-the observer timeout test proves orderly shutdown waiting, not that QQQ timeout
-path or an application execution deadline. The queue fixture
+verification are outstanding. The actual Simple stop-timeout IT complements the
+short observer-wait case; neither promises cancellation or an application execution
+deadline. The queue fixture
 does not certify external SQS behavior or SDK-client shutdown ownership. Requirements,
 release dispositions and existing deferrals are unchanged.
 
@@ -1027,4 +1027,23 @@ The #855 source follow-up passed 23 focused scheduling cases with zero
 failures/errors/skips, plus the full core `clean install`: 2,074 tests, zero
 failures/errors, 11 existing skips, normal Checkstyle/JaCoCo/analysis gates.
 This is focused source evidence; it does not substitute for the combined full
-sample gate or the outstanding actual stop-timeout case.
+sample gate. The separate acceptance-only stop-timeout case exercises the real
+five-minute boundary and is excluded from ordinary Surefire tests. Run it with:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml -Pacceptance-tests \
+  -Dit.test=SampleSchedulingTimeoutAcceptanceIT \
+  initialize test-compile failsafe:integration-test failsafe:verify
+```
+
+Its 330-second observer bound is only a diagnostic guard: reaching that bound fails
+the test. Passing requires the Boolean returned by the real stop call after at least
+300 seconds, followed by retained-work and native cleanup assertions. Normal full
+`-Pacceptance-tests verify` discovers the IT automatically.
+
+The test-only #569 follow-up passed the real timeout IT (1 case, 301.7 seconds),
+then all 23 ordinary scheduling cases and 46 Python checks, with zero
+failures/errors/skips in the scheduling cases. The isolated IT produced no ESB
+connection attempt. Production is unchanged from the full-core-gated #855 input;
+combined full sample verification and independent review remain pending.

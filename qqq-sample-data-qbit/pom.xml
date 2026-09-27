@@ -16,7 +16,7 @@
 
    <properties>
       <maven.deploy.skip>true</maven.deploy.skip>
-      <central.publishing.skip>true</central.publishing.skip>
+      <skipPublishing>true</skipPublishing>
    </properties>
 
    <dependencies>

@@ -82,6 +82,40 @@ class SamplePackagedConfigurationIT
 
 
    /*******************************************************************************
+    ** A second packaged process starts from the original seed after a real write.
+    *******************************************************************************/
+   @Test
+   void testRepeatStartupReseedsInSeparateOwnedFixtures() throws Exception
+   {
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         try(PackagedSampleServer first = PackagedSampleServer.start(SampleJavalinServer.class, directory, List.of()))
+         {
+            URI base = first.awaitReady();
+            assertEquals(5, getJson(client, base.resolve("/data/person/count")).getInt("count"));
+            HttpResponse<String> added = client.send(HttpRequest.newBuilder(base.resolve("/data/person"))
+               .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
+               .POST(HttpRequest.BodyPublishers.ofString("""
+                  {"firstName":"Bootstrap","lastName":"Disposable","email":"bootstrap@example.invalid"}
+                  """)).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, added.statusCode(), added.body());
+            assertEquals(6, getJson(client, base.resolve("/data/person/count")).getInt("count"));
+         }
+         try(PackagedSampleServer second = PackagedSampleServer.start(SampleJavalinServer.class, directory, List.of()))
+         {
+            URI base = second.awaitReady();
+            assertEquals(5, getJson(client, base.resolve("/data/person/count")).getInt("count"));
+         }
+      }
+      try(var fixtures = Files.list(directory))
+      {
+         assertEquals(2, fixtures.filter(path -> path.getFileName().toString().startsWith("packaged-")).count());
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Invalid directories and misspelled fields must fail the actual Java process.
     *******************************************************************************/
    @Test

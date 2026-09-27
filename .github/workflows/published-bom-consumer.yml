@@ -1,0 +1,62 @@
+name: Published BOM consumer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published QQQ release or candidate version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Check source and release version
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import xml.etree.ElementTree as ET
+
+          version = os.environ["CANDIDATE_VERSION"]
+          source_ref = os.environ["SOURCE_REF"]
+          if not re.fullmatch(r"4\.1\.0(?:-RC\.[1-9][0-9]*)?", version):
+              raise SystemExit("Version must be 4.1.0 or a 4.1.0-RC.N candidate")
+          expected_ref = "refs/heads/release/4.1" if "-RC." in version else "refs/tags/v4.1.0"
+          if source_ref != expected_ref:
+              raise SystemExit(f"Select {expected_ref} for {version}; received {source_ref}")
+          root = ET.parse("pom.xml").getroot()
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          revision = root.findtext("m:properties/m:revision", namespaces=ns)
+          if revision != version:
+              raise SystemExit(f"Source revision {revision} differs from {version}")
+          PY
+      - name: Resolve the public BOM from a fresh consumer
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: python3 qqq-sample-project/verify-published-bom.py "$CANDIDATE_VERSION"
+      - name: Retain resolution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-bom-evidence
+          if-no-files-found: warn
+          path: |
+            qqq-sample-project/target/published-bom-*/evidence.json
+            qqq-sample-project/target/published-bom-*/pom.xml
+            qqq-sample-project/target/published-bom-*/maven.log
+            qqq-sample-project/target/published-bom-*/dependency-tree.json

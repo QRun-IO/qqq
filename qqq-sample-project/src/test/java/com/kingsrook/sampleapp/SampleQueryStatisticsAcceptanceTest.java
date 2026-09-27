@@ -21,8 +21,10 @@
 package com.kingsrook.sampleapp;
 
 
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -55,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
+import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
 import org.junit.jupiter.api.Test;
@@ -71,6 +74,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  ******************************************************************************/
 class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanceFixture
 {
+   /*******************************************************************************
+    ** Nanosecond inputs exercise native rounding regardless of host clock precision.
+    ******************************************************************************/
+   @Test
+   void testNanosecondTimestampsUseNativeColumnPrecision() throws Exception
+   {
+      List<Instant> starts = List.of(Instant.parse("2026-09-27T07:20:12.265641119Z"),
+         Instant.parse("2026-09-27T07:20:12.265641561Z"), Instant.parse("2026-09-27T07:20:12.999999750Z"));
+      for(Instant start : starts)
+      {
+         QueryStat stat = QueryStatManager.newQueryStat(instance.getBackend(instance.getTable("person").getBackendName()),
+            instance.getTable("person"), new QQueryFilter(), "QueryAction");
+         stat.withStartTimestamp(start).withFirstResultTimestamp(start.plusNanos(1_000_000))
+            .withQueryText("SELECT id FROM person").withAction("timestamp precision fixture");
+         manager.add(stat);
+      }
+      assertEquals(starts, snapshots.stream().map(Snapshot::start).toList());
+      List<Instant> expectedStoredStarts = List.of(Instant.parse("2026-09-27T07:20:12.265641Z"),
+         Instant.parse("2026-09-27T07:20:12.265642Z"), Instant.parse("2026-09-27T07:20:13Z"));
+      flushOnOwnedThread();
+      try(Statement statement = oracle.createStatement(); ResultSet result = statement.executeQuery("SELECT * FROM query_stat ORDER BY id"))
+      {
+         for(Integer index = 0; index < starts.size(); index++)
+         {
+            assertTrue(result.next());
+            Instant storedStart = result.getObject("start_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC);
+            Instant storedFirst = result.getObject("first_result_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC);
+            assertEquals(expectedStoredStarts.get(index), storedStart);
+            assertEquals(expectedStoredStarts.get(index).plusNanos(1_000_000), storedFirst);
+            assertTimestampMatchesNativePrecision(starts.get(index), storedStart);
+            assertTimestampMatchesNativePrecision(starts.get(index).plusNanos(1_000_000), storedFirst);
+            assertEquals(1, result.getInt("first_result_millis"));
+            assertEquals(session.getUuid(), result.getString("session_id"));
+         }
+         assertFalse(result.next());
+      }
+   }
+
+
+
    /*******************************************************************************
     ** Restart waits for an in-flight native insert, then retires that worker and
     ** uses only the new supplier for the replacement generation.
@@ -259,8 +302,8 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
       try(Statement statement = oracle.createStatement(); ResultSet result = statement.executeQuery("SELECT * FROM query_stat"))
       {
          assertTrue(result.next());
-         assertEquals(stat.start(), result.getObject("start_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
-         assertEquals(stat.first(), result.getObject("first_result_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
+         assertTimestampMatchesNativePrecision(stat.start(), result.getObject("start_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
+         assertTimestampMatchesNativePrecision(stat.first(), result.getObject("first_result_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
          assertEquals(stat.millis(), result.getInt("first_result_millis"));
          assertEquals(stat.sql(), result.getString("query_text"));
          assertEquals(stat.action(), result.getString("action"));
@@ -526,8 +569,8 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
       try(Statement statement = oracle.createStatement(); ResultSet result = statement.executeQuery("SELECT * FROM query_stat"))
       {
          assertTrue(result.next());
-         assertEquals(stat.start(), result.getObject("start_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
-         assertEquals(stat.first(), result.getObject("first_result_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
+         assertTimestampMatchesNativePrecision(stat.start(), result.getObject("start_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
+         assertTimestampMatchesNativePrecision(stat.first(), result.getObject("first_result_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
          assertEquals(stat.millis(), result.getInt("first_result_millis"));
          assertFalse(result.next());
       }
@@ -581,6 +624,24 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
     ******************************************************************************/
    private record StorageContext(QInstance instance, QSession session, String thread)
    {
+   }
+
+
+
+   /*******************************************************************************
+    ** The owned schema uses TIMESTAMP; native JDBC supplies its rounding oracle.
+    ******************************************************************************/
+   private void assertTimestampMatchesNativePrecision(Instant expected, Instant actual) throws Exception
+   {
+      try(PreparedStatement statement = oracle.prepareStatement("SELECT CAST(? AS TIMESTAMP)"))
+      {
+         statement.setObject(1, LocalDateTime.ofInstant(expected, ZoneOffset.UTC));
+         try(ResultSet result = statement.executeQuery())
+         {
+            assertTrue(result.next());
+            assertEquals(result.getObject(1, LocalDateTime.class).toInstant(ZoneOffset.UTC), actual);
+         }
+      }
    }
 
 

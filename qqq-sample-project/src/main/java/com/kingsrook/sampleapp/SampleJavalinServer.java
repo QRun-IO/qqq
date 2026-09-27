@@ -24,8 +24,13 @@ package com.kingsrook.sampleapp;
 
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
+import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
+import org.apache.activemq.artemis.core.config.Configuration;
+import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
+import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
 import static com.kingsrook.sampleapp.metadata.SampleMetaDataProvider.primeTestDatabase;
 
 
@@ -34,6 +39,8 @@ import static com.kingsrook.sampleapp.metadata.SampleMetaDataProvider.primeTestD
  *******************************************************************************/
 public class SampleJavalinServer extends QApplicationJavalinServer
 {
+   private EmbeddedActiveMQ embeddedBroker;
+
    /*******************************************************************************
     **
     *******************************************************************************/
@@ -84,6 +91,61 @@ public class SampleJavalinServer extends QApplicationJavalinServer
          throw new QException("Failed to initialize the sample database.", e);
       }
 
-      super.start();
+      try
+      {
+         int port = Integer.getInteger("qqq.sample.esb.port", 61616);
+         String dataDirectory = "target/embedded-artemis-sample";
+         Configuration configuration = new ConfigurationImpl()
+            .setPersistenceEnabled(false)
+            .setSecurityEnabled(false)
+            .setJMXManagementEnabled(false)
+            .setBindingsDirectory(dataDirectory + "/bindings")
+            .setJournalDirectory(dataDirectory + "/journal")
+            .setPagingDirectory(dataDirectory + "/paging")
+            .setLargeMessagesDirectory(dataDirectory + "/largemessages")
+            .addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + port);
+         embeddedBroker = new EmbeddedActiveMQ().setConfiguration(configuration);
+         embeddedBroker.start();
+         super.start();
+         QEsbRuntime.getInstance().start(getQInstance());
+      }
+      catch(RuntimeException e)
+      {
+         stop();
+         throw e;
+      }
+      catch(Exception e)
+      {
+         stop();
+         throw new QException("Failed to start the sample server with embedded Artemis.", e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Stop consumers before the server and broker they use.
+    *******************************************************************************/
+   @Override
+   public void stop()
+   {
+      QEsbRuntime.getInstance().stop();
+      EsbConnectionManager.getInstance().closeAll();
+      super.stop();
+      if(embeddedBroker != null)
+      {
+         try
+         {
+            embeddedBroker.stop();
+         }
+         catch(Exception e)
+         {
+            throw new IllegalStateException("Failed to stop the sample Artemis broker.", e);
+         }
+         finally
+         {
+            embeddedBroker = null;
+         }
+      }
    }
 }

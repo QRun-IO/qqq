@@ -34,6 +34,8 @@ include::metaData/PermissionRules.adoc[leveloffset=+1]
 include::misc/Javalin.adoc[leveloffset=+1]
 include::misc/ScheduledJobs.adoc[leveloffset=+1]
 
+include::esb/index.adoc[leveloffset=+1]
+
 === API server (OpenAPI)
 
 See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs[endpoint specification API] and the https://www.qrun.io/docs[hosted framework documentation]. Endpoint tags are optional.

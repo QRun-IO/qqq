@@ -65,6 +65,21 @@
       </dependency>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-esb</artifactId>
+         <version>${revision}</version>
+      </dependency>
+      <dependency>
+         <groupId>org.apache.artemis</groupId>
+         <artifactId>artemis-jakarta-client</artifactId>
+         <version>${artemis.version}</version>
+      </dependency>
+      <dependency>
+         <groupId>org.apache.artemis</groupId>
+         <artifactId>artemis-jakarta-server</artifactId>
+         <version>${artemis.version}</version>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-middleware-picocli</artifactId>
          <version>${revision}</version>
       </dependency>

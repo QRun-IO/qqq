@@ -68,9 +68,8 @@ public class SFTPStorageActionTest extends BaseSFTPTest
          revokeUploadFilesDirWritePermission();
          String data = "oops!";
          assertThatThrownBy(() -> runTest(data))
-            .hasRootCauseInstanceOf(IOException.class)
-            .rootCause()
-            .hasMessageContaining("Permission denied");
+            .isInstanceOf(IOException.class)
+            .hasStackTraceContaining("Permission denied");
       }
       finally
       {

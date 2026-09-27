@@ -797,3 +797,28 @@ at source stage and retains its existing post-4.0 deferral; this is no new 4.1 r
 approval. PDFBox is also used by the renderer internally, so parsing is an independent
 output assertion, not a second rendering engine or visual-fidelity certification.
 Custom-font behavior, remote assets and published-candidate acceptance are not claimed.
+
+
+### Maintenance sample acceptance (#574)
+
+`SampleMaintenanceAcceptanceTest` invokes the existing registered garbage-collector and column-statistics processes in the sample application's QContext. Each test owns a unique in-memory H2 database initialized with the existing sample schema; native JDBC seeds and full-column readback independently verify persisted results. The fixture shuts down that database, removes its process state and restores ordinary and named caller context. No server, broker, provider account, runtime dependency or application schema is added.
+
+| Original scenario | Runnable evidence |
+| --- | --- |
+| Configured expired-record cleanup | `testConfiguredExpiryAndRepeatPreserveNonexpiredRecords` checks the configured 30-day threshold on both sides, null/nonexpired preservation and a repeat run; `testExplicitCutoffPreservesEqualAndLaterDates` checks the documented override and strict cutoff. |
+| Column statistics match fixture values | Existing `SampleAggregateColumnStatsContractTest.testRegisteredProcessPublishesNativeCountsAndStats` compares real process output and serialization with independent SQL groups, counts, percentages, sum, average and extrema. Its scoped READ and denied joined-table tests are reused without changing or duplicating their implementation. |
+| Nonexpired/denied records untouched | Separate READ- and WRITE-lock tests compare every persisted column, delete an allowed control in the same invocation, retain null-owner rows and then delete the other owner's expired row only after granting its existing security key. |
+| Empty table | `testEmptyCleanupAndStatistics` repeats empty cleanup and compares all empty statistics with native SQL, including null sum/average/extrema. |
+| Invalid configuration | Missing cleanup field, missing statistics field and malformed supplemental statistics configuration fail without changing any persisted row; a corrected statistics request succeeds. |
+
+The garbage-collector producer has **no default schedule**. These tests call its process synchronously and do not certify timer behavior or descendant-table cascading (`joinedTablesToAlsoDelete` is null). Cleanup's existing table actions use SYSTEM input; the denial cases exercise configured record-security locks, not a new USER table-permission policy. Column statistics retain their existing USER READ checks. Native evidence here is H2 source acceptance, not a published-candidate or external database claim.
+
+After installing matching framework source artifacts into a task-owned cache, run:
+
+```sh
+mvn -B -ntp -Dmaven.repo.local="$MAINTENANCE_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleMaintenanceAcceptanceTest,SampleAggregateColumnStatsContractTest clean test
+python3 qqq-sample-project/test_feature_coverage.py
+```
+
+On source base `4da034600`, the focused clean run passed **8 maintenance +9 reused column-statistics tests**, with zero failures/errors/skips and Checkstyle zero. No product defect was confirmed. `core.maintenance` remains **pending** until independent review and the required full `-Pacceptance-tests clean verify` pass. Full sample execution must have the shared broker's exclusive slot; no full run was started for this change. When also enabling `data-qbit-acceptance`, first build the matching `qqq-sample-data-qbit` source fixture into that same cache; its six additional host tests are source-only evidence.

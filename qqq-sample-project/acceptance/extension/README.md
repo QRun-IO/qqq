@@ -9,7 +9,7 @@ reads. Three JUnit cases check the configured target, disabled configuration,
 missing target and field prerequisites, and unrelated table isolation. The runner
 also verifies that the host cannot compile without the generated dependency.
 
-From a clean QQQ 4.1.0-SNAPSHOT worktree, with a clean first-party template
+From a clean QQQ source worktree, with a clean first-party template
 checkout, Java 21, and Maven access to public release dependencies:
 
 ```sh
@@ -20,10 +20,13 @@ python3 qqq-sample-project/acceptance/extension/run_extension.py \
   --report-dir qqq-sample-project/target/surefire-reports
 ```
 
-The runner permits downloads of public template plugins and dependencies, then
-installs the selected QQQ core and generated artifact into the specified
-repository. Maven's `-nsu` prevents remote snapshot refresh, so those local
-installations remain the candidate under test. It prints both source commits and removes
+The runner derives the candidate version from the source root POM's `revision`.
+Pass `--candidate-version 0.0.0-sample-acceptance` to use CI's isolated Maven
+version instead. It installs the checked-out QQQ BOM and core at that exact
+version before building the generated extension and host against the same version.
+The runner permits downloads of public template plugins and dependencies, while
+Maven's `-nsu` prevents remote snapshot refresh from replacing the local
+candidate. It prints both source commits and the candidate version, and removes
 its generated projects on success or failure. The optional `--report-dir` copies
 the host JUnit report only after all acceptance checks pass; CI uses it for the
 sample feature ledger. Omit `--maven-repo` to use the default local repository.

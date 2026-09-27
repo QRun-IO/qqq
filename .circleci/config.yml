@@ -69,6 +69,7 @@ jobs:
             python3 qqq-sample-project/acceptance/extension/run_extension.py \
               --qqq-source . \
               --template-source /tmp/sample-extension-template \
+              --candidate-version 0.0.0-sample-acceptance \
               --maven-settings /tmp/circleci/mvn-settings.xml \
               --report-dir qqq-sample-project/target/surefire-reports
       - run:

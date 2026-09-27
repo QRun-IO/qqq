@@ -2,10 +2,12 @@
 """Build a disposable, renamed first-party extension and exercise it in a host."""
 
 import argparse
+import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 
 HERE = Path(__file__).resolve().parent
@@ -13,7 +15,32 @@ PACKAGE = "com.qrunio.acceptance.extension"
 GROUP = "com.qrunio.acceptance"
 ARTIFACT = "orderdesk-extension"
 VERSION = "0.1.0-SNAPSHOT"
-QQQ_VERSION = "4.1.0-SNAPSHOT"
+
+
+def resolve_candidate_version(source, override):
+    """Use the checked-out root revision unless CI supplies its isolated version."""
+    root = ET.parse(source / "pom.xml").getroot()
+    revision = root.find("./{*}properties/{*}revision")
+    require(revision is not None and revision.text, "QQQ root revision is missing")
+    version = override or revision.text.strip()
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", version) is not None,
+            "invalid QQQ candidate version")
+    return version
+
+
+def rewrite_template_coordinates(value, candidate_version):
+    for old, new in (("<groupId>com.kingsrook.qbits</groupId>", f"<groupId>{GROUP}</groupId>"),
+                     ("<artifactId>qbit-example-extension</artifactId>", f"<artifactId>{ARTIFACT}</artifactId>"),
+                     ("<qqq.version>4.0.0</qqq.version>",
+                      f"<qqq.version>{candidate_version}</qqq.version>")):
+        value = replace_exact(value, old, new)
+    return value
+
+
+def framework_install_command(base, candidate_version):
+    return base + ["-pl", "qqq-bom,qqq-backend-core", "-am",
+                   f"-Drevision={candidate_version}", "-DskipTests",
+                   "-Dspotbugs.skip=true", "-Dpmd.skip=true", "install"]
 
 
 def require(condition, message):
@@ -35,7 +62,7 @@ def replace_exact(text, old, new):
     return text.replace(old, new)
 
 
-def stage_template(source, destination):
+def stage_template(source, destination, candidate_version):
     """Copy tracked template inputs; add consumer-owned behavior only in the copy."""
     require(not git_output(source, "status", "--porcelain"), "template checkout must be clean")
     destination.mkdir()
@@ -51,11 +78,7 @@ def stage_template(source, destination):
             shutil.copyfile(original, target)
 
     pom = destination / "pom.xml"
-    value = pom.read_text()
-    for old, new in (("<groupId>com.kingsrook.qbits</groupId>", f"<groupId>{GROUP}</groupId>"),
-                     ("<artifactId>qbit-example-extension</artifactId>", f"<artifactId>{ARTIFACT}</artifactId>"),
-                     ("<qqq.version>4.0.0</qqq.version>", f"<qqq.version>{QQQ_VERSION}</qqq.version>")):
-        value = replace_exact(value, old, new)
+    value = rewrite_template_coordinates(pom.read_text(), candidate_version)
     for artifact in ("junit-jupiter", "assertj-core"):
         start = value.index("      <dependency>\n", value.index("<artifactId>qqq-backend-core</artifactId>"))
         while f"<artifactId>{artifact}</artifactId>" not in value[start:value.index("</dependency>", start)]:
@@ -109,9 +132,11 @@ def stage_template(source, destination):
     return new_root
 
 
-def stage_host(destination):
+def stage_host(destination, candidate_version):
     destination.mkdir()
-    shutil.copyfile(HERE / "pom.xml", destination / "pom.xml")
+    pom = destination / "pom.xml"
+    pom.write_text(replace_exact((HERE / "pom.xml").read_text(),
+                                 "@QQQ_VERSION@", candidate_version))
     test = destination / "src/test/java/com/qrunio/acceptance/extension/ExtensionHostAcceptanceTest.java"
     test.parent.mkdir(parents=True)
     shutil.copyfile(HERE / "ExtensionHostAcceptanceTest.java", test)
@@ -121,6 +146,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--qqq-source", required=True, type=Path)
     parser.add_argument("--template-source", required=True, type=Path)
+    parser.add_argument("--candidate-version",
+                        help="isolated Maven version for the exact checked-out QQQ source")
     parser.add_argument("--maven-repo", type=Path)
     parser.add_argument("--maven-settings", type=Path,
                         help="Maven settings for the candidate build environment")
@@ -129,9 +156,9 @@ def main():
     args = parser.parse_args()
     qqq = args.qqq_source.resolve()
     template = args.template_source.resolve()
-    require("<revision>4.1.0-SNAPSHOT</revision>" in (qqq / "pom.xml").read_text(),
-            "expected QQQ 4.1 source")
+    candidate_version = resolve_candidate_version(qqq, args.candidate_version)
     print("QQQ:", git_output(qqq, "rev-parse", "HEAD").decode().strip(), flush=True)
+    print("candidate version:", candidate_version, flush=True)
     print("template:", git_output(template, "rev-parse", "HEAD").decode().strip(), flush=True)
     # Public template/plugin versions differ from QQQ's own plugins.  Allow
     # release downloads, but never refresh the locally installed snapshot
@@ -145,15 +172,14 @@ def main():
         root = Path(root)
         extension = root / "generated-extension"
         host = root / "host"
-        generated = stage_template(template, extension)
+        generated = stage_template(template, extension, candidate_version)
         require(len(list(generated.rglob("*.java"))) == 4, "generated source count changed")
-        stage_host(host)
-        run(base + ["-pl", "qqq-bom,qqq-backend-core", "-am", "-DskipTests",
-                    "-Dspotbugs.skip=true", "-Dpmd.skip=true", "install"], qqq)
-        run(base + ["install"], extension)
-        run(base + ["test"], host)
+        stage_host(host, candidate_version)
+        run(framework_install_command(base, candidate_version), qqq)
+        run(base + [f"-Dqqq.version={candidate_version}", "install"], extension)
+        run(base + [f"-Dqqq.version={candidate_version}", "test"], host)
         missing_dependency = root / "host-without-extension"
-        stage_host(missing_dependency)
+        stage_host(missing_dependency, candidate_version)
         pom = missing_dependency / "pom.xml"
         value = pom.read_text()
         dependency = ("      <dependency>\n"
@@ -162,7 +188,7 @@ def main():
                       f"         <version>{VERSION}</version>\n"
                       "      </dependency>\n")
         pom.write_text(replace_exact(value, dependency, ""))
-        failed = subprocess.run(base + ["test-compile"], cwd=missing_dependency,
+        failed = subprocess.run(base + [f"-Dqqq.version={candidate_version}", "test-compile"], cwd=missing_dependency,
                                 capture_output=True, text=True)
         require(failed.returncode != 0 and "com.qrunio.acceptance.extension" in
                 failed.stdout + failed.stderr,

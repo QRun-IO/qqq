@@ -14,7 +14,7 @@
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-backend-core</artifactId>
-         <version>4.1.0-SNAPSHOT</version>
+         <version>@QQQ_VERSION@</version>
       </dependency>
       <dependency>
          <groupId>com.qrunio.acceptance</groupId>

@@ -4318,12 +4318,43 @@
       "negative_cases": [
         "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
       ],
-      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testOneInsertQueryCountDeleteAndPaths",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testFilenameWithSpaces",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testUnicodeFilename",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testOneKeepsRawBytesForBothFormats",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testCsvJsonManyParsingAndCounts",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testDuplicateCsvHeadersAndMissingCells",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testMalformedAndTruncatedFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testInvalidNumericValueAtTypedAccess",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPostReadCustomizationAndFailures",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testUnsupportedMutationsPreserveFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRawStorageAndReplacement",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testStorageRejectsInvalidPathsAndMissingInput",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPartialStorageCopyRetainsPrefix",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPartialInsertAndInvalidPath",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testMissingRecordFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testLocalPermissionFailures",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordInsertCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testFileDeleteMissingOutsideTargetIsNoop",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordDeleteCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordInsertCannotFollowOutsideSymlink",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordQueryCannotFollowOutsideSymlink",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordSymlinkWithinTableRemainsUsable",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testJsonNullValue"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/587",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_note": "Owned temporary files, actual sample QQQ record/storage actions and independent native readback. Supported cases pass after correcting JSON null, literal filename handling and local record path confinement. Unsupported updates/MANY writes, lazy numeric conversion, MANY-only post-read hooks, the existing CSV header-suffix collision limitation and non-atomic stream writes remain explicit boundaries. Local OS denial is exercised as an unprivileged user; transport credentials/timeouts have no local analogue. No SFTP/S3 acceptance, UI/auth or public-candidate claim.",
+      "acceptance_review": {
+        "at": "2026-09-27T04:30:07.228867+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/587",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest.xml",
+        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. At 9b3bc4cea (reviewed #823 cherry-pick atop ff0e98890), one exclusive -Pacceptance-tests clean verify with HTTP errors/channel diagnostics passes 743 unit and 78 integration/browser tests with zero failures/errors/skips, 39/41 class coverage and clean Checkstyle. Both owned rows have no source-report gaps; overall source gate remains incomplete at 89/127. Earlier HTTP EOF logs retained without attributing cause or claiming #824 fixed. Original requirements and limitation links preserved."
+      }
     },
     {
       "id": "backend.filesystem.s3",
@@ -4382,12 +4413,27 @@
       "negative_cases": [
         "Malformed/truncated file, invalid data type, duplicate headers and customizer failure"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testOneKeepsRawBytesForBothFormats",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testCsvJsonManyParsingAndCounts",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testDuplicateCsvHeadersAndMissingCells",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testMalformedAndTruncatedFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testInvalidNumericValueAtTypedAccess",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPostReadCustomizationAndFailures",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testJsonNullValue"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/590",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_note": "Owned temporary files, actual sample QQQ record/storage actions and independent native readback. Supported cases pass after correcting JSON null, literal filename handling and local record path confinement. Unsupported updates/MANY writes, lazy numeric conversion, MANY-only post-read hooks, the existing CSV header-suffix collision limitation and non-atomic stream writes remain explicit boundaries. Local OS denial is exercised as an unprivileged user; transport credentials/timeouts have no local analogue. No SFTP/S3 acceptance, UI/auth or public-candidate claim.",
+      "acceptance_review": {
+        "at": "2026-09-27T04:30:07.228867+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/590",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest.xml",
+        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. At 9b3bc4cea (reviewed #823 cherry-pick atop ff0e98890), one exclusive -Pacceptance-tests clean verify with HTTP errors/channel diagnostics passes 743 unit and 78 integration/browser tests with zero failures/errors/skips, 39/41 class coverage and clean Checkstyle. Both owned rows have no source-report gaps; overall source gate remains incomplete at 89/127. Earlier HTTP EOF logs retained without attributing cause or claiming #824 fixed. Original requirements and limitation links preserved."
+      }
     },
     {
       "id": "javascript.executor",

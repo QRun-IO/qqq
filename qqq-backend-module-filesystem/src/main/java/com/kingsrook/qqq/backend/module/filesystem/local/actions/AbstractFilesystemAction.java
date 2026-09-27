@@ -38,6 +38,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -141,7 +142,9 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
 
             if(isMatch)
             {
-               rs.add(new File(fullPath + File.separatorChar + matchedFile));
+               String filePath = fullPath + File.separatorChar + matchedFile;
+               validateTableFilePath(backendBase, table, filePath);
+               rs.add(new File(filePath));
             }
          }
 
@@ -206,7 +209,23 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
    @Override
    public void writeFile(QBackendMetaData backend, QTableMetaData table, QRecord record, String path, byte[] contents) throws IOException
    {
+      validateTableFilePath(backend, table, path);
       FileUtils.writeByteArrayToFile(new File(path), contents);
+   }
+
+
+
+   /*******************************************************************************
+    ** Apply the storage API's table confinement to local record operations too.
+    *******************************************************************************/
+   private void validateTableFilePath(QBackendMetaData backend, QTableMetaData table, String filePath) throws IOException
+   {
+      Path base = new File(getFullBasePath(table, backend)).getCanonicalFile().toPath();
+      Path file = new File(filePath).getCanonicalFile().toPath();
+      if(file.equals(base) || !file.startsWith(base))
+      {
+         throw new IOException("File path must remain inside its table directory");
+      }
    }
 
 
@@ -241,6 +260,15 @@ public class AbstractFilesystemAction extends AbstractBaseFilesystemAction<File>
          //////////////////////////////////////////////////////////////////////////////////////////////
          LOG.debug("Not deleting file, because it does not exist.", logPair("file", file));
          return;
+      }
+
+      try
+      {
+         validateTableFilePath(QContext.getQInstance().getBackend(table.getBackendName()), table, fileReference);
+      }
+      catch(IOException e)
+      {
+         throw new FilesystemException("Invalid path for deleting file", e);
       }
 
       if(!file.delete())

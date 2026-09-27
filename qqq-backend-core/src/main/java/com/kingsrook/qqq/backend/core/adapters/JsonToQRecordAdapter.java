@@ -117,7 +117,7 @@ public class JsonToQRecordAdapter
             // todo - so if the mapping didn't say how to map this field, does that mean we should use the default name for the field?
             if(jsonObject.has(fieldSource))
             {
-               record.setValue(field.getName(), (Serializable) jsonObject.get(fieldSource));
+               record.setValue(field.getName(), jsonObject.isNull(fieldSource) ? null : (Serializable) jsonObject.get(fieldSource));
             }
          }
       }

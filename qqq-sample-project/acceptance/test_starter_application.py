@@ -4,14 +4,26 @@ import tempfile
 import unittest
 import os
 import subprocess
+import xml.etree.ElementTree as ET
 from unittest.mock import patch
 from pathlib import Path
 
-from run_starter_application import GENERATED_PACKAGE, copy_tracked_source, main, stage_starter, stage_template
+from run_starter_application import GENERATED_PACKAGE, copy_tracked_source, main, qqq_version, stage_starter, stage_template
 from live_starter_application import exercise
 
 
 class DisposableCopyTest(unittest.TestCase):
+    def test_qqq_revision_uses_literal_source_version_across_release_cycles(self):
+        with tempfile.TemporaryDirectory() as root:
+            pom = Path(root) / "pom.xml"
+            prefix = '<project xmlns="http://maven.apache.org/POM/4.0.0"><properties><revision>'
+            suffix = '</revision></properties></project>'
+            for version in ("4.1.0-SNAPSHOT", "4.1.0-RC.1", "4.1.0", "4.2.0-SNAPSHOT"):
+                pom.write_text(prefix + version + suffix)
+                self.assertEqual(version, qqq_version(Path(root)))
+            pom.write_text(prefix + '${revision}' + suffix)
+            with self.assertRaisesRegex(AssertionError, "literal root revision"):
+                qqq_version(Path(root))
     def test_copies_only_safe_tracked_files(self):
         with tempfile.TemporaryDirectory() as root:
             source = Path(root) / "source"
@@ -47,6 +59,40 @@ class DisposableCopyTest(unittest.TestCase):
                          "--workdir", existing]
             with patch("sys.argv", arguments), self.assertRaisesRegex(AssertionError, "must not already exist"):
                 main()
+
+    def test_live_junit_survives_disposable_fixture_and_copies_real_reports(self):
+        with tempfile.TemporaryDirectory() as root:
+            reports = Path(root) / "reports"
+            arguments = ["runner", "--qqq-source", "/unused", "--starter-source", "/unused",
+                         "--template-source", "/unused", "--maven-repo", "/unused",
+                         "--live-mysql", "--junit-dir", str(reports)]
+
+            def completed(args, workdir):
+                report = workdir / "starter/target/surefire-reports/TEST-starter.xml"
+                report.parent.mkdir(parents=True)
+                report.write_text('<testsuite><testcase classname="StarterTest" name="works"/></testsuite>')
+
+            with patch("sys.argv", arguments), patch("run_starter_application.execute", side_effect=completed):
+                main()
+            self.assertTrue((reports / "TEST-starter-starter.xml").exists())
+            case = ET.parse(reports / "TEST-starter-live.xml").getroot().find("testcase")
+            self.assertEqual("sourceGeneratedMySqlCrudAndNegativeProbes", case.attrib["name"])
+            self.assertIsNone(case.find("failure"))
+            with patch("sys.argv", arguments), self.assertRaisesRegex(AssertionError, "must not already exist"):
+                main()
+
+    def test_failed_live_runner_writes_failed_junit(self):
+        with tempfile.TemporaryDirectory() as root:
+            reports = Path(root) / "reports"
+            arguments = ["runner", "--qqq-source", "/unused", "--starter-source", "/unused",
+                         "--template-source", "/unused", "--maven-repo", "/unused",
+                         "--live-mysql", "--junit-dir", str(reports)]
+            with patch("sys.argv", arguments), patch("run_starter_application.execute",
+                                                    side_effect=AssertionError("failed probe")):
+                with self.assertRaisesRegex(AssertionError, "failed probe"):
+                    main()
+            case = ET.parse(reports / "TEST-starter-live.xml").getroot().find("testcase")
+            self.assertIn("failed probe", case.find("failure").attrib["message"])
 
 
 @unittest.skipUnless(os.environ.get("QQQ_STARTER_SOURCE") and os.environ.get("QQQ_TEMPLATE_SOURCE"),

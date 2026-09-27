@@ -24,7 +24,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.reports = self.sample / 'target' / 'surefire-reports'
         self.reports.mkdir(parents=True)
 
-    def run_gate(self, features=None, outcome='', report_only=False, stage='published'):
+    def run_gate(self, features=None, outcome='', report_only=False, stage='published', required=()):
         inventory = dict(self.inventory)
         if features is not None:
             inventory['features'] = features
@@ -33,7 +33,9 @@ class FeatureCoverageGateTest(unittest.TestCase):
             '<testsuite><testcase classname="SampleTest" name="testExample">'
             + outcome + '</testcase></testsuite>')
         run = subprocess.run([sys.executable, str(self.sample / 'verify-feature-coverage.py')]
-                             + ['--stage', stage] + (['--report-only'] if report_only else []), capture_output=True, text=True)
+                             + ['--stage', stage] + (['--report-only'] if report_only else [])
+                             + [part for feature in required for part in ('--require-feature', feature)],
+                             capture_output=True, text=True)
         result = self.sample / 'target' / 'feature-coverage-result.json'
         return run.returncode, json.loads(result.read_text()) if result.exists() else None
 
@@ -104,6 +106,42 @@ class FeatureCoverageGateTest(unittest.TestCase):
         (failsafe / 'TEST-sample.xml').write_text(
             '<testsuite><testcase classname="SampleTest" name="testExample"><failure/></testcase></testsuite>')
         self.assertEqual(1, self.run_gate()[0])
+
+    def test_required_starter_feature_reads_external_junit_and_rejects_failures(self):
+        starter = next(f for f in self.inventory['features'] if f['id'] == 'train.starter')
+        starter['verified_tests'] = ['qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes']
+        reports = self.sample / 'target' / 'starter-application-junit'
+        reports.mkdir()
+        command = [sys.executable, str(self.sample / 'verify-feature-coverage.py'), '--stage', 'source',
+                   '--require-feature', 'train.starter']
+        (self.sample / 'feature-coverage.json').write_text(json.dumps(self.inventory))
+        self.assertEqual(1, subprocess.run(command, capture_output=True).returncode)
+        report = reports / 'TEST-starter-live.xml'
+        report.write_text('<testsuite><testcase classname="qqq.acceptance.StarterApplicationSourceAcceptance" '
+                          'name="sourceGeneratedMySqlCrudAndNegativeProbes"/></testsuite>')
+        self.assertEqual(0, subprocess.run(command, capture_output=True).returncode)
+        report.write_text('<testsuite><testcase classname="qqq.acceptance.StarterApplicationSourceAcceptance" '
+                          'name="sourceGeneratedMySqlCrudAndNegativeProbes"><failure/></testcase></testsuite>')
+        self.assertEqual(1, subprocess.run(command, capture_output=True).returncode)
+
+    def test_repeatable_required_features_override_report_only_and_reject_all_bad_evidence(self):
+        required = ('train.starter', 'train.application')
+        self.assertEqual(0, self.run_gate(stage='source', report_only=True, required=required)[0])
+        self.assertFalse(self.run_gate(stage='source', report_only=True, required=required)[1]['complete'])
+        starter = next(f for f in self.inventory['features'] if f['id'] == 'train.starter')
+        starter['acceptance_status'] = 'pending'
+        self.assertEqual(1, self.run_gate(stage='source', report_only=True, required=required)[0])
+        starter['acceptance_status'] = 'verified'
+        starter['verified_tests'] = ['SampleTest#missing']
+        self.assertEqual(1, self.run_gate(stage='source', report_only=True, required=required)[0])
+        starter['verified_tests'] = ['SampleTest#testExample']
+        for outcome in ('<failure/>', '<error/>', '<skipped/>'):
+            self.assertEqual(1, self.run_gate(stage='source', report_only=True, required=required,
+                                              outcome=outcome)[0])
+        self.assertEqual(1, self.run_gate(stage='source', report_only=True,
+                                          required=('train.bom',))[0])
+        self.assertEqual(1, self.run_gate(stage='source', report_only=True,
+                                          required=('core.widget.generic',))[0])
 
     def test_only_reviewed_enum_placeholders_can_be_excluded(self):
         unsupported = next(f for f in self.inventory['features'] if f['id'] == 'core.widget.generic')

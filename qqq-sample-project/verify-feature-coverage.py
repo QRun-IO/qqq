@@ -20,6 +20,8 @@ def main():
     parser.add_argument('--stage', choices=('source', 'published'), default='published',
                         help='Source checks defer only explicitly marked public-artifact acceptance')
     parser.add_argument('--report-only', action='store_true', help='List gaps without certifying acceptance')
+    parser.add_argument('--require-feature', action='append', default=[],
+                        help='Require named inventory entry to have passing mapped reports')
     args = parser.parse_args()
     sample = Path(__file__).resolve().parent
     output = sample / 'target' / 'feature-coverage-result.json'
@@ -40,7 +42,7 @@ def main():
             parser.error('Invalid acceptance stage for ' + feature['id'] + ': expected ' + expected_stage)
 
     outcomes = {}
-    for directory in ('surefire-reports', 'failsafe-reports'):
+    for directory in ('surefire-reports', 'failsafe-reports', 'starter-application-junit'):
         for report in (sample / 'target' / directory).glob('TEST-*.xml'):
             for case in ET.parse(report).getroot().iter('testcase'):
                 name = case.attrib['classname'] + '#' + case.attrib['name']
@@ -87,6 +89,14 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + '\n')
     print(f"Sample features verified ({args.stage}): {result['verified']}/{result['features']}; report: {output}")
+    if args.require_feature:
+        required = set(args.require_feature)
+        unknown = required - set(identifiers)
+        if unknown:
+            parser.error('Unknown required feature: ' + ', '.join(sorted(unknown)))
+        failed = required & ({gap['id'] for gap in gaps}
+                             | {item['id'] for item in unsupported} | set(deferred))
+        return 1 if failed else 0
     return 0 if args.report_only or result['stage_passed'] else 1
 
 

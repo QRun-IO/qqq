@@ -8,12 +8,14 @@ QRun-IO/qqq-app-starter. All writes stay in a disposable work directory.
 import argparse
 import contextlib
 import os
+import re
 import shutil
 import socket
 import subprocess
 import tempfile
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -22,7 +24,6 @@ from live_starter_application import exercise, request
 
 
 HERE = Path(__file__).resolve().parent
-SNAPSHOT = "4.1.0-SNAPSHOT"
 QBIT_COORDINATES = "com.qrunio.acceptance:orderdesk-app:0.1.0-SNAPSHOT"
 ORIGINAL_PACKAGE = "com.kingsrook.qbits.example"
 GENERATED_PACKAGE = "com.qrunio.acceptance.orderdesk"
@@ -40,6 +41,15 @@ def require(condition, message):
 def revision(source):
     return subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"],
                           capture_output=True, text=True, check=True).stdout.strip()
+
+
+def qqq_version(source):
+    root = ET.parse(source / "pom.xml").getroot()
+    namespace = "{http://maven.apache.org/POM/4.0.0}"
+    value = root.findtext(f"{namespace}properties/{namespace}revision")
+    require(value is not None and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?", value),
+            "QQQ source must declare a literal root revision")
+    return value
 
 
 def copy_tracked_source(source, destination):
@@ -84,7 +94,7 @@ def expect_server_error(method, path):
         raise AssertionError(f"{path} unexpectedly succeeded")
 
 
-def run_live_mysql(base, starter, workdir):
+def run_live_mysql(base, starter, workdir, version):
     require_free_port(3306)
     require_free_port(8000)
     name = "qqq-acceptance-" + uuid.uuid4().hex[:12]
@@ -111,8 +121,8 @@ def run_live_mysql(base, starter, workdir):
         with (HERE / "starter-application-mysql.sql").open("rb") as schema:
             subprocess.run(["docker", "exec", "-i", name, "mysql", "-utest", "-ptest",
                             "qqq_starter_test"], stdin=schema, check=True, capture_output=True)
-        run(base + [f"-Dqqq.versions.bom={SNAPSHOT}", "-DskipTests", "package"], starter)
-        run(base + [f"-Dqqq.versions.bom={SNAPSHOT}",
+        run(base + [f"-Dqqq.versions.bom={version}", "-DskipTests", "package"], starter)
+        run(base + [f"-Dqqq.versions.bom={version}",
                     "-Dtest=StarterApplicationLivePermissionTest", "test"], starter)
         jars = list((starter / "target").glob("qqq-app-starter-*.jar"))
         require(len(jars) == 1, f"expected one shaded starter jar, found {len(jars)}")
@@ -229,9 +239,18 @@ def main():
     parser.add_argument("--qqq-source", type=Path, required=True)
     parser.add_argument("--maven-repo", type=Path, required=True)
     parser.add_argument("--workdir", type=Path)
+    parser.add_argument("--junit-dir", type=Path,
+                        help="new directory for durable consumer and live-runner JUnit reports")
+    parser.add_argument("--online", action="store_true",
+                        help="resolve dependencies into the dedicated Maven repository")
+    parser.add_argument("--maven-settings", type=Path)
     parser.add_argument("--live-mysql", action="store_true",
                         help="run disposable MySQL HTTP, permission, and failure probes")
     args = parser.parse_args()
+    if args.junit_dir:
+        require(args.live_mysql, "--junit-dir requires --live-mysql")
+        require(not args.junit_dir.exists(), "--junit-dir must not already exist")
+        args.junit_dir.mkdir(parents=True)
     if args.workdir:
         workdir = args.workdir.resolve()
         temp_roots = (Path(tempfile.gettempdir()).resolve(), Path("/private/tmp").resolve())
@@ -245,29 +264,54 @@ def main():
     with cleanup as disposable:
         if not args.workdir:
             workdir = Path(disposable)
-        execute(args, workdir)
+        failure = None
+        try:
+            execute(args, workdir)
+        except BaseException as error:
+            failure = error
+            raise
+        finally:
+            if args.junit_dir:
+                collect_junit(workdir, args.junit_dir, failure)
+
+
+def collect_junit(workdir, destination, failure):
+    for project in ("orderdesk-app", "starter"):
+        for report_type in ("surefire-reports", "failsafe-reports"):
+            for report in (workdir / project / "target" / report_type).glob("TEST-*.xml"):
+                shutil.copyfile(report, destination / f"TEST-{project}-{report.name[5:]}")
+    suite = ET.Element("testsuite", name="StarterApplicationSourceAcceptance", tests="1",
+                       failures="1" if failure else "0")
+    case = ET.SubElement(suite, "testcase", classname="qqq.acceptance.StarterApplicationSourceAcceptance",
+                         name="sourceGeneratedMySqlCrudAndNegativeProbes")
+    if failure:
+        ET.SubElement(case, "failure", message=str(failure), type=type(failure).__name__)
+    ET.ElementTree(suite).write(destination / "TEST-starter-live.xml", encoding="utf-8",
+                                xml_declaration=True)
 
 
 def execute(args, workdir):
-    require("<revision>4.1.0-SNAPSHOT</revision>" in (args.qqq_source / "pom.xml").read_text(),
-            "QQQ source is not a 4.1.0-SNAPSHOT checkout")
+    version = qqq_version(args.qqq_source)
     print("QQQ source:", revision(args.qqq_source), flush=True)
     print("starter source:", revision(args.starter_source), flush=True)
     print("application template source:", revision(args.template_source), flush=True)
-    base = ["mvn", "-o", "-B", "-q", f"-Dmaven.repo.local={args.maven_repo}"]
+    base = ["mvn"] + ([] if args.online else ["-o"]) + ["-B", "-q"]
+    if args.maven_settings:
+        base += ["-s", str(args.maven_settings)]
+    base += [f"-Dmaven.repo.local={args.maven_repo}"]
     modules = ",".join(("qqq-bom", "qqq-backend-core", "qqq-backend-module-rdbms",
                         "qqq-backend-module-api", "qqq-backend-module-filesystem",
                         "qqq-middleware-javalin", "qqq-middleware-api",
                         "qqq-middleware-picocli", "qqq-language-support-javascript"))
-    run(base + ["-Dmaven.test.skip=true", "-Dspotbugs.skip=true", "-Dpmd.skip=true",
+    run(base + ["-DskipTests", "-Dspotbugs.skip=true", "-Dpmd.skip=true",
                 "-pl", modules, "-am", "install"], args.qqq_source)
     template = workdir / "orderdesk-app"
     starter = workdir / "starter"
     generated = stage_template(args.template_source, template)
     stage_starter(args.starter_source, starter)
     require(len(list(generated.rglob("*.java"))) == 8, "generated QBit source count changed")
-    run(base + [f"-Dqqq.version={SNAPSHOT}", "clean", "install"], template)
-    run(base + [f"-Dqqq.versions.bom={SNAPSHOT}",
+    run(base + [f"-Dqqq.version={version}", "clean", "install"], template)
+    run(base + [f"-Dqqq.versions.bom={version}",
                 "-Dtest=StarterApplicationAcceptanceTest,StarterAppTest", "test"], starter)
     missing_dependency = workdir / "starter-without-qbit-dependency"
     stage_starter(args.starter_source, missing_dependency)
@@ -281,7 +325,7 @@ def execute(args, workdir):
 """
     require(content.count(dependency) == 1, "expected one QBit dependency")
     pom.write_text(content.replace(dependency, ""))
-    failed_build = subprocess.run(base + [f"-Dqqq.versions.bom={SNAPSHOT}", "test-compile"],
+    failed_build = subprocess.run(base + [f"-Dqqq.versions.bom={version}", "test-compile"],
                                   cwd=missing_dependency, capture_output=True, text=True)
     require(failed_build.returncode != 0, "host compiled without its QBit dependency")
     require("com.qrunio.acceptance.orderdesk" in failed_build.stdout + failed_build.stderr,
@@ -289,7 +333,7 @@ def execute(args, workdir):
     print(f"PASS: generated 8 Java sources; built {QBIT_COORDINATES}; integrated starter tests passed")
     print("PASS: removing host QBit dependency fails compilation")
     if args.live_mysql:
-        run_live_mysql(base, starter, workdir)
+        run_live_mysql(base, starter, workdir, version)
     if args.workdir:
         print(f"fixture retained: {workdir}")
     else:

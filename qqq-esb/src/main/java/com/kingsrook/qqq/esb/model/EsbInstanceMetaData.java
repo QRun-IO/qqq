@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.esb.publish.EsbProcessLifecycleListener;
 import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
 
 
@@ -102,8 +103,9 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    /*******************************************************************************
     ** Interpret ${env.*} (etc.) variables in each provider's connection fields,
-    ** and register the record change listener that publishes table events (once,
-    ** however many times the instance is enriched).
+    ** and register the listeners that publish table events and process
+    ** lifecycle events (each once, however many times the instance is
+    ** enriched).
     *******************************************************************************/
    @Override
    public void enrich(QInstance qInstance)
@@ -114,12 +116,26 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
          provider.interpretVariables(interpreter);
       }
 
-      boolean listenerRegistered = CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream()
-         .anyMatch(codeReference -> codeReference != null && EsbRecordChangeListener.class.getName().equals(codeReference.getName()));
-      if(!listenerRegistered)
+      if(!isRegistered(qInstance.getRecordChangeListeners(), EsbRecordChangeListener.class))
       {
          qInstance.withRecordChangeListener(new QCodeReference(EsbRecordChangeListener.class));
       }
+
+      if(!isRegistered(qInstance.getProcessLifecycleListeners(), EsbProcessLifecycleListener.class))
+      {
+         qInstance.withProcessLifecycleListener(new QCodeReference(EsbProcessLifecycleListener.class));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a list of listener code references includes the listener class.
+    *******************************************************************************/
+   private static boolean isRegistered(List<QCodeReference> listenerCodeReferences, Class<?> listenerClass)
+   {
+      return (CollectionUtils.nonNullList(listenerCodeReferences).stream()
+         .anyMatch(codeReference -> codeReference != null && listenerClass.getName().equals(codeReference.getName())));
    }
 
 

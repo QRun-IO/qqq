@@ -232,7 +232,7 @@ public final class EsbPublisher
    /*******************************************************************************
     ** The failure's message, or its class name if it has none.
     *******************************************************************************/
-   private static String getErrorText(Throwable throwable)
+   static String getErrorText(Throwable throwable)
    {
       return (StringUtils.hasContent(throwable.getMessage()) ? throwable.getMessage() : throwable.getClass().getSimpleName());
    }

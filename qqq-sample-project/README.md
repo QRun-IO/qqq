@@ -945,3 +945,66 @@ also pass. Logs are `/private/tmp/qqq-798-wave8-{core-rdbms,query-focused,sample
 archived reports are `/private/tmp/qqq-798-wave8-final-reports`. The query-statistics
 row remains pending solely for its unproven concurrent query cancellation scope;
 no requirement, release disposition or threshold is relaxed.
+
+### Scheduling acceptance (#569, #847, #853)
+
+`SampleSchedulingAcceptanceTest` owns a unique H2 database, RAM Quartz scheduler,
+Simple scheduler and registered application processes. Actual QQQ actions update
+sample Person records; independent JDBC connections verify committed results and
+unrelated rows. No sample HTTP server or shared broker is started. The legacy queue
+runner uses its real SDK against a disposable loopback, in-memory protocol fixture
+with synthetic credentials, not an SQS account or a claim about AWS delivery/IAM.
+
+Original [#569](https://github.com/QRun-IO/qqq/issues/569) coverage maps as follows
+(methods are in `com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest`):
+
+| Original requirement | Method and independent observation |
+| --- | --- |
+| Interval / initial delay / process runner | `simpleIntervalAndInitialDelayPersistProcessWrites` observes delayed, repeated writes and stopped executor state. `quartzHonorsInitialDelay` reads the native trigger date; `quartzDelayPrecedesActualProcessWrite` observes delayed dispatch and persisted data. Core `QuartzSchedulerTest#nativeTriggerHonorsComputedInitialDelay` also checks milliseconds, seconds, explicit zero, the existing default and precedence. |
+| Cron | `cronScheduleDispatchesAndUnscheduleAllRemovesIt` checks native expression/time zone, actual process persistence and removal of all jobs. |
+| Schedule / reschedule / duplicate identity / pause / resume / unschedule | `quartzIntervalPauseResumeRescheduleAndUnschedule` observes one native job after replacement, updated interval, retained paused state, resumed execution and removed identity. |
+| Automation runner | `automationRunnerPersistsHandlerResultAndStatus` runs the actual polling automation runner and handler; native Person data and status transition from pending to OK, with unrelated rows unchanged. |
+| Queue runner | `queueRunnerPersistsBodyBeforeAcknowledging` checks the received body drives persisted data and the actual SDK sends the expected receipt acknowledgement. `queueRunnerDoesNotAcknowledgeFailedProcess` checks no acknowledgement and unchanged native rows after a real application exception. |
+| Variant serial / parallel | `serialVariantsPersistDistinctRowsWithoutOverlap` and `parallelVariantsOverlapWithIsolatedSessionsAndRows` use latches to prove one-at-a-time versus concurrent execution, native job counts, per-variant sessions and distinct persisted rows. |
+| Invalid cron | `invalidCronPreservesNativeScheduleAndData` proves invalid new/replacement definitions do not replace native jobs or mutate data. Existing setup logs rejection; this is not a promise of caller-visible exceptions. Simple metadata correctly declares cron unsupported. |
+| Job exception | `failedProcessDoesNotPreventNextInterval` verifies the runner's actual logged diagnostic and later successful persistence. The existing process runner catches errors; native Quartz exception propagation is not claimed (see existing #502). |
+| Timeout / shutdown cleanup | `observerTimeoutDoesNotCancelAndShutdownWaitsForOwnedWork` holds an entered application step with an owned latch. A bounded observer wait times out while writes remain absent; releasing the latch allows native shutdown and persistence to complete. There is no configurable execution deadline in the inspected scheduling API, and this test does not claim forced job cancellation. |
+| Context isolation | `quartzContextSuccessIsolatedAndRestored`, `quartzContextFailureRestoresAndNextRunRecovers`, and the corresponding `simpleContext...` methods prove a job cannot inherit or mutate the prior named-object map. They verify exact map/instance/session identity, user/thread restoration, no mutation on failed work, and native persistence on the next run. Quartz uses native listener hooks; Simple wraps its unchanged registered runnable in a real `StandardScheduledExecutor` to seed/observe worker context. |
+
+Additional controls preserve existing boundaries. `disabledManagerDoesNotRegisterOrDispatch`
+checks the global disable switch without changing its previous setting.
+`managerStartupCurrentlyRequiresPostStartRegistration` characterizes a separate,
+unfixed startup limitation: the first `QScheduleManager.start()` leaves new Quartz
+metadata jobs absent; explicit post-start `setupAllSchedules()` registers them and
+then actual process work succeeds. This is not full initial-startup conformance.
+
+[#847](https://github.com/QRun-IO/qqq/issues/847) applies the already-computed delay
+through Quartz's existing trigger API. [#853](https://github.com/QRun-IO/qqq/issues/853)
+confines named-object ownership to the existing Quartz/Simple wrappers: save the
+nullable worker map, start the job with an empty map, and restore the exact prior
+map in finally. Global `CapturedContext` and public APIs remain unchanged.
+
+The scheduling row remains **pending**: independent review and full combined sample
+verification are outstanding, initial Quartz registration still needs resolution,
+and the original timeout expectation must be assessed against the existing
+wait/shutdown behavior without inventing a new deadline policy. The queue fixture
+does not certify external SQS behavior or SDK-client shutdown ownership. Requirements,
+release dispositions and existing deferrals are unchanged.
+
+Run focused acceptance after installing matching source artifacts into an isolated
+Maven cache:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml -Dtest=SampleSchedulingAcceptanceTest test
+```
+
+Fixture teardown releases owned blocked work, stops schedulers and its protocol
+server, removes only its process-state UUIDs, shuts down owned H2 and restores the
+caller's context. Full sample profiles remain separately coordinated with their
+shared broker owner.
+
+Focused validation passes **19 native cases, zero failures/errors/skips**. Matching
+core `clean install` passes **2,073 tests, zero failures/errors and 11 existing skips**,
+with normal quality gates, and all **46 Python checks** pass. No combined full sample
+run is claimed for this branch.

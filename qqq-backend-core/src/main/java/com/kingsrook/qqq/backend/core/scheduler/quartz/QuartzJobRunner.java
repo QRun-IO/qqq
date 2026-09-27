@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.scheduler.quartz;
 
 
+import java.io.Serializable;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
@@ -56,12 +57,17 @@ public class QuartzJobRunner implements Job
    public void execute(JobExecutionContext context) throws JobExecutionException
    {
       CapturedContext capturedContext = QContext.capture();
+      Map<String, Serializable> originalObjects = QContext.getObjects();
 
       String              name            = null;
       SchedulableType     schedulableType = null;
       Map<String, Object> params          = null;
       try
       {
+         ////////////////////////////////////////////////////////////////
+         // Each scheduled job owns its named objects, not the worker. //
+         ////////////////////////////////////////////////////////////////
+         QContext.setObjects(null);
          name = context.getJobDetail().getKey().getName();
 
          QuartzScheduler quartzScheduler = QuartzScheduler.getInstance();
@@ -93,7 +99,14 @@ public class QuartzJobRunner implements Job
       }
       finally
       {
-         QContext.init(capturedContext);
+         try
+         {
+            QContext.init(capturedContext);
+         }
+         finally
+         {
+            QContext.setObjects(originalObjects);
+         }
       }
    }
 

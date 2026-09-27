@@ -120,7 +120,7 @@ public final class EsbConnectionManager
 
    /*******************************************************************************
     ** Exclusively borrow a transacted publishing session. Capacity is bounded per
-    ** provider; exhaustion fails immediately instead of blocking record writes.
+    ** provider; healthy saturation waits interruptibly for a returned lease.
     ** Close the producer before committing the lease. Closing an uncommitted
     ** lease rolls back and discards it. Consumer openSession ownership is separate.
     *******************************************************************************/
@@ -477,7 +477,18 @@ public final class EsbConnectionManager
          }
          catch(JMSException | RuntimeException e)
          {
-            closeQuietly(session);
+            try
+            {
+               session.close();
+            }
+            catch(JMSException | RuntimeException cleanupFailure)
+            {
+               if(cleanupFailure != e)
+               {
+                  e.addSuppressed(cleanupFailure);
+               }
+               onConnectionLost(currentConnection, cleanupFailure);
+            }
             throw (new QException("Could not configure a session on ESB provider " + providerName, e));
          }
       }
@@ -492,13 +503,25 @@ public final class EsbConnectionManager
       synchronized PublishingSessionLease borrowPublishingSession() throws QException
       {
          Connection currentConnection = getOrConnect();
+         while(idlePublishingSessions.isEmpty() && publishingSessions.size() >= MAX_PUBLISHING_SESSIONS)
+         {
+            try
+            {
+               wait();
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               throw (new QException("Interrupted waiting for a publishing session on ESB provider " + providerName, e));
+            }
+            if(!isCurrent(currentConnection))
+            {
+               throw (new QException("Publishing connection changed or closed while waiting for ESB provider " + providerName));
+            }
+         }
          Session session = idlePublishingSessions.pollFirst();
          if(session == null)
          {
-            if(publishingSessions.size() >= MAX_PUBLISHING_SESSIONS)
-            {
-               throw (new QException("Publishing session pool exhausted for ESB provider " + providerName));
-            }
             session = openSession(true);
             if(!isCurrent(currentConnection))
             {
@@ -523,6 +546,7 @@ public final class EsbConnectionManager
             if(committed && isCurrent(leaseConnection))
             {
                idlePublishingSessions.addLast(session);
+               notifyAll();
                return;
             }
          }
@@ -543,6 +567,7 @@ public final class EsbConnectionManager
             synchronized(this)
             {
                publishingSessions.remove(session);
+               notifyAll();
             }
          }
       }
@@ -567,6 +592,7 @@ public final class EsbConnectionManager
       {
          idlePublishingSessions.clear();
          publishingSessions.clear();
+         notifyAll();
       }
 
 

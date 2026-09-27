@@ -28,6 +28,7 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -41,7 +42,9 @@ import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.EsbProviderType;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
 import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
+import com.kingsrook.qqq.esb.publish.EsbPublishOutput;
 import com.kingsrook.qqq.esb.publish.EsbPublisher;
+import com.kingsrook.qqq.esb.stats.EsbStats;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.DeliveryMode;
 import jakarta.jms.Message;
@@ -149,6 +152,7 @@ class PublishingPoolIT
                   reused.commit();
                }
             }
+            verifyNinthPublicationWaits(instance, manager, queueName, consumer);
             assertThat(EsbPublisher.getInstance().publish(queueName, List.of(event("must-rollback"), new EsbEvent())).getSuccess()).isFalse();
             try(var replacement = manager.borrowPublishingSession("pool"))
             {
@@ -172,6 +176,65 @@ class PublishingPoolIT
       {
          manager.closeAll();
          QContext.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A real public publisher remains pending at capacity, then delivers exactly
+    ** its event after one return. No capacity-only failure reaches the counters.
+    *******************************************************************************/
+   private void verifyNinthPublicationWaits(QInstance instance, EsbConnectionManager manager, String queueName, MessageConsumer consumer) throws Exception
+   {
+      List<EsbConnectionManager.PublishingSessionLease> held = new ArrayList<>();
+      FutureTask<EsbPublishOutput> publication = new FutureTask<>(() ->
+      {
+         try
+         {
+            QContext.init(instance, new QSession());
+            return (EsbPublisher.getInstance().publish(queueName, List.of(event("ninth"))));
+         }
+         finally
+         {
+            QContext.clear();
+         }
+      });
+      Thread publisher = new Thread(publication, "owned-native-ninth-publisher");
+      try
+      {
+         for(int i = 0; i < 8; i++)
+         {
+            held.add(manager.borrowPublishingSession("pool"));
+         }
+         publisher.start();
+         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+         while(publisher.isAlive() && publisher.getState() != Thread.State.WAITING && System.nanoTime() < deadline)
+         {
+            Thread.sleep(10);
+         }
+         assertThat(publisher.getState()).isEqualTo(Thread.State.WAITING);
+         assertThat(publisher.getStackTrace()).anyMatch(frame -> frame.getMethodName().equals("borrowPublishingSession"));
+         assertThat(publication.isDone()).isFalse();
+         assertThat(consumer.receive(200)).isNull();
+         held.getFirst().commit();
+         held.removeFirst().close();
+         var output = publication.get(5, TimeUnit.SECONDS);
+         assertThat(output.getSuccess()).isTrue();
+         assertThat(output.getSent()).isEqualTo(1);
+         Message message = consumer.receive(5000);
+         assertThat(message).isNotNull();
+         assertThat(message.getStringProperty("ce_id")).isEqualTo("ninth");
+         assertThat(message.getJMSDeliveryMode()).isEqualTo(DeliveryMode.PERSISTENT);
+         assertThat(consumer.receive(200)).isNull();
+         assertThat(EsbStats.getInstance().destination(queueName).publishFailures()).isZero();
+      }
+      finally
+      {
+         publisher.interrupt();
+         held.forEach(EsbConnectionManager.PublishingSessionLease::close);
+         publisher.join(5000);
+         assertThat(publisher.isAlive()).isFalse();
       }
    }
 

@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -35,6 +36,7 @@ import com.kingsrook.qqq.esb.envelope.EsbEvent;
 import com.kingsrook.qqq.esb.model.EsbDestinationType;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
+import com.kingsrook.qqq.esb.publish.EsbPublishOutput;
 import com.kingsrook.qqq.esb.publish.EsbPublisher;
 import com.kingsrook.qqq.esb.stats.EsbStats;
 import jakarta.jms.DeliveryMode;
@@ -121,39 +123,67 @@ class EsbPublishingPoolTest extends EsbTestBase
 
 
    /*******************************************************************************
-    ** Exhaustion follows the existing public failure/output contract and returns
-    ** capacity after release, without preventing independent consumer sessions.
+    ** Healthy saturation waits without dropping an event. Consumer sessions are
+    ** independent; releasing one lease lets the ninth public call commit once.
     *******************************************************************************/
    @Test
-   void exhaustionReportsFailureAndReleaseRestoresPublishing() throws Exception
+   void ninthPublicationWaitsForCapacityWithoutFailure() throws Exception
    {
       EsbConnectionManager manager = EsbConnectionManager.getInstance();
       String destination = "capacity-" + UUID.randomUUID();
-      EsbInstanceMetaData.of(QContext.getQInstance()).withDestination(new QEsbDestinationMetaData()
+      var instance = QContext.getQInstance();
+      var contextSession = QContext.getQSession();
+      EsbInstanceMetaData.of(instance).withDestination(new QEsbDestinationMetaData()
          .withName(destination).withProviderName(PROVIDER_NAME).withType(EsbDestinationType.QUEUE));
       List<EsbConnectionManager.PublishingSessionLease> held = new ArrayList<>();
-      try
+      FutureTask<EsbPublishOutput> publication = new FutureTask<>(() ->
+      {
+         try
+         {
+            QContext.init(instance, contextSession);
+            return (EsbPublisher.getInstance().publish(destination, List.of(event("ninth"))));
+         }
+         finally
+         {
+            QContext.clear();
+         }
+      });
+      Thread publisher = new Thread(publication, "owned-ninth-publisher");
+      try(Session receiver = manager.openSession(PROVIDER_NAME, false);
+         MessageConsumer consumer = receiver.createConsumer(receiver.createQueue(destination)))
       {
          for(int i = 0; i < 8; i++)
          {
             held.add(manager.borrowPublishingSession(PROVIDER_NAME));
          }
-         var output = EsbPublisher.getInstance().publish(destination, List.of(event("rejected")));
-         assertThat(output.getSuccess()).isFalse();
-         assertThat(output.getSent()).isZero();
-         assertThat(output.getError()).contains("exhausted");
-         assertThat(EsbStats.getInstance().destination(destination).publishFailures()).isEqualTo(1);
-         try(Session consumer = manager.openSession(PROVIDER_NAME, false))
+         publisher.start();
+         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+         while(publisher.isAlive() && publisher.getState() != Thread.State.WAITING && System.nanoTime() < deadline)
          {
-            assertThat(consumer.getTransacted()).isFalse();
+            Thread.sleep(10);
          }
+         assertThat(publisher.getState()).isEqualTo(Thread.State.WAITING);
+         assertThat(publication.isDone()).isFalse();
+         assertThat(consumer.receive(100)).isNull();
+         held.getFirst().commit();
+         held.removeFirst().close();
+         var output = publication.get(5, TimeUnit.SECONDS);
+         assertThat(output.getSuccess()).isTrue();
+         assertThat(output.getSent()).isEqualTo(1);
+         Message message = consumer.receive(5000);
+         assertThat(message).isNotNull();
+         assertThat(message.getStringProperty("ce_id")).isEqualTo("ninth");
+         assertThat(consumer.receive(100)).isNull();
+         assertThat(EsbStats.getInstance().destination(destination).publishFailures()).isZero();
+         assertThat(EsbStats.getInstance().destination(destination).published()).isEqualTo(1);
       }
       finally
       {
+         publisher.interrupt();
          held.forEach(EsbConnectionManager.PublishingSessionLease::close);
+         publisher.join(5000);
+         assertThat(publisher.isAlive()).isFalse();
       }
-      assertThat(EsbPublisher.getInstance().publish(destination, List.of(event("restored"))).getSuccess()).isTrue();
-      assertThat(EsbStats.getInstance().destination(destination).published()).isEqualTo(1);
    }
 
 

@@ -28,9 +28,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
@@ -63,6 +66,7 @@ class EsbPublishingLeaseTest
    });
    private boolean failConfigure;
    private boolean loseDuringConfigure;
+   private boolean failConfiguredSessionClose;
    private final EsbConnectionFactoryBuilder builder = new EsbConnectionFactoryBuilder()
    {
       @Override
@@ -76,6 +80,7 @@ class EsbPublishingLeaseTest
       {
          if(failConfigure)
          {
+            connections.getLast().sessions.getLast().failClose = failConfiguredSessionClose;
             throw (new JMSException("owned configure failure"));
          }
          if(loseDuringConfigure)
@@ -161,7 +166,7 @@ class EsbPublishingLeaseTest
 
 
    /*******************************************************************************
-    ** Eight truly concurrent borrowers hold distinct sessions. The ninth fails
+    ** Eight truly concurrent borrowers hold distinct sessions. The ninth waits
     ** while all are held; release restores capacity without growing the pool.
     *******************************************************************************/
    @Test
@@ -175,7 +180,7 @@ class EsbPublishingLeaseTest
       CountDownLatch release = new CountDownLatch(1);
       Set<Session> active = ConcurrentHashMap.newKeySet();
       List<Future<?>> work = new ArrayList<>();
-      try(var executor = Executors.newFixedThreadPool(8))
+      try(var executor = Executors.newFixedThreadPool(8); WaitingBorrow ninth = new WaitingBorrow())
       {
          try
          {
@@ -195,7 +200,7 @@ class EsbPublishingLeaseTest
             }
             assertThat(borrowed.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(active).hasSize(8);
-            assertThatThrownBy(provider::borrowPublishingSession).isInstanceOf(QException.class).hasMessageContaining("exhausted");
+            ninth.startAndAwaitWaiting();
             assertThat(connections.getFirst().sessions).hasSize(8);
          }
          finally
@@ -205,6 +210,11 @@ class EsbPublishingLeaseTest
          for(Future<?> future : work)
          {
             future.get(5, TimeUnit.SECONDS);
+         }
+         try(var lease = ninth.result.get(5, TimeUnit.SECONDS))
+         {
+            assertThat(active).contains(lease.getSession());
+            lease.commit();
          }
       }
       try(var next = provider.borrowPublishingSession())
@@ -380,6 +390,249 @@ class EsbPublishingLeaseTest
 
 
    /*******************************************************************************
+    ** Configuration plus close failure must not orphan an uncounted session.
+    ** Preserve both causes, retire that connection, and recover on a fresh one.
+    *******************************************************************************/
+   @Test
+   void configurationAndCleanupFailureRetiresConnection() throws Exception
+   {
+      failConfigure = true;
+      failConfiguredSessionClose = true;
+      assertThatThrownBy(provider::borrowPublishingSession).isInstanceOf(QException.class)
+         .satisfies(error ->
+         {
+            assertThat(error.getCause()).hasMessage("owned configure failure");
+            assertThat(error.getCause().getSuppressed()).hasSize(1);
+            assertThat(error.getCause().getSuppressed()[0]).hasMessage("owned close failure");
+         });
+      DriverConnection failed = connections.getFirst();
+      assertThat(reconnected.await(5, TimeUnit.SECONDS)).isTrue();
+      assertThat(failed.closed).isTrue();
+      assertThat(failed.sessions).hasSize(1).allSatisfy(session -> assertThat(session.closed).isTrue());
+      failConfigure = false;
+      try(var recovered = provider.borrowPublishingSession())
+      {
+         assertThat(recovered.getSession()).isNotSameAs(failed.sessions.getFirst().jms);
+         recovered.commit();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Interrupting a saturated borrower restores its interrupt flag and consumes
+    ** no session or slot. The other eight leases remain independently usable.
+    *******************************************************************************/
+   @Test
+   void interruptedWaiterDoesNotLeakCapacity() throws Exception
+   {
+      List<EsbConnectionManager.PublishingSessionLease> held = holdCapacity();
+      try(WaitingBorrow waiter = new WaitingBorrow())
+      {
+         waiter.startAndAwaitWaiting();
+         waiter.thread.interrupt();
+         assertThatThrownBy(() -> waiter.result.get(5, TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class)
+            .cause().isInstanceOf(QException.class).hasCauseInstanceOf(InterruptedException.class);
+         assertThat(waiter.interrupted).isTrue();
+         assertThat(connections.getFirst().sessions).hasSize(8);
+         held.getFirst().commit();
+         held.removeFirst().close();
+         try(var usable = provider.borrowPublishingSession())
+         {
+            usable.commit();
+         }
+         assertThat(connections.getFirst().sessions).hasSize(8);
+      }
+      finally
+      {
+         held.forEach(EsbConnectionManager.PublishingSessionLease::close);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Shutdown wakes blocked borrowers without reopening the closed provider.
+    *******************************************************************************/
+   @Test
+   void closeWakesWaiterWithoutReopening() throws Exception
+   {
+      List<EsbConnectionManager.PublishingSessionLease> held = holdCapacity();
+      try(WaitingBorrow waiter = new WaitingBorrow())
+      {
+         waiter.startAndAwaitWaiting();
+         provider.close();
+         assertThatThrownBy(() -> waiter.result.get(5, TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class)
+            .cause().isInstanceOf(QException.class).hasMessageContaining("changed or closed");
+         assertThat(connections).hasSize(1);
+         assertThat(connections.getFirst().sessions).allSatisfy(session -> assertThat(session.closed).isTrue());
+      }
+      finally
+      {
+         held.forEach(EsbConnectionManager.PublishingSessionLease::close);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A waiter belongs to its original generation: loss wakes it with failure,
+    ** and only a new call can borrow after reconnection.
+    *******************************************************************************/
+   @Test
+   void connectionLossWakesAndFencesWaiter() throws Exception
+   {
+      List<EsbConnectionManager.PublishingSessionLease> held = holdCapacity();
+      DriverConnection old = connections.getFirst();
+      try(WaitingBorrow waiter = new WaitingBorrow())
+      {
+         waiter.startAndAwaitWaiting();
+         old.listener.onException(new JMSException("owned loss with waiting publisher"));
+         assertThatThrownBy(() -> waiter.result.get(5, TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class)
+            .cause().isInstanceOf(QException.class).hasMessageContaining("changed or closed");
+         assertThat(reconnected.await(5, TimeUnit.SECONDS)).isTrue();
+         assertThat(old.closed).isTrue();
+         held.forEach(EsbConnectionManager.PublishingSessionLease::close);
+         try(var fresh = provider.borrowPublishingSession())
+         {
+            assertThat(old.sessions).noneMatch(session -> session.jms == fresh.getSession());
+            fresh.commit();
+         }
+         assertThat(connections.getLast().sessions).hasSize(1);
+      }
+      finally
+      {
+         held.forEach(EsbConnectionManager.PublishingSessionLease::close);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Discarding an abandoned lease frees a slot only after its native cleanup.
+    *******************************************************************************/
+   @Test
+   void discardedSessionCleanupWakesWaiter() throws Exception
+   {
+      List<EsbConnectionManager.PublishingSessionLease> held = holdCapacity();
+      DriverSession discarded = connections.getFirst().sessions.getFirst();
+      discarded.closeEntered = new CountDownLatch(1);
+      discarded.releaseClose = new CountDownLatch(1);
+      try(WaitingBorrow waiter = new WaitingBorrow(); var executor = Executors.newSingleThreadExecutor())
+      {
+         waiter.startAndAwaitWaiting();
+         Future<?> cleanup = executor.submit(held.getFirst()::close);
+         try
+         {
+            assertThat(discarded.closeEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(waiter.result.isDone()).isFalse();
+            assertThat(connections.getFirst().sessions).hasSize(8);
+         }
+         finally
+         {
+            discarded.releaseClose.countDown();
+         }
+         cleanup.get(5, TimeUnit.SECONDS);
+         try(var fresh = waiter.result.get(5, TimeUnit.SECONDS))
+         {
+            assertThat(fresh.getSession()).isNotSameAs(discarded.jms);
+            assertThat(discarded.closed).isTrue();
+            fresh.commit();
+         }
+         assertThat(connections.getFirst().sessions).hasSize(9);
+         assertThat(connections.getFirst().sessions.stream().filter(session -> !session.closed).count()).isEqualTo(8);
+      }
+      finally
+      {
+         discarded.releaseClose.countDown();
+         held.forEach(EsbConnectionManager.PublishingSessionLease::close);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Fill the pool without committing or releasing any lease.
+    *******************************************************************************/
+   private List<EsbConnectionManager.PublishingSessionLease> holdCapacity() throws QException
+   {
+      List<EsbConnectionManager.PublishingSessionLease> held = new ArrayList<>();
+      for(int i = 0; i < 8; i++)
+      {
+         held.add(provider.borrowPublishingSession());
+      }
+      return (held);
+   }
+
+
+
+   /*******************************************************************************
+    ** An owned borrower thread, observed inside the capacity wait, with bounded
+    ** test cleanup. Production capacity waiting has no arbitrary deadline.
+    *******************************************************************************/
+   private class WaitingBorrow implements AutoCloseable
+   {
+      private final AtomicBoolean interrupted = new AtomicBoolean();
+      private final FutureTask<EsbConnectionManager.PublishingSessionLease> result = new FutureTask<>(() ->
+      {
+         try
+         {
+            return (provider.borrowPublishingSession());
+         }
+         finally
+         {
+            interrupted.set(Thread.currentThread().isInterrupted());
+         }
+      });
+      private final Thread thread = new Thread(result, "owned-capacity-waiter");
+
+
+
+      /*******************************************************************************
+       ** Prove the thread entered Object.wait in checkout, rather than merely
+       ** being scheduled or blocked behind a held provider monitor.
+       *******************************************************************************/
+      void startAndAwaitWaiting() throws Exception
+      {
+         thread.start();
+         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+         while(thread.isAlive() && thread.getState() != Thread.State.WAITING && System.nanoTime() < deadline)
+         {
+            Thread.sleep(10);
+         }
+         assertThat(thread.getState()).isEqualTo(Thread.State.WAITING);
+         assertThat(thread.getStackTrace()).anyMatch(frame -> frame.getMethodName().equals("borrowPublishingSession"));
+         assertThat(result.isDone()).isFalse();
+      }
+
+
+
+      /*******************************************************************************
+       ** Interrupt and join even when an assertion fails; close a completed lease.
+       *******************************************************************************/
+      @Override
+      public void close() throws Exception
+      {
+         thread.interrupt();
+         thread.join(5000);
+         assertThat(thread.isAlive()).isFalse();
+         if(result.isDone())
+         {
+            try
+            {
+               result.get().close();
+            }
+            catch(ExecutionException expectedFailure)
+            {
+               // The owning test asserts the failure and its cause.
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Synchronous driver loss during setup cannot return a session of the failed
     ** generation, even before the background reconnect worker has run.
     *******************************************************************************/
@@ -469,6 +722,8 @@ class EsbPublishingLeaseTest
       private final boolean transacted;
       private CountDownLatch commitEntered;
       private CountDownLatch releaseCommit;
+      private CountDownLatch closeEntered;
+      private CountDownLatch releaseClose;
       private boolean failCommit;
       private boolean failRollback;
       private boolean failClose;
@@ -504,6 +759,11 @@ class EsbPublishingLeaseTest
             case "close" ->
             {
                closes++;
+               if(closeEntered != null)
+               {
+                  closeEntered.countDown();
+                  assertThat(releaseClose.await(5, TimeUnit.SECONDS)).isTrue();
+               }
                if(failClose)
                {
                   throw (new JMSException("owned close failure"));

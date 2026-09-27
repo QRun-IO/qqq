@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.LoadViaInsertOrUpdateStep;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 
 
@@ -63,6 +64,7 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
    public void runOnePage(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput) throws QException
    {
       super.runOnePage(runBackendStepInput, runBackendStepOutput);
+      assertSuccessfulRecords(runBackendStepOutput.getRecords(), "survivor write");
 
       @SuppressWarnings("unchecked")
       ListingHash<String, Serializable> otherTableIdsToDelete = (ListingHash<String, Serializable>) runBackendStepInput.getValue("otherTableIdsToDelete");
@@ -73,6 +75,11 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
       @SuppressWarnings("unchecked")
       ListingHash<String, QRecord> otherTableRecordsToStore = (ListingHash<String, QRecord>) runBackendStepInput.getValue("otherTableRecordsToStore");
 
+      //////////////////////////////////////////////////////////////////////////
+      // Preserve delete-before-replacement for application-selected children. //
+      // Only defer duplicate parents: their cascade must follow reassignment. //
+      //////////////////////////////////////////////////////////////////////////
+      DeleteInput duplicateDeleteInput = null;
       if(otherTableIdsToDelete != null)
       {
          for(String tableName : otherTableIdsToDelete.keySet())
@@ -81,7 +88,14 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
             deleteInput.setTableName(tableName);
             deleteInput.setPrimaryKeys(new ArrayList<>(otherTableIdsToDelete.get(tableName)));
             getTransaction().ifPresent(deleteInput::setTransaction);
-            new DeleteAction().execute(deleteInput);
+            if(tableName.equals(runBackendStepInput.getValueString(FIELD_DESTINATION_TABLE)))
+            {
+               duplicateDeleteInput = deleteInput;
+            }
+            else
+            {
+               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
+            }
          }
       }
 
@@ -95,7 +109,7 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
                deleteInput.setTableName(tableName);
                deleteInput.setQueryFilter(filter);
                getTransaction().ifPresent(deleteInput::setTransaction);
-               new DeleteAction().execute(deleteInput);
+               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
             }
          }
       }
@@ -115,14 +129,19 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
             insertInput.setTableName(tableName);
             insertInput.setRecords(recordsToInsert);
             getTransaction().ifPresent(insertInput::setTransaction);
-            new InsertAction().execute(insertInput);
+            assertSuccessfulRecords(new InsertAction().execute(insertInput).getRecords(), "related record insert");
 
             UpdateInput updateInput = new UpdateInput();
             updateInput.setTableName(tableName);
             updateInput.setRecords(recordsToUpdate);
             getTransaction().ifPresent(updateInput::setTransaction);
-            new UpdateAction().execute(updateInput);
+            assertSuccessfulRecords(new UpdateAction().execute(updateInput).getRecords(), "related record update");
          }
+      }
+
+      if(duplicateDeleteInput != null)
+      {
+         assertSuccessfulRecords(new DeleteAction().execute(duplicateDeleteInput).getRecordsWithErrors(), "record deletion");
       }
 
       AuditInput auditInput = (AuditInput) runBackendStepInput.getValue("auditInput");
@@ -131,6 +150,26 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
          // todo exec async?
          new AuditAction().execute(auditInput);
          runBackendStepInput.addValue("auditInput", null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Merge writes depend on each other. Surface record-level errors as load
+    ** failures so the configured transaction owner can roll back the merge.
+    *******************************************************************************/
+   private void assertSuccessfulRecords(List<QRecord> records, String operation) throws QException
+   {
+      if(records != null)
+      {
+         for(QRecord record : records)
+         {
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+            {
+               throw new QException("Merge failed during " + operation);
+            }
+         }
       }
    }
 

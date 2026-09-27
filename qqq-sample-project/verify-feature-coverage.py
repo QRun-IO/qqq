@@ -110,7 +110,9 @@ def main():
             gaps.append({'id': feature['id'], 'reasons': reasons})
 
     unavailable = set(deferred) | {item['id'] for item in unsupported} | {gap['id'] for gap in gaps}
-    required_passed = all(required not in unavailable for required in args.require_feature)
+    by_id = {feature['id']: feature for feature in features}
+    required_passed = all(required not in unavailable and by_id[required]['acceptance_status'] == 'verified'
+                          for required in args.require_feature)
     result = {
         'inventory_entries': len(features), 'features': len(features) - len(unsupported) - len(deferred),
         'verified': len(features) - len(unsupported) - len(deferred) - len(gaps),

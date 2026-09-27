@@ -21,6 +21,9 @@ class FeatureCoverageGateTest(unittest.TestCase):
                         '-qm', 'fixture'], check=True)
         self.sha = subprocess.check_output(['git', '-C', str(self.sample), 'rev-parse', 'HEAD'], text=True).strip()
         shutil.copy(Path(__file__).with_name('verify-feature-coverage.py'), self.sample)
+        manifest = Path(__file__).with_name('release-deferrals.json')
+        if manifest.exists():
+            shutil.copy(manifest, self.sample)
         self.inventory = json.loads(Path(__file__).with_name('feature-coverage.json').read_text())
         for feature in self.inventory['features']:
             if feature['acceptance_status'] != 'unsupported' and feature['id'] != 'sample.bootstrap':

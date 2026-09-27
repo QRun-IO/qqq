@@ -50,6 +50,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -63,6 +64,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.processes.implementations.mergeduplicates.AbstractMergeDuplicatesTransformStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.mergeduplicates.MergeDuplicatesLoadStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.mergeduplicates.MergeDuplicatesProcess;
@@ -212,6 +214,182 @@ class SampleMergeAcceptanceTest
       assertEquals(List.of(List.of("1", "2"), List.of("2", "2"), List.of("3", "2"), List.of("4", "2"), List.of("5", "2"), List.of("6", "3")), rows("SELECT id,person_id FROM pet ORDER BY id"));
       assertEquals(notes, rows("SELECT * FROM pet_note ORDER BY id"));
       assertEquals(unrelated, rows("SELECT * FROM person WHERE id>=3 ORDER BY id"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Process transaction: replacement survives filter deletion.
+    *******************************************************************************/
+   @Test
+   void processReplacementByFilter() throws Exception
+   {
+      assertRelatedReplacement("process", false, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Process transaction: replacement survives ID deletion.
+    *******************************************************************************/
+   @Test
+   void processReplacementById() throws Exception
+   {
+      assertRelatedReplacement("process", false, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Process transaction: replacement survives filter deletion and reuses its unique name.
+    *******************************************************************************/
+   @Test
+   void processUniqueReplacementByFilter() throws Exception
+   {
+      assertRelatedReplacement("process", true, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Process transaction: replacement survives ID deletion and reuses its unique name.
+    *******************************************************************************/
+   @Test
+   void processUniqueReplacementById() throws Exception
+   {
+      assertRelatedReplacement("process", true, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Page transaction: replacement survives filter deletion.
+    *******************************************************************************/
+   @Test
+   void pageReplacementByFilter() throws Exception
+   {
+      assertRelatedReplacement("page", false, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Page transaction: replacement survives ID deletion.
+    *******************************************************************************/
+   @Test
+   void pageReplacementById() throws Exception
+   {
+      assertRelatedReplacement("page", false, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Page transaction: replacement survives filter deletion and reuses its unique name.
+    *******************************************************************************/
+   @Test
+   void pageUniqueReplacementByFilter() throws Exception
+   {
+      assertRelatedReplacement("page", true, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Page transaction: replacement survives ID deletion and reuses its unique name.
+    *******************************************************************************/
+   @Test
+   void pageUniqueReplacementById() throws Exception
+   {
+      assertRelatedReplacement("page", true, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Native rows prove deletion precedes replacement and unrelated data is unchanged.
+    *******************************************************************************/
+   private void assertRelatedReplacement(String level, boolean unique, boolean deleteById) throws Exception
+   {
+      registerReplacementProcess();
+      if(unique)
+      {
+         sql("ALTER TABLE pet ADD CONSTRAINT merge_pet_name_unique UNIQUE(name)");
+         instance.getTable("pet").withUniqueKey(new UniqueKey("name"));
+      }
+      List<List<String>> unrelatedPeople = rows("SELECT * FROM person WHERE id>=3 ORDER BY id");
+      List<List<String>> unrelatedPets = rows("SELECT * FROM pet WHERE person_id=3 ORDER BY id");
+      RunProcessInput input = input("1,2", 1);
+      input.setProcessName("replaceSamplePets");
+      input.addValue("transactionLevel", level);
+      input.addValue("replacementName", unique ? "Toby" : "Replacement");
+      input.addValue("deleteById", deleteById);
+      RunProcessOutput output = run(input);
+      assertTrue(output.getException().isEmpty(), () -> output.getException().toString());
+      assertEquals(List.of(List.of(unique ? "Toby" : "Replacement", "1")), rows("SELECT name,person_id FROM pet WHERE person_id IN (1,2)"));
+      assertEquals(List.of(List.of("1", "Merged", "30")), rows("SELECT id,first_name,days_worked FROM person WHERE id IN (1,2)"));
+      assertEquals(List.of(), rows("SELECT * FROM pet_note"));
+      assertEquals(unrelatedPeople, rows("SELECT * FROM person WHERE id>=3 ORDER BY id"));
+      assertEquals(unrelatedPets, rows("SELECT * FROM pet WHERE person_id=3 ORDER BY id"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Failed replacement insertion restores the deleted children and grandchildren.
+    *******************************************************************************/
+   @Test
+   void replacementExceptionRollsBackDeletes() throws Exception
+   {
+      assertReplacementFailureRollsBack(false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Error-bearing output has the same rollback boundary as a thrown failure.
+    *******************************************************************************/
+   @Test
+   void replacementRecordErrorRollsBackDeletes() throws Exception
+   {
+      assertReplacementFailureRollsBack(true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Observe pending deletion inside the native transaction before rejecting insert.
+    *******************************************************************************/
+   private void assertReplacementFailureRollsBack(boolean recordError) throws Exception
+   {
+      registerReplacementProcess();
+      instance.getTable("pet").withCustomizer(TableCustomizers.PRE_INSERT_RECORD, new QCodeReference(FailReplacement.class));
+      Map<String, List<List<String>>> before = snapshot();
+      for(String level : List.of("process", "page"))
+      {
+         QContext.setObject("sawUncommittedReplacementDeletes", null);
+         RunProcessInput input = input("1,2", 1);
+         input.setProcessName("replaceSamplePets");
+         input.addValue("transactionLevel", level);
+         input.addValue("replacementName", recordError ? "Reject" : "Throw");
+         QException failure = assertThrows(QException.class, () -> run(input));
+         assertTrue(failure.toString().contains(recordError ? "related record insert" : "Owned replacement failure"), failure.toString());
+         assertEquals(Boolean.TRUE, QContext.getObject("sawUncommittedReplacementDeletes"));
+         assertEquals(before, snapshot());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Register replacement behavior through the same public process builder.
+    *******************************************************************************/
+   private void registerReplacementProcess()
+   {
+      instance.addProcess(MergeDuplicatesProcess.processMetaDataBuilder().withName("replaceSamplePets").withTableName("person")
+         .withMergeDuplicatesTransformStepClass(ReplacePets.class)
+         .withFields(List.of(new QFieldMetaData("survivorId", QFieldType.INTEGER), new QFieldMetaData("mergedFirstName", QFieldType.STRING)))
+         .getProcessMetaData());
    }
 
 
@@ -781,6 +959,84 @@ class SampleMergeAcceptanceTest
             throw (RuntimeException) QContext.getObject("ownedMergeFailure");
          }
          throw new IllegalStateException("Owned close diagnostic");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native transaction oracle distinguishes actual rollback from pre-write rejection.
+    *******************************************************************************/
+   public static class FailReplacement implements TableCustomizerInterface
+   {
+      /*******************************************************************************
+       ** The old children are gone in this transaction, while both parents still exist.
+       *******************************************************************************/
+      @Override
+      public List<QRecord> preInsert(InsertInput input, List<QRecord> records, boolean isPreview) throws QException
+      {
+         RDBMSTransaction transaction = (RDBMSTransaction) input.getTransaction();
+         try(Statement statement = transaction.getConnection().createStatement())
+         {
+            for(String table : List.of("pet", "pet_note"))
+            {
+               try(ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM " + table + (table.equals("pet") ? " WHERE person_id IN (1,2)" : "")))
+               {
+                  assertTrue(result.next());
+                  assertEquals(0, result.getInt(1));
+               }
+            }
+            try(ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM person WHERE id IN (1,2)"))
+            {
+               assertTrue(result.next());
+               assertEquals(2, result.getInt(1));
+            }
+            QContext.setObject("sawUncommittedReplacementDeletes", Boolean.TRUE);
+         }
+         catch(SQLException e)
+         {
+            throw new QException("Native replacement observation failed", e);
+         }
+         if("Throw".equals(records.get(0).getValueString("name")))
+         {
+            throw new QException("Owned replacement failure");
+         }
+         records.forEach(record -> record.withError(new BadInputStatusMessage("Owned replacement rejection")));
+         return records;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Existing application extension points support delete-and-replace associations.
+    *******************************************************************************/
+   public static class ReplacePets extends MergePeople
+   {
+      /*******************************************************************************
+       ** Deliberately replace all pets belonging to the duplicate group, rather than
+       ** using MergePeople's reparenting policy. No product-source seam is substituted.
+       *******************************************************************************/
+      @Override
+      public QRecord buildRecordToKeep(RunBackendStepInput input, List<QRecord> duplicates) throws QException
+      {
+         Integer survivorId = input.getValueInteger("survivorId");
+         QRecord survivor = duplicates.stream().filter(record -> survivorId.equals(record.getValueInteger("id"))).findFirst().orElseThrow();
+         List<Serializable> ids = duplicates.stream().map(record -> record.getValue("id")).toList();
+         QQueryFilter filter = new QQueryFilter().withCriteria(new QFilterCriteria("personId", QCriteriaOperator.IN, ids));
+         if(input.getValuePrimitiveBoolean("deleteById"))
+         {
+            addOtherTableIdsToDelete("pet", new QueryAction().execute(new QueryInput("pet").withFilter(filter)).getRecords()
+               .stream().map(record -> record.getValue("id")).toList());
+         }
+         else
+         {
+            addOtherTableFilterToDelete("pet", filter);
+         }
+         addOtherTableRecordsToStore("pet", List.of(new QRecord().withValue("name", input.getValueString("replacementName"))
+            .withValue("speciesId", 1).withValue("personId", survivorId)));
+         return new QRecord(survivor).withValue("firstName", input.getValueString("mergedFirstName"))
+            .withValue("daysWorked", duplicates.stream().mapToInt(record -> record.getValueInteger("daysWorked")).sum());
       }
    }
 

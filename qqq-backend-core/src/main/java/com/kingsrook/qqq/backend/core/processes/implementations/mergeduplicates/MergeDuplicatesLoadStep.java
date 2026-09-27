@@ -75,11 +75,45 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
       @SuppressWarnings("unchecked")
       ListingHash<String, QRecord> otherTableRecordsToStore = (ListingHash<String, QRecord>) runBackendStepInput.getValue("otherTableRecordsToStore");
 
-      /////////////////////////////////////////////////////////////////////////
-      // Reassign children before deleting duplicates: DeleteAction cascades //
-      // through their associations. A failed write must stop this merge so  //
-      // the existing ETL transaction can roll back instead of losing data.  //
-      /////////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////////
+      // Preserve delete-before-replacement for application-selected children. //
+      // Only defer duplicate parents: their cascade must follow reassignment. //
+      //////////////////////////////////////////////////////////////////////////
+      DeleteInput duplicateDeleteInput = null;
+      if(otherTableIdsToDelete != null)
+      {
+         for(String tableName : otherTableIdsToDelete.keySet())
+         {
+            DeleteInput deleteInput = new DeleteInput();
+            deleteInput.setTableName(tableName);
+            deleteInput.setPrimaryKeys(new ArrayList<>(otherTableIdsToDelete.get(tableName)));
+            getTransaction().ifPresent(deleteInput::setTransaction);
+            if(tableName.equals(runBackendStepInput.getValueString(FIELD_DESTINATION_TABLE)))
+            {
+               duplicateDeleteInput = deleteInput;
+            }
+            else
+            {
+               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
+            }
+         }
+      }
+
+      if(otherTableFiltersToDelete != null)
+      {
+         for(String tableName : otherTableFiltersToDelete.keySet())
+         {
+            for(QQueryFilter filter : otherTableFiltersToDelete.get(tableName))
+            {
+               DeleteInput deleteInput = new DeleteInput();
+               deleteInput.setTableName(tableName);
+               deleteInput.setQueryFilter(filter);
+               getTransaction().ifPresent(deleteInput::setTransaction);
+               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
+            }
+         }
+      }
+
       if(otherTableRecordsToStore != null)
       {
          for(String tableName : otherTableRecordsToStore.keySet())
@@ -105,31 +139,9 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
          }
       }
 
-      if(otherTableIdsToDelete != null)
+      if(duplicateDeleteInput != null)
       {
-         for(String tableName : otherTableIdsToDelete.keySet())
-         {
-            DeleteInput deleteInput = new DeleteInput();
-            deleteInput.setTableName(tableName);
-            deleteInput.setPrimaryKeys(new ArrayList<>(otherTableIdsToDelete.get(tableName)));
-            getTransaction().ifPresent(deleteInput::setTransaction);
-            assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
-         }
-      }
-
-      if(otherTableFiltersToDelete != null)
-      {
-         for(String tableName : otherTableFiltersToDelete.keySet())
-         {
-            for(QQueryFilter filter : otherTableFiltersToDelete.get(tableName))
-            {
-               DeleteInput deleteInput = new DeleteInput();
-               deleteInput.setTableName(tableName);
-               deleteInput.setQueryFilter(filter);
-               getTransaction().ifPresent(deleteInput::setTransaction);
-               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
-            }
-         }
+         assertSuccessfulRecords(new DeleteAction().execute(duplicateDeleteInput).getRecordsWithErrors(), "record deletion");
       }
 
       AuditInput auditInput = (AuditInput) runBackendStepInput.getValue("auditInput");

@@ -847,6 +847,18 @@ methods in `com.kingsrook.sampleapp.SampleMergeAcceptanceTest`:
 | Unique conflict | `uniqueConflictDoesNotConsumeDuplicate` installs a fixture-only native unique constraint and corresponding QQQ key; a conflicting survivor field fails without consuming the duplicate or its children. |
 | Failed merge rollback | `thrownLoadFailureRollsBackAlreadyUpdatedSurvivor` observes the survivor and reparented pet inside the live native transaction, then throws from the existing pre-delete customizer; independent JDBC proves rollback. The denied-write cases also test error-bearing output records, not only thrown exceptions. |
 
+Replacement regressions exercise the supported application transform's alternative
+policy of deleting existing pets and inserting a replacement attached to the survivor.
+`processReplacementByFilter` / `pageReplacementByFilter` and their `ById` counterparts
+prove the replacement survives while old children and their notes are removed.
+`processUniqueReplacementByFilter` / `pageUniqueReplacementByFilter` and their `ById`
+counterparts reuse an old pet's unique name under both a native constraint and QQQ
+metadata. All eight compare unrelated native rows. `replacementExceptionRollsBackDeletes`
+and `replacementRecordErrorRollsBackDeletes` observe old children/notes already
+removed inside the transaction before rejecting the insert; both process/page modes
+restore every original row. These preserve delete-before-replacement semantics while
+deferring only duplicate-parent ID deletion until reassignment succeeds.
+
 Additional boundary tests distinguish the existing transaction modes:
 `autocommitFailureStopsDeletionWithoutClaimingRollback` proves that an earlier
 survivor update remains committed under autocommit, while the duplicate, children
@@ -863,11 +875,12 @@ rows rather than a false rollback claim.
 
 The original compiling red cases exposed persisted association loss and continued
 deletions after rejected writes. [#843](https://github.com/QRun-IO/qqq/issues/843)
-tracks the correction: the merge load step stores/reassigns related records before
-deleting duplicates, rejects record-level action errors, and relies on the existing
+tracks the correction: the merge load step keeps application-selected child ID/filter
+deletes before replacement inserts, then stores/reassigns related records before
+deleting duplicate parents. It rejects record-level action errors and relies on the existing
 ETL transaction to roll back. The ETL owner now retains primary failures when cleanup
 also fails. No dependencies, public APIs, shared sample schema or provider policies
-are added. Focused validation is **17 native cases, zero failures/errors/skips**;
+are added. Focused validation is **27 native cases, zero failures/errors/skips**;
 the full core `clean install` also passes **2,063 tests, zero failures/errors and
 11 existing skips**, with configured quality checks unchanged. The ledger row
 remains **pending** for independent review and a combined full sample run.

@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerInterface;
@@ -62,6 +63,8 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
+import io.javalin.config.JavalinConfig;
+import org.eclipse.jetty.server.ServerConnector;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -70,6 +73,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -78,6 +82,81 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 public class SampleJavalinServerTest
 {
+   /*******************************************************************************
+    ** Ephemeral HTTP listeners must share the broker's loopback bind scope so
+    ** the OS cannot allocate its port to a competing wildcard listener.
+    *******************************************************************************/
+   @Test
+   void testEphemeralHttpListenerUsesLoopback() throws Exception
+   {
+      assertHttpListener(null, "127.0.0.1");
+   }
+
+
+
+   /*******************************************************************************
+    ** An explicit caller host takes precedence over the sample's bind default.
+    *******************************************************************************/
+   @Test
+   void testEphemeralHttpListenerPreservesConfiguredHost() throws Exception
+   {
+      assertHttpListener("localhost", "localhost");
+   }
+
+
+
+   /*******************************************************************************
+    ** Exercise the actual listener and caller route without external services.
+    *******************************************************************************/
+   private void assertHttpListener(String configuredHost, String expectedHost) throws Exception
+   {
+      SampleJavalinServer server = new SampleJavalinServer(new SampleMetaDataProvider()
+      {
+         /*******************************************************************************
+          **
+          *******************************************************************************/
+         @Override
+         public QInstance defineQInstance() throws QException
+         {
+            return SampleMetaDataProvider.defineTestInstance();
+         }
+      });
+      AtomicReference<Javalin> service = new AtomicReference<>();
+      Consumer<JavalinConfig> customizer = config ->
+      {
+         if(configuredHost != null)
+         {
+            config.jetty.host = configuredHost;
+         }
+         config.routes.get("/owned-listener", context -> context.result("owned-http"));
+      };
+      server.setPort(0);
+      server.withJavalinConfigurationCustomizer(service::set);
+      server.withJavalinConfigCustomizer(customizer);
+      try
+      {
+         server.start();
+         ServerConnector connector = (ServerConnector) service.get().jettyServer().server().getConnectors()[0];
+         assertEquals(expectedHost, connector.getHost());
+         assertSame(customizer, server.getJavalinConfigCustomizer());
+         try(HttpClient client = HttpClient.newHttpClient())
+         {
+            HttpResponse<String> response = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + connector.getLocalPort() + "/owned-listener"))
+               .timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            assertEquals("owned-http", response.body());
+         }
+      }
+      finally
+      {
+         server.stop();
+         QContext.clear();
+         ConnectionManager.resetConnectionProviders();
+      }
+   }
+
+
+
    /*******************************************************************************
     **
     *******************************************************************************/

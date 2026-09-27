@@ -60,12 +60,46 @@ public class MongoDBTransaction extends QBackendTransaction
     *******************************************************************************/
    public MongoDBTransaction(MongoDBBackendMetaData backend, MongoClient mongoClient)
    {
-      this.transactionsSupported = backend.getTransactionsSupported();
-      ClientSession clientSession = mongoClient.startSession();
+      this(backend, MongoClientContainer.openOwned(mongoClient));
+   }
 
-      if(transactionsSupported)
+
+
+   /*******************************************************************************
+    ** Keep the session opened with the owned client instead of starting another.
+    ******************************************************************************/
+   private MongoDBTransaction(MongoDBBackendMetaData backend, MongoClientContainer container)
+   {
+      this(backend, container.getMongoClient(), container.getMongoSession());
+   }
+
+
+
+   /*******************************************************************************
+    ** Adopt the client and its already-open session as one transaction owner.
+    ******************************************************************************/
+   public MongoDBTransaction(MongoDBBackendMetaData backend, MongoClient mongoClient, ClientSession clientSession)
+   {
+      this.transactionsSupported = backend.getTransactionsSupported();
+
+      try
       {
-         clientSession.startTransaction();
+         if(transactionsSupported)
+         {
+            clientSession.startTransaction();
+         }
+      }
+      catch(RuntimeException | Error failure)
+      {
+         try(MongoClient client = mongoClient)
+         {
+            clientSession.close();
+         }
+         catch(RuntimeException | Error closeFailure)
+         {
+            failure.addSuppressed(closeFailure);
+         }
+         throw failure;
       }
 
       String propertyName = "qqq.mongodb.logSlowTransactionSeconds";
@@ -198,10 +232,9 @@ public class MongoDBTransaction extends QBackendTransaction
    @Override
    public void close()
    {
-      try
+      try(MongoClient client = mongoClient)
       {
          this.clientSession.close();
-         this.mongoClient.close();
       }
       catch(Exception e)
       {

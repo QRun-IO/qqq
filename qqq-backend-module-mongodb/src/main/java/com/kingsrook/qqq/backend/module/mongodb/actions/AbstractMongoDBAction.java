@@ -122,7 +122,7 @@ public class AbstractMongoDBAction
       ////////////////////////////////////////////////////////////////////////////
       // indicate that this connection was newly opened via the true param here //
       ////////////////////////////////////////////////////////////////////////////
-      return (new MongoClientContainer(mongoClient, mongoClient.startSession(), true));
+      return (MongoClientContainer.openOwned(mongoClient));
    }
 
 

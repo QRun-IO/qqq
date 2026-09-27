@@ -42,6 +42,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.module.mongodb.actions.AbstractMongoDBAction;
+import com.kingsrook.qqq.backend.module.mongodb.actions.MongoClientContainer;
 import com.kingsrook.qqq.backend.module.mongodb.actions.MongoDBTransaction;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBBackendMetaData;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBTableBackendDetails;
@@ -65,6 +67,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -319,6 +322,47 @@ class SampleMongoReplicaSetIT
       assertEquals(0L, collection().countDocuments());
       new InsertAction().execute(new InsertInput(TABLE).withRecord(new QRecord().withValue("name", "Fresh client")));
       assertEquals(List.of("Fresh client"), nativeNames());
+   }
+
+
+
+   /*******************************************************************************
+    ** Direct native commands establish owned closure and borrowed usability.
+    ** The transaction, rather than the borrowed action, closes its client.
+    ******************************************************************************/
+   @Test
+   void testOwnedAndBorrowedClientHandlesFollowTransactionOwnership() throws Exception
+   {
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) QContext.getQInstance().getBackend(BACKEND);
+      AbstractMongoDBAction action = new AbstractMongoDBAction();
+      MongoClientContainer owned = action.openClient(backend, null);
+      MongoClient ownedClient = owned.getMongoClient();
+      try
+      {
+         assertEquals(1.0, ownedClient.getDatabase("admin").runCommand(owned.getMongoSession(), new Document("ping", 1)).getDouble("ok"));
+      }
+      finally
+      {
+         owned.closeIfNeeded();
+      }
+      assertThrows(IllegalStateException.class, () -> ownedClient.getDatabase("admin").runCommand(new Document("ping", 1)));
+
+      MongoClient transactionClient;
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(TABLE)))
+      {
+         MongoDBTransaction mongo = assertInstanceOf(MongoDBTransaction.class, transaction);
+         transactionClient = mongo.getMongoClient();
+         MongoClientContainer borrowed = action.openClient(backend, transaction);
+         assertSame(transactionClient, borrowed.getMongoClient());
+         assertSame(mongo.getClientSession(), borrowed.getMongoSession());
+         borrowed.closeIfNeeded();
+         new InsertAction().execute(new InsertInput(TABLE).withTransaction(transaction)
+            .withRecord(new QRecord().withValue("name", "Borrowed owner")));
+         transaction.commit();
+      }
+      assertThrows(IllegalStateException.class, () -> transactionClient.getDatabase("admin").runCommand(new Document("ping", 1)));
+      assertEquals(List.of("Borrowed owner"), nativeNames());
+      assertEquals(1, new QueryAction().execute(new QueryInput(TABLE)).getRecords().size());
    }
 
 

@@ -51,6 +51,32 @@ public class MongoClientContainer
 
 
    /*******************************************************************************
+    ** Start the session owned by a new client. If session initialization fails,
+    ** close that client while preserving the original failure.
+    ******************************************************************************/
+   public static MongoClientContainer openOwned(MongoClient mongoClient)
+   {
+      try
+      {
+         return (new MongoClientContainer(mongoClient, mongoClient.startSession(), true));
+      }
+      catch(RuntimeException | Error failure)
+      {
+         try
+         {
+            mongoClient.close();
+         }
+         catch(RuntimeException | Error closeFailure)
+         {
+            failure.addSuppressed(closeFailure);
+         }
+         throw failure;
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Getter for mongoClient
     *******************************************************************************/
    public MongoClient getMongoClient()
@@ -150,8 +176,10 @@ public class MongoClientContainer
    {
       if(needToClose)
       {
-         mongoSession.close();
-         mongoClient.close();
+         try(MongoClient client = mongoClient)
+         {
+            mongoSession.close();
+         }
       }
    }
 }

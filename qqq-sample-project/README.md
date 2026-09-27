@@ -500,9 +500,10 @@ empty and accumulated buffers. Invalid large slices previously started an upload
 the regression now requires no upload and unchanged buffered contents. The obsolete
 reproduction patch is removed in favor of these executable tests.
 
-Strict invalid-key/reference policy, failed-multipart cleanup, live AWS authorization
-and published-candidate acceptance remain unverified. Slice validation does not
-change those policies. Existing provider and release deferrals are unchanged.
+At the #829 checkpoint, invalid S3 key/reference cases and failed-multipart cleanup
+remained unverified; the #838 evidence and original-scope reassessment below update
+those gaps. Slice validation introduces no key policy. Live AWS and published-candidate
+acceptance remain separate; existing provider and release deferrals are unchanged.
 
 The reviewed [#826](https://github.com/QRun-IO/qqq/pull/826) dependency is merged for
 its JSON-null fix; its local-filesystem evidence remains separate. After installing
@@ -548,3 +549,99 @@ reservation was released after exit 0, with no retry or test suppression. The lo
 full log is `/private/tmp/qqq-829-sample-full-verify.log`; the pre-fix native failure
 is `/private/tmp/qqq-829-native-offset-red.log`. These are source results, not
 published-artifact or live AWS acceptance.
+
+
+#### Explicit multipart failure cleanup (#838)
+
+Three native regressions exercise explicit SDK failures during the second part of a
+write, the final part on close, and completion. A narrow JDK proxy delegates all other
+calls to the real SDK client. Before throwing, the independent oracle requires the
+same real upload ID and native part sizes: one 5 MiB part for a part failure, or
+5 MiB plus 1,048,593 bytes before completion. The write case supplies 10 MiB; the
+close/completion cases supply 6 MiB + 17 bytes. The caller uses the real
+`StorageAction` output stream in try-with-resources, so close is attempted even when
+write fails. Existing-object controls compare every native key and byte with the
+pre-write snapshot; the final-part case also verifies no new object is published.
+
+Against the published `1a94158` implementation, all three cleanup assertions failed:
+each upload ID and its uploaded parts remained after the exception and close attempt.
+The write failure was retried by close and still left the first part. The original
+red run is `/private/tmp/qqq-588-multipart-cleanup-red.log` (three failures, zero
+errors/skips), with an unchanged 13/13 passing baseline. The expanded red runs are
+`/private/tmp/qqq-838-module-red.log` and
+`/private/tmp/qqq-838-native-abort-red.log`.
+
+The minimal [#838](https://github.com/QRun-IO/qqq/issues/838) correction makes the
+stream terminal on SDK failure and attempts to abort only its initiated upload.
+The original exception is rethrown; an abort exception is attached as suppressed.
+Repeated close is a no-op and later writes reject reuse without any further SDK
+calls. Native regressions require no remaining upload after successful abort and
+unchanged native object state. A fourth native case injects abort failure: it checks
+the original exception identity, supplemental abort error and honestly retained
+upload/parts. Independent test teardown then aborts that residual upload and verifies
+empty namespaces before deleting the owned bucket/container. Module regressions
+also cover terminal behavior, successful content metadata and redundant close.
+
+This is distinct from #459: the explicit failed upload/completion calls do not publish
+a partial replacement in these probes; the existing source-copy partial-publication
+assertion remains unchanged. Injected faults do not prove AWS IAM behavior or rollback
+when completion succeeds server-side but its response is lost. Actual invalid
+key/reference cases, metadata-to-SDK credential propagation and connection-establishment
+timeout remain acceptance gaps; S3 stays pending. Ambiguous completion and public-artifact
+acceptance are separate unverified limits, not newly imposed atomicity requirements. No new storage SPI,
+mandatory atomicity contract or provider retry policy is introduced.
+
+
+Focused #838 verification passes all **17 native S3 cases**, retaining all 13 original
+cases and adding the four failure/cleanup cases. Full filesystem `clean install`
+(including verify) passes 114 tests with four existing skips and no failures/errors;
+Checkstyle reports zero violations and coverage gates pass. SpotBugs reports 38 and
+PMD 331 non-blocking findings; the two new PMD warnings concern the narrowly scoped
+runtime-exception cleanup catch and reference identity guard against self-suppression.
+No rules were suppressed or gates changed. All 46 top-level Python checks pass.
+
+The combined reviewed base is `4da03460068dd9cabea50caf65bf5405754d716f`; changed
+source dependencies were rebuilt into the task-owned cache, and the installed
+filesystem JAR matches the tested module JAR byte-for-byte. Green logs are
+`/private/tmp/qqq-838-filesystem-verify-install.log` and
+`/private/tmp/qqq-838-native-green.log`. Full sample verification of this new cleanup
+change is still pending an explicitly reserved broker slot; the earlier full sample
+result above does not certify this delta.
+
+
+#### Remaining original #588 scope
+
+The original issue asks for invalid-path, permission/credential-failure and connection-
+timeout evidence alongside supported record/storage behavior. It does not require a
+new key-rejection policy or general AWS IAM certification. Existing methods cover the
+record/cardinality/format contracts and their unsupported-operation boundaries,
+missing and malformed input, source-copy partial publication (#459), and now explicit
+multipart cleanup (#838). The row remains pending while the following work is reviewed
+and proved; these are proposed checks, not passing-test claims:
+
+- **Keys/references:** [AWS defines flat UTF-8 keys](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html),
+  with a 1,024-byte limit including prefixes. Valid examples include `folder/./file.txt`
+  and `folder/../file.txt`; some excess parent segments are invalid. Add native SDK
+  controls at 1,024 and 1,025 bytes (including multibyte text and the complete QQQ
+  prefix), plus a key whose parent-segment count exceeds all preceding normal segments.
+  Compare SDK rejection with public QQQ behavior and unchanged object/upload state;
+  document emulator differences instead of relabeling successful LocalStack writes as
+  AWS validation. Exercise valid dot segments as exact opaque keys, with distinct
+  normalized-key sentinels to detect aliasing on read/write/delete. Inspect missing or
+  empty QQQ references separately; do not assume a filesystem traversal rule applies.
+- **Credentials/permission:** current owned HTTP 403 cases prove SDK error propagation,
+  not selection of credentials from QQQ metadata or AWS permission enforcement. Use
+  synthetic metadata credentials through the production client-construction path and
+  verify their outgoing signing identity locally without exposing secrets. An allowed
+  control and denied operation should prove propagation and no writes on denial. Only
+  an actual provider contract unavailable locally calls for a QRun-controlled sandbox;
+  broad IAM certification is not a new acceptance requirement.
+- **Connection timeout:** the current fixture receives the request and delays its
+  response, so it proves a socket-read timeout. Establish a bounded owned network
+  fixture that actually stalls connection establishment and assert the precise SDK
+  cause plus native no-mutation/recovery. Connection refusal or an injected exception
+  alone must not be labeled a real connection timeout.
+
+The full sample verify for #838 also remains pending its exclusive broker reservation.
+No requirements, existing negative cases or pending status were removed by this
+reassessment; no blanket dot-segment rejection or new provider policy was added.

@@ -24,6 +24,8 @@ package com.kingsrook.sampleapp;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
@@ -41,19 +43,25 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.PatternSyntaxException;
 import com.amazonaws.ClientConfiguration;
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.AbortMultipartUploadRequest;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
 import com.amazonaws.services.s3.model.GroupGrantee;
 import com.amazonaws.services.s3.model.ListMultipartUploadsRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.ListPartsRequest;
+import com.amazonaws.services.s3.model.PartSummary;
 import com.amazonaws.services.s3.model.Permission;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.services.s3.model.UploadPartRequest;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
@@ -114,10 +122,12 @@ import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -548,6 +558,200 @@ public class SampleS3AcceptanceIT
       }
       assertArrayEquals(payload, nativeBytes(key));
       assertTrue(oracle.listMultipartUploads(new ListMultipartUploadsRequest(BUCKET).withPrefix(key)).getMultipartUploads().isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** A failed second part during write must not leave the first native part.
+    ******************************************************************************/
+   @Test
+   void failedMultipartWriteAbortsUploadAndPreservesExistingObject() throws Exception
+   {
+      assertFailedMultipartCleanup(MultipartFailure.WRITE_PART, true, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** A failed final-part upload on close must release the pending native upload.
+    ******************************************************************************/
+   @Test
+   void failedMultipartFinalPartAbortsUploadWithoutPublishing() throws Exception
+   {
+      assertFailedMultipartCleanup(MultipartFailure.FINAL_PART, false, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Completion fails after native parts exist; the prior object stays intact.
+    ******************************************************************************/
+   @Test
+   void failedMultipartCompletionAbortsUploadAndPreservesExistingObject() throws Exception
+   {
+      assertFailedMultipartCleanup(MultipartFailure.COMPLETION, true, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** If abort itself fails, report both failures and prove the residual state.
+    ** Independent fixture teardown still owns its final native cleanup.
+    ******************************************************************************/
+   @Test
+   void failedMultipartAbortPreservesOriginalAndResidualParts() throws Exception
+   {
+      assertFailedMultipartCleanup(MultipartFailure.COMPLETION, true, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Only the selected SDK operation fails. Initiation, earlier part uploads and
+    ** native readback use real clients. This is not an IAM or network fault test.
+    ******************************************************************************/
+   private void assertFailedMultipartCleanup(MultipartFailure point, boolean existingObject, boolean failAbort) throws Exception
+   {
+      String reference = "failed-multipart.bin";
+      String key = prefix + "/files/" + reference;
+      if(existingObject)
+      {
+         oracle.putObject(BUCKET, key, "previous complete object");
+      }
+      Map<String, String> before = snapshot();
+      int partSize = 5 * 1024 * 1024;
+      byte[] payload = new byte[point == MultipartFailure.WRITE_PART ? 2 * partSize : 6 * 1024 * 1024 + 17];
+      for(int i = 0; i < payload.length; i++)
+      {
+         payload[i] = (byte) (i % 251);
+      }
+      List<String> uploadsBeforeFailure = new ArrayList<>();
+      List<List<Long>> partsBeforeFailure = new ArrayList<>();
+      List<SdkClientException> injectedFailures = new ArrayList<>();
+      List<String> sdkCalls = new ArrayList<>();
+      AtomicInteger abortAttempts = new AtomicInteger();
+      SdkClientException abortFailure = new SdkClientException("synthetic abort failure");
+      AmazonS3 normalClient = actionClient;
+      AmazonS3 faultClient = (AmazonS3) Proxy.newProxyInstance(AmazonS3.class.getClassLoader(), new Class<?>[] { AmazonS3.class }, (proxy, method, arguments) ->
+      {
+         sdkCalls.add(method.getName());
+         if(method.getName().equals("abortMultipartUpload"))
+         {
+            AbortMultipartUploadRequest request = (AbortMultipartUploadRequest) arguments[0];
+            assertEquals(BUCKET, request.getBucketName());
+            assertEquals(key, request.getKey());
+            assertTrue(uploadsBeforeFailure.contains(request.getUploadId()));
+            abortAttempts.incrementAndGet();
+            if(failAbort)
+            {
+               throw abortFailure;
+            }
+         }
+         String uploadId = null;
+         if(point == MultipartFailure.COMPLETION && method.getName().equals("completeMultipartUpload"))
+         {
+            CompleteMultipartUploadRequest request = (CompleteMultipartUploadRequest) arguments[0];
+            assertEquals(BUCKET, request.getBucketName());
+            assertEquals(key, request.getKey());
+            uploadId = request.getUploadId();
+         }
+         else if(point != MultipartFailure.COMPLETION && method.getName().equals("uploadPart"))
+         {
+            UploadPartRequest request = (UploadPartRequest) arguments[0];
+            if(request.getPartNumber() == 2)
+            {
+               assertEquals(BUCKET, request.getBucketName());
+               assertEquals(key, request.getKey());
+               uploadId = request.getUploadId();
+            }
+         }
+         if(uploadId != null)
+         {
+            var uploads = oracle.listMultipartUploads(new ListMultipartUploadsRequest(BUCKET).withPrefix(key)).getMultipartUploads();
+            assertEquals(1, uploads.size(), "a real upload must exist before the injected failure");
+            assertEquals(key, uploads.get(0).getKey());
+            assertEquals(uploadId, uploads.get(0).getUploadId());
+            List<Long> sizes = oracle.listParts(new ListPartsRequest(BUCKET, key, uploadId)).getParts().stream().map(PartSummary::getSize).toList();
+            assertEquals(point == MultipartFailure.COMPLETION ? List.of((long) partSize, (long) payload.length - partSize) : List.of((long) partSize), sizes);
+            assertEquals(before, snapshot(), "pending parts must not replace an existing object or publish a new one");
+            uploadsBeforeFailure.add(uploadId);
+            partsBeforeFailure.add(sizes);
+            SdkClientException failure = new SdkClientException("synthetic multipart " + point + " failure");
+            injectedFailures.add(failure);
+            throw failure;
+         }
+         try
+         {
+            return method.invoke(normalClient, arguments);
+         }
+         catch(InvocationTargetException failure)
+         {
+            throw failure.getCause();
+         }
+      });
+      OutputStream output;
+      SdkClientException originalFailure;
+      try
+      {
+         actionClient = faultClient;
+         output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference));
+         originalFailure = assertThrows(SdkClientException.class, () ->
+         {
+            try(output)
+            {
+               output.write(payload);
+            }
+         });
+         assertEquals("synthetic multipart " + point + " failure", originalFailure.getMessage());
+         assertSame(injectedFailures.get(0), originalFailure);
+      }
+      finally
+      {
+         actionClient = normalClient;
+      }
+      assertFalse(uploadsBeforeFailure.isEmpty(), "the failure must occur after native upload and part creation");
+      assertEquals(before, snapshot(), "an explicit SDK failure must preserve the prior native object state");
+      var remaining = oracle.listMultipartUploads(new ListMultipartUploadsRequest(BUCKET).withPrefix(key)).getMultipartUploads();
+      List<List<Long>> remainingPartSizes = new ArrayList<>();
+      for(var upload : remaining)
+      {
+         assertEquals(key, upload.getKey());
+         assertTrue(uploadsBeforeFailure.contains(upload.getUploadId()));
+         remainingPartSizes.add(oracle.listParts(new ListPartsRequest(BUCKET, key, upload.getUploadId())).getParts().stream().map(PartSummary::getSize).toList());
+      }
+      assertEquals(failAbort ? 1 : 0, remaining.size(), point + ": native part sizes before failure=" + partsBeforeFailure
+         + "; remaining native part sizes=" + remainingPartSizes + "; native objects unchanged; caller already attempted close");
+      if(failAbort)
+      {
+         assertEquals(List.of(partsBeforeFailure.get(0)), remainingPartSizes, "an unsuccessful abort must not be reported as cleanup");
+      }
+      assertEquals(1, abortAttempts.get(), "attempt cleanup exactly once for the owned upload");
+      assertEquals(failAbort ? 1 : 0, originalFailure.getSuppressed().length);
+      if(failAbort)
+      {
+         assertSame(abortFailure, originalFailure.getSuppressed()[0]);
+      }
+      List<String> atFailure = List.copyOf(sdkCalls);
+      assertDoesNotThrow(output::close);
+      assertDoesNotThrow(output::close);
+      assertThrows(IOException.class, () -> output.write(1));
+      assertThrows(IOException.class, () -> output.write(new byte[] { 2 }));
+      assertThrows(IOException.class, () -> output.write(new byte[0], 0, 0));
+      assertEquals(atFailure, sdkCalls, "close/reuse cannot retry, abort again or republish failed work");
+      assertEquals(before, snapshot());
+   }
+
+
+
+   /*******************************************************************************
+    ** Distinct stream boundaries retain the same real multipart setup and oracle.
+    ******************************************************************************/
+   private enum MultipartFailure
+   {
+      WRITE_PART,
+      FINAL_PART,
+      COMPLETION
    }
 
 

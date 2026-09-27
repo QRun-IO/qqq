@@ -162,6 +162,6 @@ public class MongoDBBackendModule implements QBackendModuleInterface
    {
       MongoDBBackendMetaData backend              = (MongoDBBackendMetaData) input.getBackend();
       MongoClientContainer   mongoClientContainer = new AbstractMongoDBAction().openClient(backend, null);
-      return (new MongoDBTransaction(backend, mongoClientContainer.getMongoClient()));
+      return (new MongoDBTransaction(backend, mongoClientContainer.getMongoClient(), mongoClientContainer.getMongoSession()));
    }
 }

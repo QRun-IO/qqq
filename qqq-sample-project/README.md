@@ -515,10 +515,10 @@ mvn -B -o -nsu -Dmaven.repo.local="$S3_ACCEPTANCE_M2" -f qqq-sample-project/pom.
   clean test-compile failsafe:integration-test failsafe:verify
 ```
 
-Normal `-Pacceptance-tests clean verify` discovers the same IT class. Full combined
-sample verification is still required before push and must be scheduled exclusively
-because other sample classes share embedded Artemis port 61616. Focused verification
-does not claim that full gate or clean-cache public-artifact acceptance.
+Normal `-Pacceptance-tests clean verify` discovers the same IT class. Full sample
+runs must be scheduled exclusively because other sample classes share embedded
+Artemis port 61616. Focused verification does not claim clean-cache public-artifact
+acceptance.
 
 After #829, the focused acceptance Failsafe run passes 13/13 S3 cases, including
 the previously failing native slice regression, with zero failures, errors or skips.
@@ -526,5 +526,25 @@ The full filesystem module `clean install` (including verify) passes 110 tests w
 four existing skips, zero Checkstyle violations and all coverage checks satisfied.
 Existing non-blocking analysis still reports 38 SpotBugs and 329 PMD findings; no
 gates were relaxed. The module JAR and the isolated-cache JAR used by the sample
-match byte-for-byte. All 23 Python ledger tests pass. Requiring the S3 row explicitly
-still fails the feature gate, as intended while its remaining gaps are open.
+match byte-for-byte. Requiring the S3 row explicitly still fails the feature gate,
+as intended while its remaining gaps are open.
+
+Full verification at signed source `8fe813138794cc6d891145a95197195fa315acff` passes
+**760 unit + 102 integration/browser tests (862 total)**, with zero failures, errors
+or skips, including all 13 S3 cases. The single reserved run completed in 9:14:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local="$S3_ACCEPTANCE_M2" \
+  -Djdk.httpclient.HttpClient.log=errors,channel \
+  -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
+```
+
+The data QBit fixture was rebuilt from the same checkout into the isolated cache
+before verification. Checkstyle reports zero violations; JaCoCo class coverage is
+39/41 (95.12%), satisfying the unchanged gate. Line coverage is 877/969 (90.51%).
+All 46 top-level Python checks pass; the current source ledger reports 91/127
+verified features while S3 remains pending for the boundaries above. The broker
+reservation was released after exit 0, with no retry or test suppression. The local
+full log is `/private/tmp/qqq-829-sample-full-verify.log`; the pre-fix native failure
+is `/private/tmp/qqq-829-native-offset-red.log`. These are source results, not
+published-artifact or live AWS acceptance.

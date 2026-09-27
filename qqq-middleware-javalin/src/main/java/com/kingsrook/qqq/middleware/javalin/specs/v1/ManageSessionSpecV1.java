@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
@@ -26,6 +25,9 @@ import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.executors.ManageSessionExecutor;
@@ -58,6 +60,13 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
 {
    private static final String BASIC_PREFIX = "Basic ";
 
+   ////////////////////////////////////////////////////////////////////////////
+   // request attributes set by buildInput: the session is resumed from the  //
+   // sessionUUID cookie, or a sign-in replaces the browser's session        //
+   ////////////////////////////////////////////////////////////////////////////
+   private static final String RESUMED_FROM_COOKIE_ATTRIBUTE = "qqq.manageSession.resumedFromCookie";
+   private static final String REPLACES_SESSION_ATTRIBUTE    = "qqq.manageSession.replacesSession";
+
 
    /***************************************************************************
     **
@@ -79,7 +88,12 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
             
             For the `TABLE_BASED` type, send the user's credentials in an `Authorization: Basic` header (base64 of
             `username:password`, UTF-8); the body may be empty.  The password is verified against the user table and a
-            session row is stored; a `401` response means the credentials were refused.""");
+            session row is stored; a `401` response means the credentials were refused.
+
+            To resume the session the browser already holds (for example after a page reload), post an empty object:
+            a request with no credentials and no `sessionUUID` resumes the session named by the `sessionUUID` cookie,
+            which may be `HttpOnly`.  That response carries the session's `values` but not its `uuid`; a `401`
+            response means there is no valid session to resume.""");
    }
 
 
@@ -105,8 +119,37 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       {
          String sessionUuid = result.getUuid();
          QJavalinImplementation.setSessionCookie(context, QJavalinImplementation.SESSION_UUID_COOKIE_NAME, sessionUuid);
+
+         ////////////////////////////////////////////////////////////////////////////////
+         // secured routes read sessionId before sessionUUID, so a password or OAuth2  //
+         // code sign-in also points sessionId (for modules that use it) at the new    //
+         // session: a sessionId left from an earlier session (the browser cannot      //
+         // clear an HttpOnly cookie) must not shadow it (QRun-IO/qqq#733).            //
+         ////////////////////////////////////////////////////////////////////////////////
+         if(Boolean.TRUE.equals(context.attribute(REPLACES_SESSION_ATTRIBUTE)) && new QAuthenticationModuleDispatcher().getQModule(qInstance.getAuthentication()).usesSessionIdCookie())
+         {
+            QJavalinImplementation.setSessionCookie(context, QJavalinImplementation.SESSION_ID_COOKIE_NAME, sessionUuid);
+         }
       }
       return (result);
+   }
+
+
+
+   /***************************************************************************
+    ** Do not return the session token when its cookie is HttpOnly, whether
+    ** signing in or resuming. A cookie-based resume also omits it in the
+    ** readable-cookie mode (QRun-IO/qqq#733).
+    ***************************************************************************/
+   @Override
+   public void handleOutput(Context context, ManageSessionResponseV1 output) throws Exception
+   {
+      if(QJavalinImplementation.getSessionCookieHttpOnly() || Boolean.TRUE.equals(context.attribute(RESUMED_FROM_COOKIE_ATTRIBUTE)))
+      {
+         context.result(JsonUtils.toJson(new ManageSessionResponseV1().withValues(output.getValues())));
+         return;
+      }
+      super.handleOutput(context, output);
    }
 
 
@@ -141,7 +184,7 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
                )
                .withProperty("sessionUUID", new Schema()
                   .withType(Type.STRING)
-                  .withDescription("UUID of an existing session (from its sessionUUID cookie), to resume it instead of signing in again.")
+                  .withDescription("UUID of an existing session, to resume it instead of signing in again.  Omit it (and all credentials) to resume the session named by the sessionUUID cookie.")
                )
             )
          ));
@@ -184,6 +227,29 @@ public class ManageSessionSpecV1 extends AbstractEndpointSpec<ManageSessionInput
       if(authorization != null && authorization.startsWith(BASIC_PREFIX))
       {
          manageSessionInput.setBasicAuthString(authorization.substring(BASIC_PREFIX.length()).trim());
+      }
+
+      if(StringUtils.hasContent(manageSessionInput.getBasicAuthString()) || StringUtils.hasContent(manageSessionInput.getCode()))
+      {
+         context.attribute(REPLACES_SESSION_ATTRIBUTE, true);
+      }
+
+      //////////////////////////////////////////////////////////////////////////////
+      // a request with no credentials and no session uuid resumes the session    //
+      // named by the sessionUUID cookie, so a dashboard can resume it without    //
+      // reading the (HttpOnly) cookie in the browser (QRun-IO/qqq#733)           //
+      //////////////////////////////////////////////////////////////////////////////
+      boolean namesCredentialsOrSession = StringUtils.hasContent(manageSessionInput.getAccessToken())
+         || StringUtils.hasContent(manageSessionInput.getCode())
+         || StringUtils.hasContent(manageSessionInput.getCodeVerifier())
+         || StringUtils.hasContent(manageSessionInput.getRedirectUri())
+         || StringUtils.hasContent(manageSessionInput.getSessionUUID())
+         || StringUtils.hasContent(manageSessionInput.getBasicAuthString());
+      String cookieSessionUUID = context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME);
+      if(!namesCredentialsOrSession && StringUtils.hasContent(cookieSessionUUID))
+      {
+         manageSessionInput.setSessionUUID(cookieSessionUUID);
+         context.attribute(RESUMED_FROM_COOKIE_ATTRIBUTE, true);
       }
 
       return (manageSessionInput);

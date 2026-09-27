@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
@@ -26,6 +25,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendAppMetaData;
@@ -38,6 +39,7 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.MetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
@@ -55,6 +57,20 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableM
  *******************************************************************************/
 public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 {
+   ///////////////////////////////////////////////////////////////////////////////
+   // the environment values published to frontends (QRun-IO/qqq#730): exactly  //
+   // these names, plus any name in the analytics namespace (ANALYTICS_*), which //
+   // analytics provider plugins and the frontends' analytics opt-ins use.       //
+   ///////////////////////////////////////////////////////////////////////////////
+   @OpenAPIExclude()
+   public static final Set<String> PUBLISHED_ENVIRONMENT_VALUE_NAMES = Set.of(
+      "ANALYTICS_PROVIDERS", "ANALYTICS_PLUGIN_SCRIPTS", "ANALYTICS_PLUGIN_SCRIPT_URLS",
+      "GOOGLE_ANALYTICS_ENABLED", "GOOGLE_ANALYTICS_TRACKING_ID",
+      "POSTHOG_ENABLED", "POSTHOG_API_KEY", "POSTHOG_PROJECT_API_KEY", "POSTHOG_HOST");
+
+   @OpenAPIExclude()
+   public static final String PUBLISHED_ENVIRONMENT_VALUE_PREFIX = "ANALYTICS_";
+
    @OpenAPIDescription("Map of all apps within the QQQ Instance (that the user has permission to see that they exist).")
    @OpenAPIMapValueType(value = AppMetaData.class, useRef = true)
    private Map<String, AppMetaData> apps;
@@ -88,6 +104,29 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    @OpenAPIDescription("Instance-level help content, by slot name (for example the query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource slots).  Omitted when the instance defines none.")
    @OpenAPIHasAdditionalProperties()
    private Map<String, List<QHelpContent>> helpContents;
+   @OpenAPIDescription("Environment values a frontend may use: the analytics settings (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS, GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED, POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit allow-list - never the whole environment.  Omitted when none are set.")
+   @OpenAPIMapValueType(String.class)
+   private Map<String, String> environmentValues;
+
+
+
+   /*******************************************************************************
+    ** The allow-listed environment values, sorted by name, or null when there are
+    ** none (so the property is omitted).
+    *******************************************************************************/
+   static Map<String, String> publishedEnvironmentValues(Map<String, String> environmentValues)
+   {
+      Map<String, String> published = new TreeMap<>();
+      for(Map.Entry<String, String> entry : CollectionUtils.nonNullMap(environmentValues).entrySet())
+      {
+         String name = entry.getKey();
+         if(name != null && entry.getValue() != null && (PUBLISHED_ENVIRONMENT_VALUE_NAMES.contains(name) || name.startsWith(PUBLISHED_ENVIRONMENT_VALUE_PREFIX)))
+         {
+            published.put(name, entry.getValue());
+         }
+      }
+      return (published.isEmpty() ? null : published);
+   }
 
 
 
@@ -138,6 +177,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
       supplementalInstanceMetaData = SupplementalInstanceMetaData.of(metaDataOutput);
 
       helpContents = CollectionUtils.nullSafeHasContents(metaDataOutput.getHelpContents()) ? metaDataOutput.getHelpContents() : null;
+      environmentValues = publishedEnvironmentValues(metaDataOutput.getEnvironmentValues());
    }
 
 
@@ -251,4 +291,15 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    {
       return helpContents;
    }
+
+
+   /*******************************************************************************
+    ** Getter for environmentValues
+    **
+    *******************************************************************************/
+   public Map<String, String> getEnvironmentValues()
+   {
+      return environmentValues;
+   }
+
 }

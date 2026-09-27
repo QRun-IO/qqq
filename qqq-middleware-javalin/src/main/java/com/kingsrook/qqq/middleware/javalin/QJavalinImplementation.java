@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -189,14 +188,17 @@ public class QJavalinImplementation
 
    private static long startTime = 0;
 
+   private static boolean sessionCookieHttpOnly = false;
+
 
 
    /*******************************************************************************
     ** Set a session cookie (sessionUUID, sessionId) for the whole site with
     ** SameSite=Lax, so other sites cannot send it with cross-site POSTs, and
     ** Secure when the request arrived over HTTPS (directly or through a proxy
-    ** that sets X-Forwarded-Proto). The cookie stays readable by the dashboards,
-    ** which resume sessions from sessionUUID (QRun-IO/qqq#696).
+    ** that sets X-Forwarded-Proto) (QRun-IO/qqq#696). HttpOnly, so script in
+    ** the page cannot read the session token, when setSessionCookieHttpOnly is
+    ** on (QRun-IO/qqq#733).
     **
     ** @param context the request whose response sets the cookie
     ** @param name cookie name
@@ -204,7 +206,34 @@ public class QJavalinImplementation
     *******************************************************************************/
    public static void setSessionCookie(Context context, String name, String value)
    {
-      context.cookie(new Cookie(name, value, "/", SESSION_COOKIE_AGE, isSecureRequest(context), false, null, SameSite.LAX));
+      context.cookie(new Cookie(name, value, "/", SESSION_COOKIE_AGE, isSecureRequest(context), sessionCookieHttpOnly, null, SameSite.LAX));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether session cookies are set HttpOnly (see setSessionCookieHttpOnly).
+    *******************************************************************************/
+   public static boolean getSessionCookieHttpOnly()
+   {
+      return (sessionCookieHttpOnly);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set whether session cookies (sessionUUID, sessionId) are HttpOnly. The Next
+    ** dashboard resumes sessions through v1 manageSession without reading the
+    ** cookie, so it works either way; the Material Dashboard reads sessionUUID in
+    ** the browser, so leave this off while it is in use. Off by default here;
+    ** QApplicationJavalinServer turns it on unless it serves the Material
+    ** Dashboard (QRun-IO/qqq#733).
+    **
+    ** @param sessionCookieHttpOnly true to set session cookies HttpOnly
+    *******************************************************************************/
+   public static void setSessionCookieHttpOnly(boolean sessionCookieHttpOnly)
+   {
+      QJavalinImplementation.sessionCookieHttpOnly = sessionCookieHttpOnly;
    }
 
 

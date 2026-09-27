@@ -4136,7 +4136,7 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A red source probe showed a noninteger String accepted in an INTEGER field (see qqq-sample-project/README.md); malformed type rejection remains pending. Pending: native query timeout/cancellation, complete String-key lookup/CRUD, join behavior (#524 can ignore aggregate joins), selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending. Pending: complete String-key lookup/CRUD, join behavior (#524 can ignore aggregate joins), selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMissingCollectionStartsEmptyAndIsCreatedByInsert",
@@ -4176,13 +4176,18 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Pending: replica-set commit/rollback and atomic mid-batch failure, native timeout/cancellation, complete pool/client cleanup, selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, server-entered query timeout and fresh-action recovery, and uncommitted close/client rejection. Pending: complete pool/connection accounting and selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testStandaloneSessionReuseCommitAndRollbackLimit",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testStandaloneServerRefusesTransactionModeWithoutWriting",
-        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMidBatchDuplicateLeavesNativePartialWriteOnStandaloneRollback"
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMidBatchDuplicateLeavesNativePartialWriteOnStandaloneRollback",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCommitPublishesBatchOnlyAfterCommit",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testRollbackAndReusePreserveOnlyCommittedNativeRow",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testDuplicateMidBatchRollsBackAllNativeWrites",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testTimedOutQueryCancelsAndFreshActionRecovers",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCloseDiscardsUncommittedWriteAndReleasesOwnedClient"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",

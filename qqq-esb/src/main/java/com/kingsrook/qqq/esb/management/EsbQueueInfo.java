@@ -28,8 +28,12 @@ package com.kingsrook.qqq.esb.management;
  *
  * - messageCount: messages on the queue, including any delivered to a
  *   consumer but not yet acknowledged.
- * - consumerCount: consumers attached to the queue, on every node (QQQ's and
- *   any others).
+ * - consumerCount: consumers attached to the queue as reported by broker
+ *   management, across all nodes. RabbitMQ JMS 3.9 polls synchronously with
+ *   basicGet, so RabbitMQ reports zero here even while a QQQ trigger is
+ *   polling and processing messages. Zero does not mean the trigger is
+ *   inactive; use its runtime state and trigger metadata for the QQQ
+ *   subscriber view.
  * - paused: whether delivery to the queue's consumers is paused on the broker
  *   (always false on a broker that can't pause a queue, e.g., RabbitMQ).
  *******************************************************************************/

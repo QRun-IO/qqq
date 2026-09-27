@@ -26,7 +26,9 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -46,10 +48,17 @@ import com.kingsrook.qqq.esb.management.EsbBrokerAdapter;
 import com.kingsrook.qqq.esb.management.EsbBrokerAdapters;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
+import com.kingsrook.qqq.esb.model.EsbProviderType;
 import com.kingsrook.qqq.esb.model.EsbTrigger;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
+import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
 import com.kingsrook.qqq.esb.runtime.EsbTriggerControl;
 import com.kingsrook.qqq.esb.runtime.EsbTriggerHandler;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.GetResponse;
+import com.rabbitmq.jms.client.RabbitJmsMessageDecoder;
 import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import jakarta.jms.MessageConsumer;
@@ -270,6 +279,12 @@ public class EsbOperateStep implements BackendStep
     *******************************************************************************/
    private static Integer replayQueue(QInstance instance, String processName, EsbTrigger trigger, String providerName, String queueName, List<String> selectedIds) throws QException
    {
+      QEsbProviderMetaData provider = EsbInstanceMetaData.of(instance).getProvider(providerName);
+      if(selectedIds != null && provider.getType() == EsbProviderType.RABBITMQ)
+      {
+         return (replaySelectedRabbit(instance, processName, trigger, provider, queueName, selectedIds));
+      }
+
       int count = 0;
       try(Session session = EsbConnectionManager.getInstance().openSession(providerName, true))
       {
@@ -307,6 +322,71 @@ public class EsbOperateStep implements BackendStep
       catch(JMSException e)
       {
          throw (new QException("Could not replay dead letters on ESB provider " + providerName, e));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** RabbitMQ JMS rejects selectors on queues.  Pull a bounded snapshot with
+    ** native AMQP, hold unmatched deliveries unacknowledged, and acknowledge
+    ** each successful replay in an AMQP transaction.  Closing the channel
+    ** requeues unmatched and failed deliveries with their original IDs.
+    *******************************************************************************/
+   private static Integer replaySelectedRabbit(QInstance instance, String processName, EsbTrigger trigger,
+      QEsbProviderMetaData provider, String queueName, List<String> selectedIds) throws QException
+   {
+      ConnectionFactory factory = new ConnectionFactory();
+      try
+      {
+         factory.setUri(provider.getUrl());
+         if(StringUtils.hasContent(provider.getUsername()))
+         {
+            factory.setUsername(provider.getUsername());
+            factory.setPassword(provider.getPassword());
+         }
+
+         try(Connection connection = factory.newConnection(); Channel channel = connection.createChannel())
+         {
+            channel.txSelect();
+            int ready = channel.queueDeclarePassive(queueName).getMessageCount();
+            Set<String> remaining = new HashSet<>(selectedIds);
+            int count = 0;
+            for(int i = 0; i < ready && !remaining.isEmpty(); i++)
+            {
+               GetResponse response = channel.basicGet(queueName, false);
+               if(response == null)
+               {
+                  break;
+               }
+               Object id = response.getProps().getHeaders() == null ? null
+                  : response.getProps().getHeaders().get("JMSMessageID");
+               if(!remaining.remove(String.valueOf(id)))
+               {
+                  continue;
+               }
+
+               String priorCausation = EsbCausation.current();
+               try
+               {
+                  var event = EsbEventCodec.fromMessage(RabbitJmsMessageDecoder.decode(response.getBody()));
+                  EsbCausation.set(event.getId());
+                  new EsbTriggerHandler(instance).runProcess(trigger, processName, List.of(event));
+                  channel.basicAck(response.getEnvelope().getDeliveryTag(), false);
+                  channel.txCommit();
+                  count++;
+               }
+               finally
+               {
+                  EsbCausation.set(priorCausation);
+               }
+            }
+            return (count);
+         }
+      }
+      catch(Exception e)
+      {
+         throw (new QException("ESB dead-letter replay failed on RabbitMQ: " + e.getMessage(), e));
       }
    }
 

@@ -18,6 +18,39 @@ commands:
             printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-qqq-ci.conf >/dev/null
 
 jobs:
+  esb_broker_conformance:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large
+    steps:
+      - configure-package-install
+      - qqq-orb/install_java
+      - checkout
+      - qqq-orb/mvn_build
+      - run:
+          name: Verify Docker is available for broker conformance
+          command: docker info
+      - run:
+          name: Run Artemis and RabbitMQ broker conformance
+          command: mvn -B -s /tmp/circleci/mvn-settings.xml -pl qqq-esb -am -Desb.conformance.skip=false clean verify
+      - run:
+          name: Require broker restart conformance on Linux
+          command: |
+            python3 - \<<'PY'
+            from pathlib import Path
+            from xml.etree import ElementTree
+
+            reports = Path("qqq-esb/target/failsafe-reports")
+            for broker in ("Artemis", "RabbitMQ"):
+                path = reports / f"TEST-com.kingsrook.qqq.esb.conformance.{broker}ConformanceIT.xml"
+                suite = ElementTree.parse(path).getroot()
+                matches = [case for case in suite.findall("testcase") if case.get("name") == "reconnectsAfterBrokerRestart"]
+                assert len(matches) == 1, f"{broker}: broker restart test missing"
+                assert matches[0].find("skipped") is None, f"{broker}: broker restart test was skipped"
+            PY
+      - store_test_results:
+          path: qqq-esb/target/failsafe-reports
+
   sample_acceptance:
     executor: qqq-orb/java
     parameters:
@@ -96,6 +129,13 @@ workflows:
 
   test_only:
     jobs:
+      - esb_broker_conformance:
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
       - sample_acceptance:
           name: sample_acceptance
           require_complete_coverage: false
@@ -126,6 +166,13 @@ workflows:
 
   publish_snapshot:
     jobs:
+      - esb_broker_conformance:
+          name: snapshot_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - develop
       - sample_acceptance:
           name: snapshot_sample_acceptance
           require_complete_coverage: false
@@ -134,7 +181,7 @@ workflows:
               only:
                 - develop
       - qqq-orb/mvn_publish:
-          requires: [snapshot_sample_acceptance]
+          requires: [snapshot_sample_acceptance, snapshot_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
@@ -154,6 +201,15 @@ workflows:
 
   publish_feature:
     jobs:
+      - esb_broker_conformance:
+          name: feature_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
       - sample_acceptance:
           name: feature_sample_acceptance
           require_complete_coverage: false
@@ -164,7 +220,7 @@ workflows:
             tags:
               only: [/publish.*/]
       - qqq-orb/mvn_publish:
-          requires: [feature_sample_acceptance]
+          requires: [feature_sample_acceptance, feature_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials]
@@ -178,6 +234,13 @@ workflows:
 
   publish_release_candidate:
     jobs:
+      - esb_broker_conformance:
+          name: candidate_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - /release\/.*/
       - sample_acceptance:
           name: candidate_sample_acceptance
           require_complete_coverage: false
@@ -199,7 +262,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release_candidate
-          requires: [candidate_static_analysis, candidate_sample_acceptance]
+          requires: [candidate_static_analysis, candidate_sample_acceptance, candidate_esb_broker_conformance]
           filters:
             branches:
               only:
@@ -207,6 +270,14 @@ workflows:
 
   publish_release:
     jobs:
+      - esb_broker_conformance:
+          name: release_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
       - sample_acceptance:
           name: release_sample_acceptance
           require_complete_coverage: false
@@ -230,7 +301,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release
-          requires: [release_static_analysis, release_sample_acceptance]
+          requires: [release_static_analysis, release_sample_acceptance, release_esb_broker_conformance]
           filters:
             branches:
               ignore: /.*/
@@ -239,6 +310,13 @@ workflows:
 
   publish_hotfix_release:
     jobs:
+      - esb_broker_conformance:
+          name: hotfix_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
       - sample_acceptance:
           name: hotfix_sample_acceptance
           require_complete_coverage: false
@@ -247,7 +325,7 @@ workflows:
               only:
                 - /hotfix\/.*/
       - qqq-orb/mvn_publish:
-          requires: [hotfix_sample_acceptance]
+          requires: [hotfix_sample_acceptance, hotfix_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]

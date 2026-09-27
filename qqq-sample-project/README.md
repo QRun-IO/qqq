@@ -757,3 +757,48 @@ env -u JAVA_TOOL_OPTIONS mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" \
   -Drevision=4.1.0-SNAPSHOT -Djdk.httpclient.HttpClient.log=errors,channel \
   -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
 ```
+
+
+### Automation source acceptance (#567)
+
+`SampleAutomationAcceptanceTest` runs nine source-only cases on the real sample
+Person/Pet metadata, with test-only evidence columns in a UUID-named H2 database.
+Public Insert/Update and registered manual automation/recovery processes drive the
+scenario; independent native SQL checks pending/running/final statuses, persisted
+handler effects, filtered associations, reverse-declared priorities and child
+process batches of 2/2/1. A failed filtered action marks its whole batch failed;
+later actions still execute, partial writes remain, and explicit recovery can
+repeat those writes. Completed rows are not processed again by another poll.
+Recovery preview is read-only; failed/stale running states are requeued while
+recent running, OK, unknown and null states remain untouched. Fixtures close their
+database, remove owned parent/child process states and restore QContext. They do
+not start a scheduler, Javalin or Artemis; Person ESB publication is disabled only
+on the private fixture instance.
+
+Invalid provider linkage/status-field metadata and missing/unknown table or
+ambiguous implicit provider inputs are rejected without data changes. One runtime
+gap remains at source base `7bc761154`: an explicitly unknown provider name returns
+`ok=true` and leaves pending rows unprocessed. A rejection regression reproduces
+that false-success response in `/private/tmp/qqq-567-unknown-provider-red.log`;
+the retained test characterizes it and proves a subsequent valid-provider call
+consumes the same pending work. No production fix or policy change is included.
+PRE_DELETE remains documented unsupported/excluded; scheduler timing, competing
+workers, atomic rollback and exactly-once delivery are not claimed. The ledger
+retains all 130 requirements and the `pending` source status and existing 4.0
+deferral; neither independent review nor full sample/release gates are complete.
+
+Focused reproduction with matching source artifacts in an isolated Maven cache:
+
+```sh
+mvn -o -f qqq-sample-project/pom.xml -Dmaven.repo.local="$AUTOMATION_ACCEPTANCE_M2" \
+  -Dtest=SampleAutomationAcceptanceTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+```
+
+The initial nine-case focused run passes with zero failures/errors/skips and zero
+Checkstyle violations (`/private/tmp/qqq-567-focused-final.log`). Test-owned fault
+injection was checked red-to-green for code and child-process failures; deliberately
+reversing priority and changing batch size to three produces two native-oracle
+failures (`/private/tmp/qqq-567-priority-batch-mutation.log`), then restoration passes.
+No full sample run was started for this branch; it requires the coordinated full
+verification slot (and any separately reviewed packaged-child port helper).

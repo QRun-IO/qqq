@@ -1438,8 +1438,18 @@
       "negative_cases": [
         "Handler failure, retries/duplicate work, invalid status/provider; PRE_DELETE is documented unimplemented and excluded"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Nine source-only sample acceptance cases exercise public Person/Pet record APIs, code/process handlers, priority/re-filtering, batches, associations and status recovery with native H2 SQL oracles. Failed batches can retain and repeat partial writes; completed polling does not repeat work. Invalid metadata and ambiguous implicit providers reject; unknown/null persisted statuses remain untouched. Known runtime gap: an explicit unknown provider returns ok=true without consuming pending work. PRE_DELETE remains unsupported/excluded. Independent review and full sample verification remain pending; no scheduler, concurrent-worker or exactly-once guarantee is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInsertUpdateAndCompletedWorkIsNotRepeated",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testUnknownRuntimeProviderLeavesPendingWorkDespiteSuccess",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testPriorityFiltersAndAssociationLoading",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testProcessHandlerRespectsBatchSizeAndSelectedRecords",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testFailedInsertBatchRequiresRecoveryAndRepeatsPartialWork",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testFailedUpdateProcessRecoversWithoutImplicitRetry",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testRecoveryStaleRunningAndInvalidPersistedStatuses",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInvalidProviderAndStatusMetadataRejectedWithoutWrites",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInvalidManualProcessInputsPreservePendingWork"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/567",

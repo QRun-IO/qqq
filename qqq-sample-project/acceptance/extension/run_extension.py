@@ -122,6 +122,8 @@ def main():
     parser.add_argument("--qqq-source", required=True, type=Path)
     parser.add_argument("--template-source", required=True, type=Path)
     parser.add_argument("--maven-repo", type=Path)
+    parser.add_argument("--maven-settings", type=Path,
+                        help="Maven settings for the candidate build environment")
     parser.add_argument("--report-dir", type=Path,
                         help="copy the separate host's JUnit XML into the sample report gate")
     args = parser.parse_args()
@@ -131,9 +133,14 @@ def main():
             "expected QQQ 4.1 source")
     print("QQQ:", git_output(qqq, "rev-parse", "HEAD").decode().strip(), flush=True)
     print("template:", git_output(template, "rev-parse", "HEAD").decode().strip(), flush=True)
-    base = ["mvn", "-o", "-B"]
+    # Public template/plugin versions differ from QQQ's own plugins.  Allow
+    # release downloads, but never refresh the locally installed snapshot
+    # artifacts built from this exact QQQ checkout and generated consumer.
+    base = ["mvn", "-B", "-nsu"]
     if args.maven_repo:
         base.append(f"-Dmaven.repo.local={args.maven_repo.resolve()}")
+    if args.maven_settings:
+        base.extend(["-s", str(args.maven_settings.resolve())])
     with tempfile.TemporaryDirectory(prefix="qqq-extension-610-") as root:
         root = Path(root)
         extension = root / "generated-extension"

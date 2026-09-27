@@ -10,8 +10,7 @@ missing target and field prerequisites, and unrelated table isolation. The runne
 also verifies that the host cannot compile without the generated dependency.
 
 From a clean QQQ 4.1.0-SNAPSHOT worktree, with a clean first-party template
-checkout, Java 21, and a Maven repository containing the required plugins and
-dependencies:
+checkout, Java 21, and Maven access to public release dependencies:
 
 ```sh
 python3 qqq-sample-project/acceptance/extension/run_extension.py \
@@ -21,11 +20,16 @@ python3 qqq-sample-project/acceptance/extension/run_extension.py \
   --report-dir qqq-sample-project/target/surefire-reports
 ```
 
-The runner uses Maven offline, installs the selected QQQ core and generated
-artifact into the specified repository, prints both source commits, and removes
+The runner permits downloads of public template plugins and dependencies, then
+installs the selected QQQ core and generated artifact into the specified
+repository. Maven's `-nsu` prevents remote snapshot refresh, so those local
+installations remain the candidate under test. It prints both source commits and removes
 its generated projects on success or failure. The optional `--report-dir` copies
 the host JUnit report only after all acceptance checks pass; CI uses it for the
 sample feature ledger. Omit `--maven-repo` to use the default local repository.
+CI passes its existing Maven settings with `--maven-settings` so the core build
+uses the same configured repositories while public template plugins can be
+downloaded. A cache populated only by the QQQ core build is sufficient.
 This is source-stage acceptance; it does not prove
 registry publication or the template's unfinished example extension out of the
 box.

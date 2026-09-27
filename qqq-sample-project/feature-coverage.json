@@ -2492,12 +2492,24 @@
       "negative_cases": [
         "Missing template/context, syntax error and unescaped data"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testResourceFormsRenderLoopsAndBothConditionBranches",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testStringFormsRenderLoopsAndBothConditionBranches",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testLiteralEscapesAcrossStringAndResourceForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testCallerEscapedHtmlAndRawDataAcrossForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testContextDataIsNotReevaluatedAsTemplateCode",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingContextAndValuesAcrossForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingCodeRejectedAndEmptyCodeAccepted",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingResourceIsRejected",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testSyntaxErrorsAcrossStringAndResourceForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingTemplateTypeIsRejected"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/570",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source scenarios covered for 4.1; integrated and published-artifact acceptance remain separate gates.",
+      "acceptance_review": "All three existing entrypoints (execute, render and renderVelocity) consume inline strings and owned UTF-8 resources with literal output assertions. Tests cover ordered/empty loops, both condition branches, VTL literal escaping, explicitly caller-escaped HTML versus raw HTML, non-reevaluation of context data, optional/missing context and keys, null versus empty code, missing resource/type and syntax failures. Resources are loaded by the sample consumer; no resource-rendering API, automatic HTML sanitization, browser, PDF or published-candidate guarantee is claimed."
     },
     {
       "id": "core.templates.pdf",

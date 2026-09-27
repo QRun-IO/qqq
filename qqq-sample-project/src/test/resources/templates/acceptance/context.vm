@@ -1,0 +1,1 @@
+Named: ${customer}|Quiet: $!customer|#if($customer)present#{else}absent#end

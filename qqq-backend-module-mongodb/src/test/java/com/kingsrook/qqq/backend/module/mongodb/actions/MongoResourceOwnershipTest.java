@@ -34,9 +34,11 @@ import com.mongodb.client.MongoClients;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.times;
@@ -117,7 +119,7 @@ class MongoResourceOwnershipTest
       ClientSession session = mock(ClientSession.class);
       IllegalStateException failure = new IllegalStateException("transaction unavailable");
       when(client.startSession()).thenReturn(session);
-      org.mockito.Mockito.doThrow(failure).when(session).startTransaction();
+      doThrow(failure).when(session).startTransaction();
       assertSame(failure, assertThrows(IllegalStateException.class,
          () -> new MongoDBTransaction(new MongoDBBackendMetaData().withTransactionsSupported(true), client)));
       verify(session).close();
@@ -135,7 +137,7 @@ class MongoResourceOwnershipTest
       MongoClient client = mock(MongoClient.class);
       ClientSession session = mock(ClientSession.class);
       IllegalStateException failure = new IllegalStateException("session close failed");
-      org.mockito.Mockito.doThrow(failure).when(session).close();
+      doThrow(failure).when(session).close();
       MongoClientContainer container = new MongoClientContainer(client, session, true);
       assertSame(failure, assertThrows(IllegalStateException.class, container::closeIfNeeded));
       verify(client).close();
@@ -152,7 +154,7 @@ class MongoResourceOwnershipTest
       MongoClient client = mock(MongoClient.class);
       ClientSession session = mock(ClientSession.class);
       when(client.startSession()).thenReturn(session);
-      org.mockito.Mockito.doThrow(new IllegalStateException("session close failed")).when(session).close();
+      doThrow(new IllegalStateException("session close failed")).when(session).close();
       new MongoDBTransaction(new MongoDBBackendMetaData().withTransactionsSupported(false), client).close();
       verify(client).close();
    }
@@ -176,6 +178,78 @@ class MongoResourceOwnershipTest
       verify(session, times(0)).close();
       verify(client, times(0)).close();
       transaction.close();
+      verify(session).close();
+      verify(client).close();
+   }
+
+
+
+   /*******************************************************************************
+    ** A failing client close must be secondary to the session-open failure.
+    ******************************************************************************/
+   @Test
+   void failedSessionOpenPreservesOriginalWhenClientCloseAlsoFails()
+   {
+      MongoClient client = mock(MongoClient.class);
+      IllegalStateException openFailure = new IllegalStateException("session unavailable");
+      IllegalStateException closeFailure = new IllegalStateException("client close failed");
+      when(client.startSession()).thenThrow(openFailure);
+      doThrow(closeFailure).when(client).close();
+      try(MockedStatic<MongoClients> factory = mockStatic(MongoClients.class))
+      {
+         factory.when(() -> MongoClients.create(any(MongoClientSettings.class))).thenReturn(client);
+         IllegalStateException thrown = assertThrows(IllegalStateException.class,
+            () -> new AbstractMongoDBAction().openClient(TestUtils.defineBackend(), null));
+         assertSame(openFailure, thrown);
+         assertArrayEquals(new Throwable[] { closeFailure }, thrown.getSuppressed());
+         verify(client).close();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Try-with-resources closes the client but preserves session-close failure.
+    ******************************************************************************/
+   @Test
+   void ownedContainerPreservesSessionFailureWhenBothClosesThrow()
+   {
+      MongoClient client = mock(MongoClient.class);
+      ClientSession session = mock(ClientSession.class);
+      IllegalStateException sessionFailure = new IllegalStateException("session close failed");
+      IllegalStateException clientFailure = new IllegalStateException("client close failed");
+      doThrow(sessionFailure).when(session).close();
+      doThrow(clientFailure).when(client).close();
+      MongoClientContainer container = new MongoClientContainer(client, session, true);
+      IllegalStateException thrown = assertThrows(IllegalStateException.class, container::closeIfNeeded);
+      assertSame(sessionFailure, thrown);
+      assertArrayEquals(new Throwable[] { clientFailure }, thrown.getSuppressed());
+      verify(session).close();
+      verify(client).close();
+   }
+
+
+
+   /*******************************************************************************
+    ** Transaction-start failure remains primary when both cleanup calls fail.
+    ******************************************************************************/
+   @Test
+   void failedTransactionStartPreservesOriginalWhenBothClosesThrow()
+   {
+      MongoClient client = mock(MongoClient.class);
+      ClientSession session = mock(ClientSession.class);
+      IllegalStateException startFailure = new IllegalStateException("transaction unavailable");
+      IllegalStateException sessionFailure = new IllegalStateException("session close failed");
+      IllegalStateException clientFailure = new IllegalStateException("client close failed");
+      when(client.startSession()).thenReturn(session);
+      doThrow(startFailure).when(session).startTransaction();
+      doThrow(sessionFailure).when(session).close();
+      doThrow(clientFailure).when(client).close();
+      IllegalStateException thrown = assertThrows(IllegalStateException.class,
+         () -> new MongoDBTransaction(new MongoDBBackendMetaData().withTransactionsSupported(true), client));
+      assertSame(startFailure, thrown);
+      assertArrayEquals(new Throwable[] { sessionFailure }, thrown.getSuppressed());
+      assertArrayEquals(new Throwable[] { clientFailure }, sessionFailure.getSuppressed());
       verify(session).close();
       verify(client).close();
    }

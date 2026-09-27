@@ -337,8 +337,14 @@ class SampleMongoReplicaSetIT
       AbstractMongoDBAction action = new AbstractMongoDBAction();
       MongoClientContainer owned = action.openClient(backend, null);
       MongoClient ownedClient = owned.getMongoClient();
-      assertEquals(1.0, ownedClient.getDatabase("admin").runCommand(owned.getMongoSession(), new Document("ping", 1)).getDouble("ok"));
-      owned.closeIfNeeded();
+      try
+      {
+         assertEquals(1.0, ownedClient.getDatabase("admin").runCommand(owned.getMongoSession(), new Document("ping", 1)).getDouble("ok"));
+      }
+      finally
+      {
+         owned.closeIfNeeded();
+      }
       assertThrows(IllegalStateException.class, () -> ownedClient.getDatabase("admin").runCommand(new Document("ping", 1)));
 
       MongoClient transactionClient;

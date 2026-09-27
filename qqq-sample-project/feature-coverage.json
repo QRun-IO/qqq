@@ -5007,23 +5007,29 @@
       "owning_module": "qqq-sample-project",
       "acceptance_cases": [
         "Java21, renamed Javalin/PicoCLI imports, QContext-based inputs and replacement APIs; compile documented examples",
-        "Javalin 7 provider/config-customizer examples, preserved service observer and String process-input method; aligned Jetty core/EE10 candidate dependencies"
+        "Javalin 7 provider/config-customizer examples, preserved service observer and String process-input method; aligned Jetty core/EE10 candidate dependencies",
+        "Compile every concrete BREAK-03/04 Java replacement example against resolved source candidate modules; verify BOM/toolchain entries and run an external consumer against the packaged source candidate"
       ],
       "negative_cases": [
-        "Removed APIs must not remain in sample/generated source; mismatched module versions"
+        "Removed APIs must not remain in sample/generated source; mismatched module versions",
+        "Legacy variant, JSON and process methods must fail compilation; external consumer must fail without the packaged candidate"
       ],
-      "gap": "The Javalin 7 migration examples and representative replacement APIs compile against candidate modules, with HTTP behavior and resolved Jetty alignment checked. The guide's remaining BREAK-03/04 replacement snippets and a packaged candidate consumer have not been independently compiled or exercised.",
+      "gap": "Source-stage guide compilation, BOM/toolchain checks and packaged source-candidate consumption pass. Independent resolution and execution against the exact published 4.1 release candidate remain pending publication.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMigration40ContractTest#testDocumentedAfterExamplesCompile",
         "com.kingsrook.sampleapp.SampleMigration40ContractTest#testRemovedMigrationApisDoNotCompile",
         "com.kingsrook.sampleapp.SampleMigration40ContractTest#testSampleSourceHasNoSelectedRemovedApis",
         "com.kingsrook.sampleapp.SampleMigration40ContractTest#testResolvedCandidateRuntimeVersions",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testBreak03And04ReplacementExamplesCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testSubclassReplacementContractsCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testBuildMigrationEntriesMatchCandidate",
+        "com.kingsrook.sampleapp.SampleMigrationPackagedConsumerIT#testPackagedCandidateCompilesAndRunsExternalConsumer",
         "com.kingsrook.sampleapp.SampleHttpLifecycleTest#testProviderConfigurationAndServiceObservationOrder",
         "com.kingsrook.sampleapp.SampleCustomRouteTest#testMethodsAndDecodedRequestData"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
-      "acceptance_note": "The test compiles the guide's actual Javalin 7 provider and server-customizer blocks plus renamed Javalin/PicoCLI imports, QContext access, String process-input, and selected replacement APIs. Negative JavaCompiler fixtures reject legacy package names and removed methods; selected removed API names are absent from sample and generated Java; a mismatched QQQ dependency fixture is detected. Existing sample HTTP tests verify provider/configuration ordering, service observation, and GET/POST/PUT/PATCH/DELETE method values as String. Resolved Javalin 7.2.3 and all Jetty core/EE10 jars on the test classpath use 12.1.13; core, Javalin and PicoCLI candidate jars match the parent revision. Other guide snippets and a published 4.0 consumer remain outside this evidence.",
+      "acceptance_note": "The guide's concrete BREAK-03/04 Java replacements compile against resolved source-candidate modules, including subclass-only APIs; non-Java BOM, Java 21 and Qodana entries are checked against source configuration. Negative compiler fixtures reject selected legacy APIs and mismatched candidate dependencies. Existing HTTP tests verify Javalin provider/configuration ordering, service observation and String method values; resolved Jetty core/EE10 versions align. A separate process compiles and runs against the packaged source-candidate bundle, confirms embedded module versions, and fails compilation without the bundle. This is not evidence of consumption from a public repository; the exact published 4.1 candidate remains a required external gate.",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/611",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
     },

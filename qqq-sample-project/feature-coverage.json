@@ -3989,12 +3989,28 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testCrudTypesGeneratedKeyAndNullRoundTrip",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testCountFiltersSortAndPagingAgainstSql",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testScalarAndGroupedAggregatesAgainstSql",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testInnerAndLeftJoinsAgainstSql",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testDuplicateMissingTableAndMalformedInputs",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testUnsupportedStorageFailsExplicitly",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testDeniedRowsAcrossReadAggregateAndWrites",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testConnectionFailureAndRecovery",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testBatchWritesAndGeneratedIdentityCorrelation",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresTemporalValuesAcrossHostTimeZones",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresNativeConstraintsCoverRoundingCollationAndConcurrentWrites",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCanonicalAssociationsAndInsertPrimaryKeys",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCountTimeoutAndCancellation",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresQueryTimeoutAndCancellation"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/581",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source scenarios covered for 4.1; integrated and published-artifact acceptance remain separate gates.",
+      "acceptance_review": "Owned postgres:17-alpine sample fixtures exercise real QQQ CRUD/count/aggregate/query actions against independent JDBC oracles: scalar/binary/null/temporal types, generated/manual/default keys, deterministic pages, filters, INNER/LEFT joins and all six aggregate operators. Native SQLSTATEs establish connection/missing-table/constraint failures; malformed filter/type inputs and row-lock denials have unchanged-storage and allowed controls. Existing live sample methods prove blocked Count/Query timeout and cancellation. PostgreSQL is relational (collection cases do not apply); its file-storage interface fails explicitly. No UI/authentication or published-candidate acceptance is claimed."
     },
     {
       "id": "backend.postgres.lifecycle",
@@ -4010,12 +4026,22 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testBatchWritesAndGeneratedIdentityCorrelation",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testTransactionCommitVisibilityAndConnectionClose",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testExplicitRollbackRestoresAllWrites",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testAutocommitMidBatchFailurePreservesEarlierStatement",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testMidBatchFailureRollbackAndRecovery",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testPoolReuseCheckoutTimeoutAndOwnedCleanup",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCountTimeoutAndCancellation",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresQueryTimeoutAndCancellation"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/582",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source scenarios covered for 4.1; integrated and published-artifact acceptance remain separate gates.",
+      "acceptance_review": "Actual PostgreSQL transaction-local and independent JDBC readback proves batch writes, commit visibility, explicit rollback of insert/update/delete, aborted mid-batch state and recovery. A matching autocommit control proves earlier statements can remain after failure; no automatic batch atomicity or sequence rollback is claimed. A uniquely named size-one C3P0 pool proves physical PID reuse, bounded checkout failure, uncommitted-row rollback and state reset on return. The consumer explicitly destroys only its owned pool and checks pg_stat_activity; ConnectionManager registry reset is not pool shutdown. Existing sample Count/Query methods prove live driver timeout/cancellation, native work cleanup and recovery. Docker failures do not skip this evidence."
     },
     {
       "id": "backend.sqlite.data",

@@ -946,12 +946,14 @@ archived reports are `/private/tmp/qqq-798-wave8-final-reports`. The query-stati
 row remains pending solely for its unproven concurrent query cancellation scope;
 no requirement, release disposition or threshold is relaxed.
 
-### Scheduling acceptance (#569, #847, #853)
+### Scheduling acceptance (#569, #847, #853, #855)
 
 `SampleSchedulingAcceptanceTest` owns a unique H2 database, RAM Quartz scheduler,
 Simple scheduler and registered application processes. Actual QQQ actions update
 sample Person records; independent JDBC connections verify committed results and
-unrelated rows. No sample HTTP server or shared broker is started. The legacy queue
+unrelated rows. The real application launcher uses an owned ephemeral HTTP port; no
+shared sample broker is started. A separate owned H2 database exercises Quartz's
+actual JDBC job store. The legacy queue
 runner uses its real SDK against a disposable loopback, in-memory protocol fixture
 with synthetic credentials, not an SQS account or a claim about AWS delivery/IAM.
 
@@ -973,10 +975,21 @@ Original [#569](https://github.com/QRun-IO/qqq/issues/569) coverage maps as foll
 
 Additional controls preserve existing boundaries. `disabledManagerDoesNotRegisterOrDispatch`
 checks the global disable switch without changing its previous setting.
-`managerStartupCurrentlyRequiresPostStartRegistration` characterizes a separate,
-unfixed startup limitation: the first `QScheduleManager.start()` leaves new Quartz
-metadata jobs absent; explicit post-start `setupAllSchedules()` registers them and
-then actual process work succeeds. This is not full initial-startup conformance.
+`launcherStartupDispatchesFreshQuartzJob` exercises the documented application
+launcher without a second registration call, with native H2 writes and Quartz/HTTP
+shutdown assertions. `startupDispatchesMixedSimpleAndQuartzJobs` proves both
+scheduler types dispatch from one manager start. `startupRegistersPersistedDynamicJob`
+loads job/parameter rows inserted through native SQL and verifies dispatch without
+changing those rows. `startupPreservesExistingPausedRamJob` retains the original
+trigger, paused state and unrelated native job. `persistentQuartzStartupRetainsGuard`
+uses a real H2-backed Quartz JDBC store: existing paused state remains unchanged and
+missing jobs stay absent, preserving the historical persistent-store startup guard.
+This is a local JDBC control, not multi-node cluster certification.
+
+[#855](https://github.com/QRun-IO/qqq/issues/855) bootstraps only missing jobs in
+nonpersistent stores. Startup never reconciles or replaces existing jobs; Quartz's
+non-replacing insert also protects a job registered concurrently. Explicit management
+after startup retains its existing pause/reschedule/unschedule behavior.
 
 [#847](https://github.com/QRun-IO/qqq/issues/847) applies the already-computed delay
 through Quartz's existing trigger API. [#853](https://github.com/QRun-IO/qqq/issues/853)
@@ -985,9 +998,10 @@ nullable worker map, start the job with an empty map, and restore the exact prio
 map in finally. Global `CapturedContext` and public APIs remain unchanged.
 
 The scheduling row remains **pending**: independent review and full combined sample
-verification are outstanding, initial Quartz registration still needs resolution,
-and the original timeout expectation must be assessed against the existing
-wait/shutdown behavior without inventing a new deadline policy. The queue fixture
+verification are outstanding. The actual `StandardScheduledExecutor.stop()`
+300-second timeout (`false` return with `STOPPING` state) remains unverified;
+the observer timeout test proves orderly shutdown waiting, not that QQQ timeout
+path or an application execution deadline. The queue fixture
 does not certify external SQS behavior or SDK-client shutdown ownership. Requirements,
 release dispositions and existing deferrals are unchanged.
 
@@ -1008,3 +1022,9 @@ Focused validation passes **19 native cases, zero failures/errors/skips**. Match
 core `clean install` passes **2,073 tests, zero failures/errors and 11 existing skips**,
 with normal quality gates, and all **46 Python checks** pass. No combined full sample
 run is claimed for this branch.
+
+The #855 source follow-up passed 23 focused scheduling cases with zero
+failures/errors/skips, plus the full core `clean install`: 2,074 tests, zero
+failures/errors, 11 existing skips, normal Checkstyle/JaCoCo/analysis gates.
+This is focused source evidence; it does not substitute for the combined full
+sample gate or the outstanding actual stop-timeout case.

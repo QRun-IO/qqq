@@ -45,7 +45,9 @@ import com.kingsrook.qqq.backend.core.utils.SleepUtils;
 import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
+import org.quartz.impl.StdSchedulerFactory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,6 +66,26 @@ class QuartzSchedulerTest extends BaseTest
    void afterEach()
    {
       SchedulerTestUtils.afterEach();
+   }
+
+
+
+   /*******************************************************************************
+    ** A fresh volatile scheduler bootstraps missing jobs before dispatch is enabled.
+    *******************************************************************************/
+   @Test
+   void startupRegistersMissingRamJobWithoutStartingScheduler() throws Exception
+   {
+      QInstance instance = QContext.getQInstance();
+      QuartzTestUtils.setupInstanceForQuartzTests();
+      QuartzScheduler scheduler = QuartzScheduler.initInstance(instance, QuartzTestUtils.QUARTZ_SCHEDULER_NAME,
+         QuartzTestUtils.getQuartzProperties(), () -> QContext.getQSession());
+      scheduler.setupSchedulable(new BasicSchedulableIdentity("bootstrap", null),
+         instance.getSchedulableType(ScheduledJobType.PROCESS.name()), Map.of(),
+         new QScheduleMetaData().withRepeatSeconds(60), true);
+      assertEquals(List.of("bootstrap"), scheduler.queryQuartz().stream().map(job -> job.jobDetail().getKey().getName()).toList());
+      Scheduler nativeScheduler = new StdSchedulerFactory(QuartzTestUtils.getQuartzProperties()).getScheduler();
+      assertTrue(nativeScheduler.isInStandbyMode());
    }
 
 

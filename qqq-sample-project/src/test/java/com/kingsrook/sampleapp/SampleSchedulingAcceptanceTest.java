@@ -28,9 +28,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +49,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.actions.automation.AutomationStatus;
 import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationHandlerInterface;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
@@ -54,6 +58,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -87,11 +93,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.TableAuto
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.TriggerEvent;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsConfig;
 import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJobType;
+import com.kingsrook.qqq.backend.core.model.scheduledjobs.ScheduledJobsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
 import com.kingsrook.qqq.backend.core.scheduler.SchedulerUtils;
+import com.kingsrook.qqq.backend.core.scheduler.quartz.QuartzJobRunner;
 import com.kingsrook.qqq.backend.core.scheduler.quartz.QuartzScheduler;
 import com.kingsrook.qqq.backend.core.scheduler.schedulable.SchedulableType;
 import com.kingsrook.qqq.backend.core.scheduler.schedulable.identity.BasicSchedulableIdentity;
@@ -102,23 +110,33 @@ import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
+import com.kingsrook.qqq.middleware.javalin.QApplicationLauncher;
+import com.kingsrook.qqq.middleware.javalin.QApplicationLauncherConfig;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import com.sun.net.httpserver.HttpServer;
+import io.javalin.Javalin;
 import org.h2.tools.RunScript;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.quartz.CronTrigger;
+import org.quartz.JobBuilder;
+import org.quartz.JobDetail;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import org.quartz.JobKey;
 import org.quartz.Scheduler;
+import org.quartz.SimpleScheduleBuilder;
 import org.quartz.SimpleTrigger;
 import org.quartz.Trigger;
+import org.quartz.TriggerBuilder;
 import org.quartz.TriggerKey;
 import org.quartz.impl.StdSchedulerFactory;
 import org.quartz.impl.matchers.GroupMatcher;
 import org.quartz.listeners.JobListenerSupport;
+import org.quartz.utils.ConnectionProvider;
+import org.quartz.utils.DBConnectionManager;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -369,21 +387,249 @@ class SampleSchedulingAcceptanceTest
 
 
    /*******************************************************************************
-    ** Characterize the separate startup gap: an explicit post-start setup registers
-    ** metadata that the initial manager startup currently omits.
+    ** The documented launcher registers and dispatches fresh RAM jobs without a
+    ** second setup call, and releases its owned HTTP and scheduler resources.
     *******************************************************************************/
    @Test
-   void managerStartupCurrentlyRequiresPostStartRegistration() throws Exception
+   void launcherStartupDispatchesFreshQuartzJob() throws Exception
+   {
+      instance.getProcess(PROCESS).setSchedule(new QScheduleMetaData().withSchedulerName(quartzName).withRepeatSeconds(60).withInitialDelayMillis(0));
+      AtomicReference<Javalin> http = new AtomicReference<>();
+      QApplicationLauncher launcher = null;
+      try
+      {
+         launcher = QApplicationLauncher.run(new AbstractQQQApplication()
+         {
+            /*******************************************************************
+             ** Use the fixture's actual application metadata and owned backend.
+             *******************************************************************/
+            @Override
+            public QInstance defineQInstance()
+            {
+               return (instance);
+            }
+         }, new QApplicationLauncherConfig().withRegisterShutdownHook(false)
+            .withSystemUserSessionSupplier(() -> new QSession().withUser(new QUser().withIdReference("scheduled-user")))
+            .withServerCustomizer(server -> server.withPort(0)
+               .withServeFrontendMaterialDashboard(false).withServeFrontendNext(false)
+               .withJavalinConfigurationCustomizer(http::set)));
+         assertTrue(http.get().port() > 0);
+         assertTrue(quartz.checkExists(new JobKey("process:" + PROCESS, "PROCESS")), "Launcher omitted configured Quartz process");
+         next();
+      }
+      finally
+      {
+         if(launcher != null)
+         {
+            launcher.stop();
+         }
+      }
+      assertTrue(quartz.isShutdown());
+      assertTrue(http.get().jettyServer().server().isStopped());
+      assertEquals(List.of(List.of("Scheduled")), rows("SELECT first_name FROM person WHERE id=1"));
+   }
+
+
+
+   /*******************************************************************************
+    ** RAM bootstrap leaves existing jobs, pause state and unrelated jobs untouched.
+    *******************************************************************************/
+   @Test
+   void startupPreservesExistingPausedRamJob() throws Exception
    {
       instance.getProcess(PROCESS).setSchedule(new QScheduleMetaData().withSchedulerName(quartzName).withRepeatSeconds(60));
+      seedNativePausedJob("process:" + PROCESS);
+      seedNativePausedJob("unrelated");
+      instance.addProcess(new QProcessMetaData().withName("existingNormal")
+         .withStep(new QBackendStepMetaData().withName("writePerson").withCode(new QCodeReference(WritePerson.class)))
+         .withSchedule(new QScheduleMetaData().withSchedulerName(quartzName).withRepeatSeconds(60)));
+      seedNativePausedJob("process:existingNormal");
+      quartz.resumeJob(new JobKey("process:existingNormal", "PROCESS"));
+      TriggerKey normalKey = new TriggerKey("process:existingNormal", "PROCESS");
+      Trigger normalBefore = quartz.getTrigger(normalKey);
+      TriggerKey key = new TriggerKey("process:" + PROCESS, "PROCESS");
+      Trigger before = quartz.getTrigger(key);
       manager.start();
-      assertFalse(quartz.checkExists(new JobKey("process:" + PROCESS, "PROCESS")));
+      assertEquals(before.getStartTime(), quartz.getTrigger(key).getStartTime());
+      assertEquals(TimeUnit.HOURS.toMillis(1), ((SimpleTrigger) quartz.getTrigger(key)).getRepeatInterval());
+      assertEquals(Trigger.TriggerState.PAUSED, quartz.getTriggerState(key));
+      assertEquals("native-marker", quartz.getJobDetail(new JobKey("process:" + PROCESS, "PROCESS")).getDescription());
+      assertTrue(quartz.checkExists(new JobKey("unrelated", "PROCESS")));
+      assertEquals(normalBefore.getStartTime(), quartz.getTrigger(normalKey).getStartTime());
+      assertEquals(TimeUnit.HOURS.toMillis(1), ((SimpleTrigger) quartz.getTrigger(normalKey)).getRepeatInterval());
+      assertEquals(Trigger.TriggerState.NORMAL, quartz.getTriggerState(normalKey));
+      assertEquals("native-marker", quartz.getJobDetail(new JobKey("process:existingNormal", "PROCESS")).getDescription());
+      assertEquals(3, quartz.getJobKeys(GroupMatcher.anyJobGroup()).size());
       assertEquals(0, observation.writes.get());
-      manager.setupAllSchedules();
+   }
+
+
+
+   /*******************************************************************************
+    ** One manager startup registers both scheduler types before dispatching each.
+    *******************************************************************************/
+   @Test
+   void startupDispatchesMixedSimpleAndQuartzJobs() throws Exception
+   {
+      instance.getProcess(PROCESS).setSchedule(new QScheduleMetaData().withSchedulerName(quartzName).withRepeatSeconds(3600).withInitialDelayMillis(0));
+      instance.addProcess(new QProcessMetaData().withName("simpleStartup").withTableName("person")
+         .withStep(new QBackendStepMetaData().withName("writePerson").withCode(new QCodeReference(WritePerson.class)))
+         .withSchedule(new QScheduleMetaData().withSchedulerName(SIMPLE).withRepeatSeconds(3600).withInitialDelayMillis(0)));
+      manager.start();
       assertTrue(quartz.checkExists(new JobKey("process:" + PROCESS, "PROCESS")));
       next();
+      next();
       manager.stop();
+      assertEquals(2, observation.writes.get());
+      assertEquals(StandardScheduledExecutor.RunningState.STOPPED, SimpleScheduler.getInstance(instance).getExecutors().get(0).getRunningState());
       assertEquals(List.of(List.of("Scheduled")), rows("SELECT first_name FROM person WHERE id=1"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Startup reads already persisted dynamic job and parameter rows, then performs
+    ** the registered process through the volatile scheduler without modifying them.
+    *******************************************************************************/
+   @Test
+   void startupRegistersPersistedDynamicJob() throws Exception
+   {
+      new ScheduledJobsMetaDataProvider().defineAll(instance, "schedulingDatabase", table ->
+      {
+         table.setBackendDetails(new RDBMSTableBackendDetails().withTableName(QInstanceEnricher.inferBackendName(table.getName())));
+         QInstanceEnricher.setInferredFieldBackendNames(table);
+      });
+      try(Statement statement = anchor.createStatement())
+      {
+         statement.execute("CREATE TABLE scheduled_job (id INT PRIMARY KEY, create_date TIMESTAMP, modify_date TIMESTAMP, label VARCHAR(100), description VARCHAR(250), scheduler_name VARCHAR(100), cron_expression VARCHAR(100), cron_description VARCHAR(250), cron_time_zone_id VARCHAR(100), repeat_seconds INT, type VARCHAR(100), is_active BOOLEAN, foreign_key_type VARCHAR(100), foreign_key_value VARCHAR(100))");
+         statement.execute("CREATE TABLE scheduled_job_parameter (id INT PRIMARY KEY, create_date TIMESTAMP, modify_date TIMESTAMP, scheduled_job_id INT, `key` VARCHAR(250), `value` VARCHAR(250))");
+      }
+      try(PreparedStatement insert = anchor.prepareStatement("INSERT INTO scheduled_job (id,label,scheduler_name,repeat_seconds,type,is_active) VALUES (1,'Owned dynamic',?,3600,'PROCESS',TRUE)"))
+      {
+         insert.setString(1, quartzName);
+         insert.executeUpdate();
+      }
+      try(Statement statement = anchor.createStatement())
+      {
+         statement.execute("INSERT INTO scheduled_job_parameter (id,scheduled_job_id,`key`,`value`) VALUES (1,1,'processName','" + PROCESS + "')");
+      }
+      List<List<String>> before = rows("SELECT * FROM scheduled_job");
+      List<List<String>> parameters = rows("SELECT * FROM scheduled_job_parameter");
+      manager.start();
+      assertTrue(quartz.checkExists(new JobKey("scheduledJob:1", "PROCESS")));
+      next();
+      manager.stop();
+      assertEquals(before, rows("SELECT * FROM scheduled_job"));
+      assertEquals(parameters, rows("SELECT * FROM scheduled_job_parameter"));
+      assertEquals(List.of(List.of("Scheduled")), rows("SELECT first_name FROM person WHERE id=1"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A real JDBC Quartz store retains the historical startup no-reconcile guard.
+    ** Its preexisting paused row survives while a missing configured job stays absent.
+    *******************************************************************************/
+   @Test
+   void persistentQuartzStartupRetainsGuard() throws Exception
+   {
+      manager.stop();
+      manager.unInit();
+      String url = "jdbc:h2:mem:quartz_" + UUID.randomUUID();
+      try(Connection database = DriverManager.getConnection(url, "sa", ""))
+      {
+         try(InputStreamReader schema = new InputStreamReader(StdSchedulerFactory.class.getResourceAsStream("/org/quartz/impl/jdbcjobstore/tables_h2.sql"), StandardCharsets.UTF_8))
+         {
+            RunScript.execute(database, schema);
+         }
+         String dataSource = "owned-" + UUID.randomUUID();
+         DBConnectionManager.getInstance().addConnectionProvider(dataSource, new ConnectionProvider()
+         {
+            /*******************************************************************
+             ** Each native Quartz request receives its own JDBC connection.
+             *******************************************************************/
+            @Override
+            public Connection getConnection() throws SQLException
+            {
+               return (DriverManager.getConnection(url, "sa", ""));
+            }
+
+
+
+            /*******************************************************************
+             ** The outer fixture owns the database anchor; no pool is retained.
+             *******************************************************************/
+            @Override
+            public void shutdown()
+            {
+            }
+
+
+
+            /*******************************************************************
+             ** Connections are opened only when requested by Quartz.
+             *******************************************************************/
+            @Override
+            public void initialize()
+            {
+            }
+         });
+         Properties properties = new Properties();
+         properties.setProperty("org.quartz.scheduler.instanceName", "jdbc-" + quartzName);
+         properties.setProperty("org.quartz.threadPool.threadCount", "1");
+         properties.setProperty("org.quartz.jobStore.class", "org.quartz.impl.jdbcjobstore.JobStoreTX");
+         properties.setProperty("org.quartz.jobStore.dataSource", dataSource);
+         instance.getSchedulers().clear();
+         instance.addScheduler(new QuartzSchedulerMetaData().withProperties(properties).withName(quartzName));
+         instance.getProcess(PROCESS).setSchedule(new QScheduleMetaData().withSchedulerName(quartzName).withRepeatSeconds(60));
+         instance.addProcess(new QProcessMetaData().withName("missingPersistentJob")
+            .withStep(new QBackendStepMetaData().withName("writePerson").withCode(new QCodeReference(WritePerson.class)))
+            .withSchedule(new QScheduleMetaData().withSchedulerName(quartzName).withRepeatSeconds(60)));
+         manager = QScheduleManager.initInstance(instance, () -> new QSession());
+         quartz = new StdSchedulerFactory(properties).getScheduler();
+         try
+         {
+            assertTrue(quartz.getMetaData().isJobStoreSupportsPersistence());
+            seedNativePausedJob("process:" + PROCESS);
+            TriggerKey key = new TriggerKey("process:" + PROCESS, "PROCESS");
+            Trigger before = quartz.getTrigger(key);
+            manager.start();
+            assertEquals(before.getStartTime(), quartz.getTrigger(key).getStartTime());
+            assertEquals(TimeUnit.HOURS.toMillis(1), ((SimpleTrigger) quartz.getTrigger(key)).getRepeatInterval());
+            assertEquals("native-marker", quartz.getJobDetail(new JobKey("process:" + PROCESS, "PROCESS")).getDescription());
+            assertEquals(Trigger.TriggerState.PAUSED, quartz.getTriggerState(key));
+            assertFalse(quartz.checkExists(new JobKey("process:missingPersistentJob", "PROCESS")));
+            try(Statement statement = database.createStatement(); ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM QRTZ_JOB_DETAILS"))
+            {
+               assertTrue(result.next());
+               assertEquals(1, result.getInt(1));
+            }
+            assertEquals(0, observation.writes.get());
+         }
+         finally
+         {
+            manager.stop();
+            manager.unInit();
+            manager = null;
+         }
+         assertTrue(quartz.isShutdown());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Seed native state independently of QQQ registration and its startup guard.
+    *******************************************************************************/
+   private void seedNativePausedJob(String name) throws Exception
+   {
+      JobDetail job = JobBuilder.newJob(QuartzJobRunner.class).withIdentity(name, "PROCESS")
+         .withDescription("native-marker").storeDurably().build();
+      Trigger trigger = TriggerBuilder.newTrigger().withIdentity(name, "PROCESS").forJob(job)
+         .withSchedule(SimpleScheduleBuilder.simpleSchedule().withIntervalInHours(1).repeatForever())
+         .startAt(new Date(System.currentTimeMillis() + TimeUnit.HOURS.toMillis(1))).build();
+      quartz.scheduleJob(job, trigger);
+      quartz.pauseJob(job.getKey());
    }
 
 
@@ -444,7 +690,6 @@ class SampleSchedulingAcceptanceTest
          .withSchedule(new QScheduleMetaData().withSchedulerName(quartzName).withRepeatSeconds(60).withInitialDelayMillis(0)));
       List<List<String>> unrelated = rows("SELECT * FROM person WHERE id>=3 ORDER BY id");
       manager.start();
-      manager.setupAllSchedules();
       assertEquals(strategy == VariantRunStrategy.SERIAL ? 1 : 2, quartz.getJobKeys(GroupMatcher.anyJobGroup()).size());
       VariantInvocation first = observation.variantsEntered.poll(5, TimeUnit.SECONDS);
       assertNotNull(first);

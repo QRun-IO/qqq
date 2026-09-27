@@ -43,7 +43,6 @@ import com.kingsrook.qqq.backend.core.scheduler.SchedulerTestUtils;
 import com.kingsrook.qqq.backend.core.scheduler.quartz.QuartzJobAndTriggerWrapper;
 import com.kingsrook.qqq.backend.core.scheduler.quartz.QuartzScheduler;
 import com.kingsrook.qqq.backend.core.scheduler.quartz.QuartzTestUtils;
-import com.kingsrook.qqq.backend.core.scheduler.schedulable.runner.SchedulableSQSQueueRunner;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -78,8 +77,6 @@ class ScheduleAllNewJobsProcessTest extends BaseTest
    {
       try
       {
-         QCollectingLogger quartzSchedulerLog = QLogger.activateCollectingLoggerForClass(QuartzScheduler.class);
-
          QInstance qInstance = QContext.getQInstance();
          new ScheduledJobsMetaDataProvider().defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
          MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, ScheduleAllNewJobsProcess.class.getPackageName());
@@ -92,6 +89,8 @@ class ScheduleAllNewJobsProcessTest extends BaseTest
 
          QScheduleManager qScheduleManager = QScheduleManager.initInstance(qInstance, () -> QContext.getQSession());
          qScheduleManager.start();
+         qScheduleManager.unscheduleAll(); // isolate dynamic management from bootstrapped metadata jobs
+         QCollectingLogger quartzSchedulerLog = QLogger.activateCollectingLoggerForClass(QuartzScheduler.class);
 
          QuartzScheduler                  quartzScheduler = QuartzScheduler.getInstance();
          List<QuartzJobAndTriggerWrapper> wrappers        = quartzScheduler.queryQuartz();
@@ -149,7 +148,7 @@ class ScheduleAllNewJobsProcessTest extends BaseTest
       }
       finally
       {
-         QLogger.deactivateCollectingLoggerForClass(SchedulableSQSQueueRunner.class);
+         QLogger.deactivateCollectingLoggerForClass(QuartzScheduler.class);
       }
    }
 

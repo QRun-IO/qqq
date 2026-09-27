@@ -83,6 +83,7 @@ class UnscheduleAllJobsProcessTest extends BaseTest
 
       QScheduleManager qScheduleManager = QScheduleManager.initInstance(qInstance, () -> QContext.getQSession());
       qScheduleManager.start();
+      qScheduleManager.unscheduleAll(); // isolate dynamic management from bootstrapped metadata jobs
 
       qScheduleManager.setupScheduledJob(SchedulerTestUtils.newScheduledJob(ScheduledJobType.PROCESS,
          Map.of("processName", TestUtils.PROCESS_NAME_GREET_PEOPLE))

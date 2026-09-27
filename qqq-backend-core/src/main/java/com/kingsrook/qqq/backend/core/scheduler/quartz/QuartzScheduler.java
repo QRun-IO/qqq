@@ -252,19 +252,33 @@ public class QuartzScheduler implements QSchedulerInterface
    @Override
    public void setupSchedulable(SchedulableIdentity schedulableIdentity, SchedulableType schedulableType, Map<String, Serializable> parameters, QScheduleMetaData schedule, boolean allowedToStart)
    {
-      ////////////////////////////////////////////////////////////////////////////
-      // only actually schedule things if we're past the server startup routine //
-      ////////////////////////////////////////////////////////////////////////////
-      if(!pastStartup)
+      boolean replaceExisting = pastStartup;
+      if(!replaceExisting)
       {
-         return;
+         try
+         {
+            ///////////////////////////////////////////////////////////////////////////////
+            // Persistent stores retain their schedules across application restarts.    //
+            // Only bootstrap missing volatile jobs; never reconcile existing jobs here. //
+            ///////////////////////////////////////////////////////////////////////////////
+            if(scheduler.getMetaData().isJobStoreSupportsPersistence()
+               || scheduler.checkExists(new JobKey(schedulableIdentity.getIdentity(), schedulableType.getName())))
+            {
+               return;
+            }
+         }
+         catch(SchedulerException e)
+         {
+            LOG.warn("Error checking scheduler startup state", e);
+            return;
+         }
       }
 
       Map<String, Object> jobData = new HashMap<>();
       jobData.put("params", parameters);
       jobData.put("type", schedulableType.getName());
 
-      scheduleJob(schedulableIdentity, schedulableType.getName(), QuartzJobRunner.class, jobData, schedule, allowedToStart);
+      scheduleJob(schedulableIdentity, schedulableType.getName(), QuartzJobRunner.class, jobData, schedule, replaceExisting);
    }
 
 
@@ -353,7 +367,7 @@ public class QuartzScheduler implements QSchedulerInterface
    /*******************************************************************************
     **
     *******************************************************************************/
-   private boolean scheduleJob(SchedulableIdentity schedulableIdentity, String groupName, Class<? extends Job> jobClass, Map<String, Object> jobData, QScheduleMetaData scheduleMetaData, boolean allowedToStart)
+   private boolean scheduleJob(SchedulableIdentity schedulableIdentity, String groupName, Class<? extends Job> jobClass, Map<String, Object> jobData, QScheduleMetaData scheduleMetaData, boolean replaceExisting)
    {
       try
       {
@@ -420,7 +434,18 @@ public class QuartzScheduler implements QSchedulerInterface
          ///////////////////////////////////////
          // Schedule the job with the trigger //
          ///////////////////////////////////////
-         addOrReplaceJobAndTrigger(jobKey, jobDetail, trigger);
+         if(replaceExisting)
+         {
+            addOrReplaceJobAndTrigger(jobKey, jobDetail, trigger);
+         }
+         else
+         {
+            ///////////////////////////////////////////////////////////////////////////
+            // Use the non-replacing operation in case another caller added this job //
+            // after the startup existence check.                                    //
+            ///////////////////////////////////////////////////////////////////////////
+            scheduler.scheduleJob(jobDetail, trigger);
+         }
 
          ///////////////////////////////////////////////////////////////////////////
          // if we're inside the setup event (e.g., initial startup), then capture //

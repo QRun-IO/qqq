@@ -952,7 +952,7 @@ no requirement, release disposition or threshold is relaxed.
 The provider-contract branch retains all 17 reviewed S3 methods and adds seven
 focused cases. It introduces no production changes, dependencies, provider policy
 or public API. These results extend the source evidence; the earlier full #838 run
-does not certify this new delta, whose full sample run still needs an exclusive slot.
+does not certify this new delta; its completed combined verification is recorded below.
 
 | Original requirement | Added evidence and remaining boundary |
 | --- | --- |
@@ -1030,13 +1030,18 @@ Unsupported operations remain tested refusals, not invented implementations.
 No original scenario label is omitted from the runnable mapping. The concrete
 unproved native contracts are AWS's 1,025-byte rejection and literal storage of valid
 period-segment keys; their relevance to the original path/file-name requirement is
-left visible for review. Full sample verification of this delta and independent
-requirement review remain outstanding. General IAM certification, a blanket strict
-key policy and mandatory atomic rollback are not added requirements.
+left visible as provider limits. Independent review accepted all 16 original scenario
+mappings without adding live-AWS, general IAM, blanket strict-key or mandatory
+atomic-rollback requirements. Full combined verification of this delta also passed.
 
 
 All 24 ledger bindings use exact fully qualified JUnit report IDs (including the
 injected `Path` parameter in the timeout case). The original 17 method bodies are
-unchanged. With these focused reports, the S3 row's verifier reason is only
-`scenario review is pending`; no S3 test binding is missing or failed. This does not
-certify unrelated rows or replace full-sample verification.
+unchanged. Independent input and composition reviews passed. At
+`9b687321ed5a515414b9cb4c42f69b1d9e2991f3`, full acceptance and data-QBit profiles passed
+**817 regular +117 integration tests (934 total)** with zero failures/errors/skips
+and all 41 sample classes covered. All 24 native S3 methods passed against the
+current runtime, as did the 46 Python checks. Logs are
+`/private/tmp/qqq-798-wave9-{s3-focused,sample,python}.log`; reports are archived in
+`/private/tmp/qqq-798-wave9-final-reports`. S3 is verified at source stage; this does
+not certify unrelated rows, public release artifacts or AWS-specific enforcement.

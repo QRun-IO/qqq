@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.base.utils;
 
 
-import java.net.URI;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -56,7 +55,7 @@ public class SharedFilesystemBackendModuleUtils
          throw (new QException("Filters with sub-filters are not supported for querying filesystems at this time."));
       }
 
-      Path path = Path.of(URI.create("file:///" + filePath));
+      Path path = Path.of("/", filePath);
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////
       // foreach criteria, build a pathmatcher (or many, for an in-list), and check if the file matches //

@@ -367,3 +367,101 @@ source-built QQQ artifacts and the POM-default Material 0.41.0 dependency. The e
 plain `verify` run omitted this required profile; its 90% class coverage was not a
 new production gap. The source inventory report remains incomplete for other rows;
 combined release and published-candidate validation remain separate.
+
+### Local filesystem acceptance (#587 / #590)
+
+`SampleLocalFilesystemAcceptanceTest` uses the sample QInstance, real QQQ record and
+storage actions, and JUnit-owned temporary directories. Independent `Files` reads
+check stored bytes, preserved source files and failed-write effects. Its Apache-2.0
+fixture adds no production dependencies. Source evidence is limited to the two local
+filesystem rows; combined release and published-candidate validation remain separate.
+
+| Requirement | Evidence and boundary |
+|---|---|
+| ONE insert/query/count/delete | Real files, nested names, byte contents, file size/base name, heavy-field selection and native deletion readback. |
+| CSV/JSON and cardinality | MANY parses CSV and JSON objects/arrays, Unicode/quotes/newlines, CSV empty/missing cells and omitted JSON values; glob selection and count are checked. ONE retains whole bytes for either format and does not invoke the MANY-only post-read hook. Explicit JSON null remains a null field. |
+| Update and MANY mutation | All filesystem updates and MANY insert/delete are explicitly unimplemented; tests require the native refusal and unchanged files. |
+| Storage | Binary streams, shorter replacement, nested Unicode/space paths, file URL, missing input, canonical traversal/symlink refusal and native byte readback. Record query/insert/delete confinement also rejects outside-table targets; an in-table symlink remains usable. |
+| Parsing failures | Malformed/truncated CSV/JSON and wrong JSON element type fail without source changes. Duplicate CSV headers are suffixed (`name`, `name 2`); a missing cell is null. CSV/JSON adapters preserve source numeric values; invalid numeric text raises `QValueException` on typed access, with no claim of eager whole-file type validation. |
+| Customizers | MANY post-read transformation affects returned records while preserving file bytes; thrown customizer exceptions abort query/count. |
+| OS failures | Owned files have POSIX permissions removed, independently confirmed unreadable/unwritable, then restored before cleanup. Run as an unprivileged user; elevated/root execution cannot certify OS denial. |
+| Partial failures | A middle ONE insert fails against a file-as-parent while earlier/later writes persist. A failing source copied through the actual storage output stream leaves its prefix and truncates old contents. Storage is non-atomic; existing [#459](https://github.com/QRun-IO/qqq/issues/459) remains unchanged. |
+
+Local files have no transport credential or connection-timeout contract. SFTP/S3
+transport acceptance belongs to its separate inventory rows. No network failure is
+simulated to fill those inapplicable local cases.
+
+The initial source-built `d1dac171a` run reproduced seven failing assertions across
+three defects. Minimal corrections accompany the acceptance fixture:
+
+- `JsonToQRecordAdapter` translates explicit JSON null before the Serializable cast.
+- `SharedFilesystemBackendModuleUtils` treats filenames as filesystem paths rather
+  than concatenating unescaped URI text; space and Unicode queries now pass.
+- `AbstractFilesystemAction` checks canonical table confinement for local listing,
+  writes and deletes. Traversal insert/delete and outside-target symlink read/write
+  regressions preserve their sentinels, with a successful in-table symlink control.
+  All probes stay inside the owned outer temporary directory.
+
+Review regression: low-level `deleteFile` retains its idempotent missing-file no-op
+before resolving context or checking confinement. The new test repeats deletion of
+an absent outside path and dangling symlink, then creates that target and requires
+both deletion attempts to fail while preserving the target and link. The original
+`FilesystemBackendModuleTest` assertions remain intact; its existing-file test now
+initializes/clears QContext for backend resolution. The S3 module fixture uses the
+existing Localstack random-port option to avoid another run's fixed ports.
+
+Unsupported mutations and non-atomic streams keep their existing behavior. File
+customizers remain MANY-only, and parsed numeric type conversion remains lazy. The
+adapter's documented collision limitation for pre-suffixed CSV headers remains; the
+fixture certifies identical duplicate headers (`name`, `name`) and missing cells.
+
+With the checkout's source dependencies installed in a new task-owned Maven cache:
+
+```sh
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" \
+  -pl qqq-backend-module-filesystem clean verify
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" \
+  -pl qqq-backend-core -Dtest=JsonToQRecordAdapterTest test
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleLocalFilesystemAcceptanceTest test
+mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Djdk.httpclient.HttpClient.log=errors,channel -Pacceptance-tests clean verify
+python3 -m unittest discover -s qqq-sample-project -p test_feature_coverage.py
+python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+```
+
+The full-profile command is required; plain `verify` omits the packaged/browser
+evidence needed for the sample coverage gate. No test or coverage threshold is lowered.
+
+Review-fix verification: all 23 filesystem methods and 9 JSON-adapter tests pass.
+The entire filesystem module `clean verify` succeeds: 110 discovered tests, 106
+passed and four existing disabled JSON-serialization tests in the local/S3 metadata
+classes. Checkstyle and coverage checks pass unchanged. The module's existing
+non-blocking static-analysis configuration reports 38 SpotBugs and 329 PMD findings;
+these checks were not disabled or made less strict. Python ledger tests pass 23/23.
+
+Final exclusive verification at `9b3bc4cea` (the reviewed #823 commit `fcf3b0d10`
+cherry-picked onto `ff0e98890`) passes **743 unit + 78 integration/browser tests**
+with zero failures, errors or skips. Checkstyle has zero violations, and class
+coverage is 39/41 (95.12%), meeting the unchanged threshold. The command above was
+run once with the sample/broker slot explicitly reserved and bounded HTTP
+`errors,channel` diagnostics enabled. No tests were retried, skipped or relaxed.
+The source report verifies 89/127 features; both owned filesystem rows have no gaps,
+while the overall source gate remains incomplete for other rows.
+
+The earlier `ff0e98890` attempt ran 741 unit tests with one HTTP header EOF in
+`SampleInteractiveProcessTest.testLegacyBackAndUnknownResumeDoNotRunWork`; Failsafe
+was not reached. Its HTTP wildcard port was 49202 and Artemis loopback port was
+61616. Those logs remain preserved: this successful exclusive run does not establish
+the earlier EOF's cause or claim resolution of #824.
+
+Local review logs are retained under `/private/tmp/qqq-587-acceptance.fB6Bs0/`:
+`backend-module-red.log`, `missing-delete-sample-red.log`,
+`filesystem-full-verify.log`, `core-adapter-rereview.log`,
+`sample-filesystem-rereview.log`, `sample-full-rereview.log`,
+`http-error-port-evidence.txt` and `listeners-at-sample-error.log`. Final evidence is
+`sample-exclusive-823.log`, `exclusive-run-command.txt`,
+`python-exclusive-823.log` and `source-report-exclusive-823.log`, with copied JUnit
+reports under `exclusive-823-reports/`.
+Only `backend.filesystem.local` and `backend.filesystem.formats` receive these source
+bindings; original requirements and supported-case assertions are preserved.

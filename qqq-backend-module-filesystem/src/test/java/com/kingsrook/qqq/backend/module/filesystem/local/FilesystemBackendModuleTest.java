@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.module.filesystem.local;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -66,6 +67,7 @@ public class FilesystemBackendModuleTest
    @AfterEach
    public void afterEach() throws Exception
    {
+      QContext.clear();
       new FilesystemActionTest().cleanFilesystem();
    }
 
@@ -157,6 +159,7 @@ public class FilesystemBackendModuleTest
    {
       QInstance      qInstance = TestUtils.defineInstance();
       QTableMetaData table     = qInstance.getTable(TestUtils.TABLE_NAME_PERSON_LOCAL_FS_JSON);
+      QContext.init(qInstance, null);
 
       /////////////////////////////////////////////////////////////////////////////////////////////
       // first list the files - then delete one, then re-list, and assert that we have one fewer //

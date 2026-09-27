@@ -413,7 +413,7 @@ reports under `exclusive-823-reports/`.
 Only `backend.filesystem.local` and `backend.filesystem.formats` receive these source
 bindings; original requirements and supported-case assertions are preserved.
 
-### SFTP source acceptance (#589, pending)
+### SFTP source acceptance (#589)
 
 `SampleSftpAcceptanceTest` starts the existing Apache SSHD 2.16.0 server on
 `127.0.0.1:0` with a fresh JUnit temporary virtual root and synthetic credentials.
@@ -465,15 +465,36 @@ Logs and copied JUnit evidence are under `/private/tmp/qqq-589-acceptance.FrwS1r
 `nineteen-contracts-red.log`, `glob-module-red.log`, `links-root-red.log`,
 `sftp-23-sample.log`, `native-provider-delete-probe.log` and
 `storage-permission-recovery.log`. Full filesystem module `clean verify` passes:
-112 tests, zero failures/errors, four pre-existing disabled metadata tests; zero
+108 executed tests, zero failures/errors, plus four pre-existing disabled metadata
+tests (112 total); zero
 Checkstyle violations, 61/61 classes covered and the unchanged coverage gates pass.
 `filesystem-module-verify-final.log` retains that result and nonfatal SpotBugs/PMD
 advisories. The ledger verifier's Python suite also passes 23/23.
-The ledger remains pending until the exclusive sample gate passes; no published
-candidate or complete release-gate claim is made. After an explicit broker-slot
-grant, run the required profile without skips or relaxed coverage:
+At source head `cbbddae72`, the exclusive full run passes **772 unit tests**
+(766 ordinary tests plus six source-only data-QBit host tests) and **78 integration/
+browser tests**, all executed with zero failures, errors or skips. Class coverage is
+39/41 (95.12%); Checkstyle and unchanged coverage gates pass. The data-QBit JAR was
+built from the same source into the owned cache before enabling both profiles.
+Only `backend.filesystem.sftp` receives these source bindings; original requirements
+remain, and no published-candidate or complete release-gate claim is made.
+
+The first full run at the same head failed one exact-output child-process assertion:
+`JAVA_TOOL_OPTIONS` added a 76-character JVM startup banner to the captured output.
+A separate child-process comparison reproduced the exact difference. The unchanged
+method passed with diagnostics supplied as a Maven system property, then the full
+run passed with that invocation correction. No source assertion, timeout or gate
+was changed. Original and corrected reports remain archived under the task log
+root; final evidence is `sample-exclusive-cbbddae72-corrected.log` and
+`exclusive-cbbddae72-corrected-reports/`. The exclusive broker slot was released
+when the corrected run terminated.
+
+After installing matching framework sources into the owned cache and obtaining an
+exclusive sample/broker slot, reproduce with:
 
 ```sh
-mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
-  -Pacceptance-tests clean verify
+mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" -Drevision=4.1.0-SNAPSHOT \
+  -f qqq-sample-data-qbit/pom.xml clean install
+env -u JAVA_TOOL_OPTIONS mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" \
+  -Drevision=4.1.0-SNAPSHOT -Djdk.httpclient.HttpClient.log=errors,channel \
+  -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
 ```

@@ -314,3 +314,54 @@ The renderer accepts strings; the consumer loads resources with the JDK and reje
 | Reuse, timeout/cancellation, cleanup | `testPoolReuseCheckoutTimeoutAndOwnedCleanup` verifies physical PostgreSQL PID reuse, bounded pool exhaustion, rollback/reset when an unfinished pooled transaction closes, and native session disappearance. Existing Count/Query tests observe actual blocked PostgreSQL requests before timeout/cancellation, verify their removal and prove recovery. |
 
 Boundaries: autocommit batches can retain earlier successful statements; callers must supply and roll back a transaction for atomic row changes. PostgreSQL sequence allocation is not rolled back. `ConnectionManager.resetConnectionProviders()` clears the registry without closing pools: the fixture explicitly destroys only its uniquely named C3P0 pool and verifies server-side cleanup. PostgreSQL has relational CRUD/aggregate/join support but no file-storage interface. These two ledger rows record source evidence only; no authentication/UI behavior, full release verification, or published-candidate resolution is claimed.
+
+### External API mapping acceptance (#585)
+
+`SampleApiMappingAcceptanceTest` adds an API-backed table to the sample QInstance and
+runs native QQQ Get, Query, Count, Insert, Update and Delete actions against an owned
+`127.0.0.1` HTTP server on an ephemeral port. The scripted provider captures the actual
+method, URI, JSON body and content type; expected requests are independent literals.
+All data is synthetic. Each fixture stops its server, releases withheld responses and
+joins its executor threads, and fails if expected requests never arrive.
+
+| Contract | Evidence |
+|---|---|
+| Six actions and translation | GET key path; nested/renamed fields; UTF-8 wrapped POST; returned generated key; wrapped PUT array; DELETE key path, count and subsequent 404. |
+| Pagination and count | Five ordered records over three pages; exact offsets; full final page followed by empty page; explicit limit/skip; escaped equality filter; provider total 17 despite a one-record count response page. |
+| HTTP failures | 400 and 503 for all six actions; native bounded GET/query 503 retries; each failed mutation sends exactly one request. |
+| Timeouts | Server consumes then withholds each action's response; configured 300 ms socket timeout completes within 3 seconds; mutations are not retried. |
+| Missing/malformed/wrong bodies | GET and count reject unusable resource/count responses; query rejects malformed JSON and scalar wrapper/list entries; insert returns record errors for bad responses or missing generated key and sends POST only once. |
+| Missing results | GET 404 returns null; native query empty body, JSON null and empty arrays return no records; no extra pagination request. |
+| Unsupported provider mappings | Unsupported criteria and multi-key delete fail before HTTP. |
+
+The test provider customizes URL/filter/count and JSON envelope hooks documented in
+`docs/metaData/Backends.adoc`. It retains native HTTP execution, pagination and retry
+behavior. This evidence covers the scripted provider's schema and single-key delete
+contract; generic strict field-type validation, other providers, OAuth/security and
+published-candidate acceptance have separate scope. PUT/DELETE use valid bodyless 204
+responses. Scripted readback verifies response mapping; it does not claim remote service
+persistence or transaction semantics.
+
+After installing this checkout's source modules into a **new task-specific Maven cache**,
+run from the repository root:
+
+```sh
+mvn -B -ntp -Dmaven.repo.local="$API_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleApiMappingAcceptanceTest test
+mvn -B -ntp -Dmaven.repo.local="$API_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
+python3 -m unittest discover -s qqq-sample-project -p test_feature_coverage.py
+python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+```
+
+Only `backend.api.mapping` receives these method bindings. Source evidence uses the
+source-built dependencies from the reviewed #803 base `9a526e330`; published artifacts
+and the combined release integration remain separate gates.
+
+Full `-Pacceptance-tests clean verify` passes on this base: 692 unit tests (including
+all 11 new API contracts) and 61 integration/browser tests, with zero failures,
+errors or skips. Checkstyle reports zero violations and class coverage is 38/40
+(95%), meeting the unchanged gate. This run uses the task-owned Maven cache,
+source-built QQQ artifacts and the POM-default Material 0.41.0 dependency. The earlier
+plain `verify` run omitted this required profile; its 90% class coverage was not a
+new production gap. The source inventory report remains incomplete for other rows;
+combined release and published-candidate validation remain separate.

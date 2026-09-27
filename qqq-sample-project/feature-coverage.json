@@ -4223,12 +4223,30 @@
       "negative_cases": [
         "Non-2xx/timeout, missing/malformed body, missing record, bad response type and no duplicate writes"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testGetInsertUpdateDeleteTranslation",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testQueryPaginationAndNestedResponseTranslation",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testQueryEmptyPageAndExplicitLimitSkipFilter",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testCountUsesProviderTotalAndFilter",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testNon2xxFailuresAndNoDuplicateWrites",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testTimeoutsAndNoDuplicateWrites",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testGetRejectsMissingMalformedAndWrongResponseTypes",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testQueryMalformedWrongTypeAndEmptyResponses",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testCountRejectsMissingMalformedAndWrongResponseTypes",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testInsertRejectsMissingMalformedAndWrongResponseWithoutRetry",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testUnsupportedProviderMappingsCannotBroadenAnOperation"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/585",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-27T02:59:04.819610+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/585",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest.xml",
+        "scope": "Native QQQ six-action API mapping in the sample QInstance against owned loopback HTTP; independent literal request/response oracles, nested and UTF-8 translation, generated key, offset pagination/filter/count total; 400/503, withheld-response timeout, malformed/missing/wrong-shape bodies, 404, single-attempt failed writes and unsupported provider mappings. Query empty bodies are native empty results. Source-built dependencies from 9a526e330; no published-candidate, generic strict field-type, remote persistence or OAuth/security claim."
+      }
     },
     {
       "id": "backend.api.authentication",

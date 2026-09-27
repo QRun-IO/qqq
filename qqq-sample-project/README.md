@@ -232,3 +232,52 @@ The sharing fixture explicitly configures saved-view generic sharing metadata; a
 `SampleDisplayWidgetsBrowserIT` also exercises cron and dynamic-form widgets on an owned memory record: typed values, zero, human-readable schedule, actual editor changes, native save and refresh, empty/error/malformed responses, invalid renderer references, widget/source permission denial and cron record personalization. Widget sections omit `fieldNames`; their fields are declared in a separate hidden section. Wrong-shaped cron descriptions can still blank the record page ([Medium #553](https://github.com/QRun-IO/qqq/issues/553)); the test explicitly records that deferred limitation. The native cron READ/context fix is tracked by [#563](https://github.com/QRun-IO/qqq/issues/563).
 
 On 2026-09-24 the maintainer deferred the remaining48 comprehensive coverage groups beyond4.0. The inventory remains79/127 and continues to report gaps; it no longer blocks publication. Existing tests and required release/main-workflow checks still apply. [#534](https://github.com/QRun-IO/qqq/issues/534) links each remaining coverage group and the known future work.
+
+### External API mapping acceptance (#585)
+
+`SampleApiMappingAcceptanceTest` adds an API-backed table to the sample QInstance and
+runs native QQQ Get, Query, Count, Insert, Update and Delete actions against an owned
+`127.0.0.1` HTTP server on an ephemeral port. The scripted provider captures the actual
+method, URI, JSON body and content type; expected requests are independent literals.
+All data is synthetic. Each fixture stops its server, releases withheld responses and
+joins its executor threads, and fails if expected requests never arrive.
+
+| Contract | Evidence |
+|---|---|
+| Six actions and translation | GET key path; nested/renamed fields; UTF-8 wrapped POST; returned generated key; wrapped PUT array; DELETE key path, count and subsequent 404. |
+| Pagination and count | Five ordered records over three pages; exact offsets; full final page followed by empty page; explicit limit/skip; escaped equality filter; provider total 17 despite a one-record count response page. |
+| HTTP failures | 400 and 503 for all six actions; native bounded GET/query 503 retries; each failed mutation sends exactly one request. |
+| Timeouts | Server consumes then withholds each action's response; configured 300 ms socket timeout completes within 3 seconds; mutations are not retried. |
+| Missing/malformed/wrong bodies | GET and count reject unusable resource/count responses; query rejects malformed JSON and scalar wrapper/list entries; insert returns record errors for bad responses or missing generated key and sends POST only once. |
+| Missing results | GET 404 returns null; native query empty body, JSON null and empty arrays return no records; no extra pagination request. |
+| Unsupported provider mappings | Unsupported criteria and multi-key delete fail before HTTP. |
+
+The test provider customizes URL/filter/count and JSON envelope hooks documented in
+`docs/metaData/Backends.adoc`. It retains native HTTP execution, pagination and retry
+behavior. This evidence covers the scripted provider's schema and single-key delete
+contract; generic strict field-type validation, other providers, OAuth/security and
+published-candidate acceptance have separate scope. PUT/DELETE use valid bodyless 204
+responses. Scripted readback verifies response mapping; it does not claim remote service
+persistence or transaction semantics.
+
+After installing this checkout's source modules into a **new task-specific Maven cache**,
+run from the repository root:
+
+```sh
+mvn -B -ntp -Dmaven.repo.local="$API_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleApiMappingAcceptanceTest test
+mvn -B -ntp -Dmaven.repo.local="$API_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml clean verify
+python3 -m unittest discover -s qqq-sample-project -p test_feature_coverage.py
+python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+```
+
+Only `backend.api.mapping` receives these method bindings. Source evidence uses the
+source-built dependencies from the reviewed #803 base `9a526e330`; published artifacts
+and the combined release integration remain separate gates.
+
+On this base the plain `clean verify` run passes 692 unit tests, including all 11 new
+API contracts, then stops at the class coverage gate (90% against 95%). The existing
+`-Pacceptance-tests` profile adds browser/packaged-server evidence used by the full
+sample gate. That broader profile was not run for this bounded API sidecar; this does
+not claim a full release-gate pass or a new production coverage defect. The source
+report remains incomplete for other rows.

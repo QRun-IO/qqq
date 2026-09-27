@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.module.filesystem.sftp.actions;
 
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
@@ -69,7 +70,7 @@ public class SFTPStorageAction extends AbstractSFTPAction implements QStorageInt
    /*******************************************************************************
     **
     *******************************************************************************/
-   private String getFullPath(StorageInput storageInput) throws QException
+   private String getFullPath(StorageInput storageInput) throws QException, IOException
    {
       QTableMetaData   table    = storageInput.getTable();
       QBackendMetaData backend  = storageInput.getBackend();
@@ -83,6 +84,12 @@ public class SFTPStorageAction extends AbstractSFTPAction implements QStorageInt
          fullPath = fullPath.substring(1);
       }
 
+      String tableRoot = getFullBasePath(table, backend);
+      if(tableRoot.startsWith("/"))
+      {
+         tableRoot = tableRoot.substring(1);
+      }
+      validateTableFilePath(tableRoot, fullPath, false, true);
       return fullPath;
    }
 

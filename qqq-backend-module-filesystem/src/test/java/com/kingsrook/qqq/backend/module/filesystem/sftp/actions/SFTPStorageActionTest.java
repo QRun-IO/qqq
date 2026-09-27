@@ -30,12 +30,16 @@ import java.util.Collections;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.TestUtils;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.BaseSFTPTest;
+import org.apache.sshd.sftp.common.SftpConstants;
+import org.apache.sshd.sftp.common.SftpException;
 import org.junit.jupiter.api.Test;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
 /*******************************************************************************
@@ -62,18 +66,23 @@ public class SFTPStorageActionTest extends BaseSFTPTest
    @Test
    public void testPermissionError() throws Exception
    {
+      String remotePath = REMOTE_DIR + "/fromStorageAction.txt";
+      copyFileToContainer("files/testfile.txt", remotePath);
+      assertEquals(0, sftpContainer.execInContainer("chmod", "666", remotePath).getExitCode());
+      String before = sftpContainer.execInContainer("cat", remotePath).getStdout();
       try
       {
          revokeUploadFilesDirWritePermission();
-         String data = "oops!";
-         assertThatThrownBy(() -> runTest(data))
-            .isInstanceOf(IOException.class)
-            .hasStackTraceContaining("Permission denied");
+         QException error = assertThrows(QException.class, () -> runTest("oops!"));
+         SftpException denial = assertInstanceOf(SftpException.class, ExceptionUtils.getRootException(error));
+         assertEquals(SftpConstants.SSH_FX_PERMISSION_DENIED, denial.getStatus());
+         assertEquals(before, sftpContainer.execInContainer("cat", remotePath).getStdout());
       }
       finally
       {
          grantUploadFilesDirWritePermission();
       }
+      runTest("allowed again");
    }
 
 

@@ -25,18 +25,24 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
@@ -50,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsUti
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.actions.AbstractBaseFilesystemAction;
+import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemTableBackendDetails;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.model.SFTPDirEntryWithPath;
 import com.kingsrook.qqq.backend.module.filesystem.sftp.model.metadata.SFTPBackendMetaData;
@@ -59,6 +66,7 @@ import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.common.config.keys.KeyUtils;
 import org.apache.sshd.sftp.client.SftpClient;
 import org.apache.sshd.sftp.client.SftpClientFactory;
+import org.apache.sshd.sftp.common.SftpConstants;
 import org.apache.sshd.sftp.common.SftpException;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -335,7 +343,13 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // make a 'stat' call, to find out if the path is found, and if it is, if it describes a single file, or a directory //
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         SftpClient.Attributes stat = sftpClient.stat(fullPath);
+         String tableRoot = getFullBasePath(table, backendBase);
+         if(tableRoot.startsWith("/"))
+         {
+            tableRoot = "." + tableRoot;
+         }
+         String resolvedPath = validateTableFilePath(tableRoot, fullPath, true, false);
+         SftpClient.Attributes stat = sftpClient.stat(resolvedPath);
          if(stat == null)
          {
             return (rs);
@@ -371,6 +385,16 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
             }
          }
 
+         AbstractFilesystemTableBackendDetails details = getTableBackendDetails(AbstractFilesystemTableBackendDetails.class, table);
+         String pattern = StringUtils.hasContent(details.getGlob()) ? "glob:" + details.getGlob() : "regex:.*";
+         PathMatcher matcher = FileSystems.getDefault().getPathMatcher(pattern);
+         String basePath = getFullBasePath(table, backendBase);
+         Path relativeBase = Path.of(basePath.startsWith("/") ? "." + basePath : basePath).normalize();
+         rs.removeIf(entry -> !matcher.matches(relativeBase.relativize(Path.of(getFullPathForFile(entry)).normalize())));
+         for(SFTPDirEntryWithPath entry : rs)
+         {
+            validateTableFilePath(tableRoot, getFullPathForFile(entry), false, false);
+         }
          return (rs);
       }
       catch(Exception e)
@@ -404,6 +428,7 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
    @Override
    public void writeFile(QBackendMetaData backend, QTableMetaData table, QRecord record, String path, byte[] contents) throws IOException
    {
+      validateTableFilePath(getFullBasePath(table, backend), path, false, true);
       sftpClient.put(new ByteArrayInputStream(contents), path);
    }
 
@@ -428,6 +453,8 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
    {
       try
       {
+         QBackendMetaData backend = QContext.getQInstance().getBackend(table.getBackendName());
+         validateTableFilePath(getFullBasePath(table, backend), fileReference, false, true);
          sftpClient.remove(fileReference);
       }
       catch(Exception e)
@@ -460,6 +487,90 @@ public class AbstractSFTPAction extends AbstractBaseFilesystemAction<SFTPDirEntr
       }
 
       return (sftpClient);
+   }
+
+
+
+   /*******************************************************************************
+    ** Compare remote targets to the table root without changing the path used for I/O.
+    *******************************************************************************/
+   protected String validateTableFilePath(String tableRoot, String filePath, boolean allowRoot, boolean allowMissingLeaf) throws IOException
+   {
+      String base = resolveRemotePath(tableRoot, false);
+      String file = resolveRemotePath(filePath, allowMissingLeaf);
+      if(file.equals(base) ? !allowRoot : !file.startsWith(base.endsWith("/") ? base : base + "/"))
+      {
+         throw new IOException("File path must remain inside its table directory");
+      }
+      return file;
+   }
+
+
+
+   /*******************************************************************************
+    ** REALPATH alone can normalize without resolving symlinks (including on SSHD).
+    ** Resolve link components remotely before canonicalizing the existing target or parent.
+    *******************************************************************************/
+   private String resolveRemotePath(String path, boolean allowMissingLeaf) throws IOException
+   {
+      String absolutePath = path.startsWith("/") ? path : sftpClient.canonicalPath(".") + "/" + path;
+      Deque<String> components = new ArrayDeque<>(List.of(absolutePath.split("/")));
+      String resolved = "/";
+      int followedLinks = 0;
+      while(!components.isEmpty())
+      {
+         String component = components.removeFirst();
+         if(component.isEmpty() || component.equals("."))
+         {
+            continue;
+         }
+         if(component.equals(".."))
+         {
+            resolved = resolved.substring(0, Math.max(1, resolved.lastIndexOf('/')));
+            continue;
+         }
+         String candidate = resolved.endsWith("/") ? resolved + component : resolved + "/" + component;
+         SftpClient.Attributes attributes;
+         try
+         {
+            attributes = sftpClient.lstat(candidate);
+         }
+         catch(SftpException e)
+         {
+            if(allowMissingLeaf && components.isEmpty() && (e.getStatus() == SftpConstants.SSH_FX_NO_SUCH_FILE || e.getStatus() == SftpConstants.SSH_FX_NO_SUCH_PATH))
+            {
+               String parent = sftpClient.canonicalPath(resolved);
+               return parent.endsWith("/") ? parent + component : parent + "/" + component;
+            }
+            throw e;
+         }
+         if(attributes.isSymbolicLink())
+         {
+            if(++followedLinks > 40)
+            {
+               throw new IOException("Too many symbolic links in SFTP path");
+            }
+            String target = sftpClient.readLink(candidate);
+            if(target.startsWith("/"))
+            {
+               resolved = "/";
+            }
+            String[] targetComponents = target.split("/");
+            for(int i = targetComponents.length - 1; i >= 0; i--)
+            {
+               components.addFirst(targetComponents[i]);
+            }
+         }
+         else
+         {
+            if(!components.isEmpty() && !attributes.isDirectory())
+            {
+               throw new IOException("Not a directory: " + candidate);
+            }
+            resolved = candidate;
+         }
+      }
+      return sftpClient.canonicalPath(resolved);
    }
 
 

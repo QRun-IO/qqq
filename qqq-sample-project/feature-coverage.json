@@ -1410,12 +1410,18 @@
       "negative_cases": [
         "Denied audit access, no event for failed write, sensitive-value policy and missing record"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testPersonFieldHistoryThroughAuditProcess",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testNoneRecordAndExplicitAuditEvents",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testAuditRetrievalRequiresPermission",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testFailedWriteAndMissingRecordHaveNoAuditEvent",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testPasswordAuditMasksOldAndNewValues"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/566",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "acceptance_review": "The sample's H2 Person table and Field Lab password field exercise real DML, audit metadata, and GetAuditsForRecord; audit rows use the sample memory backend. HTTP process access denies a caller with Person read but no audit read. Failed Person updates preserve the row and add no audit event. Password audit details omit old and new secret values. This source scenario does not assert audit persistence across restarts or provider-specific audit storage."
     },
     {
       "id": "core.automation",

@@ -14,6 +14,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.addCleanup(self.work.cleanup)
         self.sample = Path(self.work.name)
         shutil.copy(Path(__file__).with_name('verify-feature-coverage.py'), self.sample)
+        shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
         self.inventory = json.loads(Path(__file__).with_name('feature-coverage.json').read_text())
         for feature in self.inventory['features']:
             if feature['acceptance_status'] != 'unsupported':
@@ -37,6 +38,16 @@ class FeatureCoverageGateTest(unittest.TestCase):
         result = self.sample / 'target' / 'feature-coverage-result.json'
         return run.returncode, json.loads(result.read_text()) if result.exists() else None
 
+    def set_deferrals(self, *entries):
+        (self.sample / 'release-deferrals.json').write_text(json.dumps({
+            'schema_version': 1, 'deferrals': list(entries),
+        }))
+
+    def approved_deferral(self, feature_id=None):
+        return {'id': feature_id or self.feature['id'],
+                'owner_approval': 'https://github.com/QRun-IO/qqq/issues/790#issuecomment-123456',
+                'rationale': 'Scenario awaits a supported fixture', 'target_release': '4.1.1'}
+
     def test_reviewed_passing_test_is_required(self):
         code, result = self.run_gate()
         self.assertEqual(0, code)
@@ -44,6 +55,90 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.assertEqual(self.supported_count, result['verified'])
         self.feature['acceptance_status'] = 'pending'
         self.assertEqual(1, self.run_gate()[0])
+
+    def test_source_pending_requires_explicit_approved_deferral(self):
+        self.feature['acceptance_status'] = 'pending'
+        self.feature['verified_tests'] = []
+        self.assertEqual(1, self.run_gate(stage='source')[0])
+        self.set_deferrals(self.approved_deferral())
+        code, result = self.run_gate(stage='source')
+        self.assertEqual(0, code)
+        self.assertTrue(result['stage_passed'])
+        self.assertEqual([self.feature['id']], result['release_deferrals'])
+        self.assertFalse(result['complete'])
+
+    def test_unlisted_pending_scenario_still_blocks_release(self):
+        pending = [feature for feature in self.inventory['features']
+                   if feature['acceptance_stage'] == 'source'][:2]
+        for feature in pending:
+            feature['acceptance_status'] = 'pending'
+            feature['verified_tests'] = []
+        self.set_deferrals(self.approved_deferral(pending[0]['id']))
+        code, result = self.run_gate(stage='source')
+        self.assertEqual(1, code)
+        self.assertEqual([pending[1]['id']], [gap['id'] for gap in result['gaps']])
+
+    def test_missing_malformed_and_stale_deferrals_fail_closed(self):
+        manifest = self.sample / 'release-deferrals.json'
+        manifest.unlink()
+        self.assertNotEqual(0, self.run_gate(stage='source')[0])
+        manifest.write_text('{invalid json')
+        self.assertNotEqual(0, self.run_gate(stage='source')[0])
+        for entries in ([{'id': self.feature['id']}],
+                        [self.approved_deferral('unknown.feature')],
+                        [self.approved_deferral(), self.approved_deferral()],
+                        [self.approved_deferral('core.widget.generic')],
+                        [self.approved_deferral('train.bom')],
+                        [self.approved_deferral()]):
+            with self.subTest(entries=entries):
+                self.set_deferrals(*entries)
+                self.assertNotEqual(0, self.run_gate(stage='source')[0])
+
+    def test_deferral_never_excuses_failed_or_skipped_verified_test(self):
+        self.set_deferrals(self.approved_deferral())
+        for outcome in ('<failure/>', '<skipped/>'):
+            with self.subTest(outcome=outcome):
+                self.assertNotEqual(0, self.run_gate(stage='source', outcome=outcome)[0])
+
+    def test_pending_deferral_cannot_hide_failed_skipped_or_missing_mapped_test(self):
+        self.feature['acceptance_status'] = 'pending'
+        self.set_deferrals(self.approved_deferral())
+        for outcome in ('<failure/>', '<skipped/>', '<error/>'):
+            with self.subTest(outcome=outcome):
+                code, result = self.run_gate(stage='source', outcome=outcome)
+                self.assertEqual(1, code)
+                self.assertEqual([], result['release_deferrals'])
+                self.assertIn('test did not pass in these reports: SampleTest#testExample',
+                              result['gaps'][0]['reasons'])
+        self.feature['verified_tests'] = ['SampleTest#missing']
+        code, result = self.run_gate(stage='source')
+        self.assertEqual(1, code)
+        self.assertIn('test did not pass in these reports: SampleTest#missing',
+                      result['gaps'][0]['reasons'])
+
+    def test_approval_requires_direct_qqq_owner_review_record(self):
+        self.feature['acceptance_status'] = 'pending'
+        self.feature['verified_tests'] = []
+        for reference in ('QQQ-41 release owner review',
+                          'https://example.com/QRun-IO/qqq/issues/790#issuecomment-123456',
+                          'https://github.com/QRun-IO/qqq/issues/790',
+                          'https://github.com/Kingsrook/qqq/issues/790#issuecomment-123456',
+                          'https://github.com/other/qqq/issues/790#issuecomment-123456'):
+            with self.subTest(reference=reference):
+                entry = self.approved_deferral()
+                entry['owner_approval'] = reference
+                self.set_deferrals(entry)
+                self.assertNotEqual(0, self.run_gate(stage='source')[0])
+        entry = self.approved_deferral()
+        entry['owner_approval'] = 'https://github.com/QRun-IO/qqq/pull/798#pullrequestreview-123456'
+        self.set_deferrals(entry)
+        self.assertEqual(0, self.run_gate(stage='source')[0])
+
+    def test_source_release_rejects_skipped_verified_test(self):
+        code, result = self.run_gate(stage='source', outcome='<skipped/>')
+        self.assertEqual(1, code)
+        self.assertIn('test did not pass in these reports: SampleTest#testExample',
+                      result['gaps'][0]['reasons'])
 
     def test_failed_skipped_and_missing_tests_cannot_certify(self):
         for outcome in ('<failure/>', '<error/>', '<skipped/>'):

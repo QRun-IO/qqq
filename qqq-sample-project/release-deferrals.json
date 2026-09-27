@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "review_procedure": "Before merging a deferral, the release owner must approve its exact feature ID, rationale, and target release in a QQQ issue comment or PR review. Copy that direct permalink into owner_approval. The reviewer must open the link and confirm the author and matching details; URL format validation alone does not prove approval. Record accepted deferrals in release issue #790 before publishing, and remove each entry once verified.",
+  "deferrals": []
+}

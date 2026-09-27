@@ -4302,10 +4302,10 @@
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
       "acceptance_note": "Owned temporary files, actual sample QQQ record/storage actions and independent native readback. Supported cases pass after correcting JSON null, literal filename handling and local record path confinement. Unsupported updates/MANY writes, lazy numeric conversion, MANY-only post-read hooks, the existing CSV header-suffix collision limitation and non-atomic stream writes remain explicit boundaries. Local OS denial is exercised as an unprivileged user; transport credentials/timeouts have no local analogue. No SFTP/S3 acceptance, UI/auth or public-candidate claim.",
       "acceptance_review": {
-        "at": "2026-09-27T04:05:43.122321+00:00",
+        "at": "2026-09-27T04:30:07.228867+00:00",
         "issue": "https://github.com/QRun-IO/qqq/issues/587",
         "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest.xml",
-        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. The review-fix full sample acceptance attempt ran 741 unit tests with one HTTP header EOF error in SampleInteractiveProcessTest and no skips; Failsafe was not reached and full-profile completion remains pending, not inferred from the prior 740+78 pass. Original requirements and limitation links preserved; README retains exact logs."
+        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. At 9b3bc4cea (reviewed #823 cherry-pick atop ff0e98890), one exclusive -Pacceptance-tests clean verify with HTTP errors/channel diagnostics passes 743 unit and 78 integration/browser tests with zero failures/errors/skips, 39/41 class coverage and clean Checkstyle. Both owned rows have no source-report gaps; overall source gate remains incomplete at 89/127. Earlier HTTP EOF logs retained without attributing cause or claiming #824 fixed. Original requirements and limitation links preserved."
       }
     },
     {
@@ -4381,10 +4381,10 @@
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
       "acceptance_note": "Owned temporary files, actual sample QQQ record/storage actions and independent native readback. Supported cases pass after correcting JSON null, literal filename handling and local record path confinement. Unsupported updates/MANY writes, lazy numeric conversion, MANY-only post-read hooks, the existing CSV header-suffix collision limitation and non-atomic stream writes remain explicit boundaries. Local OS denial is exercised as an unprivileged user; transport credentials/timeouts have no local analogue. No SFTP/S3 acceptance, UI/auth or public-candidate claim.",
       "acceptance_review": {
-        "at": "2026-09-27T04:05:43.122407+00:00",
+        "at": "2026-09-27T04:30:07.228867+00:00",
         "issue": "https://github.com/QRun-IO/qqq/issues/590",
         "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest.xml",
-        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. The review-fix full sample acceptance attempt ran 741 unit tests with one HTTP header EOF error in SampleInteractiveProcessTest and no skips; Failsafe was not reached and full-profile completion remains pending, not inferred from the prior 740+78 pass. Original requirements and limitation links preserved; README retains exact logs."
+        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. At 9b3bc4cea (reviewed #823 cherry-pick atop ff0e98890), one exclusive -Pacceptance-tests clean verify with HTTP errors/channel diagnostics passes 743 unit and 78 integration/browser tests with zero failures/errors/skips, 39/41 class coverage and clean Checkstyle. Both owned rows have no source-report gaps; overall source gate remains incomplete at 89/127. Earlier HTTP EOF logs retained without attributing cause or claiming #824 fixed. Original requirements and limitation links preserved."
       }
     },
     {

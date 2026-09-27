@@ -372,7 +372,7 @@ mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" \
 mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
   -Dtest=SampleLocalFilesystemAcceptanceTest test
 mvn -B -ntp -Dmaven.repo.local="$FILESYSTEM_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
-  -Pacceptance-tests clean verify
+  -Djdk.httpclient.HttpClient.log=errors,channel -Pacceptance-tests clean verify
 python3 -m unittest discover -s qqq-sample-project -p test_feature_coverage.py
 python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
 ```
@@ -387,19 +387,28 @@ classes. Checkstyle and coverage checks pass unchanged. The module's existing
 non-blocking static-analysis configuration reports 38 SpotBugs and 329 PMD findings;
 these checks were not disabled or made less strict. Python ledger tests pass 23/23.
 
-The prior `1caf01bcd` full-profile run passed 740 unit + 78 integration/browser tests
-with class coverage 39/41 (95.12%). The review-fix full-profile rerun ran 741 unit
-tests: 740 passed and one errored (no skips); Failsafe and the final coverage check
-were not reached. The error was HTTP header EOF in `SampleInteractiveProcessTest.testLegacyBackAndUnknownResumeDoNotRunWork`.
-Its test log shows HTTP `0.0.0.0:49202` and Artemis `127.0.0.1:61616`; this alone does
-not prove the same-port collision reported in #823. No blind retry or #823
-cherry-pick was performed. Full-profile completion for this fix remains pending;
-prior coverage results are not claimed as a current full-profile pass.
+Final exclusive verification at `9b3bc4cea` (the reviewed #823 commit `fcf3b0d10`
+cherry-picked onto `ff0e98890`) passes **743 unit + 78 integration/browser tests**
+with zero failures, errors or skips. Checkstyle has zero violations, and class
+coverage is 39/41 (95.12%), meeting the unchanged threshold. The command above was
+run once with the sample/broker slot explicitly reserved and bounded HTTP
+`errors,channel` diagnostics enabled. No tests were retried, skipped or relaxed.
+The source report verifies 89/127 features; both owned filesystem rows have no gaps,
+while the overall source gate remains incomplete for other rows.
+
+The earlier `ff0e98890` attempt ran 741 unit tests with one HTTP header EOF in
+`SampleInteractiveProcessTest.testLegacyBackAndUnknownResumeDoNotRunWork`; Failsafe
+was not reached. Its HTTP wildcard port was 49202 and Artemis loopback port was
+61616. Those logs remain preserved: this successful exclusive run does not establish
+the earlier EOF's cause or claim resolution of #824.
 
 Local review logs are retained under `/private/tmp/qqq-587-acceptance.fB6Bs0/`:
 `backend-module-red.log`, `missing-delete-sample-red.log`,
 `filesystem-full-verify.log`, `core-adapter-rereview.log`,
 `sample-filesystem-rereview.log`, `sample-full-rereview.log`,
-`http-error-port-evidence.txt` and `listeners-at-sample-error.log`.
+`http-error-port-evidence.txt` and `listeners-at-sample-error.log`. Final evidence is
+`sample-exclusive-823.log`, `exclusive-run-command.txt`,
+`python-exclusive-823.log` and `source-report-exclusive-823.log`, with copied JUnit
+reports under `exclusive-823-reports/`.
 Only `backend.filesystem.local` and `backend.filesystem.formats` receive these source
 bindings; original requirements and supported-case assertions are preserved.

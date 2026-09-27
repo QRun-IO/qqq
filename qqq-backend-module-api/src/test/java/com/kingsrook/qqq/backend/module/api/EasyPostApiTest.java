@@ -34,9 +34,17 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.module.api.actions.BaseAPIActionUtil;
 import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.json.JSONObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -177,6 +185,54 @@ public class EasyPostApiTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A provider echoing credentials cannot put its response text in row errors.
+    *******************************************************************************/
+   @Test
+   void testPostTrackerSecretEchoStaysGeneric() throws QException
+   {
+      StringBuilder events = new StringBuilder();
+      Logger logger = (Logger) LogManager.getLogger(BaseAPIActionUtil.class);
+      Level oldLevel = logger.getLevel();
+      AbstractAppender appender = new AbstractAppender("easypost-secret-echo", null,
+         PatternLayout.createDefaultLayout(), false, Property.EMPTY_ARRAY)
+      {
+         @Override
+         public void append(LogEvent event)
+         {
+            events.append(event.getMessage().getFormattedMessage());
+         }
+      };
+      appender.start();
+      logger.addAppender(appender);
+      logger.setLevel(Level.DEBUG);
+      try
+      {
+         for(String trackingNo : List.of("Echo-Secret", "Echo-With-Code"))
+         {
+            QRecord output = new InsertAction().execute(new InsertInput("easypostTracker").withRecord(
+               new QRecord().withValue("carrier", "USPS").withValue("trackingNo", trackingNo))).getRecords().get(0);
+
+            assertNull(output.getValue("id"));
+            assertThat(output.getErrorsAsString()).contains("422")
+               .doesNotContain(FIXTURE_API_KEY, EXPECTED_AUTHORIZATION, "denied");
+            if("Echo-With-Code".equals(trackingNo))
+            {
+               assertThat(output.getErrorsAsString()).contains("TRACKER.INVALID");
+            }
+         }
+         assertThat(events.toString()).doesNotContain(FIXTURE_API_KEY, EXPECTED_AUTHORIZATION, "denied");
+      }
+      finally
+      {
+         logger.setLevel(oldLevel);
+         logger.removeAppender(appender);
+         appender.stop();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Validate captured wire data on the test thread, independent of adapter helpers.
     *******************************************************************************/
    private void assertRequest(CapturedRequest request, String trackingNumber, String authorization)
@@ -220,7 +276,20 @@ public class EasyPostApiTest extends BaseTest
          if(id == null)
          {
             status = 422;
-            response = new JSONObject().put("error", new JSONObject().put("message", "TRACKER.INVALID"));
+            JSONObject error = new JSONObject();
+            if("Echo-Secret".equals(trackingNumber) || "Echo-With-Code".equals(trackingNumber))
+            {
+               error.put("message", "denied " + EXPECTED_AUTHORIZATION + " " + FIXTURE_API_KEY);
+               if("Echo-With-Code".equals(trackingNumber))
+               {
+                  error.put("code", "TRACKER.INVALID");
+               }
+            }
+            else
+            {
+               error.put("message", "TRACKER.INVALID");
+            }
+            response = new JSONObject().put("error", error);
          }
          else
          {

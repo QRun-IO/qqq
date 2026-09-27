@@ -32,7 +32,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -83,6 +85,7 @@ import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendVariantSett
 import com.kingsrook.qqq.backend.module.api.model.metadata.APITableBackendDetails;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.BooleanUtils;
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.HttpResponse;
@@ -105,6 +108,7 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.Level;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -115,6 +119,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class BaseAPIActionUtil
 {
+   private static final Set<String> SAFE_PROVIDER_ERROR_CODES = Set.of("AUTHENTICATION_ERROR", "TRACKER.INVALID");
    private final QLogger LOG = QLogger.getLogger(BaseAPIActionUtil.class);
 
    protected APIBackendMetaData       backendMetaData;
@@ -633,9 +638,7 @@ public class BaseAPIActionUtil
    {
       checkForOAuthExpiredToken(table, request, response);
 
-      int    statusCode   = response.getStatusCode();
-      String resultString = response.getContent();
-
+      int statusCode = response.getStatusCode();
       boolean didLog = false;
       if("GET".equals(request.getMethod()))
       {
@@ -645,18 +648,57 @@ public class BaseAPIActionUtil
          }
          else if(statusCode == HttpStatus.SC_BAD_GATEWAY || statusCode == HttpStatus.SC_GATEWAY_TIMEOUT)
          {
-            LOG.info("HTTP " + request.getMethod() + " failed", logPair("table", table.getName()), logPair("statusCode", statusCode), logPair("responseContent", StringUtils.safeTruncate(resultString, 1024, "...")));
+            LOG.info("HTTP " + request.getMethod() + " failed", logPair("table", table.getName()), logPair("statusCode", statusCode));
             didLog = true;
          }
       }
 
       if(!didLog)
       {
-         LOG.warn("HTTP " + request.getMethod() + " failed", logPair("table", table.getName()), logPair("statusCode", statusCode), logPair("responseContent", StringUtils.safeTruncate(resultString, 1024, "...")));
+         LOG.warn("HTTP " + request.getMethod() + " failed", logPair("table", table.getName()), logPair("statusCode", statusCode));
       }
 
-      String warningMessage = "HTTP " + request.getMethod() + " for table [" + table.getName() + "] failed with status " + statusCode + ": " + resultString;
+      String warningMessage = "HTTP " + request.getMethod() + " for table [" + table.getName() + "] failed with status " + statusCode;
+      String providerCode = safeProviderErrorCode(response.getContent());
+      if(providerCode != null)
+      {
+         warningMessage += ": " + providerCode;
+      }
       throw (new QBadHttpResponseStatusException(warningMessage, response));
+   }
+
+
+
+   /*******************************************************************************
+    ** Only explicitly recognized provider codes may escape an error body.
+    *******************************************************************************/
+   private static String safeProviderErrorCode(String body)
+   {
+      if(!StringUtils.hasContent(body))
+      {
+         return null;
+      }
+
+      try
+      {
+         JSONObject error = new JSONObject(body).optJSONObject("error");
+         if(error != null)
+         {
+            for(String field : List.of("code", "message"))
+            {
+               String code = error.optString(field, null);
+               if(code != null && SAFE_PROVIDER_ERROR_CODES.contains(code))
+               {
+                  return code;
+               }
+            }
+         }
+      }
+      catch(JSONException e)
+      {
+         return null;
+      }
+      return null;
    }
 
 
@@ -670,7 +712,7 @@ public class BaseAPIActionUtil
       {
          if(response.getStatusCode().equals(HttpStatus.SC_UNAUTHORIZED)) // 401
          {
-            throw (new OAuthExpiredTokenException("Expired token indicated by response: " + response));
+            throw (new OAuthExpiredTokenException("Expired token indicated by HTTP 401 response"));
          }
       }
    }
@@ -894,12 +936,12 @@ public class BaseAPIActionUtil
             String       resultString = EntityUtils.toString(entity);
             if(statusCode != HttpStatus.SC_OK)
             {
-               throw (new OAuthCredentialsException("Did not receive successful response when requesting oauth token [" + statusCode + "]: " + resultString));
+               throw (new OAuthCredentialsException("Did not receive successful response when requesting oauth token [" + statusCode + "]"));
             }
 
             JSONObject resultJSON = new JSONObject(resultString);
             accessToken = (resultJSON.getString("access_token"));
-            LOG.debug("Fetched access token: " + accessToken);
+            LOG.debug("Fetched access token");
 
             ///////////////////////////////////////////////////////////////////////////////////////////////////
             // stash the access token in the backendMetaData, from which it will be used for future requests //
@@ -913,8 +955,8 @@ public class BaseAPIActionUtil
          catch(Exception e)
          {
             String errorMessage = "Error getting OAuth Token";
-            LOG.warn(errorMessage, e);
-            throw (new OAuthCredentialsException(errorMessage, e));
+            LOG.warn(errorMessage);
+            throw (new OAuthCredentialsException(errorMessage));
          }
       }
 
@@ -1180,7 +1222,39 @@ public class BaseAPIActionUtil
     *******************************************************************************/
    protected void logRequestDetails(QTableMetaData table, HttpRequestBase request) throws QException
    {
-      LOG.info("Making [" + request.getMethod() + "] request to URL [" + request.getURI() + "] on table [" + table.getName() + "].");
+      LOG.info("Making [" + request.getMethod() + "] request to URL [" + safeRequestUri(request) + "] on table [" + table.getName() + "].");
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep query-string credentials out of request diagnostics and API logs.
+    *******************************************************************************/
+   protected String safeRequestUri(HttpRequestBase request)
+   {
+      String uri = request.getURI().toString();
+      if(backendMetaData.getAuthorizationType() != AuthorizationType.API_KEY_QUERY_PARAM)
+      {
+         return uri;
+      }
+
+      String query = request.getURI().getRawQuery();
+      String name = backendMetaData.getApiKeyQueryParamName();
+      if(query == null || !StringUtils.hasContent(name))
+      {
+         return uri;
+      }
+
+      StringBuilder safeQuery = new StringBuilder();
+      for(String parameter : query.split("&", -1))
+      {
+         if(!safeQuery.isEmpty())
+         {
+            safeQuery.append('&');
+         }
+         safeQuery.append(parameter.startsWith(name + "=") ? name + "=******" : parameter);
+      }
+      return uri.replace(query, safeQuery.toString());
    }
 
 
@@ -1235,11 +1309,11 @@ public class BaseAPIActionUtil
                int statusCode = qResponse.getStatusCode();
                if(statusCode == HttpStatus.SC_TOO_MANY_REQUESTS)
                {
-                  throw (new RateLimitException(qResponse.getContent()));
+                  throw (new RateLimitException("HTTP 429 rate limit"));
                }
                else if(shouldBeRetryableServerErrorException(qResponse))
                {
-                  throw (new RetryableServerErrorException(statusCode, qResponse.getContent()));
+                  throw (new RetryableServerErrorException(statusCode, "HTTP " + statusCode + " server error"));
                }
                else if(statusCode >= 400)
                {
@@ -1249,7 +1323,7 @@ public class BaseAPIActionUtil
                /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
                // trim response body (just to keep logs smaller, or, in case someone consuming logs doesn't want such long lines) //
                /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-               LOG.log(getAPIResponseLogLevel(), "Received successful response with code [" + qResponse.getStatusCode() + "] and content [" + StringUtils.safeTruncate(qResponse.getContent(), getMaxResponseMessageLengthForLog(), "...") + "].");
+               LOG.log(getAPIResponseLogLevel(), "Received successful response with code [" + qResponse.getStatusCode() + "].");
                return (qResponse);
             }
          }
@@ -1282,7 +1356,7 @@ public class BaseAPIActionUtil
                throw (new QException(rle));
             }
 
-            LOG.info("Caught RateLimitException", logPair("rateLimitsCaught", rateLimitsCaught), logPair("uri", request.getURI()), logPair("table", table.getName()), logPair("sleeping", rateLimitSleepMillis));
+            LOG.info("Caught RateLimitException", logPair("rateLimitsCaught", rateLimitsCaught), logPair("uri", safeRequestUri(request)), logPair("table", table.getName()), logPair("sleeping", rateLimitSleepMillis));
             SleepUtils.sleep(rateLimitSleepMillis, TimeUnit.MILLISECONDS);
             rateLimitSleepMillis *= 2;
          }
@@ -1295,7 +1369,7 @@ public class BaseAPIActionUtil
                throw (new QException(see));
             }
 
-            LOG.info("Caught Server-side error during API request", logPair("serverErrorsCaught", serverErrorsCaught), logPair("uri", request.getURI()), logPair("code", see.getCode()), logPair("table", table.getName()), logPair("sleeping", serverErrorsSleepMillis));
+            LOG.info("Caught Server-side error during API request", logPair("serverErrorsCaught", serverErrorsCaught), logPair("uri", safeRequestUri(request)), logPair("code", see.getCode()), logPair("table", table.getName()), logPair("sleeping", serverErrorsSleepMillis));
             SleepUtils.sleep(serverErrorsSleepMillis, TimeUnit.MILLISECONDS);
             serverErrorsSleepMillis *= 2;
          }
@@ -1308,7 +1382,12 @@ public class BaseAPIActionUtil
          }
          catch(Exception e)
          {
-            String message = "An unknown error occurred trying to make an HTTP request to [" + request.getURI() + "] on table [" + table.getName() + "].";
+            String message = "An unknown error occurred trying to make an HTTP request to [" + safeRequestUri(request) + "] on table [" + table.getName() + "].";
+            if(backendMetaData.getAuthorizationType() == AuthorizationType.API_KEY_QUERY_PARAM)
+            {
+               LOG.error(message);
+               throw (new QException(message));
+            }
             LOG.error(message, e);
             throw (new QException(message, e));
          }
@@ -1410,19 +1489,72 @@ public class BaseAPIActionUtil
       ////////////////////////////////////
       // mask api keys in query strings //
       ////////////////////////////////////
-      String url = request.getURI().toString();
-      if(backendMetaData.getAuthorizationType().equals(AuthorizationType.API_KEY_QUERY_PARAM))
-      {
-         url = url.replaceAll(backendMetaData.getApiKey(), "******");
-      }
+      String url = safeRequestUri(request);
 
       return new OutboundAPILog()
          .withMethod(request.getMethod())
          .withUrl(url)
          .withTimestamp(Instant.now())
-         .withRequestBody(requestBody)
+         .withRequestBody(redactOutboundCredentials(requestBody, request))
          .withStatusCode(response.getStatusCode())
-         .withResponseBody(response.getContent());
+         .withResponseBody(redactOutboundCredentials(response.getContent(), request));
+   }
+
+
+
+   /*******************************************************************************
+    ** Providers can echo credentials in bodies; never persist those echoes.
+    *******************************************************************************/
+   protected String redactOutboundCredentials(String body, HttpRequestBase request)
+   {
+      if(body == null)
+      {
+         return null;
+      }
+
+      String safe = redactValue(body, backendMetaData.getApiKey());
+      safe = redactValue(safe, backendMetaData.getPassword());
+      safe = redactValue(safe, backendMetaData.getClientSecret());
+      safe = redactValue(safe, ValueUtils.getValueAsString(backendMetaData.getCustomValue("accessToken")));
+
+      for(Header header : request.getAllHeaders())
+      {
+         String name = header.getName().toLowerCase(Locale.ROOT);
+         if(name.contains("auth") || name.contains("key") || name.contains("token") || name.contains("secret")
+            || (backendMetaData.getAuthorizationType() == AuthorizationType.CUSTOM
+               && !name.equals("accept") && !name.equals("content-type")))
+         {
+            safe = redactValue(safe, header.getValue());
+            if(name.contains("auth") && header.getValue().contains(" "))
+            {
+               safe = redactValue(safe, header.getValue().substring(header.getValue().indexOf(' ') + 1));
+            }
+         }
+      }
+
+      String query = request.getURI().getRawQuery();
+      String keyName = backendMetaData.getApiKeyQueryParamName();
+      if(query != null && StringUtils.hasContent(keyName))
+      {
+         for(String parameter : query.split("&"))
+         {
+            if(parameter.startsWith(keyName + "="))
+            {
+               safe = redactValue(safe, parameter.substring(keyName.length() + 1));
+            }
+         }
+      }
+      return safe;
+   }
+
+
+
+   /*******************************************************************************
+    ** Plain replacement avoids treating credential characters as regex syntax.
+    *******************************************************************************/
+   private static String redactValue(String text, String value)
+   {
+      return StringUtils.hasContent(value) ? text.replace(value, "******") : text;
    }
 
 

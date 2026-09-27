@@ -4206,12 +4206,17 @@
       "negative_cases": [
         "Missing/rejected credential, expired token, malformed token response and secret-free diagnostic output"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Disposable loopback HTTP fixtures exercise all seven configured modes through GetAction, missing and rejected credentials, OAuth refresh with a distinct token, and malformed token responses. Each successful mode persists a secret-free outbound API log row; rejected provider echoes, query keys and fetched bearer tokens stay out of exception text and API diagnostics.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testSevenConfiguredOutboundModes",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testMissingAndRejectedCredentials",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testExpiredOAuthTokenRefreshes",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testMalformedOAuthTokenResponse",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testSecretFreeDiagnostics"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
-      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/586",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/586"
     },
     {
       "id": "backend.filesystem.local",

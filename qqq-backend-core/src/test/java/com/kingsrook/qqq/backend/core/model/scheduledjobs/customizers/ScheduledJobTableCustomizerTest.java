@@ -85,6 +85,7 @@ class ScheduledJobTableCustomizerTest extends BaseTest
       QSession         qSession         = QContext.getQSession();
       QScheduleManager qScheduleManager = QScheduleManager.initInstance(qInstance, () -> qSession);
       qScheduleManager.start();
+      qScheduleManager.unscheduleAll(); // isolate dynamic management from bootstrapped metadata jobs
 
       new ScheduledJobsMetaDataProvider().defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
    }

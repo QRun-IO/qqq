@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.scheduler.simple;
 
 
+import java.io.Serializable;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
@@ -65,8 +66,13 @@ public class SimpleJobRunner implements Runnable
    public void run()
    {
       CapturedContext capturedContext = QContext.capture();
+      Map<String, Serializable> originalObjects = QContext.getObjects();
       try
       {
+         ////////////////////////////////////////////////////////////////
+         // Each scheduled job owns its named objects, not the worker. //
+         ////////////////////////////////////////////////////////////////
+         QContext.setObjects(null);
          SimpleScheduler simpleScheduler = SimpleScheduler.getInstance(qInstance);
          QContext.init(qInstance, simpleScheduler.getSessionSupplier().get());
 
@@ -79,7 +85,14 @@ public class SimpleJobRunner implements Runnable
       }
       finally
       {
-         QContext.init(capturedContext);
+         try
+         {
+            QContext.init(capturedContext);
+         }
+         finally
+         {
+            QContext.setObjects(originalObjects);
+         }
       }
    }
 

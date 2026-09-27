@@ -1341,3 +1341,86 @@ PYTHONDONTWRITEBYTECODE=1 python3 qqq-sample-project/verify-feature-coverage.py 
 The 23 Python ledger tests also passed. The required-feature command exits 1
 with this row blocked only by pending scenario review. All 130 IDs, acceptance
 requirements, negative cases, statuses, stages and deferrals remain unchanged.
+
+### Scheduling acceptance (#569, #847, #853, #855)
+
+`SampleSchedulingAcceptanceTest` owns a unique H2 database, RAM Quartz scheduler,
+Simple scheduler and registered application processes. Actual QQQ actions update
+sample Person records; independent JDBC connections verify committed results and
+unrelated rows. The real application launcher uses an owned ephemeral HTTP port; no
+shared sample broker is started. A separate owned H2 database exercises Quartz's
+actual JDBC job store. The legacy queue
+runner uses its real SDK against a disposable loopback, in-memory protocol fixture
+with synthetic credentials, not an SQS account or a claim about AWS delivery/IAM.
+
+Original [#569](https://github.com/QRun-IO/qqq/issues/569) coverage maps as follows
+(methods are in `com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest`):
+
+| Original requirement | Method and independent observation |
+| --- | --- |
+| Interval / initial delay / process runner | `simpleIntervalAndInitialDelayPersistProcessWrites` observes delayed, repeated writes and stopped executor state. `quartzHonorsInitialDelay` reads the native trigger date; `quartzDelayPrecedesActualProcessWrite` observes delayed dispatch and persisted data. Core `QuartzSchedulerTest#nativeTriggerHonorsComputedInitialDelay` also checks milliseconds, seconds, explicit zero, the existing default and precedence. |
+| Cron | `cronScheduleDispatchesAndUnscheduleAllRemovesIt` checks native expression/time zone, actual process persistence and removal of all jobs. |
+| Schedule / reschedule / duplicate identity / pause / resume / unschedule | `quartzIntervalPauseResumeRescheduleAndUnschedule` observes one native job after replacement, updated interval, retained paused state, resumed execution and removed identity. |
+| Automation runner | `automationRunnerPersistsHandlerResultAndStatus` runs the actual polling automation runner and handler; native Person data and status transition from pending to OK, with unrelated rows unchanged. |
+| Queue runner | `queueRunnerPersistsBodyBeforeAcknowledging` checks the received body drives persisted data and the actual SDK sends the expected receipt acknowledgement. `queueRunnerDoesNotAcknowledgeFailedProcess` checks no acknowledgement and unchanged native rows after a real application exception. |
+| Variant serial / parallel | `serialVariantsPersistDistinctRowsWithoutOverlap` and `parallelVariantsOverlapWithIsolatedSessionsAndRows` use latches to prove one-at-a-time versus concurrent execution, native job counts, per-variant sessions and distinct persisted rows. |
+| Invalid cron | `invalidCronPreservesNativeScheduleAndData` proves invalid new/replacement definitions do not replace native jobs or mutate data. Existing setup logs rejection; this is not a promise of caller-visible exceptions. Simple metadata correctly declares cron unsupported. |
+| Job exception | `failedProcessDoesNotPreventNextInterval` verifies the runner's actual logged diagnostic and later successful persistence. The existing process runner catches errors; native Quartz exception propagation is not claimed (see existing #502). |
+| Timeout / shutdown cleanup | `observerTimeoutDoesNotCancelAndShutdownWaitsForOwnedWork` holds an entered application step with an owned latch. A bounded observer wait times out while writes remain absent; releasing the latch allows native shutdown and persistence to complete. There is no configurable execution deadline in the inspected scheduling API, and this test does not claim forced job cancellation. |
+| Context isolation | `quartzContextSuccessIsolatedAndRestored`, `quartzContextFailureRestoresAndNextRunRecovers`, and the corresponding `simpleContext...` methods prove a job cannot inherit or mutate the prior named-object map. They verify exact map/instance/session identity, user/thread restoration, no mutation on failed work, and native persistence on the next run. Quartz uses native listener hooks; Simple wraps its unchanged registered runnable in a real `StandardScheduledExecutor` to seed/observe worker context. |
+
+Additional controls preserve existing boundaries. `disabledManagerDoesNotRegisterOrDispatch`
+checks the global disable switch without changing its previous setting.
+`launcherStartupDispatchesFreshQuartzJob` exercises the documented application
+launcher without a second registration call, with native H2 writes and Quartz/HTTP
+shutdown assertions. `startupDispatchesMixedSimpleAndQuartzJobs` proves both
+scheduler types dispatch from one manager start. `startupRegistersPersistedDynamicJob`
+loads job/parameter rows inserted through native SQL and verifies dispatch without
+changing those rows. `startupPreservesExistingPausedRamJob` retains the original
+trigger, paused state and unrelated native job. `persistentQuartzStartupRetainsGuard`
+uses a real H2-backed Quartz JDBC store: existing paused state remains unchanged and
+missing jobs stay absent, preserving the historical persistent-store startup guard.
+This is a local JDBC control, not multi-node cluster certification.
+
+[#855](https://github.com/QRun-IO/qqq/issues/855) bootstraps only missing jobs in
+nonpersistent stores. Startup never reconciles or replaces existing jobs; Quartz's
+non-replacing insert also protects a job registered concurrently. Explicit management
+after startup retains its existing pause/reschedule/unschedule behavior.
+
+[#847](https://github.com/QRun-IO/qqq/issues/847) applies the already-computed delay
+through Quartz's existing trigger API. [#853](https://github.com/QRun-IO/qqq/issues/853)
+confines named-object ownership to the existing Quartz/Simple wrappers: save the
+nullable worker map, start the job with an empty map, and restore the exact prior
+map in finally. Global `CapturedContext` and public APIs remain unchanged.
+
+The scheduling row remains **pending**: independent review and full combined sample
+verification are outstanding. The actual `StandardScheduledExecutor.stop()`
+300-second timeout (`false` return with `STOPPING` state) remains unverified;
+the observer timeout test proves orderly shutdown waiting, not that QQQ timeout
+path or an application execution deadline. The queue fixture
+does not certify external SQS behavior or SDK-client shutdown ownership. Requirements,
+release dispositions and existing deferrals are unchanged.
+
+Run focused acceptance after installing matching source artifacts into an isolated
+Maven cache:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml -Dtest=SampleSchedulingAcceptanceTest test
+```
+
+Fixture teardown releases owned blocked work, stops schedulers and its protocol
+server, removes only its process-state UUIDs, shuts down owned H2 and restores the
+caller's context. Full sample profiles remain separately coordinated with their
+shared broker owner.
+
+Focused validation passes **19 native cases, zero failures/errors/skips**. Matching
+core `clean install` passes **2,073 tests, zero failures/errors and 11 existing skips**,
+with normal quality gates, and all **46 Python checks** pass. No combined full sample
+run is claimed for this branch.
+
+The #855 source follow-up passed 23 focused scheduling cases with zero
+failures/errors/skips, plus the full core `clean install`: 2,074 tests, zero
+failures/errors, 11 existing skips, normal Checkstyle/JaCoCo/analysis gates.
+This is focused source evidence; it does not substitute for the combined full
+sample gate or the outstanding actual stop-timeout case.

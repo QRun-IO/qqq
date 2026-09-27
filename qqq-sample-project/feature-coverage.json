@@ -4651,12 +4651,21 @@
       "negative_cases": [
         "Disabled route, failing/throwing/timed-out indicator and no thread leak"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "The required within-request concurrency regression fails: HealthCheckExecutor submits and waits for each indicator before starting the next. Other endpoint scenarios pass; no runtime change or requirement deferral is included.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAutoloadedDefaultEndpoint",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testConfiguredEndpointPath",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testDisabledEndpointIsAbsent",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAggregateStatusCustomDetailsAndDuration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testThrowingIndicatorAndDownAggregationReleaseWorkers",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testIndicatorsWithinOneRequestRunConcurrently",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testConcurrentHttpRequestsReleaseTheirWorkers",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testTimeoutCancelsIndicatorAndCleansUpRequest"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/599",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source acceptance remains blocked on the mapped concurrency regression under #599; the requirement is retained."
     },
     {
       "id": "health.indicators",
@@ -4674,12 +4683,19 @@
       "negative_cases": [
         "Unreachable database, exceeded thresholds, invalid path/configuration and timeout"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Listed source scenarios pass using owned H2 TCP, disk, heap-threshold and custom-indicator fixtures. The separate health.endpoint concurrency requirement remains blocked.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testOwnedDatabaseConnectivityAndUnavailableService",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testMemoryThresholdsAndInvalidConfiguration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testDiskThresholdsAndInvalidPaths",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testInvalidDatabaseConfiguration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAggregateStatusCustomDetailsAndDuration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testTimeoutCancelsIndicatorAndCleansUpRequest"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/600",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Listed indicator source requirements have mapped sample evidence; endpoint concurrency is tracked separately under #599."
     },
     {
       "id": "cli.help-errors",

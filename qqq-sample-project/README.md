@@ -68,6 +68,14 @@ Backend sample fixtures continue to exercise native saved-report/view ownership,
 
 ## Acceptance coverage
 
+`SampleHealthAcceptanceTest` loads a sample-owned health metadata producer and
+exercises real local HTTP, an owned H2 TCP database, thresholds, failures, and
+worker/request cleanup. The indicator row (#600) has passing source evidence;
+the endpoint row (#599) remains blocked by the required within-request
+concurrency regression. See [health acceptance evidence](acceptance/health/README.md)
+for exact commands, results, and the runtime follow-up. No health requirement is
+deferred or removed by this fixture.
+
 `SampleWidgetContractTest` checks the eleven canonical dashboard payloads, protected-widget GET/POST denial before renderer execution, allowed controls, unknown widgets, empty HTML and actual renderer errors. `SampleBrowserIT#testCanonicalWidgets` checks their visible Material output, plotted marks and pie-chart reload. `SampleWidgetStatesBrowserIT` checks empty/error isolation for all eleven types and explicitly records malformed-payload limitations ([#553](https://github.com/QRun-IO/qqq/issues/553)); its passing limitation probe does not certify malformed-data robustness. All eleven canonical types now have denied/allowed GET/POST and invalid renderer-reference checks; existing native NoCode/2D source-permission tests are retained. `SampleWidgetControlsBrowserIT` covers parent dropdown/date persistence, CSV downloads, reload/tooltips, failed/denied widgets and native button/Enter callbacks. Non-parent selection persistence ([#554](https://github.com/QRun-IO/qqq/issues/554)), collapse metadata ([#555](https://github.com/QRun-IO/qqq/issues/555)) and input-block label association ([#556](https://github.com/QRun-IO/qqq/issues/556)) remain explicit deferrals; additional widget/block/provider cases remain in the inventory. Next supports the tested statistics/HTML/bar/line/pie path but retains the explicitly deferred widget compatibility gaps in [#550](https://github.com/QRun-IO/qqq/issues/550).
 
 `SampleInteractiveProcessTest` exercises the versioned greeting workflow, selected records, form/component metadata, rendered HTML and the sample widget payload, async progress/status, invalid inputs, lost sessions/state and legacy back navigation. Matching saved-report tests verify generated download bytes and ownership. The legacy process route supports tested multipart upload/archive/download; **v1 init/step do not deliver uploaded files despite advertising a file field** ([#543](https://github.com/QRun-IO/qqq/issues/543), Medium, deferred). A successful v1 response does not prove file delivery. The separate limitation probe records that behavior without certifying it. Unknown linear resume targets retain the existing no-op contract. Source protocol checks do not certify complete dashboard rendering.

@@ -111,6 +111,9 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
+import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
+import com.kingsrook.qqq.esb.model.EsbTableMetaData;
 import com.kingsrook.qqq.middleware.javalin.QApplicationLauncher;
 import com.kingsrook.qqq.middleware.javalin.QApplicationLauncherConfig;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
@@ -183,7 +186,7 @@ class SampleSchedulingAcceptanceTest
       {
          RunScript.execute(anchor, reader);
       }
-      instance = SampleMetaDataProvider.defineTestInstance();
+      instance = defineSchedulingInstance();
       RDBMSBackendMetaData backend = SampleMetaDataProvider.defineRdbmsBackend().withName("schedulingDatabase").withJdbcUrl(jdbcUrl);
       instance.addBackend(backend);
       instance.getTable("person").setBackendName(backend.getName());
@@ -201,6 +204,32 @@ class SampleSchedulingAcceptanceTest
       observation = new Observation();
       manager = QScheduleManager.initInstance(instance, () -> new QSession().withUser(new QUser().withIdReference("scheduled-user")));
       quartz = new StdSchedulerFactory(properties).getScheduler();
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove unrelated broker metadata before enrichment can register ESB hooks.
+    *******************************************************************************/
+   private static QInstance defineSchedulingInstance() throws Exception
+   {
+      QInstance schedulingInstance = SampleMetaDataProvider.defineTestInstance();
+      schedulingInstance.getSupplementalMetaData().remove(EsbInstanceMetaData.NAME);
+      schedulingInstance.getTables().values().forEach(table ->
+      {
+         if(table.getSupplementalMetaData() != null)
+         {
+            table.getSupplementalMetaData().remove(EsbTableMetaData.TYPE);
+         }
+      });
+      schedulingInstance.getProcesses().values().forEach(process ->
+      {
+         if(process.getSupplementalMetaData() != null)
+         {
+            process.getSupplementalMetaData().remove(EsbProcessMetaData.TYPE);
+         }
+      });
+      return (schedulingInstance);
    }
 
 
@@ -414,6 +443,13 @@ class SampleSchedulingAcceptanceTest
                .withServeFrontendMaterialDashboard(false).withServeFrontendNext(false)
                .withJavalinConfigurationCustomizer(http::set)));
          assertTrue(http.get().port() > 0);
+         assertEquals(List.of(QApplicationLauncher.JAVALIN_SERVER_SERVICE_NAME, QApplicationLauncher.SCHEDULE_MANAGER_SERVICE_NAME), launcher.getStartedServiceNames());
+         assertNull(instance.getSupplementalMetaData(EsbInstanceMetaData.NAME));
+         assertTrue(instance.getTables().values().stream().allMatch(table -> table.getSupplementalMetaData(EsbTableMetaData.TYPE) == null));
+         assertTrue(instance.getProcesses().values().stream().allMatch(process -> process.getSupplementalMetaData(EsbProcessMetaData.TYPE) == null));
+         assertTrue(instance.getRuntimeServices() == null || instance.getRuntimeServices().isEmpty());
+         assertTrue(instance.getRecordChangeListeners() == null || instance.getRecordChangeListeners().isEmpty());
+         assertTrue(instance.getProcessLifecycleListeners() == null || instance.getProcessLifecycleListeners().isEmpty());
          assertTrue(quartz.checkExists(new JobKey("process:" + PROCESS, "PROCESS")), "Launcher omitted configured Quartz process");
          next();
       }
@@ -989,6 +1025,109 @@ class SampleSchedulingAcceptanceTest
 
 
    /*******************************************************************************
+    ** Acceptance-only probe of the real five-minute Simple stop boundary. The IT
+    ** owns invocation so the ordinary focused suite does not incur this wait.
+    *******************************************************************************/
+   void assertActualSimpleStopTimeout() throws Exception
+   {
+      QInstance workerInstance = defineSchedulingInstance();
+      QSession workerSession = new QSession().withUser(new QUser().withIdReference("worker-owner"));
+      Map<String, Serializable> originalObjects = new LinkedHashMap<>(Map.of("workerMarker", "worker-only"));
+      instance.getProcess(PROCESS).getBackendStep("writePerson").setCode(new QCodeReference(RetainedContextWrite.class));
+      SimpleScheduler scheduler = SimpleScheduler.getInstance(instance);
+      scheduler.setupSchedulable(identity("retained"), processType(), Map.of("processName", PROCESS),
+         new QScheduleMetaData().withRepeatSeconds(3600).withInitialDelayMillis(0), true);
+      Runnable registeredRunner = scheduler.getExecutors().get(0).getRunnable();
+      AtomicReference<Thread> workerThread = new AtomicReference<>();
+      CountDownLatch workerFinished = new CountDownLatch(1);
+      StandardScheduledExecutor ownedWorker = new StandardScheduledExecutor(() ->
+      {
+         workerThread.set(Thread.currentThread());
+         seedWorker(workerInstance, workerSession, originalObjects);
+         try
+         {
+            registeredRunner.run();
+         }
+         finally
+         {
+            observeWorker();
+            workerFinished.countDown();
+         }
+      });
+      ownedWorker.setName("ownedStopTimeoutWorker");
+      ownedWorker.setInitialDelayMillis(0);
+      ownedWorker.setDelayMillis(3600000);
+      CompletableFuture<Boolean> stopResult = new CompletableFuture<>();
+      Thread stopper = new Thread(() ->
+      {
+         try
+         {
+            stopResult.complete(ownedWorker.stop());
+         }
+         catch(Throwable error)
+         {
+            stopResult.completeExceptionally(error);
+         }
+      }, "ownedStopTimeoutCaller");
+      List<List<String>> before = rows("SELECT * FROM person ORDER BY id");
+      try
+      {
+         assertTrue(ownedWorker.start());
+         assertTrue(observation.entered.await(5, TimeUnit.SECONDS), "Owned application step did not enter");
+         long started = System.nanoTime();
+         stopper.start();
+         Boolean stopped = stopResult.get(330, TimeUnit.SECONDS);
+         long elapsed = System.nanoTime() - started;
+         assertFalse(stopped, "Expected the actual stop result, not an observer timeout");
+         assertTrue(elapsed >= TimeUnit.SECONDS.toNanos(300), "Stop returned before its existing termination wait elapsed");
+         assertEquals(StandardScheduledExecutor.RunningState.STOPPING, ownedWorker.getRunningState());
+         assertTrue(workerThread.get().isAlive());
+         assertEquals(1, workerFinished.getCount());
+         assertEquals(1, observation.release.getCount());
+         assertEquals(0, observation.writes.get());
+         assertEquals(before, rows("SELECT * FROM person ORDER BY id"));
+         assertSame(instance, observation.insideInstance);
+         assertEquals("scheduled-user", observation.insideUser);
+         assertNull(observation.insideMarker);
+         observation.release.countDown();
+         assertTrue(workerFinished.await(5, TimeUnit.SECONDS));
+         workerThread.get().join(5000);
+         assertFalse(workerThread.get().isAlive(), "Owned native worker must terminate after retained work finishes");
+         ContextResult result = observation.contextResults.poll(5, TimeUnit.SECONDS);
+         assertNotNull(result);
+         assertAll(
+            () -> assertSame(workerInstance, result.restoredInstance()),
+            () -> assertSame(workerSession, result.restoredSession()),
+            () -> assertSame(originalObjects, result.restoredObjects()),
+            () -> assertEquals(Map.of("workerMarker", "worker-only"), originalObjects),
+            () -> assertEquals(result.beforeThreadName(), result.afterThreadName()));
+         assertEquals(1, observation.writes.get());
+         assertEquals(List.of(List.of("Scheduled", "1")), rows("SELECT first_name,days_worked FROM person WHERE id=1"));
+         assertEquals(before.subList(1, before.size()), rows("SELECT * FROM person WHERE id>=2 ORDER BY id"));
+         assertEquals("caller", QContext.getQSession().getUser().getIdReference());
+         assertEquals(StandardScheduledExecutor.RunningState.STOPPING, ownedWorker.getRunningState(),
+            "The existing API retains STOPPING after timeout even once its worker has exited");
+      }
+      finally
+      {
+         observation.release.countDown();
+         if(ownedWorker.getRunningState() == StandardScheduledExecutor.RunningState.RUNNING)
+         {
+            ownedWorker.stop();
+         }
+         stopper.join(5000);
+         if(workerThread.get() != null)
+         {
+            workerThread.get().join(5000);
+            assertFalse(workerThread.get().isAlive(), "Fixture left its owned worker running");
+         }
+         assertFalse(stopper.isAlive(), "Fixture left its owned stop caller running");
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Quartz offers listener hooks. Simple exposes its registered Runnable; wrap
     ** that unchanged runner with native StandardScheduledExecutor hooks to seed and
     ** inspect a pre-existing worker context. Neither path calls application code
@@ -996,7 +1135,7 @@ class SampleSchedulingAcceptanceTest
     *******************************************************************************/
    private void assertWorkerContext(boolean useQuartz, boolean failFirst) throws Exception
    {
-      QInstance workerInstance = SampleMetaDataProvider.defineTestInstance();
+      QInstance workerInstance = defineSchedulingInstance();
       QSession workerSession = new QSession().withUser(new QUser().withIdReference("worker-owner"));
       Map<String, Serializable> originalObjects = new LinkedHashMap<>(Map.of("workerMarker", "worker-only"));
       observation.failContextFirst = failFirst;
@@ -1384,6 +1523,39 @@ class SampleSchedulingAcceptanceTest
          if(observation.attempts.incrementAndGet() == 1)
          {
             throw new QException("Owned scheduled failure");
+         }
+         super.run(input, output);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Retain a real process inside its job context until the acceptance test releases
+    ** it. The application adds no execution deadline and does not force cancellation.
+    *******************************************************************************/
+   public static class RetainedContextWrite extends WritePerson
+   {
+      /*******************************************************************************
+       ** Native timeout must leave work entered and uncommitted until explicit release.
+       *******************************************************************************/
+      @Override
+      public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         rememberProcess();
+         observation.insideInstance = QContext.getQInstance();
+         observation.insideUser = QContext.getQSession().getUser().getIdReference();
+         observation.insideMarker = QContext.getObject("workerMarker");
+         QContext.setObject("jobMarker", "job-only");
+         observation.entered.countDown();
+         try
+         {
+            observation.release.await();
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+            throw new QException("Owned retained application work was interrupted", e);
          }
          super.run(input, output);
       }

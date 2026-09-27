@@ -39,6 +39,31 @@ class BufferedRecordPipeTest extends BaseTest
 {
 
    /*******************************************************************************
+    ** Counts include the backend's buffered tail before post-query final flushing.
+    *******************************************************************************/
+   @Test
+   void testTotalCountIncludesFullBatchesAndPendingTail() throws Exception
+   {
+      for(int size : List.of(0, 3, 100, 105))
+      {
+         for(BufferedRecordPipe pipe : List.of(new BufferedRecordPipe(), new RecordPipeBufferedWrapper(new RecordPipe(1000))))
+         {
+            for(int i = 0; i < size; i++)
+            {
+               pipe.addRecord(new QRecord().withValue("id", i));
+            }
+            assertEquals(size, pipe.getTotalRecordCount());
+            pipe.finalFlush();
+            assertEquals(size, pipe.getTotalRecordCount());
+            RecordPipe output = pipe instanceof RecordPipeBufferedWrapper wrapper ? wrapper.getWrappedPipe() : pipe;
+            assertEquals(size, output.consumeAvailableRecords().size());
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Records below the buffer threshold stay in the buffer and are NOT forwarded
     ** to the internal queue until the buffer is full or finalFlush is called.
     *******************************************************************************/

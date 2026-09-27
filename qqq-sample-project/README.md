@@ -822,3 +822,119 @@ python3 qqq-sample-project/test_feature_coverage.py
 ```
 
 On source base `4da034600`, the focused clean run passed **8 maintenance +9 reused column-statistics tests**, with zero failures/errors/skips and Checkstyle zero. No product defect was confirmed. `core.maintenance` remains **pending** until independent review and the required full `-Pacceptance-tests clean verify` pass. Full sample execution must have the shared broker's exclusive slot; no full run was started for this change. When also enabling `data-qbit-acceptance`, first build the matching `qqq-sample-data-qbit` source fixture into that same cache; its six additional host tests are source-only evidence.
+
+
+## Query statistics: bounded source evidence (#564)
+
+`SampleQueryStatisticsAcceptanceTest` and
+`SampleQueryStatisticsAcceptanceRegressionTest` use canonical sample `person`/`pet`
+metadata, unique H2 databases, the real manager and public consumer interface, and
+`QueryStatMetaDataProvider`/`QQQTablesMetaDataProvider`. Explicit fixture SQL creates
+the statistics schema; native JDBC independently checks persisted values. These
+fixtures use no persistence mocks, network listeners, broker, new dependencies or
+launched application changes. They restore manager settings, stop/join workers,
+clear context and close owned databases. New Java files carry Apache-2.0 headers.
+
+Twenty-two sample methods cover direct, plain and association-buffered counts (including
+3/100/105-row batches and tails); exact UTC timing/session/SQL and criterion/order/join
+records; backend/table opt-outs; disabled startup; thresholds and throwing consumers;
+actual native query/storage failures; preterminated plain pipes; explicit and
+scheduled insertion; and lifecycle/context isolation. The joined query verifies
+actual descending child-name delivery, not just generated SQL. An explicit flush
+preserves the caller's real backend transaction and action stack as well as its
+instance and session. Separate native databases prove that a foreign instance
+reaches neither consumers nor the configured statistics store, including after a
+restart switches the configured instance.
+
+The seven former failing probes were reproduced against the original matching
+source, then passed against the corrected core before being moved from the explicit
+`DefectProbe` class into ordinary `RegressionTest` discovery:
+
+| Issue | Correction and evidence |
+| --- | --- |
+| #833 | Buffered counts include forwarded records and pending tails; three association cases retain actual parent/child delivery and match native counts. Core pipe tests also cover zero rows and standalone buffered pipes before/after final flush. |
+| #834 | Flush captures/restores all caller context fields on success, empty/disabled exits and supplier/storage failure. A context-free worker remains context-free. |
+| #835 | Foreign contexts are rejected before consumers or enqueueing. Both native databases retain only their own source-session statistics across replacement. |
+| #836 | Start retires the previous scheduler; start/stop serialize with a running flush. Jobs capture their configuration/generation, and a consumer finishing after restart cannot enqueue into the new batch. A controlled native flush/restart checks the previous worker terminates and only the replacement supplier is used afterward. The bounded child JVM checks two starts/one stop leave zero workers. |
+| #837 | Flush-scoped suppression prevents its own work reaching consumers or storage, even when statistics-table collection is enabled. Repeated explicit/scheduled flushes stay stable; legitimate application queries of the statistics table remain observable. Supplier/storage failure restores collection. The original observation was one extra self-generated row per flush, not demonstrated infinite recursion. |
+
+Statistics measure completed **backend actions**, not whole-request success. The
+positive `testPostQueryRejectionRetainsCompletedBackendMeasurement` verifies both
+the propagated post-query customizer error and the legitimate backend measurement
+in consumers/native storage. It replaces the withdrawn suppress-stat probe. Native
+backend failure produces no completed measurement. A preterminated plain pipe
+records zero delivered rows; concurrent query cancellation is not certified.
+Counts are consumer-only fields, not persisted columns. Structured order records
+retain field names, not direction; join records retain table IDs, not join type.
+SQL text supplies additional detail. Failed storage batches are still dropped,
+without retry; the test proves loss and recovery on the next fresh query.
+Lifecycle calls can wait for an in-flight storage operation; no new timeout or
+storage-failure policy is introduced.
+
+`core.observability.query_statistics` remains **pending** for independent review,
+combined full-sample verification and remaining concurrent query termination scope.
+All existing requirement/negative/stage/deferral fields, including #525/#526 and
+#527–#531 boundaries, remain unchanged. The required-feature gate must remain red;
+passing mapped tests alone do not certify the entire feature.
+
+Reproduce with Java 21 and a dedicated matching-source cache:
+
+```sh
+QUERY_STATS_M2=/private/tmp/qqq-564-e74cb40e-m2
+# Initial matching-source artifact preparation (tests run separately below).
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_M2" -DskipTests install
+# After core edits: full core verification/install, with normal quality gates.
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_M2" -pl qqq-backend-core install
+mvn -nsu -Dmaven.repo.local="$QUERY_STATS_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleQueryStatisticsAcceptanceTest,SampleQueryStatisticsAcceptanceRegressionTest,SampleQueryContractTest test
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+  -s qqq-sample-project -p test_feature_coverage.py
+# Expected nonzero: feature remains pending, even with --report-only.
+PYTHONDONTWRITEBYTECODE=1 python3 qqq-sample-project/verify-feature-coverage.py \
+  --stage source --report-only --require-feature core.observability.query_statistics
+```
+
+Local 2026-09-27 focused evidence: the seven original probes failed on assertions
+with zero errors/skips (`/private/tmp/qqq-564-seven-red.log`), then all seven passed
+alongside twelve sample methods and three query-contract controls
+(`/private/tmp/qqq-564-seven-green.log`). Expanded native evidence passed twenty
+sample methods plus the same three controls with zero errors/skips
+(`/private/tmp/qqq-564-expanded-green.log`). A final clean focused run against
+the fully verified/installed core also passed all 23 with zero errors/skips
+(`/private/tmp/qqq-564-final-focused.log`); its installed core jar SHA-256 matches
+the built jar. The 23 Python ledger tests passed
+(`/private/tmp/qqq-564-ledger-fixed.log`). Focused core red/green logs are
+`/private/tmp/qqq-{833,834,835,836,837}-core-{red,green}.log`; the additional delayed
+consumer generation case passes in `/private/tmp/qqq-836-generation-green.log`.
+The unique cache copied dependency downloads, removed copied QQQ
+`4.1.0-SNAPSHOT` artifacts, then rebuilt the matching source reactor. Later
+artifact-only core installation used `-DskipTests -Djacoco.skip=true` because
+focused coverage data cannot meet the full-module threshold; that preparation is
+not claimed as full verification. At `95ad06c28`, full core `clean install` passed with normal gates: 2,069 tests, zero
+failures/errors, eleven existing skips, 527/542 classes covered (97.23%) and zero
+Checkstyle violations (`/private/tmp/qqq-564-full-core-install.log`). PMD reports
+non-blocking warnings under the unchanged repository configuration. The first
+sandboxed full-core attempt had seven socket/Docker setup errors and was rerun
+with access to the required fixtures; it is not counted as a passing run.
+Full sample/browser fixtures require an exclusive 61616 reservation and have not
+been run for this increment.
+
+Review follow-up for #834: `CapturedContext` omits named objects. Flush now saves
+that map separately, detaches it before calling the supplier, and restores the
+exact original map after clearing its own objects. Core regressions cover null,
+empty, populated and object-only caller contexts on empty/disabled exits and
+supplier failure. Native regressions preserve the caller's mutable payload and
+`AuditDetailAccumulator` through real successful and failed SQL inserts, prove
+supplier-created objects are available only within storage, and check that
+flush-created objects do not leak. The scheduled fixture checks named-object
+cleanup between jobs. No public context API or storage-failure policy changed.
+
+The new core cases first failed 3/3 and native cases failed 2/2 on assertions
+without errors/skips (`/private/tmp/qqq-834-objects-core-red.log` and
+`/private/tmp/qqq-834-objects-native-red.log`). Focused green runs passed 32 core
+manager/context/audit/pipe tests and 25 sample/query-contract tests, all without
+failures/errors/skips (`/private/tmp/qqq-834-objects-core-green.log` and
+`/private/tmp/qqq-834-objects-native-green.log`). Artifact-only installation into
+the isolated cache used `-DskipTests -Djacoco.skip=true`; built/installed jar
+SHA-256 hashes match. No full core/sample run was repeated for this review fix;
+full verification and independent re-review remain pending.

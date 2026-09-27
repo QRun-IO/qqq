@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
+import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.EsbProviderType;
 import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
@@ -98,6 +99,7 @@ public class EsbTestBase
    @AfterAll
    static void esbTestBaseAfterAll() throws Exception
    {
+      EsbConnectionManager.getInstance().closeAll();
       stopEmbeddedBroker();
    }
 

@@ -757,3 +757,43 @@ env -u JAVA_TOOL_OPTIONS mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" \
   -Drevision=4.1.0-SNAPSHOT -Djdk.httpclient.HttpClient.log=errors,channel \
   -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
 ```
+
+
+### PDF source acceptance (#571, pending)
+
+`SamplePdfAcceptanceTest` renders a first-party HTML report in real sample metadata
+context and reopens the serialized bytes with the existing transitive PDFBox parser.
+Four tests assert exact text on two pages, a local generated PNG embedded in the PDF,
+malformed HTML repaired without losing text, and missing-image tolerance with a
+present-image control. Direct OpenHTMLToPDF controls show that its strict XML input
+rejects the malformed fixture and that it also tolerates the absent image. An owned
+output stream fails after 64 bytes: the real renderer reaches that sink, QQQ wraps the
+same `IOException` in `QException`, and a fresh conversion succeeds. This is failure
+propagation and recovery evidence, not atomic-output or rollback evidence. Tests use
+30-second bounds, close PDF documents/streams, restore QContext, and let JUnit remove
+per-test assets; no server, broker, external/private assets or new dependencies.
+
+Focused source tests pass 4/4, including Checkstyle with zero violations. Temporarily
+removing the report's CSS page break produces the expected 2-versus-1-page failure;
+the original fixture is restored. The isolated Maven cache is
+`/private/tmp/qqq-571-pdf-4da-m2`; all sample reactor dependencies were rebuilt from
+`4da03460068dd9cabea50caf65bf5405754d716f` (dependency setup skips tests, not a full gate).
+Logs are `/private/tmp/qqq-571-focused-final.log`,
+`/private/tmp/qqq-571-pagination-mutation.log` and
+`/private/tmp/qqq-571-dependencies.log`. Reproduce the focused check from repository root:
+
+```sh
+mvn -o -f qqq-sample-project/pom.xml \
+  -Dmaven.repo.local=/private/tmp/qqq-571-pdf-4da-m2 \
+  -Dtest=SamplePdfAcceptanceTest test
+```
+
+All 46 top-level Python checks pass (`/private/tmp/qqq-571-python.log`). The ledger
+report resolves all four fully qualified test bindings; its required-feature gate
+correctly exits 1 solely because scenario review is pending. Independent review and
+full sample verification remain pending; no full run was attempted while another
+agent owns the broker reservation. The ledger stays pending
+at source stage and retains its existing post-4.0 deferral; this is no new 4.1 release
+approval. PDFBox is also used by the renderer internally, so parsing is an independent
+output assertion, not a second rendering engine or visual-fidelity certification.
+Custom-font behavior, remote assets and published-candidate acceptance are not claimed.

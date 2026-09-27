@@ -24,6 +24,7 @@ package com.kingsrook.qqq.esb.runtime;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QRuntimeServiceInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
 
 
 /*******************************************************************************
@@ -61,12 +62,20 @@ public class EsbRuntimeService implements QRuntimeServiceInterface
 
 
    /*******************************************************************************
-    ** Stop the node's runtime.
+    ** Application shutdown owns provider connections as well as consumers.
+    ** Independent QEsbRuntime.stop calls still retain connections for publishers.
     *******************************************************************************/
    @Override
    public void stop()
    {
-      QEsbRuntime.getInstance().stop();
+      try
+      {
+         QEsbRuntime.getInstance().stop();
+      }
+      finally
+      {
+         EsbConnectionManager.getInstance().closeAll();
+      }
    }
 
 }

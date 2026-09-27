@@ -22,7 +22,12 @@ package com.kingsrook.qqq.backend.core.actions.tables.helpers;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
@@ -55,6 +60,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 /*******************************************************************************
@@ -62,6 +69,244 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 class QueryStatManagerTest extends BaseTest
 {
+   /*******************************************************************************
+    ** A consumer finishing after restart must not enqueue an old-generation stat.
+    *******************************************************************************/
+   @Test
+   void testRestartDoesNotCollectPreviousGenerationAfterConsumer() throws Exception
+   {
+      var manager = QueryStatManager.getInstance();
+      var caller = QContext.capture();
+      var originalConsumers = manager.getQueryStatConsumers();
+      var entered = new CountDownLatch(1);
+      var release = new CountDownLatch(1);
+      caller.qInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).withCapability(Capability.QUERY_STATS);
+      manager.setQueryStatConsumers(List.of(stat ->
+      {
+         entered.countDown();
+         try
+         {
+            assertTrue(release.await(5, TimeUnit.SECONDS));
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+         }
+      }));
+      try(var executor = Executors.newFixedThreadPool(2))
+      {
+         var read = executor.submit(() ->
+         {
+            QContext.init(caller);
+            try
+            {
+               return new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+            }
+            finally
+            {
+               QContext.clear();
+            }
+         });
+         try
+         {
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            executor.submit(() -> manager.start(caller.qInstance(), QSystemUserSession::new)).get(5, TimeUnit.SECONDS);
+         }
+         finally
+         {
+            release.countDown();
+            read.get(5, TimeUnit.SECONDS);
+            manager.setQueryStatConsumers(originalConsumers);
+         }
+      }
+      assertEquals(0, manager.getQueryStats().size());
+      new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+      assertEquals(1, manager.getQueryStats().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Stop cannot return while an already running flush can still persist a batch.
+    *******************************************************************************/
+   @Test
+   void testStopWaitsForInFlightFlush() throws Exception
+   {
+      var manager = QueryStatManager.getInstance();
+      var caller = QContext.capture();
+      var entered = new CountDownLatch(1);
+      var release = new CountDownLatch(1);
+      var stopping = new CountDownLatch(1);
+      manager.stop();
+      manager.start(caller.qInstance(), () ->
+      {
+         entered.countDown();
+         try
+         {
+            if(!release.await(5, TimeUnit.SECONDS))
+            {
+               throw new IllegalStateException("Flush release deadline exceeded");
+            }
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+         }
+         return caller.qSession();
+      });
+      try(var executor = Executors.newFixedThreadPool(2))
+      {
+         var flush = executor.submit(manager::storeStatsNow);
+         try
+         {
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            var stop = executor.submit(() ->
+            {
+               stopping.countDown();
+               manager.stop();
+            });
+            assertTrue(stopping.await(5, TimeUnit.SECONDS));
+            try
+            {
+               assertThrows(TimeoutException.class, () -> stop.get(100, TimeUnit.MILLISECONDS));
+            }
+            finally
+            {
+               release.countDown();
+               stop.get(5, TimeUnit.SECONDS);
+            }
+         }
+         finally
+         {
+            release.countDown();
+            flush.get(5, TimeUnit.SECONDS);
+         }
+      }
+      assertEquals(caller, QContext.capture());
+   }
+
+
+
+   /*******************************************************************************
+    ** Flush-generated reads must not reach consumers, even if setup fails; the
+    ** caller can still collect its next real query after the failed flush.
+    *******************************************************************************/
+   @Test
+   void testFlushFailureRestoresCollectionSuppression() throws Exception
+   {
+      var manager = QueryStatManager.getInstance();
+      var caller = QContext.capture();
+      var originalConsumers = manager.getQueryStatConsumers();
+      var observed = new ArrayList<QueryStat>();
+      manager.setQueryStatConsumers(List.of(observed::add));
+      caller.qInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).withCapability(Capability.QUERY_STATS);
+      manager.stop();
+      manager.start(caller.qInstance(), () ->
+      {
+         try
+         {
+            new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+         }
+         catch(QException e)
+         {
+            throw new IllegalStateException(e);
+         }
+         throw new IllegalStateException("owned supplier failure after read");
+      });
+      try
+      {
+         manager.storeStatsNow();
+         assertEquals(0, observed.size());
+         assertEquals(0, manager.getQueryStats().size());
+         assertEquals(caller, QContext.capture());
+         new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+         assertEquals(1, observed.size());
+         assertEquals(1, manager.getQueryStats().size());
+      }
+      finally
+      {
+         manager.setQueryStatConsumers(originalConsumers);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Only the configured instance may reach consumers or the pending batch.
+    *******************************************************************************/
+   @Test
+   void testForeignInstanceRejectedBeforeConsumers() throws Exception
+   {
+      var manager = QueryStatManager.getInstance();
+      var caller = QContext.capture();
+      var originalConsumers = manager.getQueryStatConsumers();
+      var observed = new ArrayList<QueryStat>();
+      manager.setQueryStatConsumers(List.of(observed::add));
+      try
+      {
+         QContext.init(TestUtils.defineInstance(), caller.qSession());
+         QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).withCapability(Capability.QUERY_STATS);
+         new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+         assertEquals(0, observed.size());
+         assertEquals(0, manager.getQueryStats().size());
+         QContext.init(caller);
+         caller.qInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).withCapability(Capability.QUERY_STATS);
+         new QueryAction().execute(new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY));
+         assertEquals(1, observed.size());
+         assertEquals(1, manager.getQueryStats().size());
+      }
+      finally
+      {
+         QContext.init(caller);
+         manager.setQueryStatConsumers(originalConsumers);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Flush must preserve every caller context field even when setup fails or the
+    ** job is disabled; a later flush must still collect normally.
+    *******************************************************************************/
+   @Test
+   void testExplicitFlushRestoresContextOnEveryExit()
+   {
+      var manager = QueryStatManager.getInstance();
+      var before = QContext.capture();
+      manager.storeStatsNow();
+      assertEquals(before, QContext.capture());
+      manager.stop();
+      manager.start(before.qInstance(), () ->
+      {
+         QContext.clear();
+         throw new IllegalStateException("owned supplier failure");
+      });
+      manager.storeStatsNow();
+      assertEquals(before, QContext.capture());
+      String enabled = System.getProperty("qqq.queryStatManager.enabled");
+      try
+      {
+         System.setProperty("qqq.queryStatManager.enabled", "false");
+         manager.storeStatsNow();
+         assertEquals(before, QContext.capture());
+      }
+      finally
+      {
+         if(enabled == null)
+         {
+            System.clearProperty("qqq.queryStatManager.enabled");
+         }
+         else
+         {
+            System.setProperty("qqq.queryStatManager.enabled", enabled);
+         }
+      }
+   }
+
+
+
    /*******************************************************************************
     **
     *******************************************************************************/

@@ -29,10 +29,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
@@ -40,6 +43,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -63,10 +67,105 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /*******************************************************************************
- ** Passing query-statistics source evidence; unresolved contracts have probes.
+ ** Query-statistics source evidence using owned native persistence.
  ******************************************************************************/
 class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanceFixture
 {
+   /*******************************************************************************
+    ** Restart waits for an in-flight native insert, then retires that worker and
+    ** uses only the new supplier for the replacement generation.
+    ******************************************************************************/
+   @Test
+   void testRestartWaitsForNativeFlushAndRetiresPreviousWorker() throws Exception
+   {
+      manager.stop();
+      awaitWorkersStopped();
+      var entered = new CountDownLatch(1);
+      var release = new CountDownLatch(1);
+      var restarting = new CountDownLatch(1);
+      var oldWorker = new AtomicReference<Thread>();
+      var oldCalls = new AtomicInteger();
+      var newCalls = new AtomicInteger();
+      QSession oldStorageSession = new QSession();
+      QSession newStorageSession = new QSession();
+      StorageObserver.contexts.clear();
+      instance.getTable("queryStat").withCapability(Capability.QUERY_STATS);
+      instance.getTable("queryStat").withCustomizer(TableCustomizers.PRE_INSERT_RECORD, new QCodeReference(StorageObserver.class));
+      manager.setJobInitialDelay(0);
+      manager.start(instance, () ->
+      {
+         oldCalls.incrementAndGet();
+         oldWorker.set(Thread.currentThread());
+         entered.countDown();
+         try
+         {
+            assertTrue(release.await(5, TimeUnit.SECONDS), "Old flush was not released");
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+         }
+         return oldStorageSession;
+      });
+      try(var executor = Executors.newSingleThreadExecutor())
+      {
+         try
+         {
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            new QueryAction().execute(new QueryInput("person"));
+            manager.setJobInitialDelay(3600);
+            var restart = executor.submit(() ->
+            {
+               restarting.countDown();
+               manager.start(instance, () ->
+               {
+                  newCalls.incrementAndGet();
+                  return newStorageSession;
+               });
+            });
+            try
+            {
+               assertTrue(restarting.await(5, TimeUnit.SECONDS));
+               assertThrows(TimeoutException.class, () -> restart.get(100, TimeUnit.MILLISECONDS));
+            }
+            finally
+            {
+               release.countDown();
+               restart.get(5, TimeUnit.SECONDS);
+            }
+            oldWorker.get().join(3000);
+            assertFalse(oldWorker.get().isAlive(), "Previous generation still has a worker");
+            assertEquals(List.of(List.of(session.getUuid())), rows("SELECT session_id FROM query_stat"));
+            assertEquals(1, oldCalls.get());
+            assertEquals(0, newCalls.get());
+            assertEquals(1, StorageObserver.contexts.size());
+            assertSame(oldStorageSession, StorageObserver.contexts.get(0).session());
+
+            QSession nextSession = new QSession();
+            nextSession.setUuid(UUID.randomUUID().toString());
+            QContext.init(instance, nextSession);
+            new QueryAction().execute(new QueryInput("person"));
+            manager.storeStatsNow();
+            assertEquals(List.of(List.of(session.getUuid()), List.of(nextSession.getUuid())),
+               rows("SELECT session_id FROM query_stat ORDER BY id"));
+            assertEquals(2, snapshots.size());
+            assertEquals(1, oldCalls.get());
+            assertEquals(1, newCalls.get());
+            assertEquals(2, StorageObserver.contexts.size());
+            assertSame(newStorageSession, StorageObserver.contexts.get(1).session());
+            assertSame(nextSession, QContext.getQSession());
+         }
+         finally
+         {
+            release.countDown();
+            StorageObserver.contexts.clear();
+         }
+      }
+   }
+
+
+
    /*******************************************************************************
     ** Direct delivery reports the native row count and the actual owned session.
     ******************************************************************************/
@@ -249,17 +348,22 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
    @Test
    void testStorageFailureDropsBatchAndFreshReadRecovers() throws Exception
    {
+      var caller = QContext.capture();
+      instance.getTable("queryStat").withCapability(Capability.QUERY_STATS);
       var details = (RDBMSTableBackendDetails) instance.getTable("queryStat").getBackendDetails();
       details.setTableName("missing_owned_query_stat");
       new QueryAction().execute(new QueryInput("person"));
-      flushOnOwnedThread();
+      manager.storeStatsNow();
+      assertEquals(caller, QContext.capture());
       assertEquals(1, snapshots.size());
       assertTrue(rows("SELECT id FROM query_stat").isEmpty());
       details.setTableName("query_stat");
-      flushOnOwnedThread();
+      manager.storeStatsNow();
+      assertEquals(caller, QContext.capture());
       assertTrue(rows("SELECT id FROM query_stat").isEmpty(), "A failed batch is not retried");
       new QueryAction().execute(new QueryInput("person"));
-      flushOnOwnedThread();
+      manager.storeStatsNow();
+      assertEquals(caller, QContext.capture());
       assertEquals(2, snapshots.size());
       assertEquals(1, rows("SELECT id FROM query_stat").size());
    }
@@ -318,6 +422,7 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
       var calls = new AtomicInteger();
       var dirtyWorker = new AtomicBoolean();
       StorageObserver.contexts.clear();
+      instance.getTable("queryStat").withCapability(Capability.QUERY_STATS);
       instance.getTable("queryStat").withCustomizer(TableCustomizers.PRE_INSERT_RECORD, new QCodeReference(StorageObserver.class));
       manager.setJobInitialDelay(1);
       manager.setJobPeriodSeconds(1);
@@ -341,6 +446,7 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
          }
          assertEquals(List.of(List.of(session.getUuid())), rows("SELECT session_id FROM query_stat"));
          assertEquals(1, StorageObserver.contexts.size());
+         assertEquals(1, snapshots.size(), "Scheduled storage observed its own work");
          assertSame(instance, StorageObserver.contexts.get(0).instance());
          assertSame(storageSession, StorageObserver.contexts.get(0).session());
          assertTrue(StorageObserver.contexts.get(0).thread().startsWith("QueryStatManager-"));
@@ -389,6 +495,65 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
 
 
    /*******************************************************************************
+    ** Statistics describe the completed backend action, not request success.
+    ** A later customization failure must propagate without erasing that measurement.
+    ******************************************************************************/
+   @Test
+   void testPostQueryRejectionRetainsCompletedBackendMeasurement() throws Exception
+   {
+      instance.getTable("person").withCustomizer(TableCustomizers.POST_QUERY_RECORD, new QCodeReference(FailingPostQuery.class));
+      List<List<String>> before = rows("SELECT id,first_name,last_name FROM person ORDER BY id");
+      assertEquals(5, before.size());
+      QException failure = assertThrows(QException.class, () -> new QueryAction().execute(new QueryInput("person")));
+      assertEquals("owned post-query failure", failure.getMessage());
+      assertEquals(before, rows("SELECT id,first_name,last_name FROM person ORDER BY id"));
+      assertEquals(1, snapshots.size());
+      Snapshot stat = snapshots.get(0);
+      assertEquals("person", stat.table());
+      assertEquals("QueryAction", stat.backendAction());
+      assertEquals(5, stat.count());
+      assertEquals(session.getUuid(), stat.session());
+      assertNotNull(stat.start());
+      assertNotNull(stat.first());
+      assertFalse(stat.first().isBefore(stat.start()));
+      assertTrue(stat.millis() >= 0);
+      assertTrue(stat.sql().contains("person"));
+      assertTrue(rows("SELECT id FROM query_stat").isEmpty());
+      flushOnOwnedThread();
+      assertEquals(List.of(List.of(session.getUuid(), "person", stat.sql())),
+         rows("SELECT s.session_id,t.name,s.query_text FROM query_stat s JOIN qqq_table t ON t.id=s.qqq_table_id"));
+      try(Statement statement = oracle.createStatement(); ResultSet result = statement.executeQuery("SELECT * FROM query_stat"))
+      {
+         assertTrue(result.next());
+         assertEquals(stat.start(), result.getObject("start_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
+         assertEquals(stat.first(), result.getObject("first_result_timestamp", LocalDateTime.class).toInstant(ZoneOffset.UTC));
+         assertEquals(stat.millis(), result.getInt("first_result_millis"));
+         assertFalse(result.next());
+      }
+      assertSame(instance, QContext.getQInstance());
+      assertSame(session, QContext.getQSession());
+   }
+
+
+
+   /*******************************************************************************
+    ** Fault injection at the normal public customization boundary, after native read.
+    ******************************************************************************/
+   public static class FailingPostQuery implements TableCustomizerInterface
+   {
+      /*******************************************************************************
+       ** Reject delivery without changing any native row.
+       ******************************************************************************/
+      @Override
+      public List<QRecord> postQuery(QueryOrGetInputInterface input, List<QRecord> records) throws QException
+      {
+         throw new QException("owned post-query failure");
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Observe actual InsertAction storage context without substituting persistence.
     ******************************************************************************/
    public static class StorageObserver implements TableCustomizerInterface
@@ -420,8 +585,7 @@ class SampleQueryStatisticsAcceptanceTest extends SampleQueryStatisticsAcceptanc
 
 
    /*******************************************************************************
-    ** Flush on an owned worker because the public API currently clears QContext.
-    ** The separate defect probe retains the desired caller-context contract.
+    ** A context-free caller must remain context-free after an explicit flush.
     ******************************************************************************/
    private void flushOnOwnedThread() throws Exception
    {

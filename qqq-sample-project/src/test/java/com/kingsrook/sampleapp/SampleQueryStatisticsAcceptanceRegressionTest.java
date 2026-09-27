@@ -31,14 +31,11 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
-import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.context.QContext;
-import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrGetInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -46,7 +43,9 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
+import com.kingsrook.qqq.backend.core.model.querystats.QueryStatMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.tables.QQQTablesMetaDataProvider;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.SimpleConnectionProvider;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
@@ -54,15 +53,12 @@ import org.h2.tools.RunScript;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /*******************************************************************************
- ** Explicitly runnable desired-contract probes for known defects, not acceptance.
- ** Select with -Dtest=SampleQueryStatisticsAcceptanceDefectProbe; the inventory
- ** stays pending while these fail. No test is disabled or converted to a pass.
+ ** Native persistence regressions for query-statistics lifecycle and isolation.
  ******************************************************************************/
-class SampleQueryStatisticsAcceptanceDefectProbe extends SampleQueryStatisticsAcceptanceFixture
+class SampleQueryStatisticsAcceptanceRegressionTest extends SampleQueryStatisticsAcceptanceFixture
 {
    /*******************************************************************************
     ** A short association buffer must report the delivered tail.
@@ -128,9 +124,21 @@ class SampleQueryStatisticsAcceptanceDefectProbe extends SampleQueryStatisticsAc
    void testExplicitFlushPreservesCallerContext() throws Exception
    {
       new QueryAction().execute(new QueryInput("person"));
-      manager.storeStatsNow();
-      assertSame(instance, QContext.getQInstance());
-      assertSame(session, QContext.getQSession());
+      try(var transaction = QBackendTransaction.openFor(new QueryInput("person")))
+      {
+         QContext.init(instance, session, transaction, new QueryInput("person"));
+         var before = QContext.capture();
+         manager.storeStatsNow();
+         assertEquals(before, QContext.capture());
+         assertSame(transaction, QContext.getQBackendTransaction());
+         assertEquals(List.of(List.of(session.getUuid())), rows("SELECT session_id FROM query_stat"));
+         manager.storeStatsNow();
+         assertEquals(before, QContext.capture());
+         assertSame(instance, QContext.getQInstance());
+         assertSame(session, QContext.getQSession());
+         transaction.rollback();
+      }
+      QContext.init(instance, session);
    }
 
 
@@ -151,6 +159,8 @@ class SampleQueryStatisticsAcceptanceDefectProbe extends SampleQueryStatisticsAc
       foreignBackend.withCapability(Capability.QUERY_STATS);
       foreign.addBackend(foreignBackend);
       foreign.getTable("person").setBackendName(foreignBackend.getName());
+      new QQQTablesMetaDataProvider().defineAll(foreign, foreignBackend.getName(), foreignBackend.getName(), this::mapStatisticsTable);
+      new QueryStatMetaDataProvider().defineAll(foreign, foreignBackend.getName(), this::mapStatisticsTable);
       QSession foreignSession = new QSession();
       foreignSession.setUuid(UUID.randomUUID().toString());
       try(Connection other = DriverManager.getConnection(foreignBackend.getJdbcUrl(), "sa", "");
@@ -161,28 +171,38 @@ class SampleQueryStatisticsAcceptanceDefectProbe extends SampleQueryStatisticsAc
          {
             statement.executeUpdate("DELETE FROM person WHERE id>1");
          }
+         try(var statisticsScript = new InputStreamReader(getClass().getResourceAsStream("/SampleQueryStatisticsAcceptance.sql"), StandardCharsets.UTF_8))
+         {
+            RunScript.execute(other, statisticsScript);
+         }
          QContext.init(foreign, foreignSession);
          assertEquals(1, new QueryAction().execute(new QueryInput("person")).getRecords().size());
-         assertEquals(foreignSession.getUuid(), snapshots.get(0).session());
+         assertTrue(snapshots.isEmpty(), "Foreign instance reached a consumer");
          manager.storeStatsNow();
          assertTrue(rows("SELECT session_id FROM query_stat").isEmpty(),
             "Foreign query was persisted in started instance A: " + rows("SELECT session_id FROM query_stat"));
+
+         QContext.init(instance, session);
+         assertEquals(5, new QueryAction().execute(new QueryInput("person")).getRecords().size());
+         manager.storeStatsNow();
+         assertEquals(List.of(List.of(session.getUuid())), rows("SELECT session_id FROM query_stat"));
+         snapshots.clear();
+         manager.start(foreign, QSession::new);
+         assertEquals(5, new QueryAction().execute(new QueryInput("person")).getRecords().size());
+         assertTrue(snapshots.isEmpty(), "Old instance reached replacement generation");
+         QContext.init(foreign, foreignSession);
+         assertEquals(1, new QueryAction().execute(new QueryInput("person")).getRecords().size());
+         assertEquals(1, snapshots.size());
+         assertEquals(foreignSession.getUuid(), snapshots.get(0).session());
+         manager.storeStatsNow();
+         try(Statement statement = other.createStatement(); var stored = statement.executeQuery("SELECT session_id FROM query_stat"))
+         {
+            assertTrue(stored.next());
+            assertEquals(foreignSession.getUuid(), stored.getString(1));
+            assertTrue(!stored.next());
+         }
+         assertEquals(List.of(List.of(session.getUuid())), rows("SELECT session_id FROM query_stat"));
       }
-   }
-
-
-
-   /*******************************************************************************
-    ** No successful full-result statistic should survive a rejected public read.
-    ******************************************************************************/
-   @Test
-   void testPostQueryFailureHasNoSuccessStatistic() throws Exception
-   {
-      instance.getTable("person").withCustomizer(TableCustomizers.POST_QUERY_RECORD, new QCodeReference(FailingPostQuery.class));
-      assertThrows(QException.class, () -> new QueryAction().execute(new QueryInput("person")));
-      manager.storeStatsNow();
-      assertTrue(rows("SELECT id FROM query_stat").isEmpty(), "Failed public read stored a success-shaped statistic");
-      assertTrue(snapshots.isEmpty(), "Failed public read reached statistics consumers");
    }
 
 
@@ -195,16 +215,24 @@ class SampleQueryStatisticsAcceptanceDefectProbe extends SampleQueryStatisticsAc
    {
       instance.getTable("queryStat").withCapability(Capability.QUERY_STATS);
       new QueryAction().execute(new QueryInput("person"));
+      for(int i = 0; i < 3; i++)
+      {
+         manager.storeStatsNow();
+         assertEquals(1, rows("SELECT id FROM query_stat").size(), "Flush persisted self-generated statistics");
+         assertEquals(1, snapshots.size(), "Storage reached a consumer");
+      }
+      assertEquals(1, new QueryAction().execute(new QueryInput("queryStat")).getRecords().size());
+      assertEquals(2, snapshots.size(), "A legitimate application query was suppressed");
       manager.storeStatsNow();
-      manager.storeStatsNow();
-      assertEquals(1, rows("SELECT id FROM query_stat").size(), "Second flush persisted self-generated statistics");
+      assertEquals(2, rows("SELECT id FROM query_stat").size());
+      assertEquals(2, snapshots.size());
    }
 
 
 
    /*******************************************************************************
-    ** Isolate the known double-start worker leak in a disposable JVM so that
-    ** demonstrating it cannot leave threads behind in the acceptance JVM.
+    ** Check repeated starts in a disposable JVM so a worker regression cannot
+    ** contaminate the acceptance JVM. Every previous worker must terminate.
     ******************************************************************************/
    @Test
    void testRepeatedStartThenStopLeavesNoWorker() throws Exception
@@ -216,7 +244,7 @@ class SampleQueryStatisticsAcceptanceDefectProbe extends SampleQueryStatisticsAc
          process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
             "-Dlog4j2.configurationFile=SampleQueryStatisticsAcceptance-log4j2.xml",
             "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
-            SampleQueryStatisticsAcceptanceDefectProbe.class.getName())
+            SampleQueryStatisticsAcceptanceRegressionTest.class.getName())
             .redirectErrorStream(true).redirectOutput(log.toFile()).start();
          assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Worker probe exceeded deadline");
          assertEquals(0, process.exitValue(), Files.readString(log));
@@ -261,18 +289,4 @@ class SampleQueryStatisticsAcceptanceDefectProbe extends SampleQueryStatisticsAc
 
 
 
-   /*******************************************************************************
-    ** Fault injection at the normal public customization boundary, after native read.
-    ******************************************************************************/
-   public static class FailingPostQuery implements TableCustomizerInterface
-   {
-      /*******************************************************************************
-       ** Reject delivery without changing any native row.
-       ******************************************************************************/
-      @Override
-      public List<QRecord> postQuery(QueryOrGetInputInterface input, List<QRecord> records) throws QException
-      {
-         throw new QException("owned post-query failure");
-      }
-   }
 }

@@ -110,4 +110,14 @@ public class BufferedRecordPipe extends RecordPipe
          flush();
       }
    }
+
+   /*******************************************************************************
+    ** Count backend records already forwarded plus the tail awaiting final flush.
+    *******************************************************************************/
+   @Override
+   public int getTotalRecordCount()
+   {
+      return super.getTotalRecordCount() + buffer.size();
+   }
+
 }

@@ -163,7 +163,7 @@ abstract class SampleQueryStatisticsAcceptanceFixture
    /*******************************************************************************
     ** Table-level opt-out prevents statistics storage from observing itself.
     ******************************************************************************/
-   private void mapStatisticsTable(QTableMetaData table)
+   protected void mapStatisticsTable(QTableMetaData table)
    {
       table.withBackendDetails(new RDBMSTableBackendDetails().withTableName(snake(table.getName())));
       table.getFields().values().forEach(field -> field.setBackendName(snake(field.getName())));

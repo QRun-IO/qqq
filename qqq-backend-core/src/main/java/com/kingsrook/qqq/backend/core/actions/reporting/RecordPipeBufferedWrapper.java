@@ -84,4 +84,14 @@ public class RecordPipeBufferedWrapper extends BufferedRecordPipe
       return wrappedPipe;
    }
 
+
+   /*******************************************************************************
+    ** Count backend records already forwarded plus the tail awaiting final flush.
+    *******************************************************************************/
+   @Override
+   public int getTotalRecordCount()
+   {
+      return wrappedPipe.getTotalRecordCount() + buffer.size();
+   }
+
 }

@@ -2524,8 +2524,13 @@
       "negative_cases": [
         "Malformed HTML, missing asset and conversion failure; no external private resources"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Four source sample scenarios now reopen serialized PDF bytes with the existing PDFBox parser and assert page-specific text, pagination and embedded-image presence. Native OpenHTMLToPDF controls distinguish strict malformed-XML rejection from QQQ HTML repair, tolerated missing local images from successful image loading, and an output-sink IOException from QQQ exception wrapping. All resources are owned and local; the failure case confirms subsequent conversion succeeds, not output rollback. No visual-fidelity, custom-font, remote-asset, publication or release certification is claimed. Independent review and full sample verification remain pending; existing post-4.0 deferral is unchanged and grants no new 4.1 approval.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testSampleTemplateProducesTwoReadablePagesAndLocalImage",
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testMalformedHtmlIsRepairedWithoutLosingText",
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testMissingLocalAssetPreservesTextWithoutImage",
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testOutputFailureRetainsCauseAndNextConversionSucceeds"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/571",

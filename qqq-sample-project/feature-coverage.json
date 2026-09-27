@@ -4540,8 +4540,15 @@
       "negative_cases": [
         "Syntax/runtime exception, missing code reference, invalid result type and no unintended persistence"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Owned sample pre-update customizer executes original inline QCodeReference through ExecuteCodeAction and the actual Nashorn QCodeExecutor. Six ordinary sample cases cover typed Java context, execution logger, returned QRecord identity/mutation, syntax/runtime diagnostics, absent reference/inline source, invalid application result type and native H2 before/after persistence oracles. The engine truthfully reports success for a primitive result; the sample customizer rejects that result before DML. The existing JavaScript module is declared at ${revision} in test scope; no diagnostic classpath override or production JavaScript runtime is claimed. Independent review and combined verification remain pending; no engine sandbox, script rollback or publication claim.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testTypedContextLoggerAndReturnedRecordPersistOnlyIntendedChange",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testSyntaxFailureLogsDiagnosticAndPreservesNativeRows",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testRuntimeFailureAfterMutationPreservesNativeRows",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testMissingCodeReferenceFailsWithoutNativeWrite",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testMissingInlineScriptFailsWithoutNativeWrite",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testInvalidResultTypeIsRejectedBeforeNativeWrite"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/591",

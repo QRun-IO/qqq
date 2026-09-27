@@ -945,3 +945,84 @@ also pass. Logs are `/private/tmp/qqq-798-wave8-{core-rdbms,query-focused,sample
 archived reports are `/private/tmp/qqq-798-wave8-final-reports`. The query-statistics
 row remains pending solely for its unproven concurrent query cancellation scope;
 no requirement, release disposition or threshold is relaxed.
+
+
+## JavaScript executor: bounded sample evidence (#591)
+
+`SampleJavaScriptAcceptanceTest` registers an owned Java pre-update customizer on
+canonical sample `person` metadata. That customizer passes the original inline
+`QCodeReference` to `ExecuteCodeAction`, which loads the existing Nashorn
+`QCodeExecutor`. Four owned scripts live under `SampleJavaScriptAcceptance/` in
+test resources. This does not add a script-capable metadata loader: the current
+`QCodeLoader` accepts Java customizers, and the sample Java adapter invokes the
+existing script API explicitly.
+
+Six methods cover typed Java bean/decimal/integer context, deployment context,
+the real execution logger, returned record identity and a persisted last-name
+mutation; syntax and runtime diagnostics; absent reference and absent inline
+source; and invalid application result type. Every negative snapshots all native
+person columns before and after the attempted update. Runtime and invalid-result
+scripts mutate their in-memory record first, then fail before persistence.
+Successful DML changes only the intended name and the normal modification time,
+whose native value must lie within the write interval. Other rows/columns remain
+unchanged. Each case checks native connection cleanup and caller session/context;
+fixture cleanup restores prior ordinary and named context and closes its H2 DB.
+
+Nashorn may validly return a string. The **sample customizer's** QRecord result
+contract rejects that string before DML; the execution log correctly records
+successful script execution. Missing code reference currently produces a wrapped
+null-reference exception; missing inline source reports the existing inline-only
+limitation. These tests do not promise script rollback, sandboxing of trusted
+scripts, new engine behavior, or isolation from arbitrary script side effects.
+The logger is the existing in-memory `BuildScriptLogAndScriptLogLineExecutionLogger`;
+no persisted script-log behavior is claimed.
+
+The sample now declares the existing `qqq-language-support-javascript` module at
+`${revision}` in **test scope**, with no separate engine version override. The
+customizer and JavaScript resources in this increment exist only under
+`src/test`; this dependency does not supply production JavaScript execution.
+No script-execution references were found in the sample's production metadata or
+code. Independent review and combined verification remain required;
+`javascript.executor` stays pending.
+
+Local diagnostic evidence, Java 21, 2026-09-27:
+
+- Isolated worktree from `c65c70dfc`, cache
+  `/private/tmp/qqq-591-javascript-c65-m2`, cloned from main's stable source cache.
+  Core, RDBMS and JavaScript module jar SHA-256 hashes match main's cache. This is
+  not empty-cache or public-artifact verification.
+- Baseline query controls: 3 passed (`/private/tmp/qqq-591-baseline.log`).
+- Ordinary six-case run: 1 passed, 4 failures and 1 error, no skips; five cases
+  blocked by missing executor class (`/private/tmp/qqq-591-classpath-red.log`).
+- The existing JavaScript module's runtime classpath was resolved offline with
+  `dependency:build-classpath`. For diagnosis only, its jar, Nashorn 15.7 and its
+  declared ASM jars were supplied using Surefire's
+  `-Dmaven.test.additionalClasspath`. No dependencies were installed or changed.
+  An initial native oracle used the wrong physical-column index and overlooked
+  the normal modify timestamp; the final oracle uses column names and explicitly
+  bounds that timestamp.
+- The six script cases plus three query controls passed, zero failures/errors/
+  skips, zero Checkstyle violations (`/private/tmp/qqq-591-explicit-runtime-green.log`).
+  This diagnostic classpath is not a substitute for ordinary CI integration.
+- No production code, full sample, HTTP/broker fixture or shared worktree changed.
+
+After the test-scoped module reference was authorized, ordinary Maven execution
+passed all six JavaScript cases and three query controls: **9 tests, zero
+failures/errors/skips**, zero Checkstyle violations, in 12.751 seconds
+(`/private/tmp/qqq-591-ordinary-focused.log`). No additional-classpath property or
+diagnostic jar override was used. The original classpath-red and diagnostic logs
+remain intact. Reproduce with matching-source artifacts and Java 21:
+
+```sh
+mvn -nsu -Dmaven.repo.local=/private/tmp/qqq-591-javascript-c65-m2 \
+  -f qqq-sample-project/pom.xml \
+  -Dtest=SampleJavaScriptAcceptanceTest,SampleQueryContractTest clean test
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+  -s qqq-sample-project -p test_feature_coverage.py
+# Expected nonzero until independent review and combined verification:
+PYTHONDONTWRITEBYTECODE=1 python3 qqq-sample-project/verify-feature-coverage.py \
+  --stage source --report-only --require-feature javascript.executor
+```
+The 23 Python ledger tests also passed. The required-feature command exits 1
+with this row blocked only by pending scenario review. All 130 IDs, acceptance
+requirements, negative cases, statuses, stages and deferrals remain unchanged.

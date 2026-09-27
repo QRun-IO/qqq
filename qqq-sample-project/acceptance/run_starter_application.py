@@ -7,6 +7,7 @@ QRun-IO/qqq-app-starter. All writes stay in a disposable work directory.
 
 import argparse
 import contextlib
+import hashlib
 import os
 import re
 import shutil
@@ -50,6 +51,46 @@ def qqq_version(source):
     require(value is not None and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?", value),
             "QQQ source must declare a literal root revision")
     return value
+
+
+def resolve_candidate_version(source, override):
+    version = qqq_version(source) if override is None else override
+    require(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?", version),
+            "invalid QQQ candidate version")
+    return version
+
+
+def source_install_command(base, modules, version):
+    return base + [f"-Drevision={version}", "-DskipTests", "-Dspotbugs.skip=true", "-Dpmd.skip=true",
+                   "-pl", modules, "-am", "install"]
+
+
+def maven_base(repo, online, settings):
+    command = ["mvn", "-B", "-q", "-nsu" if online else "-o"]
+    if settings:
+        command += ["-s", str(settings.resolve())]
+    return command + [f"-Dmaven.repo.local={repo.resolve()}"]
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.digest()
+
+
+def assert_source_install(source, repo, version, artifacts):
+    bom = repo / "com/kingsrook/qqq/qqq-bom-pom" / version / f"qqq-bom-pom-{version}.pom"
+    require(bom.is_file(), f"source candidate BOM missing: {bom}")
+    for artifact in artifacts:
+        filename = f"{artifact}-{version}.jar"
+        reactor = source / artifact / "target" / filename
+        installed = repo / "com/kingsrook/qqq" / artifact / version / filename
+        require(reactor.is_file() and installed.is_file(), f"source candidate jar missing: {artifact}")
+        require(file_sha256(reactor) == file_sha256(installed),
+                f"installed candidate {artifact} does not match reactor source jar")
+    print(f"PASS: {len(artifacts)} QQQ candidate jars match checked-out reactor artifacts at {version}", flush=True)
 
 
 def copy_tracked_source(source, destination):
@@ -237,6 +278,8 @@ def main():
     parser.add_argument("--starter-source", type=Path, required=True)
     parser.add_argument("--template-source", type=Path, required=True)
     parser.add_argument("--qqq-source", type=Path, required=True)
+    parser.add_argument("--candidate-version",
+                        help="isolated Maven version for the exact checked-out QQQ source")
     parser.add_argument("--maven-repo", type=Path, required=True)
     parser.add_argument("--workdir", type=Path)
     parser.add_argument("--junit-dir", type=Path,
@@ -291,20 +334,20 @@ def collect_junit(workdir, destination, failure):
 
 
 def execute(args, workdir):
-    version = qqq_version(args.qqq_source)
+    version = resolve_candidate_version(args.qqq_source, args.candidate_version)
     print("QQQ source:", revision(args.qqq_source), flush=True)
+    print("QQQ root revision:", qqq_version(args.qqq_source), flush=True)
+    print("QQQ candidate version:", version, flush=True)
     print("starter source:", revision(args.starter_source), flush=True)
     print("application template source:", revision(args.template_source), flush=True)
-    base = ["mvn"] + ([] if args.online else ["-o"]) + ["-B", "-q"]
-    if args.maven_settings:
-        base += ["-s", str(args.maven_settings)]
-    base += [f"-Dmaven.repo.local={args.maven_repo}"]
-    modules = ",".join(("qqq-bom", "qqq-backend-core", "qqq-backend-module-rdbms",
-                        "qqq-backend-module-api", "qqq-backend-module-filesystem",
-                        "qqq-middleware-javalin", "qqq-middleware-api",
-                        "qqq-middleware-picocli", "qqq-language-support-javascript"))
-    run(base + ["-DskipTests", "-Dspotbugs.skip=true", "-Dpmd.skip=true",
-                "-pl", modules, "-am", "install"], args.qqq_source)
+    repo = args.maven_repo.resolve()
+    base = maven_base(repo, args.online, args.maven_settings)
+    artifacts = ("qqq-backend-core", "qqq-backend-module-rdbms", "qqq-backend-module-api",
+                 "qqq-backend-module-filesystem", "qqq-middleware-javalin", "qqq-middleware-api",
+                 "qqq-middleware-picocli", "qqq-language-support-javascript")
+    modules = ",".join(("qqq-bom",) + artifacts)
+    run(source_install_command(base, modules, version), args.qqq_source)
+    assert_source_install(args.qqq_source, repo, version, artifacts)
     template = workdir / "orderdesk-app"
     starter = workdir / "starter"
     generated = stage_template(args.template_source, template)

@@ -8,7 +8,9 @@ import xml.etree.ElementTree as ET
 from unittest.mock import patch
 from pathlib import Path
 
-from run_starter_application import GENERATED_PACKAGE, copy_tracked_source, main, qqq_version, stage_starter, stage_template
+from run_starter_application import (GENERATED_PACKAGE, assert_source_install, copy_tracked_source,
+                                     main, maven_base, qqq_version, resolve_candidate_version,
+                                     source_install_command, stage_starter, stage_template)
 from live_starter_application import exercise
 
 
@@ -24,6 +26,45 @@ class DisposableCopyTest(unittest.TestCase):
             pom.write_text(prefix + '${revision}' + suffix)
             with self.assertRaisesRegex(AssertionError, "literal root revision"):
                 qqq_version(Path(root))
+
+    def test_candidate_override_is_used_for_source_install(self):
+        with tempfile.TemporaryDirectory() as root:
+            pom = Path(root) / "pom.xml"
+            pom.write_text('<project xmlns="http://maven.apache.org/POM/4.0.0">'
+                           '<properties><revision>4.2.0-SNAPSHOT</revision></properties></project>')
+            self.assertEqual("4.2.0-SNAPSHOT", resolve_candidate_version(Path(root), None))
+            version = resolve_candidate_version(Path(root), "0.0.0-sample-acceptance")
+            self.assertEqual("0.0.0-sample-acceptance", version)
+            command = source_install_command(["mvn", "-B", "-nsu"], "qqq-bom,qqq-backend-core", version)
+            self.assertIn("-Drevision=0.0.0-sample-acceptance", command)
+            self.assertLess(command.index("-Drevision=0.0.0-sample-acceptance"), command.index("install"))
+            with self.assertRaisesRegex(AssertionError, "invalid QQQ candidate version"):
+                resolve_candidate_version(Path(root), "$(bad)")
+            self.assertIn("-nsu", maven_base(Path(root) / "m2", True, None))
+            self.assertNotIn("-o", maven_base(Path(root) / "m2", True, None))
+            self.assertIn("-o", maven_base(Path(root) / "m2", False, None))
+
+    def test_installed_candidate_jar_must_match_reactor_source_jar(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            source = root / "source"
+            repo = root / "m2"
+            artifact = "qqq-backend-core"
+            version = "0.0.0-sample-acceptance"
+            bom = repo / "com/kingsrook/qqq/qqq-bom-pom" / version / f"qqq-bom-pom-{version}.pom"
+            bom.parent.mkdir(parents=True)
+            bom.write_text("<project/>")
+            jar = source / artifact / "target" / f"{artifact}-{version}.jar"
+            installed = repo / "com/kingsrook/qqq" / artifact / version / jar.name
+            jar.parent.mkdir(parents=True)
+            installed.parent.mkdir(parents=True)
+            jar.write_bytes(b"reactor")
+            installed.write_bytes(b"reactor")
+            assert_source_install(source, repo, version, (artifact,))
+            installed.write_bytes(b"different")
+            with self.assertRaisesRegex(AssertionError, "does not match reactor"):
+                assert_source_install(source, repo, version, (artifact,))
+
     def test_copies_only_safe_tracked_files(self):
         with tempfile.TemporaryDirectory() as root:
             source = Path(root) / "source"

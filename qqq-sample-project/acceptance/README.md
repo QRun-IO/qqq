@@ -23,9 +23,15 @@ python3 "$QQQ_SOURCE/qqq-sample-project/acceptance/run_starter_application.py" \
 
 Populate the dedicated Maven cache from a normal Maven build first, or pass
 `--online` to resolve dependencies into a fresh dedicated cache. The runner
-uses offline Maven by default and
-prints all three source commit IDs. It fails when the generated QBit is not a
-valid live host integration; a successful compile alone is insufficient.
+uses offline Maven by default. With `--online`, Maven uses `-nsu` so it can
+resolve public dependencies without refreshing locally installed QQQ snapshots.
+CI passes `--candidate-version 0.0.0-sample-acceptance`, matching the earlier
+sample framework install. The runner installs the checked-out QQQ reactor at
+that exact candidate version, checks that its installed JARs match the reactor
+JARs, and builds both consumers against it. It prints all three source commit
+IDs, the root revision, and the candidate version. It fails when the generated
+QBit is not a valid live host integration; a successful compile alone is
+insufficient.
 The runner copies only tracked, non-secret-like source paths from the two
 first-party checkouts. Its work directory is removed on exit, including on
 failure. Supply a new path under the OS temporary directory with `--workdir`

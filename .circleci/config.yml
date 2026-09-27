@@ -81,6 +81,7 @@ jobs:
             python3 qqq-sample-project/acceptance/run_starter_application.py \
               --qqq-source . --starter-source "$consumer_root/starter" \
               --template-source "$consumer_root/template" \
+              --candidate-version 0.0.0-sample-acceptance \
               --maven-repo "$consumer_root/m2" --online \
               --maven-settings /tmp/circleci/mvn-settings.xml --live-mysql \
               --junit-dir qqq-sample-project/target/starter-application-junit

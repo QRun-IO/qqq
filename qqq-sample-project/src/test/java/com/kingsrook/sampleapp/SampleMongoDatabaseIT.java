@@ -22,6 +22,8 @@ package com.kingsrook.sampleapp;
 
 
 import java.math.BigDecimal;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -35,6 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerInterface;
@@ -90,6 +93,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.backend.module.mongodb.actions.MongoDBTransaction;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBBackendMetaData;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBTableBackendDetails;
 import com.kingsrook.sampleapp.metadata.FieldLabTableMetaDataProducer;
@@ -160,7 +164,7 @@ class SampleMongoDatabaseIT
    {
       container = new GenericContainer<>(DockerImageName.parse("mongo:7.0"))
          .withEnv("MONGO_INITDB_ROOT_USERNAME", USERNAME).withEnv("MONGO_INITDB_ROOT_PASSWORD", PASSWORD)
-         .withExposedPorts(27017).waitingFor(Wait.forLogMessage("(?i).*waiting for connections.*", 1));
+         .withExposedPorts(27017).waitingFor(Wait.forListeningPort());
       try
       {
          container.start();
@@ -313,6 +317,168 @@ class SampleMongoDatabaseIT
       assertEquals(3L, collection().countDocuments());
       GetInput missing = new GetInput(TABLE).withPrimaryKey(id(99).toHexString());
       readOnly("missing generated identity", missing, () -> assertNull(new GetAction().execute(missing).getRecord()));
+   }
+
+
+
+   /*******************************************************************************
+    ** A missing collection is an empty readable table until the first normal
+    ** sample insert creates it; native MongoDB remains the independent oracle.
+    ******************************************************************************/
+   @Test
+   void testMissingCollectionStartsEmptyAndIsCreatedByInsert() throws Exception
+   {
+      assertFalse(database().listCollectionNames().into(new ArrayList<>()).contains(COLLECTION));
+      assertTrue(new QueryAction().execute(new QueryInput(TABLE)).getRecords().isEmpty());
+      assertEquals(0, new CountAction().execute(new CountInput(TABLE)).getCount());
+      assertFalse(database().listCollectionNames().into(new ArrayList<>()).contains(COLLECTION));
+
+      QRecord inserted = insert(new QRecord().withValue("name", "Created collection"));
+      successful(inserted);
+      assertTrue(database().listCollectionNames().into(new ArrayList<>()).contains(COLLECTION));
+      assertEquals("Created collection", nativeRow(inserted.getValueString("id")).getString("name"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A disconnected configured backend cannot silently claim an empty result
+    ** or write to the live fixture; the original endpoint is restored afterward.
+    ******************************************************************************/
+   @Test
+   void testConnectionFailureDoesNotReturnSuccessOrWrite() throws Exception
+   {
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) instance.getBackend(BACKEND);
+      String host = backend.getHost();
+      Integer port = backend.getPort();
+      String suffix = backend.getUrlSuffix();
+      List<String> before = collectionSnapshot(COLLECTION);
+      try(ServerSocket noMongo = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")))
+      {
+         backend.setHost("127.0.0.1");
+         backend.setPort(noMongo.getLocalPort());
+         backend.setUrlSuffix("serverSelectionTimeoutMS=1000&connectTimeoutMS=1000");
+         assertThrows(QException.class, () -> new QueryAction().execute(new QueryInput(TABLE)));
+         assertThrows(QException.class, () -> insert(new QRecord().withValue("name", "Cannot connect")));
+      }
+      finally
+      {
+         backend.setHost(host);
+         backend.setPort(port);
+         backend.setUrlSuffix(suffix);
+      }
+      assertEquals(before, collectionSnapshot(COLLECTION));
+   }
+
+
+
+   /*******************************************************************************
+    ** An invalid public field criterion must fail before MongoDB sees a query;
+    ** an unknown field is not a successful empty-result substitute.
+    ******************************************************************************/
+   @Test
+   void testMalformedFilterRefusesWithoutNativeMutation() throws Exception
+   {
+      seedRows();
+      List<Document> before = nativeRows();
+      QueryInput input = new QueryInput(TABLE).withFilter(new QQueryFilter().withCriteria(
+         new QFilterCriteria("notAField", QCriteriaOperator.EQUALS, "probe")));
+      assertThrows(QException.class, () -> new QueryAction().execute(input));
+      assertEquals(before, nativeRows());
+   }
+
+
+
+   /*******************************************************************************
+    ** Standalone MongoDB supports client-session reuse but not server-side
+    ** transactions. Rollback is a no-op for durable writes in this configuration.
+    ******************************************************************************/
+   @Test
+   void testStandaloneSessionReuseCommitAndRollbackLimit() throws Exception
+   {
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) instance.getBackend(BACKEND);
+      assertFalse(backend.getTransactionsSupported());
+      InsertInput source = new InsertInput(TABLE);
+      MongoClient transactionClient;
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(source))
+      {
+         MongoDBTransaction mongo = assertInstanceOf(MongoDBTransaction.class, transaction);
+         assertNotNull(mongo.getClientSession());
+         assertFalse(mongo.getClientSession().hasActiveTransaction());
+         transactionClient = mongo.getMongoClient();
+
+         QRecord first = new InsertAction().execute(new InsertInput(TABLE).withTransaction(transaction)
+            .withRecord(new QRecord().withValue("name", "Before rollback"))).getRecords().get(0);
+         successful(first);
+         assertEquals(1L, collection().countDocuments());
+         transaction.rollback();
+         assertEquals("Before rollback", nativeRow(first.getValueString("id")).getString("name"));
+
+         QRecord second = new InsertAction().execute(new InsertInput(TABLE).withTransaction(transaction)
+            .withRecord(new QRecord().withValue("name", "After rollback"))).getRecords().get(0);
+         successful(second);
+         transaction.commit();
+         assertEquals(2L, collection().countDocuments());
+         assertEquals("After rollback", nativeRow(second.getValueString("id")).getString("name"));
+      }
+      assertThrows(RuntimeException.class, () -> transactionClient.getDatabase("admin").runCommand(new Document("ping", 1)));
+      QRecord reopened = insert(new QRecord().withValue("name", "Fresh action client"));
+      successful(reopened);
+      assertEquals(3L, collection().countDocuments());
+   }
+
+
+
+   /*******************************************************************************
+    ** Advertising replica-set transactions against a standalone server must
+    ** fail explicitly without a native write rather than claim atomicity.
+    ******************************************************************************/
+   @Test
+   void testStandaloneServerRefusesTransactionModeWithoutWriting() throws Exception
+   {
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) instance.getBackend(BACKEND);
+      assertFalse(backend.getTransactionsSupported());
+      try
+      {
+         backend.setTransactionsSupported(true);
+         InsertInput source = new InsertInput(TABLE);
+         try(QBackendTransaction transaction = QBackendTransaction.openFor(source))
+         {
+            InsertInput input = new InsertInput(TABLE).withTransaction(transaction)
+               .withRecord(new QRecord().withValue("name", "Must not commit"));
+            assertThrows(QException.class, () -> new InsertAction().execute(input));
+            assertEquals(0L, collection().countDocuments());
+         }
+      }
+      finally
+      {
+         backend.setTransactionsSupported(false);
+      }
+      assertEquals(0L, collection().countDocuments());
+   }
+
+
+
+   /*******************************************************************************
+    ** An ordered native batch stops at a duplicate identity. A standalone
+    ** rollback cannot undo the first document already written to MongoDB.
+    ******************************************************************************/
+   @Test
+   void testMidBatchDuplicateLeavesNativePartialWriteOnStandaloneRollback() throws Exception
+   {
+      InsertInput source = new InsertInput(TABLE);
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(source))
+      {
+         InsertInput batch = new InsertInput(TABLE).withTransaction(transaction).withSkipUniqueKeyCheck(true)
+            .withRecords(List.of(
+               new QRecord().withValue("id", "batch-first").withValue("name", "First"),
+               new QRecord().withValue("id", "batch-first").withValue("name", "Duplicate"),
+               new QRecord().withValue("id", "batch-third").withValue("name", "Third")));
+         assertThrows(QException.class, () -> new InsertAction().execute(batch));
+         assertEquals(List.of("First"), collection().find().map(row -> row.getString("name")).into(new ArrayList<>()));
+         transaction.rollback();
+         assertEquals(List.of("First"), collection().find().map(row -> row.getString("name")).into(new ArrayList<>()));
+      }
    }
 
 

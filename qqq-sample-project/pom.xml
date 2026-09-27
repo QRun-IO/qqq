@@ -120,12 +120,6 @@
       </dependency>
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
-         <artifactId>qqq-backend-module-api</artifactId>
-         <version>${revision}</version>
-         <scope>test</scope>
-      </dependency>
-      <dependency>
-         <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-middleware-health</artifactId>
          <version>${revision}</version>
          <scope>test</scope>

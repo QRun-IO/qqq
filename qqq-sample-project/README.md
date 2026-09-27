@@ -548,3 +548,68 @@ reservation was released after exit 0, with no retry or test suppression. The lo
 full log is `/private/tmp/qqq-829-sample-full-verify.log`; the pre-fix native failure
 is `/private/tmp/qqq-829-native-offset-red.log`. These are source results, not
 published-artifact or live AWS acceptance.
+
+### SFTP source acceptance (#589, pending)
+
+`SampleSftpAcceptanceTest` starts the existing Apache SSHD 2.16.0 server on
+`127.0.0.1:0` with a fresh JUnit temporary virtual root and synthetic credentials.
+Actual QQQ record/storage actions run in the sample QInstance; independent native
+file reads check bytes, deletion, denied writes and partial persistence. Cleanup
+stops only the owned listener and checks connection refusal; JUnit removes its root
+and generated host key. No HTTP server, broker, external credentials or new
+dependencies are used by this focused fixture.
+
+| Scope | Evidence and boundary |
+|---|---|
+| Record operations | ONE insert/query/count/delete with native bytes, sizes/names, Unicode paths and nested exact selection. Broad listing is nonrecursive; remote parent directories must already exist. |
+| Formats and hooks | CSV/JSON MANY preserves Unicode, quoted/newline content, missing fields and JSON null; customizers alter returned values only, and customizer errors propagate. ONE keeps whole bytes and bypasses MANY-only hooks. |
+| Storage/failure effects | Binary stream round trip and shorter replacement; missing paths, malformed/truncated data and wrong JSON element type fail explicitly. Invalid path/batch tests retain earlier/later successful writes; a failed source copy leaves the remote prefix. This is not atomic publication ([#459](https://github.com/QRun-IO/qqq/issues/459)). |
+| Credentials/permissions | Real SSH rejects bad password and username; native OS permissions deny reads/writes, protect native contents, and allowed controls pass after restoration. Run unprivileged; tests do not skip OS denial. |
+| Timeout | A real TCP peer accepts the client's SSH banner but never replies. The existing SSHD `org.apache.sshd.config.auth-timeout` is temporarily lowered to 500 ms and restored; failure must return within five seconds and the peer observes client closure. QQQ exposes the resulting `SshException: Session is being closed`, not a dedicated timeout exception. Successful reconnection is checked. |
+| Unsupported operations | Updates, MANY insert/delete, public URLs and make-public fail explicitly without file changes. No atomic write, recursive directory listing or application-level timeout policy is claimed. [#463](https://github.com/QRun-IO/qqq/issues/463) action reuse and [#632](https://github.com/QRun-IO/qqq/issues/632) permission-exception test fragility remain separate. |
+
+After building matching branch artifacts into a fresh task-owned Maven cache, run:
+
+```sh
+mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Dtest=SampleSftpAcceptanceTest test
+mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" -pl qqq-backend-module-filesystem \
+  '-Dtest=SFTP*Test' test
+mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" -pl qqq-backend-module-filesystem clean verify
+```
+
+The original 19-case run at `df9a5abae` had five failures, retained in
+`nineteen-contracts-red.log`: ignored globs and outside-table record/storage reads,
+writes and record deletion. Fixes [#830](https://github.com/QRun-IO/qqq/issues/830)
+and [#831](https://github.com/QRun-IO/qqq/issues/831) apply the existing Java NIO glob
+syntax to table-relative names and resolve remote paths/link targets before I/O.
+New files validate their existing parent; deletion keeps the original alias path.
+The boundary is the configured table root, including a configured root alias, and
+retains each API's existing leading-slash convention. This is a pre-operation check,
+not an atomic guarantee against concurrent remote filesystem changes.
+
+Focused sample evidence now passes **23/23**, zero failures/errors/skips. It includes
+native sentinels, nested direct glob selection, safe leaf/parent links, configured
+relative/leading-slash roots, and all original failing cases. Missing SFTP deletion
+still returns zero deletions and one record error (unlike local missing-file no-op).
+A separate raw SSHD probe confirms that this fixture's server cannot delete through
+a symlinked parent (`SSH_FX_NO_SUCH_FILE`); that existing limitation is asserted with
+unchanged target bytes. Leaf-link deletion succeeds and retains its target. No
+account-root escape or unauthorized application access is claimed.
+
+Logs and copied JUnit evidence are under `/private/tmp/qqq-589-acceptance.FrwS1r/`:
+`nineteen-contracts-red.log`, `glob-module-red.log`, `links-root-red.log`,
+`sftp-23-sample.log`, `native-provider-delete-probe.log` and
+`storage-permission-recovery.log`. Full filesystem module `clean verify` passes:
+112 tests, zero failures/errors, four pre-existing disabled metadata tests; zero
+Checkstyle violations, 61/61 classes covered and the unchanged coverage gates pass.
+`filesystem-module-verify-final.log` retains that result and nonfatal SpotBugs/PMD
+advisories. The ledger verifier's Python suite also passes 23/23.
+The ledger remains pending until the exclusive sample gate passes; no published
+candidate or complete release-gate claim is made. After an explicit broker-slot
+grant, run the required profile without skips or relaxed coverage:
+
+```sh
+mvn -B -ntp -Dmaven.repo.local="$SFTP_ACCEPTANCE_M2" -f qqq-sample-project/pom.xml \
+  -Pacceptance-tests clean verify
+```

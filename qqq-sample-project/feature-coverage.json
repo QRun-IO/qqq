@@ -4406,12 +4406,13 @@
       "negative_cases": [
         "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
       ],
-      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
+      "gap": "Focused native SFTP sample passes 23/23 with #830 glob and #831 table-root bounds fixes. Preserve failing-before evidence; full filesystem module clean verify passes (112 tests, four pre-existing skips). Exclusive sample -Pacceptance-tests clean verify is still required before verifying this row.",
       "verified_tests": [],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/589",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_note": "SampleSftpAcceptanceTest uses the sample QInstance, actual QQQ record/storage APIs, existing Apache SSHD 2.16.0, owned dynamic loopback ports/temporary roots and native Files oracles. Original 19 cases reproduced five failures; all 23 current cases pass without skips. Bounds resolve remote links/existing parents and preserve in-table controls; raw SSHD separately reproduces its existing inability to delete through a symlinked parent, which remains an explicit negative control. Missing delete remains an error; updates/MANY mutations/public URLs remain unsupported. Listings are nonrecursive, parents must exist, writes are non-atomic, and server permissions remain authoritative. The timeout case lowers/restores the existing SSHD auth-timeout against a silent owned peer; no new QQQ timeout policy. #459/#463 remain separate. No public-candidate or complete release-gate claim."
     },
     {
       "id": "backend.filesystem.formats",

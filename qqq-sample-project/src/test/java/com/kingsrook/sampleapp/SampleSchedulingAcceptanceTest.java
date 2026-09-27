@@ -111,6 +111,8 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
+import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
+import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
 import com.kingsrook.qqq.esb.model.EsbTableMetaData;
 import com.kingsrook.qqq.middleware.javalin.QApplicationLauncher;
 import com.kingsrook.qqq.middleware.javalin.QApplicationLauncherConfig;
@@ -184,11 +186,7 @@ class SampleSchedulingAcceptanceTest
       {
          RunScript.execute(anchor, reader);
       }
-      instance = SampleMetaDataProvider.defineTestInstance();
-      //////////////////////////////////////////////////////////////////////////
-      // Keep the owned scheduling database independent of sample ESB brokers. //
-      //////////////////////////////////////////////////////////////////////////
-      EsbTableMetaData.of(instance.getTable("person")).setPublications(List.of());
+      instance = defineSchedulingInstance();
       RDBMSBackendMetaData backend = SampleMetaDataProvider.defineRdbmsBackend().withName("schedulingDatabase").withJdbcUrl(jdbcUrl);
       instance.addBackend(backend);
       instance.getTable("person").setBackendName(backend.getName());
@@ -206,6 +204,32 @@ class SampleSchedulingAcceptanceTest
       observation = new Observation();
       manager = QScheduleManager.initInstance(instance, () -> new QSession().withUser(new QUser().withIdReference("scheduled-user")));
       quartz = new StdSchedulerFactory(properties).getScheduler();
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove unrelated broker metadata before enrichment can register ESB hooks.
+    *******************************************************************************/
+   private static QInstance defineSchedulingInstance() throws Exception
+   {
+      QInstance schedulingInstance = SampleMetaDataProvider.defineTestInstance();
+      schedulingInstance.getSupplementalMetaData().remove(EsbInstanceMetaData.NAME);
+      schedulingInstance.getTables().values().forEach(table ->
+      {
+         if(table.getSupplementalMetaData() != null)
+         {
+            table.getSupplementalMetaData().remove(EsbTableMetaData.TYPE);
+         }
+      });
+      schedulingInstance.getProcesses().values().forEach(process ->
+      {
+         if(process.getSupplementalMetaData() != null)
+         {
+            process.getSupplementalMetaData().remove(EsbProcessMetaData.TYPE);
+         }
+      });
+      return (schedulingInstance);
    }
 
 
@@ -419,6 +443,13 @@ class SampleSchedulingAcceptanceTest
                .withServeFrontendMaterialDashboard(false).withServeFrontendNext(false)
                .withJavalinConfigurationCustomizer(http::set)));
          assertTrue(http.get().port() > 0);
+         assertEquals(List.of(QApplicationLauncher.JAVALIN_SERVER_SERVICE_NAME, QApplicationLauncher.SCHEDULE_MANAGER_SERVICE_NAME), launcher.getStartedServiceNames());
+         assertNull(instance.getSupplementalMetaData(EsbInstanceMetaData.NAME));
+         assertTrue(instance.getTables().values().stream().allMatch(table -> table.getSupplementalMetaData(EsbTableMetaData.TYPE) == null));
+         assertTrue(instance.getProcesses().values().stream().allMatch(process -> process.getSupplementalMetaData(EsbProcessMetaData.TYPE) == null));
+         assertTrue(instance.getRuntimeServices() == null || instance.getRuntimeServices().isEmpty());
+         assertTrue(instance.getRecordChangeListeners() == null || instance.getRecordChangeListeners().isEmpty());
+         assertTrue(instance.getProcessLifecycleListeners() == null || instance.getProcessLifecycleListeners().isEmpty());
          assertTrue(quartz.checkExists(new JobKey("process:" + PROCESS, "PROCESS")), "Launcher omitted configured Quartz process");
          next();
       }
@@ -999,7 +1030,7 @@ class SampleSchedulingAcceptanceTest
     *******************************************************************************/
    void assertActualSimpleStopTimeout() throws Exception
    {
-      QInstance workerInstance = SampleMetaDataProvider.defineTestInstance();
+      QInstance workerInstance = defineSchedulingInstance();
       QSession workerSession = new QSession().withUser(new QUser().withIdReference("worker-owner"));
       Map<String, Serializable> originalObjects = new LinkedHashMap<>(Map.of("workerMarker", "worker-only"));
       instance.getProcess(PROCESS).getBackendStep("writePerson").setCode(new QCodeReference(RetainedContextWrite.class));
@@ -1104,7 +1135,7 @@ class SampleSchedulingAcceptanceTest
     *******************************************************************************/
    private void assertWorkerContext(boolean useQuartz, boolean failFirst) throws Exception
    {
-      QInstance workerInstance = SampleMetaDataProvider.defineTestInstance();
+      QInstance workerInstance = defineSchedulingInstance();
       QSession workerSession = new QSession().withUser(new QUser().withIdReference("worker-owner"));
       Map<String, Serializable> originalObjects = new LinkedHashMap<>(Map.of("workerMarker", "worker-only"));
       observation.failContextFirst = failFirst;

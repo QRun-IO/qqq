@@ -953,8 +953,11 @@ Simple scheduler and registered application processes. Actual QQQ actions update
 sample Person records; independent JDBC connections verify committed results and
 unrelated rows. The real application launcher uses an owned ephemeral HTTP port; no
 shared sample broker is started. A separate owned H2 database exercises Quartz's
-actual JDBC job store. The fixture removes only its Person table's unrelated ESB
-publication, so scheduler writes cannot connect to a shared sample broker. The legacy queue
+actual JDBC job store. Before enrichment, every fixture instance removes only ESB
+instance, table and process supplemental metadata, preventing unrelated broker
+services, publications and triggers from registering. The real launcher asserts
+that only HTTP and scheduling start, with no runtime services or record/process
+listeners registered. The legacy queue
 runner uses its real SDK against a disposable loopback, in-memory protocol fixture
 with synthetic credentials, not an SQS account or a claim about AWS delivery/IAM.
 
@@ -1047,3 +1050,13 @@ then all 23 ordinary scheduling cases and 46 Python checks, with zero
 failures/errors/skips in the scheduling cases. The isolated IT produced no ESB
 connection attempt. Production is unchanged from the full-core-gated #855 input;
 combined full sample verification and independent review remain pending.
+
+The ESB-isolation correction removes instance, table and process ESB metadata
+before enrichment, including the worker-context fixture instances. The corrected
+fixture passed all 23 ordinary cases and the actual stop-timeout IT (1 case,
+301.666 seconds), with zero failures/errors/skips, plus all 46 Python checks.
+The real-launcher assertions confirm exactly HTTP and scheduling services, with
+no runtime services or record/process listeners registered. Neither Maven XML
+report contains an ESB runtime, trigger or connection-manager entry. This is
+fixture-only evidence; the scheduling row remains pending review and combined
+full sample verification.

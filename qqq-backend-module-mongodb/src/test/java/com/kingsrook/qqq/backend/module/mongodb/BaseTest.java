@@ -35,6 +35,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInstance;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
@@ -43,11 +44,12 @@ import org.testcontainers.utility.DockerImageName;
 /*******************************************************************************
  ** Base for all tests in this module
  *******************************************************************************/
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class BaseTest
 {
    private static final QLogger LOG = QLogger.getLogger(BaseTest.class);
 
-   private static GenericContainer<?> mongoDBContainer;
+   private GenericContainer<?> mongoDBContainer;
 
    private static final String MONGO_IMAGE = "mongo:7.0";
 
@@ -57,7 +59,7 @@ public class BaseTest
     **
     *******************************************************************************/
    @BeforeAll
-   static void beforeAll()
+   void beforeAll()
    {
       System.setProperty("qqq.mongodb.logQueries", "true");
 
@@ -66,7 +68,7 @@ public class BaseTest
          .withEnv("MONGO_INITDB_ROOT_PASSWORD", TestUtils.MONGO_PASSWORD)
          .withEnv("MONGO_INITDB_DATABASE", TestUtils.MONGO_DATABASE)
          .withExposedPorts(TestUtils.MONGO_PORT)
-         .waitingFor(Wait.forLogMessage("(?i).*waiting for connections.*", 1));
+         .waitingFor(Wait.forListeningPort());
 
       mongoDBContainer.start();
    }
@@ -136,7 +138,7 @@ public class BaseTest
     **
     *******************************************************************************/
    @AfterAll
-   static void afterAll()
+   void afterAll()
    {
       // this.mongoDbReplicaSet.close();
       mongoDBContainer.close();

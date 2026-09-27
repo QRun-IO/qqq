@@ -178,6 +178,22 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("Menus the table defines for screen slots (for example the record view's VIEW_SCREEN_ACTIONS menu, which replaces the default actions menu, and VIEW_SCREEN_ADDITIONAL menus).  Omitted when the table defines none.")
+   @OpenAPIListItems(value = TableMenu.class, useRef = true)
+   public List<TableMenu> getMenus()
+   {
+      if(wrapped.getMenus() == null || wrapped.getMenus().isEmpty())
+      {
+         return (null);
+      }
+      return (wrapped.getMenus().stream().map(TableMenu::new).toList());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @OpenAPIDescription("Virtual fields in this table")
    @OpenAPIMapValueType(value = VirtualFieldMetaData.class, useRef = true)
    public Map<String, VirtualFieldMetaData> getVirtualFields()

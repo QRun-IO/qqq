@@ -23,13 +23,17 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
@@ -199,7 +203,14 @@ public class FieldMetaData implements ToSchema
 
    // todo - PVS filter!!
 
-   // todo - inline PVS
+   /***************************************************************************
+    ** Inline possible values declared on a field, as in frontend metadata.
+    ***************************************************************************/
+   @OpenAPIDescription("Inline possible-value source for this field; enumValues supply choices without a separate lookup.")
+   public QPossibleValueSource getInlinePossibleValueSource()
+   {
+      return (this.wrappedFull != null ? this.wrappedFull.getInlinePossibleValueSource() : this.wrappedFrontend.getInlinePossibleValueSource());
+   }
 
 
 
@@ -294,6 +305,28 @@ public class FieldMetaData implements ToSchema
    }
 
 
-   // todo supplemental...
+   /***************************************************************************
+    ** Frontend-visible field settings, including Material form adjusters.
+    ** Keep the same visibility filter as QFrontendFieldMetaData so backend-only
+    ** supplemental metadata does not leak through the versioned API.
+    ***************************************************************************/
+   @OpenAPIDescription("Additional frontend-visible metadata for this field, keyed by supplemental type.")
+   public Map<String, QSupplementalFieldMetaData> getSupplementalMetaData()
+   {
+      if(this.wrappedFull == null)
+      {
+         return (this.wrappedFrontend.getSupplementalFieldMetaData());
+      }
+
+      Map<String, QSupplementalFieldMetaData> result = new LinkedHashMap<>();
+      for(Map.Entry<String, QSupplementalFieldMetaData> entry : CollectionUtils.nonNullMap(this.wrappedFull.getSupplementalMetaData()).entrySet())
+      {
+         if(entry.getValue().includeInFrontendMetaData())
+         {
+            result.put(entry.getKey(), entry.getValue());
+         }
+      }
+      return (result.isEmpty() ? null : result);
+   }
 
 }

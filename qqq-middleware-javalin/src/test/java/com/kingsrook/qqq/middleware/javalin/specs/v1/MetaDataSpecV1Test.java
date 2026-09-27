@@ -38,6 +38,7 @@ import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.SupplementalInstanceMetaData;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import org.json.JSONArray;
@@ -207,6 +208,24 @@ class MetaDataSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** The instance-wide record view actions placement is published by its enum
+    ** constant's name; settings without one omit it (see the tests above).
+    *******************************************************************************/
+   @Test
+   void testMaterialDashboardRecordViewActionsPlacementIsPublished()
+   {
+      serverQInstance.withSupplementalMetaData(new PlacementMaterialDashboardMetaData().withProcessNamesToAddToAllQueryAndViewScreens(List.of()));
+
+      JSONObject materialDashboard = JsonUtils.toJSONObject(getMetaDataBody())
+         .getJSONObject("supplementalInstanceMetaData")
+         .getJSONObject("materialDashboard");
+      assertEquals(Set.of("processNamesToAddToAllQueryAndViewScreens", "recordViewActionsPlacement"), materialDashboard.keySet());
+      assertEquals("INLINE_WITH_PAGE_TITLE", materialDashboard.getString("recordViewActionsPlacement"));
+   }
+
+
+
+   /*******************************************************************************
     ** The material dashboard's weekday criteria settings are published (enabled,
     ** and the WeekdayOfDateTime arguments), and nothing else from that object.
     *******************************************************************************/
@@ -240,6 +259,49 @@ class MetaDataSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** The material dashboard theme is published from its allow-listed visual
+    ** properties only (QRun-IO/qqq#719): string, number and boolean values in
+    ** allow-list order; properties without a value, without a getter, off the
+    ** allow-list or of another type are left out.  Without the materialDashboard
+    ** entry, only the theme is published.
+    *******************************************************************************/
+   @Test
+   void testMaterialDashboardThemeIsPublishedFromItsAllowList()
+   {
+      serverQInstance.withSupplementalMetaData(new OtherModuleMetaData());
+      serverQInstance.withSupplementalMetaData(new TestMaterialDashboardThemeMetaData());
+
+      String     body         = getMetaDataBody();
+      JSONObject supplemental = JsonUtils.toJSONObject(body).getJSONObject("supplementalInstanceMetaData");
+      assertEquals(Set.of("materialDashboardTheme"), supplemental.keySet());
+
+      JSONObject theme = supplemental.getJSONObject("materialDashboardTheme");
+      assertEquals(Set.of("primaryColor", "preferInfoColorToPrimaryColor", "fontWeightBold", "typographyButtonTextTransform", "borderRadiusScale",
+         "density", "customCss", "brandedHeaderEnabled", "brandedHeaderTagline", "sidebarBackgroundColor", "tableHeaderBackgroundColor"), theme.keySet());
+      assertEquals("#0f766e", theme.getString("primaryColor"));
+      assertTrue(theme.getBoolean("preferInfoColorToPrimaryColor"));
+      assertEquals(800, theme.getInt("fontWeightBold"));
+      assertEquals("none", theme.getString("typographyButtonTextTransform"));
+      assertEquals("1.5", theme.getString("borderRadiusScale"));
+      assertEquals("compact", theme.getString("density"));
+      assertEquals(".qqq-themed h1 { letter-spacing: 1px; }", theme.getString("customCss"));
+      assertTrue(theme.getBoolean("brandedHeaderEnabled"));
+      assertEquals("Owned tagline", theme.getString("brandedHeaderTagline"));
+      assertEquals("#1f2937", theme.getString("sidebarBackgroundColor"));
+      assertEquals("#e0f2f1", theme.getString("tableHeaderBackgroundColor"));
+      assertThat(new ArrayList<>(theme.keySet())).isSubsetOf(SupplementalInstanceMetaData.THEME_PROPERTY_NAMES);
+      assertThat(body.indexOf("\"primaryColor\"")).isLessThan(body.indexOf("\"fontWeightBold\""));
+      assertThat(body.indexOf("\"density\"")).isLessThan(body.indexOf("\"tableHeaderBackgroundColor\""));
+
+      assertNoServerConfig(body);
+      assertThat(body).doesNotContain(TestMaterialDashboardThemeMetaData.SECRET_SETTING_VALUE);
+      assertThat(body).doesNotContain("iconStyle");
+      assertThat(body).doesNotContain("secondaryColor");
+   }
+
+
+
+   /*******************************************************************************
     ** Instance-level help content is published by slot (e.g., for the query
     ** screen's bulk-add-filter-values dialog); without any, the key is omitted.
     *******************************************************************************/
@@ -253,6 +315,95 @@ class MetaDataSpecV1Test extends SpecTestBase
       assertEquals(1, slot.length());
       assertEquals("Paste one value per line.", slot.getJSONObject(0).getString("content"));
       assertEquals(List.of("QUERY_SCREEN"), slot.getJSONObject(0).getJSONArray("roles").toList());
+   }
+
+
+
+   /*******************************************************************************
+    ** With both entries, both are published; the materialDashboard settings are
+    ** unchanged by the theme.
+    *******************************************************************************/
+   @Test
+   void testMaterialDashboardSettingsAndThemeArePublishedTogether()
+   {
+      serverQInstance.withSupplementalMetaData(new TestMaterialDashboardMetaData()
+         .withProcessNamesToAddToAllQueryAndViewScreens(List.of(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE)));
+      serverQInstance.withSupplementalMetaData(new TestMaterialDashboardThemeMetaData());
+
+      JSONObject supplemental = JsonUtils.toJSONObject(getMetaDataBody()).getJSONObject("supplementalInstanceMetaData");
+      assertEquals(Set.of("materialDashboard", "materialDashboardTheme"), supplemental.keySet());
+      assertThat(supplemental.getJSONObject("materialDashboard").getJSONArray("processNamesToAddToAllQueryAndViewScreens").toList())
+         .containsExactly(TestUtils.PROCESS_NAME_GREET_PEOPLE_INTERACTIVE);
+      assertEquals("#0f766e", supplemental.getJSONObject("materialDashboardTheme").getString("primaryColor"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The allow-list names every visual property of the material dashboard's
+    ** theme meta-data (its TypeScript model), each once.
+    *******************************************************************************/
+   @Test
+   void testThemePropertyAllowList()
+   {
+      List<String> names = SupplementalInstanceMetaData.THEME_PROPERTY_NAMES;
+      assertEquals(111, names.size());
+      assertEquals(names.size(), Set.copyOf(names).size());
+      assertThat(names).contains("primaryColor", "preferInfoColorToPrimaryColor", "monoFontFamily", "typographyH1FontSize", "typographyCaptionTextTransform",
+         "borderRadiusTooltip", "density", "customCss", "iconStyle", "brandedHeaderLogoAltText", "appBarTextColor", "sidebarDividerColor",
+         "tableBorderColor", "cardBorderColor");
+   }
+
+
+
+   /*******************************************************************************
+    ** Only the analytics environment values are published (QRun-IO/qqq#730):
+    ** the named settings and the ANALYTICS_* namespace, never anything else from
+    ** the environment.
+    *******************************************************************************/
+   @Test
+   void testAnalyticsEnvironmentValuesAreAllowListed()
+   {
+      Map<String, String> environmentValues = serverQInstance.getEnvironmentValues();
+      environmentValues.clear();
+      environmentValues.put("ANALYTICS_PROVIDERS", "google,posthog,owned");
+      environmentValues.put("ANALYTICS_PLUGIN_SCRIPTS", "https://cdn.example.com/owned.js");
+      environmentValues.put("ANALYTICS_OWNED_SETTING", "owned-plugin-setting");
+      environmentValues.put("GOOGLE_ANALYTICS_ENABLED", "true");
+      environmentValues.put("GOOGLE_ANALYTICS_TRACKING_ID", "G-OWNED");
+      environmentValues.put("POSTHOG_ENABLED", "true");
+      environmentValues.put("POSTHOG_API_KEY", "phc_owned");
+      environmentValues.put("POSTHOG_HOST", "https://eu.i.posthog.com");
+      environmentValues.put("DATABASE_PASSWORD", "never-published-secret");
+      environmentValues.put("GOOGLE_ANALYTICS_API_SECRET", "never-published-api-secret");
+      environmentValues.put("POSTHOG_PERSONAL_API_KEY", "never-published-personal-key");
+
+      String     body   = getMetaDataBody();
+      JSONObject values = JsonUtils.toJSONObject(body).getJSONObject("environmentValues");
+      assertEquals(Set.of("ANALYTICS_PROVIDERS", "ANALYTICS_PLUGIN_SCRIPTS", "ANALYTICS_OWNED_SETTING", "GOOGLE_ANALYTICS_ENABLED",
+         "GOOGLE_ANALYTICS_TRACKING_ID", "POSTHOG_ENABLED", "POSTHOG_API_KEY", "POSTHOG_HOST"), values.keySet());
+      assertEquals("google,posthog,owned", values.getString("ANALYTICS_PROVIDERS"));
+      assertEquals("owned-plugin-setting", values.getString("ANALYTICS_OWNED_SETTING"));
+      assertEquals("G-OWNED", values.getString("GOOGLE_ANALYTICS_TRACKING_ID"));
+      assertEquals("https://eu.i.posthog.com", values.getString("POSTHOG_HOST"));
+      assertThat(body).doesNotContain("DATABASE_PASSWORD").doesNotContain("never-published");
+   }
+
+
+
+   /*******************************************************************************
+    ** Without any allow-listed value, environmentValues is omitted.
+    *******************************************************************************/
+   @Test
+   void testEnvironmentValuesOmittedWhenNoneAreAllowListed()
+   {
+      serverQInstance.getEnvironmentValues().clear();
+      assertFalse(JsonUtils.toJSONObject(getMetaDataBody()).has("environmentValues"));
+
+      serverQInstance.getEnvironmentValues().put("DATABASE_PASSWORD", "never-published-secret");
+      String body = getMetaDataBody();
+      assertFalse(JsonUtils.toJSONObject(body).has("environmentValues"));
+      assertThat(body).doesNotContain("never-published-secret");
    }
 
 
@@ -429,6 +580,198 @@ class MetaDataSpecV1Test extends SpecTestBase
       public String getSecretSetting()
       {
          return (SECRET_SETTING_VALUE);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Stand-in for the material dashboard module's theme meta-data (which this
+    ** module does not depend on): registered under that class's name, with
+    ** allow-listed properties of each published type, an unset one, a boolean
+    ** "is" getter, one of an unpublished type, and a setting off the allow-list.
+    *******************************************************************************/
+   public static class TestMaterialDashboardThemeMetaData implements QSupplementalInstanceMetaData
+   {
+      public static final String SECRET_SETTING_VALUE = "material-dashboard-theme-secret-setting";
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public String getName()
+      {
+         return ("com.kingsrook.qqq.frontend.materialdashboard.model.metadata.MaterialDashboardThemeMetaData");
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getPrimaryColor()
+      {
+         return ("#0f766e");
+      }
+
+
+
+      /*******************************************************************************
+       ** Unset: omitted.
+       *******************************************************************************/
+      public String getSecondaryColor()
+      {
+         return (null);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public Boolean getPreferInfoColorToPrimaryColor()
+      {
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public Integer getFontWeightBold()
+      {
+         return (800);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getTypographyButtonTextTransform()
+      {
+         return ("none");
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getBorderRadiusScale()
+      {
+         return ("1.5");
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getDensity()
+      {
+         return ("compact");
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getCustomCss()
+      {
+         return (".qqq-themed h1 { letter-spacing: 1px; }");
+      }
+
+
+
+      /*******************************************************************************
+       ** A primitive boolean, read by its "is" getter.
+       *******************************************************************************/
+      public boolean isBrandedHeaderEnabled()
+      {
+         return (true);
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getBrandedHeaderTagline()
+      {
+         return ("Owned tagline");
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getSidebarBackgroundColor()
+      {
+         return ("#1f2937");
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      public String getTableHeaderBackgroundColor()
+      {
+         return ("#e0f2f1");
+      }
+
+
+
+      /*******************************************************************************
+       ** Allow-listed, but not a string, number or boolean: omitted.
+       *******************************************************************************/
+      public List<String> getIconStyle()
+      {
+         return (List.of("filled"));
+      }
+
+
+
+      /*******************************************************************************
+       ** A setting that is not on the published allow-list.
+       *******************************************************************************/
+      public String getSecretSetting()
+      {
+         return (SECRET_SETTING_VALUE);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Material dashboard supplemental meta-data that also sets the record view
+    ** actions placement (an enum, as the material dashboard module's is).
+    *******************************************************************************/
+   public static class PlacementMaterialDashboardMetaData extends TestMaterialDashboardMetaData
+   {
+      /*******************************************************************************
+       ** Stand-in for the material dashboard's RecordViewActionsPlacement enum.
+       *******************************************************************************/
+      public enum Placement
+      {
+         IN_IDENTITY_SECTION,
+         INLINE_WITH_PAGE_TITLE
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for recordViewActionsPlacement
+       *******************************************************************************/
+      public Placement getRecordViewActionsPlacement()
+      {
+         return (Placement.INLINE_WITH_PAGE_TITLE);
       }
    }
 

@@ -188,14 +188,17 @@ public class QJavalinImplementation
 
    private static long startTime = 0;
 
+   private static boolean sessionCookieHttpOnly = false;
+
 
 
    /*******************************************************************************
     ** Set a session cookie (sessionUUID, sessionId) for the whole site with
     ** SameSite=Lax, so other sites cannot send it with cross-site POSTs, and
     ** Secure when the request arrived over HTTPS (directly or through a proxy
-    ** that sets X-Forwarded-Proto). The cookie stays readable by the dashboards,
-    ** which resume sessions from sessionUUID (QRun-IO/qqq#696).
+    ** that sets X-Forwarded-Proto) (QRun-IO/qqq#696). HttpOnly, so script in
+    ** the page cannot read the session token, when setSessionCookieHttpOnly is
+    ** on (QRun-IO/qqq#733).
     **
     ** @param context the request whose response sets the cookie
     ** @param name cookie name
@@ -203,7 +206,34 @@ public class QJavalinImplementation
     *******************************************************************************/
    public static void setSessionCookie(Context context, String name, String value)
    {
-      context.cookie(new Cookie(name, value, "/", SESSION_COOKIE_AGE, isSecureRequest(context), false, null, SameSite.LAX));
+      context.cookie(new Cookie(name, value, "/", SESSION_COOKIE_AGE, isSecureRequest(context), sessionCookieHttpOnly, null, SameSite.LAX));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether session cookies are set HttpOnly (see setSessionCookieHttpOnly).
+    *******************************************************************************/
+   public static boolean getSessionCookieHttpOnly()
+   {
+      return (sessionCookieHttpOnly);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set whether session cookies (sessionUUID, sessionId) are HttpOnly. The Next
+    ** dashboard resumes sessions through v1 manageSession without reading the
+    ** cookie, so it works either way; the Material Dashboard reads sessionUUID in
+    ** the browser, so leave this off while it is in use. Off by default here;
+    ** QApplicationJavalinServer turns it on unless it serves the Material
+    ** Dashboard (QRun-IO/qqq#733).
+    **
+    ** @param sessionCookieHttpOnly true to set session cookies HttpOnly
+    *******************************************************************************/
+   public static void setSessionCookieHttpOnly(boolean sessionCookieHttpOnly)
+   {
+      QJavalinImplementation.sessionCookieHttpOnly = sessionCookieHttpOnly;
    }
 
 

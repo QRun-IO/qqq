@@ -100,6 +100,7 @@ public class QApplicationJavalinServer
    private QJavalinMetaData                     javalinMetaData                     = null;
 
    private Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer = null;
+   private Boolean                                sessionCookieHttpOnly                  = null;
 
    private long                lastQInstanceHotSwapMillis;
    private long                millisBetweenHotSwaps = 2500;
@@ -174,6 +175,14 @@ public class QApplicationJavalinServer
       }
 
       LOG.info("Admin dashboard selection", LogUtils.logPair("next", serveNext), LogUtils.logPair("materialDashboard", serveMaterial));
+
+      ///////////////////////////////////////////////////////////////////////
+      // session cookies are HttpOnly unless the Material Dashboard, which //
+      // reads sessionUUID in the browser, is served (QRun-IO/qqq#733)     //
+      ///////////////////////////////////////////////////////////////////////
+      boolean sessionCookieHttpOnly = getSessionCookieHttpOnly();
+      QJavalinImplementation.setSessionCookieHttpOnly(sessionCookieHttpOnly);
+      LOG.info("Session cookies", LogUtils.logPair("httpOnly", sessionCookieHttpOnly));
 
       service = Javalin.create(config ->
       {
@@ -748,6 +757,50 @@ public class QApplicationJavalinServer
    public QApplicationJavalinServer withNextDashboardSecurityHeadersCustomizer(Consumer<NextDashboardSecurityHeaders> nextDashboardSecurityHeadersCustomizer)
    {
       this.nextDashboardSecurityHeadersCustomizer = nextDashboardSecurityHeadersCustomizer;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether session cookies (sessionUUID, sessionId) are HttpOnly: the explicit
+    ** setting, else the `qqq.javalin.sessionCookieHttpOnly` system property, else
+    ** on unless the Material Dashboard is served, because it reads sessionUUID in
+    ** the browser (QRun-IO/qqq#733). An application whose Material Dashboard is
+    ** served elsewhere on the same host should turn it off.
+    *******************************************************************************/
+   public boolean getSessionCookieHttpOnly()
+   {
+      if(sessionCookieHttpOnly != null)
+      {
+         return (sessionCookieHttpOnly);
+      }
+      String property = System.getProperty("qqq.javalin.sessionCookieHttpOnly");
+      if(property != null && !property.isBlank())
+      {
+         return (BooleanUtils.isTrue(ValueUtils.getValueAsBoolean(property.trim())));
+      }
+      return (!getServeFrontendMaterialDashboard());
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sessionCookieHttpOnly (see getSessionCookieHttpOnly).
+    *******************************************************************************/
+   public void setSessionCookieHttpOnly(Boolean sessionCookieHttpOnly)
+   {
+      this.sessionCookieHttpOnly = sessionCookieHttpOnly;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sessionCookieHttpOnly (see getSessionCookieHttpOnly).
+    *******************************************************************************/
+   public QApplicationJavalinServer withSessionCookieHttpOnly(Boolean sessionCookieHttpOnly)
+   {
+      this.sessionCookieHttpOnly = sessionCookieHttpOnly;
       return (this);
    }
 

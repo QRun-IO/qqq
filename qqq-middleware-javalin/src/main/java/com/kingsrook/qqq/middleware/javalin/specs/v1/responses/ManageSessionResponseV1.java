@@ -34,7 +34,7 @@ import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHas
  *******************************************************************************/
 public class ManageSessionResponseV1 implements ManageSessionOutputInterface, ToSchema
 {
-   @OpenAPIDescription("Unique identifier of the session.  Required to be returned on subsequent requests in the sessionUUID Cookie, to prove authentication.")
+   @OpenAPIDescription("Unique identifier of the session. Required to be returned on subsequent requests in the sessionUUID Cookie, to prove authentication. Not included when the cookie is HttpOnly or the session was resumed from that cookie.")
    private String uuid;
 
    @OpenAPIDescription("Optional object with application-defined values.")

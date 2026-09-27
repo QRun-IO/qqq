@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
@@ -112,6 +113,37 @@ class ManageSessionSpecV1Test extends SpecTestBase
          .body(body)
          .asString();
       assertThat(sessionUuidCookie(proxied)).containsIgnoringCase("SameSite=Lax").containsIgnoringCase("; Secure");
+   }
+
+
+
+   /*******************************************************************************
+    ** Session cookies are HttpOnly when QJavalinImplementation is set so, and
+    ** readable otherwise (QRun-IO/qqq#733).
+    *******************************************************************************/
+   @Test
+   void testSessionCookieHttpOnly()
+   {
+      String body = """
+         {"accessToken": "abcdefg"}
+         """;
+
+      try
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+         assertThat(sessionUuidCookie(Unirest.post(getBaseUrlAndPath() + "/manageSession").header("Content-Type", "application/json").body(body).asString()))
+            .doesNotContainIgnoringCase("HttpOnly");
+
+         QJavalinImplementation.setSessionCookieHttpOnly(true);
+         HttpResponse<String> httpOnlyResponse = Unirest.post(getBaseUrlAndPath() + "/manageSession").header("Content-Type", "application/json").body(body).asString();
+         assertThat(sessionUuidCookie(httpOnlyResponse))
+            .containsIgnoringCase("; HttpOnly").containsIgnoringCase("SameSite=Lax").contains("Path=/");
+         assertThat(JsonUtils.toJSONObject(httpOnlyResponse.getBody()).has("uuid")).isFalse();
+      }
+      finally
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+      }
    }
 
 

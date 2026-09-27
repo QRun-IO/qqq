@@ -55,8 +55,12 @@ import java.util.regex.Pattern;
  **
  ** NextDashboardRouteProvider adds the configured identity provider origins to
  ** connect-src (OAUTH2 discovery, AUTH_0 token exchange), the QuickSight
- ** origin to frame-src when the instance has a quickSightChart widget, and the
- ** origin of each customComponent widget's componentSourceUrl to script-src.
+ ** origin to frame-src when the instance has a quickSightChart widget, the
+ ** origin of each customComponent widget's componentSourceUrl to script-src,
+ ** and, only for the analytics providers the instance configures (QQQ_ENV_*
+ ** GOOGLE_ANALYTICS_*, POSTHOG_*, ANALYTICS_PLUGIN_SCRIPTS; QRun-IO/qqq#730),
+ ** their script origins to script-src and the origins they send to to
+ ** connect-src (see NextDashboardAnalyticsOrigins).
  ** Applications change the policy with
  ** QApplicationJavalinServer.withNextDashboardSecurityHeadersCustomizer, which
  ** receives this object after those additions.

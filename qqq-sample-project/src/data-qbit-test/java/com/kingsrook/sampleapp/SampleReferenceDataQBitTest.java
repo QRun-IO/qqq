@@ -33,6 +33,8 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
@@ -131,7 +133,7 @@ class SampleReferenceDataQBitTest
       assertThrows(IllegalArgumentException.class, () -> new ReferenceDataQBit("bad-prefix!", "memory"));
    }
 
-   /** The generated XML names the host table and failed input leaves it empty. */
+   /** The generated XML names the host table; invalid input and rejected writes leave it empty. */
    @Test
    void testLiquibaseGenerationAndFailedSyncBoundary() throws Exception
    {
@@ -144,6 +146,11 @@ class SampleReferenceDataQBitTest
          new ReferenceDataQBit.Source("A", "Alpha"), new ReferenceDataQBit.Source("B", " "))));
       assertThrows(IllegalArgumentException.class, () -> qbit.sync(List.of(
          new ReferenceDataQBit.Source("A", "Alpha"), new ReferenceDataQBit.Source("B", "x".repeat(101)))));
+      assertEquals(0, qbit.records().size());
+      QContext.getQInstance().getTable(qbit.tableName())
+         .withField(new QFieldMetaData("approval", QFieldType.STRING).withIsRequired(true));
+      assertEquals("Reference-data write failed", assertThrows(IllegalStateException.class,
+         () -> qbit.sync(List.of(new ReferenceDataQBit.Source("A", "Alpha")))).getMessage());
       assertEquals(0, qbit.records().size());
    }
 

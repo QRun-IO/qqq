@@ -1116,3 +1116,77 @@ Java file has an Apache-2.0 header.
 The matching combined run at `64fd0466b4911cff66e20b34fb4b5e7425662f90` passed **821 regular +117 integration tests (938 total)** with zero failures/errors/skips and all41 sample classes covered. All29 focused query cases and46 Python checks passed. Original-requirement review confirms the direct/plain/association-buffered reads, persistence, lifecycle, failures and controlled cancellation outcomes cover the source contract; it does not require an exhaustive cross-product of every interruption mode. Query statistics is now source-verified. Consumer-only counts, dropped failed storage batches, backend-measurement semantics and #525/#526/#527–531 dispositions remain unchanged.
 
 Linux CI exposed nanosecond Instant values being compared with rounded H2 TIMESTAMP values. The #846 fixture-only correction uses native JDBC casting as the precision oracle; fixed nanosecond inputs independently prove rounding down, up and across a second boundary through real manager persistence. Its deterministic assertion failed before the correction and passed afterward. No production schema, precision, tolerance, retry or timeout changed. Evidence: `/private/tmp/qqq-846-timestamp-{red,green}.log`, `/private/tmp/qqq-798-wave11-{query-focused,sample,python}.log` and archived `/private/tmp/qqq-798-wave11-final-reports`. Public-candidate and other release gates remain separate.
+
+## Associated and ad-hoc script acceptance (#572)
+
+`SampleAssociatedScriptAcceptanceTest` runs the existing Store/Test/Run actions
+inside `SampleMetaDataProvider.defineTestInstance()`, with an owned UUID-named H2
+schema and real JavaScript executor. Its SQL resource creates the existing script
+entities locally; it does not add application metadata, production tables or APIs.
+Independent JDBC queries check persisted Person values, revision/file history,
+current-revision pointers and success/error logs. No server or broker starts.
+
+| Test method | Verified boundary |
+| --- | --- |
+| `testStoreRevisionsAndRunCurrentAssociatedScript` | Real Store action creates and advances revisions, retains exact historical code/author/commit metadata, and a fresh Run action resolves the current code with supplied inputs. |
+| `testAssociatedDraftReturnsOutputWithoutPersistingRevisionOrLogs` | Registered Test process returns draft output and in-memory log lines; saved code, revisions and persisted logs remain unchanged. |
+| `testRecordDraftLocalMutationDoesNotPersist` | Native record tester executes and logs a local record mutation without implicitly saving it; this does **not** prove isolation of explicit write APIs. |
+| `testAdHocRecordInputsOutputsAndExplicitPersistence` | Primary-key record inputs and caller values produce exact output; local mutation is transient, while an explicit `qqq.update` in Run persists only the selected record. |
+| `testRunRecordProcessPersistsSelectedRecordsAndSummarizesBatches` | Public Run process selects three records, uses stored batch size two, persists script-requested updates, and reports two successful log links; untouched rows remain unchanged. |
+| `testInvalidDraftCodeParametersAndAssociatedReference` | Invalid draft syntax, missing/nonexistent record keys and a non-associated field fail; no draft revision/log or Person change is stored. |
+| `testRecordScriptPermissionDeniedThenGrantedWrite` | A caller with read permission cannot perform the script's write; granting edit to the same caller allows it. Native data and error/success logs distinguish both outcomes. |
+| `testStoreRevisionDeniedByRecordLockThenAuthorized` | A script WRITE security lock denies revision storage without advancing the pointer; granting its key allows the next revision. |
+| `testStoredSyntaxAndRuntimeFailuresThenValidRevisionRecovery` | Store retains source text without compiling it; Run rejects invalid syntax and a runtime exception, records failures, then executes a valid replacement revision. |
+| `testRunRecordProcessReportsScriptFailuresWithoutImplicitWrites` | Runtime failures produce ERROR script-log links and no implicit record writes. The process's attempted-record count is not treated as success evidence. |
+| `testAdHocPinnedRevisionAndInvalidReferences` | Explicit revision ID runs historical code while script ID runs current code; missing and nonexistent revision references return errors. |
+
+Each fixture closes its private database, restores the prior QContext/session and
+named objects, and removes only its own process UUID state. Script IDs are unique
+within the test class to avoid reuse through the existing shared script-ID cache.
+These are unversioned scripts exercising the existing QRecord fallback; the API
+adapter emits a warning when no script API version is specified. Versioned API
+record conversion, browser editing and concurrent revision storage are not covered.
+
+**Open non-persistence gap:** [#849](https://github.com/QRun-IO/qqq/issues/849)
+records a failing native control: calling the registered `testScript` process with
+`qqq.update('person', qqq.newRecord().withValue('id', 1).withValue('firstName',
+'Draft write'))` leaves that update committed. The independent SQL assertion
+expected `Avery` and observed `Draft write`. Test does not save its draft revision
+or logs, but it is not a write-isolation sandbox. The passing local-mutation test
+above must not be read as proving otherwise. No production correction or new
+runtime policy is included; the intended explicit-write boundary needs resolution.
+The original #572 requirement remains unchanged and the ledger row stays pending
+for this gap, independent review and combined full verification. Its existing
+post-4.0 disposition is not a 4.1 release approval.
+
+**Composition prerequisite:** #591 signed head `65ad000b4` owns the sample's
+test-scoped JavaScript provider dependency. This #572 branch adds no dependencies
+or POM changes. After composing #591, the normal focused command is:
+
+```sh
+mvn -o -f qqq-sample-project/pom.xml \
+  -Dmaven.repo.local=/path/to/matching-isolated-cache \
+  -Dtest=SampleAssociatedScriptAcceptanceTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+# Expected nonzero while this feature remains pending.
+python3 -B qqq-sample-project/verify-feature-coverage.py \
+  --stage source --report-only --require-feature core.scripts.associated
+```
+
+Focused local execution on base `fe3f63afd` uses an independent clone of the
+stable c65 Maven cache, with matching embedded core/RDBMS/API/Javalin/JavaScript
+sources verified. Because that base lacks the #591 dependency, Surefire's
+`-Dmaven.test.additionalClasspath` supplies the existing provider, Nashorn 15.7
+and its four ASM 7.3.1 jars from the isolated cache. This is focused source evidence,
+not the normal combined/full or published-artifact gate. No missing-provider skip
+or mock executor is used. Detailed commands and reports are retained locally in
+`/private/tmp/qqq-572-evidence`; the Test-mode write red report is
+`/private/tmp/qqq-572-test-write-red.log`.
+
+Local final focused evidence: **11 tests passed, zero failures/errors/skips and
+zero Checkstyle violations** (`/private/tmp/qqq-572-final-focused.log`). Both owned
+fixture negative controls failed as expected (extra edit grant; missing third
+selected row) before restoration. All **46 Python checks passed**. The required
+feature report exits 1 because scenario review remains pending; all 11 method
+bindings resolve. All 130 original IDs, requirements, statuses, stages and release
+dispositions are preserved; only this row's gap and passing evidence changed.

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
@@ -204,6 +203,24 @@ class MetaDataSpecV1Test extends SpecTestBase
          .getJSONObject("supplementalInstanceMetaData")
          .getJSONObject("materialDashboard");
       assertThat(materialDashboard.getJSONArray("processNamesToAddToAllQueryAndViewScreens").toList()).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** The instance-wide record view actions placement is published by its enum
+    ** constant's name; settings without one omit it (see the tests above).
+    *******************************************************************************/
+   @Test
+   void testMaterialDashboardRecordViewActionsPlacementIsPublished()
+   {
+      serverQInstance.withSupplementalMetaData(new PlacementMaterialDashboardMetaData().withProcessNamesToAddToAllQueryAndViewScreens(List.of()));
+
+      JSONObject materialDashboard = JsonUtils.toJSONObject(getMetaDataBody())
+         .getJSONObject("supplementalInstanceMetaData")
+         .getJSONObject("materialDashboard");
+      assertEquals(Set.of("processNamesToAddToAllQueryAndViewScreens", "recordViewActionsPlacement"), materialDashboard.keySet());
+      assertEquals("INLINE_WITH_PAGE_TITLE", materialDashboard.getString("recordViewActionsPlacement"));
    }
 
 
@@ -727,6 +744,34 @@ class MetaDataSpecV1Test extends SpecTestBase
       public String getSecretSetting()
       {
          return (SECRET_SETTING_VALUE);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Material dashboard supplemental meta-data that also sets the record view
+    ** actions placement (an enum, as the material dashboard module's is).
+    *******************************************************************************/
+   public static class PlacementMaterialDashboardMetaData extends TestMaterialDashboardMetaData
+   {
+      /*******************************************************************************
+       ** Stand-in for the material dashboard's RecordViewActionsPlacement enum.
+       *******************************************************************************/
+      public enum Placement
+      {
+         IN_IDENTITY_SECTION,
+         INLINE_WITH_PAGE_TITLE
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for recordViewActionsPlacement
+       *******************************************************************************/
+      public Placement getRecordViewActionsPlacement()
+      {
+         return (Placement.INLINE_WITH_PAGE_TITLE);
       }
    }
 

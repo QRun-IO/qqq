@@ -73,8 +73,8 @@ exercises real local HTTP, an owned H2 TCP database, thresholds, failures, and
 worker/request cleanup. Both health rows (#599/#600) have passing source
 evidence, including the retained within-request concurrency regression after
 the bounded executor fix. See [health acceptance evidence](acceptance/health/README.md)
-for timeout semantics, exact commands/results, and the separate sample class-coverage
-gate failure. No health requirement is deferred or removed by this fixture.
+for timeout semantics and full-profile verification results, including the
+required sample class-coverage gate. No health requirement is deferred or removed by this fixture.
 
 `SampleWidgetContractTest` checks the eleven canonical dashboard payloads, protected-widget GET/POST denial before renderer execution, allowed controls, unknown widgets, empty HTML and actual renderer errors. `SampleBrowserIT#testCanonicalWidgets` checks their visible Material output, plotted marks and pie-chart reload. `SampleWidgetStatesBrowserIT` checks empty/error isolation for all eleven types and explicitly records malformed-payload limitations ([#553](https://github.com/QRun-IO/qqq/issues/553)); its passing limitation probe does not certify malformed-data robustness. All eleven canonical types now have denied/allowed GET/POST and invalid renderer-reference checks; existing native NoCode/2D source-permission tests are retained. `SampleWidgetControlsBrowserIT` covers parent dropdown/date persistence, CSV downloads, reload/tooltips, failed/denied widgets and native button/Enter callbacks. Non-parent selection persistence ([#554](https://github.com/QRun-IO/qqq/issues/554)), collapse metadata ([#555](https://github.com/QRun-IO/qqq/issues/555)) and input-block label association ([#556](https://github.com/QRun-IO/qqq/issues/556)) remain explicit deferrals; additional widget/block/provider cases remain in the inventory. Next supports the tested statistics/HTML/bar/line/pie path but retains the explicitly deferred widget compatibility gaps in [#550](https://github.com/QRun-IO/qqq/issues/550).
 

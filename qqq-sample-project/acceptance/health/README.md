@@ -79,12 +79,7 @@ mvn -B -o -Dmaven.repo.local="$health_maven_repo" \
   -f qqq-sample-project/pom.xml -Dtest=SampleHealthAcceptanceTest test
 mvn -B -nsu -Dmaven.repo.local="$health_maven_repo" \
   -Drevision=0.0.0-health-acceptance -Dqqq.version=0.0.0-health-acceptance \
-  -f qqq-sample-project/pom.xml verify
-# Additional diagnostic: real packaged configuration tests, without browser suites.
-mvn -B -nsu -Dmaven.repo.local="$health_maven_repo" \
-  -Drevision=0.0.0-health-acceptance -Dqqq.version=0.0.0-health-acceptance \
-  -f qqq-sample-project/pom.xml -Pacceptance-tests \
-  -Dit.test=SamplePackagedConfigurationIT clean verify
+  -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
 python3 qqq-sample-project/test_feature_coverage.py
 python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
 ```
@@ -104,15 +99,27 @@ and installed that same source JAR for the sample: **38 tests, zero failures,
 errors or skips**, with Checkstyle and coverage gates passing. Its configured
 report-only analysis still reports 8 SpotBugs findings and 47 PMD warnings.
 
-The focused sample command passed **12/12** health tests. Full sample `verify`
-ran **688 tests, zero failures/errors/skips**, but **failed** its unchanged class
-coverage gate: 36/40 classes (90%) versus 95% required. The clean diagnostic run
-with `SamplePackagedConfigurationIT` again passed all 688 unit tests plus its
-3 packaged-process integration tests, but still **failed** class coverage at
-37/40 (92%). The uncovered classes are the existing `IsolatedSpaServer`,
-`SampleSharingMetaDataProvider`, and its nested `SharingUser`; none is changed
-by this health slice. No threshold, exclusion, or failure flag was relaxed.
-Full browser/provider acceptance remains for broader integration CI.
+The focused sample command passed **12/12** health tests. The full
+`-Pacceptance-tests clean verify` profile passed **688 unit tests + 61 acceptance
+tests**, zero failures/errors/skips, with class coverage **38/40 (95.00%)**.
+This includes the existing browser, packaged-process and database suites.
+The initial default-profile run and three-test packaged diagnostic passed their
+tests but failed coverage at 90% and 92%; those incomplete runs omitted the
+acceptance profile that supplies the required SPA/sharing coverage. They are
+not an outstanding coverage blocker after the full-profile success. No test,
+threshold, exclusion, or failure flag was relaxed.
+
+CI also builds Material dashboard pin
+`8ec1be7ad0e1836801e33c503f4417e47f332066` using the steps in
+[the sample acceptance job](../../../.circleci/config.yml). That exact pin was
+built independently in `/private/tmp/qqq-599-material.owVViS`, rebinding only
+its POM's QQQ version to `0.0.0-health-acceptance`, with 49 JavaScript and 22 Java
+tests passing. Its JAR was installed into the same task-owned Maven cache;
+installed health and Material JAR bytes match their local source build outputs.
+No existing UI worktree or implementation was edited. The matching sample run
+adds `-Dqqq.frontend.material-dashboard.version=0.0.0-health-acceptance` to the
+full-profile command above and also passed **688 + 61 tests**, zero failures,
+errors or skips, and **95.00%** class coverage.
 
 The ten Python ledger tests pass. Both health rows have all their named source
 cases passing; the overall source report remains `stage_passed=false` and

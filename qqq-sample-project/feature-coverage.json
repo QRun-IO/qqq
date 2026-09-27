@@ -4651,7 +4651,7 @@
       "negative_cases": [
         "Disabled route, failing/throwing/timed-out indicator and no thread leak"
       ],
-      "gap": "All listed source requirements pass through local HTTP, including the retained within-request concurrency regression, failures/timeouts, and worker/request-context cleanup. Broader sample class coverage and published-stage acceptance remain separate gates.",
+      "gap": "All listed source requirements pass through local HTTP, including the retained within-request concurrency regression, failures/timeouts, and worker/request-context cleanup. Full sample acceptance-profile verification passes; published-stage acceptance remains a separate gate.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAutoloadedDefaultEndpoint",
         "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testConfiguredEndpointPath",
@@ -4665,7 +4665,7 @@
       "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/599",
-      "release_disposition": "All endpoint requirements have mapped passing source evidence after the bounded concurrent executor fix; no requirement is deferred. This does not certify unrelated sample coverage or published artifacts."
+      "release_disposition": "All endpoint requirements have mapped passing source evidence after the bounded concurrent executor fix; no requirement is deferred. This does not certify unrelated release requirements or published artifacts."
     },
     {
       "id": "health.indicators",

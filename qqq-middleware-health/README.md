@@ -44,6 +44,8 @@ public class ApplicationHealthMetaDataProducer extends com.kingsrook.qqq.middlew
 }
 ```
 
+At most ten health checks run concurrently; each check’s timeout budget starts at submission and includes time waiting for a worker.
+
 Place this class in your `metadata.autoload` package tree. The health endpoint registers automatically - no code needed in `Server.java`.
 
 ## Response Format

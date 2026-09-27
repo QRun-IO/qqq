@@ -21,6 +21,8 @@
 package com.kingsrook.sampleapp;
 
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -29,10 +31,18 @@ import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
+import java.net.URL;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.Date;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -117,10 +127,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.utility.MountableFile;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -944,6 +957,324 @@ public class SampleS3AcceptanceIT
 
 
    /*******************************************************************************
+    ** S3 length counts UTF-8 bytes in the entire key, including backend/table prefixes.
+    ******************************************************************************/
+   @Test
+   void exactUtf8KeyLengthBoundaryPreservesNativeBytes() throws Exception
+   {
+      for(String tablePath : List.of("files", "données/資料"))
+      {
+         ((S3TableBackendDetails) QContext.getQInstance().getTable(FILES).getBackendDetails()).setBasePath(tablePath);
+         String fullPrefix = prefix + "/" + tablePath + "/";
+         int remaining = 1024 - bytes(fullPrefix).length;
+         for(String reference : List.of("a".repeat(remaining), "é".repeat(remaining / 2) + (remaining % 2 == 0 ? "" : "x")))
+         {
+            String key = fullPrefix + reference;
+            assertEquals(1024, bytes(key).length);
+            oracle.putObject(BUCKET, key, "native boundary control");
+            try(InputStream input = new StorageAction().getInputStream(new StorageInput(FILES).withReference(reference)))
+            {
+               assertArrayEquals(bytes("native boundary control"), input.readAllBytes());
+            }
+            try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference)))
+            {
+               output.write(bytes("QQQ boundary replacement"));
+            }
+            assertTrue(keys().contains(key));
+            assertArrayEquals(bytes("QQQ boundary replacement"), nativeBytes(key));
+            assertEquals(1, new DeleteAction().execute(new DeleteInput(FILES).withPrimaryKey(reference)).getDeletedRecordCount());
+            assertFalse(oracle.doesObjectExist(BUCKET, key));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** LocalStack accepts keys beyond AWS's byte limit; record this emulator boundary.
+    ******************************************************************************/
+   @Test
+   void localstackDoesNotEnforceAwsKeyByteLimit() throws Exception
+   {
+      Map<String, String> before = snapshot();
+      for(String tablePath : List.of("files", "données/資料"))
+      {
+         ((S3TableBackendDetails) QContext.getQInstance().getTable(FILES).getBackendDetails()).setBasePath(tablePath);
+         String fullPrefix = prefix + "/" + tablePath + "/";
+         int remaining = 1025 - bytes(fullPrefix).length;
+         for(String reference : List.of("a".repeat(remaining), "é".repeat(remaining / 2) + (remaining % 2 == 0 ? "" : "x")))
+         {
+            String key = fullPrefix + reference;
+            assertEquals(1025, bytes(key).length);
+            oracle.putObject(BUCKET, key, "native overlong control");
+            assertTrue(keys().contains(key), "LocalStack currently accepts a key that exceeds the AWS limit");
+            assertArrayEquals(bytes("native overlong control"), nativeBytes(key));
+            try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference)))
+            {
+               output.write(bytes("QQQ overlong replacement"));
+            }
+            assertArrayEquals(bytes("QQQ overlong replacement"), nativeBytes(key));
+            assertEquals(1, new DeleteAction().execute(new DeleteInput(FILES).withPrimaryKey(reference)).getDeletedRecordCount());
+            assertEquals(before, snapshot());
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native LocalStack normalizes valid period segments; this is not AWS key proof.
+    ******************************************************************************/
+   @Test
+   void localstackNormalizesValidPeriodSegments() throws Exception
+   {
+      Map<String, String> references = Map.of("folder/./dot.txt", "folder/dot.txt", "folder/../parent.txt", "parent.txt", "./leading.txt", "leading.txt");
+      for(var entry : references.entrySet())
+      {
+         String reference = entry.getKey();
+         String key = prefix + "/files/" + reference;
+         String normalizedKey = prefix + "/files/" + entry.getValue();
+         oracle.putObject(BUCKET, normalizedKey, "normalized sentinel");
+         oracle.putObject(BUCKET, key, "opaque native control");
+         assertFalse(keys().contains(key), "the SDK wire control is exact, but this emulator normalizes the key");
+         assertArrayEquals(bytes("opaque native control"), nativeBytes(normalizedKey), "native SDK control already overwrote the normalized sentinel");
+         try(InputStream input = new StorageAction().getInputStream(new StorageInput(FILES).withReference(reference)))
+         {
+            assertArrayEquals(bytes("opaque native control"), input.readAllBytes());
+         }
+         try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference)))
+         {
+            output.write(bytes("opaque QQQ replacement"));
+         }
+         assertFalse(keys().contains(key));
+         assertArrayEquals(bytes("opaque QQQ replacement"), nativeBytes(normalizedKey));
+         assertEquals(1, new DeleteAction().execute(new DeleteInput(FILES).withPrimaryKey(reference)).getDeletedRecordCount());
+         assertFalse(oracle.doesObjectExist(BUCKET, normalizedKey), "emulator delete aliases the normalized key too");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Separate SDK transport encoding from the emulator's key interpretation.
+    ******************************************************************************/
+   @Test
+   void sdkAndQqqSendOpaquePeriodSegmentsWithoutNormalization() throws Exception
+   {
+      List<String> paths = new ArrayList<>();
+      HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.createContext("/", exchange ->
+      {
+         try(exchange)
+         {
+            paths.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getRawPath());
+            exchange.getRequestBody().readAllBytes();
+            if(exchange.getRequestMethod().equals("GET"))
+            {
+               byte[] payload = bytes("opaque wire response");
+               exchange.sendResponseHeaders(200, payload.length);
+               exchange.getResponseBody().write(payload);
+            }
+            else
+            {
+               exchange.sendResponseHeaders(200, -1);
+            }
+         }
+      });
+      server.start();
+      AmazonS3 sdk = client("http://127.0.0.1:" + server.getAddress().getPort());
+      AmazonS3 normalClient = actionClient;
+      Map<String, String> before = snapshot();
+      try
+      {
+         actionClient = sdk;
+         for(String reference : List.of("folder/./dot.txt", "folder/../parent.txt", "./leading.txt"))
+         {
+            String key = prefix + "/files/" + reference;
+            String requestPath = "/" + BUCKET + "/" + key;
+            sdk.putObject(BUCKET, key, "wire control");
+            assertEquals("PUT " + requestPath, paths.get(paths.size() - 1));
+            try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference)))
+            {
+               output.write(bytes("opaque QQQ request"));
+            }
+            assertEquals("PUT " + requestPath, paths.get(paths.size() - 1));
+            try(InputStream input = new StorageAction().getInputStream(new StorageInput(FILES).withReference(reference)))
+            {
+               assertArrayEquals(bytes("opaque wire response"), input.readAllBytes());
+            }
+            assertEquals("GET " + requestPath, paths.get(paths.size() - 1));
+            assertEquals(1, new DeleteAction().execute(new DeleteInput(FILES).withPrimaryKey(reference)).getDeletedRecordCount());
+            assertEquals("DELETE " + requestPath, paths.get(paths.size() - 1));
+         }
+         assertEquals(before, snapshot());
+      }
+      finally
+      {
+         actionClient = normalClient;
+         sdk.shutdown();
+         server.stop(0);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Excess parent segments in the full native key must not publish an object.
+    ******************************************************************************/
+   @Test
+   void excessParentSegmentsDoNotMutateNativeObjects() throws Exception
+   {
+      Map<String, String> before = snapshotBucket();
+      String reference = "../../../invalid.txt";
+      String key = prefix + "/files/" + reference;
+      AmazonS3Exception nativeFailure = assertThrows(AmazonS3Exception.class, () -> oracle.putObject(BUCKET, key, "native invalid control"));
+      AmazonS3Exception actionFailure = assertThrows(AmazonS3Exception.class, () ->
+      {
+         try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference)))
+         {
+            output.write(bytes("invalid QQQ write"));
+         }
+      });
+      assertEquals(nativeFailure.getErrorCode(), actionFailure.getErrorCode());
+      assertEquals(500, nativeFailure.getStatusCode(), "this emulator returns an internal error, not an AWS InvalidArgument diagnostic");
+      assertEquals(500, actionFailure.getStatusCode());
+      assertEquals(before, snapshotBucket());
+   }
+
+
+
+   /*******************************************************************************
+    ** Linux backlog saturation proves a genuine connect timeout without host rules.
+    ******************************************************************************/
+   @Test
+   void connectionEstablishmentTimeoutHasNativeCauseAndRecovery(@TempDir Path artifacts) throws Exception
+   {
+      Map<String, String> before = snapshot();
+      List<String> childClasspath = new ArrayList<>();
+      int index = 0;
+      for(String entry : System.getProperty("java.class.path").split(System.getProperty("path.separator")))
+      {
+         if(entry.isBlank())
+         {
+            continue;
+         }
+         Path source = Path.of(entry);
+         String name = "entry-" + index++ + (Files.isDirectory(source) ? "" : ".jar");
+         Path target = artifacts.resolve(name);
+         if(Files.isDirectory(source))
+         {
+            try(var paths = Files.walk(source))
+            {
+               for(Path path : paths.toList())
+               {
+                  Path destination = target.resolve(source.relativize(path));
+                  if(Files.isDirectory(path))
+                  {
+                     Files.createDirectories(destination);
+                  }
+                  else
+                  {
+                     Files.copy(path, destination);
+                  }
+               }
+            }
+         }
+         else
+         {
+            Files.copy(source, target);
+         }
+         childClasspath.add("/fixture/" + name);
+      }
+      try(GenericContainer<?> child = new GenericContainer<>("maven:3.9-eclipse-temurin-21")
+         .withNetworkMode("none").withCreateContainerCmdModifier(command -> command.withHostName("localhost"))
+         .withWorkingDirectory("/tmp").withCopyToContainer(MountableFile.forHostPath(artifacts), "/fixture")
+         .withStartupCheckStrategy(new OneShotStartupCheckStrategy().withTimeout(Duration.ofSeconds(45)))
+         .withCommand("java", "-Daws.java.v1.disableDeprecationAnnouncement=true", "-cp", String.join(":", childClasspath), S3ConnectTimeoutFixture.class.getName()))
+      {
+         child.start();
+         assertTrue(child.getLogs().contains("QQQ_CONNECT_TIMEOUT_PASS native=SocketTimeoutException sdk=ConnectTimeoutException recovery=same-listener"));
+      }
+      assertEquals(before, snapshot(), "connection failure cannot mutate native S3 objects");
+      assertTrue(new QueryAction().execute(new QueryInput(FILES)).getRecords().isEmpty(), "the normal owned S3 endpoint remains usable");
+   }
+
+
+   /*******************************************************************************
+    ** The unmodified metadata client path must sign with the selected key and secret.
+    ******************************************************************************/
+   @Test
+   void metadataCredentialsReachSdkSigner() throws Exception
+   {
+      Map<String, String> before = snapshot();
+      for(String suffix : List.of("first", "second"))
+      {
+         String access = "SYNTHETIC_ACCESS_" + suffix;
+         String secret = "synthetic-secret-" + suffix;
+         S3BackendMetaData metadata = new S3BackendMetaData().withName("signing-" + suffix)
+            .withAccessKey(access).withSecretKey(secret).withRegion("us-west-2");
+         AmazonS3 sdk = new MetadataClientProbe().client(metadata);
+         try
+         {
+            URL url = sdk.generatePresignedUrl("owned-offline-signing", "metadata-proof.txt", new Date(System.currentTimeMillis() + 60000));
+            Map<String, String> query = new TreeMap<>();
+            for(String pair : url.getQuery().split("&"))
+            {
+               String[] parts = pair.split("=", 2);
+               query.put(parts[0], URLDecoder.decode(parts[1], StandardCharsets.UTF_8));
+            }
+            String timestamp = query.get("X-Amz-Date");
+            String scope = timestamp.substring(0, 8) + "/us-west-2/s3/aws4_request";
+            assertTrue((access + "/" + scope).equals(query.get("X-Amz-Credential")), "metadata access key and region must reach the signer");
+            String canonicalQuery = String.join("&", Arrays.stream(url.getQuery().split("&"))
+               .filter(pair -> !pair.startsWith("X-Amz-Signature=")).sorted().toList());
+            String canonicalRequest = "GET\n" + url.getPath() + "\n" + canonicalQuery + "\nhost:" + url.getHost() + "\n\nhost\nUNSIGNED-PAYLOAD";
+            String toSign = "AWS4-HMAC-SHA256\n" + timestamp + "\n" + scope + "\n"
+               + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes(canonicalRequest)));
+            byte[] signingKey = hmac(hmac(hmac(hmac(bytes("AWS4" + secret), timestamp.substring(0, 8)), "us-west-2"), "s3"), "aws4_request");
+            assertTrue(MessageDigest.isEqual(hmac(signingKey, toSign), HexFormat.of().parseHex(query.get("X-Amz-Signature"))),
+               "independent HMAC must confirm the metadata secret without logging signed URLs or signatures");
+         }
+         finally
+         {
+            sdk.shutdown();
+         }
+      }
+      assertEquals(before, snapshot());
+   }
+
+
+
+   /*******************************************************************************
+    ** JDK cryptography independently verifies the SDK's synthetic SigV4 signature.
+    ******************************************************************************/
+   private static byte[] hmac(byte[] key, String text) throws Exception
+   {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(key, "HmacSHA256"));
+      return mac.doFinal(bytes(text));
+   }
+
+
+
+   /*******************************************************************************
+    ** Expose the production pre-action result without substituting its SDK client.
+    ******************************************************************************/
+   private static class MetadataClientProbe extends AbstractS3Action
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      AmazonS3 client(S3BackendMetaData metadata) throws QException
+      {
+         preAction(metadata);
+         return getS3Utils().getAmazonS3();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Hand-authored UTF-8 bytes are independent of provider conversion logic.
     ******************************************************************************/
    private static byte[] bytes(String value)
@@ -996,6 +1327,29 @@ public class SampleS3AcceptanceIT
       {
          result.put(key, Base64.getEncoder().encodeToString(nativeBytes(key)));
       }
+      return result;
+   }
+
+
+
+   /*******************************************************************************
+    ** Invalid references must not mutate another prefix in the owned bucket.
+    ******************************************************************************/
+   private Map<String, String> snapshotBucket() throws Exception
+   {
+      Map<String, String> result = new TreeMap<>();
+      ListObjectsV2Request request = new ListObjectsV2Request().withBucketName(BUCKET);
+      ListObjectsV2Result page;
+      do
+      {
+         page = oracle.listObjectsV2(request);
+         for(S3ObjectSummary object : page.getObjectSummaries())
+         {
+            result.put(object.getKey(), Base64.getEncoder().encodeToString(nativeBytes(object.getKey())));
+         }
+         request.setContinuationToken(page.getNextContinuationToken());
+      }
+      while(page.isTruncated());
       return result;
    }
 

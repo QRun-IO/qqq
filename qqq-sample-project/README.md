@@ -670,3 +670,98 @@ with counts/coverage in `/private/tmp/qqq-838-full-acceptance-summary.json` and 
 reports in `/private/tmp/qqq-838-full-reports`. These are source-verification results.
 The S3 row remains pending for the original-scope gaps listed above; this full run
 does not turn provider limitations or proposed checks into passing evidence.
+
+
+#### Provider-contract follow-up for original #588
+
+The provider-contract branch retains all 17 reviewed S3 methods and adds seven
+focused cases. It introduces no production changes, dependencies, provider policy
+or public API. These results extend the source evidence; the earlier full #838 run
+does not certify this new delta, whose full sample run still needs an exclusive slot.
+
+| Original requirement | Added evidence and remaining boundary |
+| --- | --- |
+| Path/file-name behavior | At exactly 1,024 UTF-8 bytes, independent native writes and QQQ read/replace/delete preserve exact keys and bytes. Controls cover ASCII and multibyte names under both ASCII and multibyte table prefixes; the limit calculation includes the entire backend/table prefix. |
+| Invalid path/key | Native LocalStack 1.4 accepts 1,025-byte keys. The explicit limitation test records native and QQQ acceptance/readback/deletion, not successful AWS validation. Excess parent segments in the complete key fail in both paths with LocalStack HTTP 500, with the entire owned bucket unchanged; this is not an AWS error-code claim. |
+| Valid opaque keys | The real SDK and QQQ PUT/GET/DELETE send `folder/./dot.txt`, `folder/../parent.txt`, and `./leading.txt` unchanged to an owned HTTP recorder. Native LocalStack writes instead alias normalized keys, overwrite their sentinel values, and delete those aliases. Exact wire behavior is proved, but native preservation of these valid AWS keys is not proved by this emulator. |
+| Credential/permission failure | Production `preAction` constructs the SDK client from two distinct synthetic metadata key/secret pairs and a selected region. Local presigning plus independent JDK HMAC verification proves selection of both access key and secret. Signed URLs/signatures are never logged; no generated URL is requested. Existing owned 403 tests prove error propagation; neither layer certifies AWS IAM enforcement. |
+| Connection timeout | A network-isolated Linux child JVM fills an owned loopback accept queue with real connected sockets. A native connect then times out, followed by a public QQQ `StorageAction` failure whose cause chain includes Apache `ConnectTimeoutException` caused by `SocketTimeoutException`. Draining that same listener restores a successful native connect. The parent verifies native S3 state unchanged and normal QQQ access still works. |
+
+[AWS's key rules](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html)
+allow the tested period segments; they are not filesystem traversal to reject by
+blanket policy. The initial native probes kept that expected contract and failed
+before QQQ was involved: two assertion failures, zero errors/skips in
+`/private/tmp/qqq-588-provider-key-first.log`. The SDK-only wire control then passed,
+separating the provider/emulator path from QQQ. The final limitation tests name the
+observed emulator behavior explicitly; they do not remove the original acceptance
+gap or turn the red AWS expectations into conformance claims.
+
+The Linux helper uses the existing `maven:3.9-eclipse-temurin-21` image, Testcontainers
+copy-to-container runtime artifacts, and `network=none`; there are no host bind
+mounts, exposed ports, host firewall/route changes, or external AWS calls. Temporary
+artifact directories, sockets, SDK clients and the child container are owned and
+closed. Its 500 ms fixture connect deadline and disabled retries do not change
+production defaults. Native queue saturation was first probed separately: macOS
+returned a reset rather than a timeout, while three Linux trials timed out at
+501–510 ms. The required acceptance case therefore always uses the Linux fixture;
+there is no platform skip or fallback that accepts reset/read-timeout errors.
+
+S3 remains **pending** for full verification and independent review of the original
+requirement mapping below. Native AWS overlong-key rejection and literal period-key
+preservation remain unproved provider-conformance limits; they are not automatically
+new live-AWS acceptance gates. The original invalid-path scenario has a real native
+failure/no-mutation case plus missing-object-reference and glob checks. The reviewer must
+assess those checks against the original path/file-name requirement before changing
+status. Metadata signing and real connection timeout now have runnable evidence;
+source-copy partial publication remains the documented #459 boundary.
+
+
+Focused provider validation passes **24/24 cases, zero failures/errors/skips**, with
+zero Checkstyle violations (`/private/tmp/qqq-588-provider-matching-native.log`). All
+46 top-level Python checks pass (`/private/tmp/qqq-588-provider-bindings-python46.log`).
+The isolated cache is `/private/tmp/qqq-588-s3-provider-m2`, copied independently from
+the matching #838 cache; production sources remain identical to reviewed `71cc83528`.
+The native Linux backlog research log is
+`/private/tmp/qqq-588-native-backlog-linux-probe.log`; the earlier macOS reset is kept
+in `/private/tmp/qqq-588-native-backlog-probe.log`. No full-sample or Javalin-server
+run was started for this delta, and no shared broker reservation was used.
+
+
+#### Original #588 requirement-to-evidence map
+
+All method names below belong to `SampleS3AcceptanceIT`; the timeout method also
+launches `S3ConnectTimeoutFixture`. Each original scenario is mapped explicitly.
+Unsupported operations remain tested refusals, not invented implementations.
+
+| Original scenario | Actual methods | Independent oracle / result |
+| --- | --- | --- |
+| Query | `oneRecordRoundTripAndUnsupportedUpdate`, `oneJsonNamesHeavySelectionAndReplacement`, `manyCsvJsonAndPostReadHaveNativeOracles` | Native objects seeded/read by a separate SDK client; public query fields, heavy bytes, filters and cardinalities match known bytes/rows. |
+| Count | `oneRecordRoundTripAndUnsupportedUpdate`, `oneJsonNamesHeavySelectionAndReplacement`, `manyCsvJsonAndPostReadHaveNativeOracles`, `missingBucketAndInvalidGlobDoNotMutate` | Known native ONE/MANY objects yield counts 1/2; an empty native prefix yields 0. |
+| Insert | `oneRecordRoundTripAndUnsupportedUpdate`, `oneJsonNamesHeavySelectionAndReplacement`, `manyCsvJsonAndPostReadHaveNativeOracles` | ONE writes exact CSV/JSON bytes under expected keys; MANY insert is explicitly unsupported and preserves native snapshots. |
+| Update | `oneRecordRoundTripAndUnsupportedUpdate` | Actual `UpdateAction` throws the adapter's `NotImplementedException`; all native keys/bytes remain unchanged. No supported update is claimed. |
+| Delete | `oneRecordRoundTripAndUnsupportedUpdate`, `manyCsvJsonAndPostReadHaveNativeOracles`, `exactUtf8KeyLengthBoundaryPreservesNativeBytes` | ONE deletion count/readback proves native absence and preserves controls; MANY delete refuses without mutation. |
+| Raw storage contracts | `rawStorageRoundTripAndMissingRead`, `storageUrlAndAclHaveNativeMetadataOracles`, `multipartPublishesOnCloseAndReleasesUpload`, `rawStorageOffsetWritesExactSlice` | Independent SDK verifies exact binary bytes, content type, URL target, emulator ACL, multipart parts/invisibility before close, publication afterward and absence of residual upload; offset output is exactly `23456`. |
+| CSV/JSON | `oneRecordRoundTripAndUnsupportedUpdate`, `oneJsonNamesHeavySelectionAndReplacement`, `manyCsvJsonAndPostReadHaveNativeOracles`, `manyScalarValuesNullsAndFailedCustomizer` | Known native CSV/JSON bytes exercise opaque ONE contents and parsed MANY rows, Unicode, quoted commas/newlines, long values and JSON null. |
+| ONE/MANY cardinality | Same four methods as CSV/JSON | ONE maps each object to one record; MANY parses file rows and counts them. MANY insert/delete and adapter update retain explicit unsupported boundaries. |
+| Path/file-name behavior | `oneJsonNamesHeavySelectionAndReplacement`, `exactUtf8KeyLengthBoundaryPreservesNativeBytes`, `sdkAndQqqSendOpaquePeriodSegmentsWithoutNormalization`, `localstackNormalizesValidPeriodSegments` | Native nested/space/Unicode names and complete 1,024-byte keys round-trip; raw wire paths preserve valid period segments. Native normalization is separately observed with distinct normalized-key sentinels, not described as AWS preservation. |
+| Post-read handling | `manyCsvJsonAndPostReadHaveNativeOracles`, `manyScalarValuesNullsAndFailedCustomizer`, `oneJsonNamesHeavySelectionAndReplacement` | Configured MANY transformation changes parsed values while native bytes stay unchanged; failed MANY customizer surfaces on query/count; ONE bypasses it as its current contract. |
+| Missing file | `rawStorageRoundTripAndMissingRead`, `missingBucketAndInvalidGlobDoNotMutate` | Native `NoSuchKey`/`NoSuchBucket` errors propagate; empty prefix has zero rows/count; native snapshots are unchanged. |
+| Malformed CSV/JSON | `malformedCsvAndJsonRefuseWithoutMutation` | SDK seeds invalid CSV and JSON; actual QQQ parsing fails and independent native snapshots remain unchanged. |
+| Permission/credential failure | `permissionAndCredentialResponsesPropagateWithoutNativeWrites`, `metadataCredentialsReachSdkSigner` | Real SDK receives owned HTTP `AccessDenied`, `InvalidAccessKeyId`, `SignatureDoesNotMatch` responses on query/write with no native mutation. Independent HMAC proves production metadata key/secret selection. This is QQQ propagation/signing evidence, not AWS IAM enforcement. |
+| Connection timeout | `connectionEstablishmentTimeoutHasNativeCauseAndRecovery`; separate `readTimeoutPropagatesWithoutNativeMutation` | Actual native Linux connect and QQQ SDK cause chain distinguish establishment timeout from socket-read timeout/refusal; same listener recovers, native S3 snapshot is unchanged and normal QQQ access works. |
+| Invalid path | `excessParentSegmentsDoNotMutateNativeObjects`, `missingBucketAndInvalidGlobDoNotMutate`, `rawStorageRoundTripAndMissingRead`; boundary control `localstackDoesNotEnforceAwsKeyByteLimit` | Invalid full native key errors through both SDK/QQQ and leaves the entire owned bucket unchanged; invalid glob/missing-object-reference errors also have no mutation. Emulator HTTP500 and accepted overlong keys remain explicit provider limits, not AWS validation claims. |
+| Partial write | `failedCopyPublishesPrefixAndPreservesOtherKeys`, `failedMultipartWriteAbortsUploadAndPreservesExistingObject`, `failedMultipartFinalPartAbortsUploadWithoutPublishing`, `failedMultipartCompletionAbortsUploadAndPreservesExistingObject`, `failedMultipartAbortPreservesOriginalAndResidualParts` | Native bytes expose #459's source-copy partial publication. Real multipart IDs/parts precede SDK faults; native upload/object readback proves successful abort or honest residual state after abort failure, terminal stream behavior and independent teardown. |
+
+No original scenario label is omitted from the runnable mapping. The concrete
+unproved native contracts are AWS's 1,025-byte rejection and literal storage of valid
+period-segment keys; their relevance to the original path/file-name requirement is
+left visible for review. Full sample verification of this delta and independent
+requirement review remain outstanding. General IAM certification, a blanket strict
+key policy and mandatory atomic rollback are not added requirements.
+
+
+All 24 ledger bindings use exact fully qualified JUnit report IDs (including the
+injected `Path` parameter in the timeout case). The original 17 method bodies are
+unchanged. With these focused reports, the S3 row's verifier reason is only
+`scenario review is pending`; no S3 test binding is missing or failed. This does not
+certify unrelated rows or replace full-sample verification.

@@ -101,10 +101,10 @@ class PackagedSampleServer implements AutoCloseable
       long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
       while(System.nanoTime() < deadline && process.isAlive())
       {
-         Matcher listening = Pattern.compile("Listening on http://localhost:(\\d+)/").matcher(output());
+         Matcher listening = Pattern.compile("Listening on (http://(?:localhost|127\\.0\\.0\\.1):\\d+)/").matcher(output());
          if(listening.find())
          {
-            return URI.create("http://localhost:" + listening.group(1));
+            return URI.create(listening.group(1));
          }
          Thread.sleep(50);
       }

@@ -21,12 +21,14 @@
 package com.kingsrook.sampleapp;
 
 
+import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
 import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
+import io.javalin.config.JavalinConfig;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
@@ -105,7 +107,29 @@ public class SampleJavalinServer extends QApplicationJavalinServer
             .addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + port);
          embeddedBroker = new EmbeddedActiveMQ().setConfiguration(configuration);
          embeddedBroker.start();
-         super.start();
+         Consumer<JavalinConfig> customizer = getJavalinConfigCustomizer();
+         if(Integer.valueOf(0).equals(getPort()))
+         {
+            setJavalinConfigCustomizer(config ->
+            {
+               //////////////////////////////////////////////////////////////////////////////
+               // A wildcard ephemeral bind can overlap the broker's loopback port on macOS. //
+               //////////////////////////////////////////////////////////////////////////////
+               config.jetty.host = "127.0.0.1";
+               if(customizer != null)
+               {
+                  customizer.accept(config);
+               }
+            });
+         }
+         try
+         {
+            super.start();
+         }
+         finally
+         {
+            setJavalinConfigCustomizer(customizer);
+         }
          QEsbRuntime.getInstance().start(getQInstance());
       }
       catch(RuntimeException e)

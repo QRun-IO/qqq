@@ -231,8 +231,13 @@ class SampleHttpLifecycleTest
       AtomicReference<Javalin> service = new AtomicReference<>();
       occupied.withJavalinConfigurationCustomizer(occupiedService::set);
       occupied.withJavalinConfigCustomizer(config -> config.routes.get("/existing", context -> context.result("original listener")));
+      rejected.withJavalinConfigCustomizer(config -> config.jetty.host = "127.0.0.1");
       replacement.withJavalinConfigurationCustomizer(service::set);
-      replacement.withJavalinConfigCustomizer(config -> config.routes.get("/replacement", context -> context.result("ready")));
+      replacement.withJavalinConfigCustomizer(config ->
+      {
+         config.jetty.host = "127.0.0.1";
+         config.routes.get("/replacement", context -> context.result("ready"));
+      });
       try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
       {
          occupied.start();

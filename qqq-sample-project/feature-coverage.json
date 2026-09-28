@@ -2679,8 +2679,16 @@
       "negative_cases": [
         "Invalid receiver/configuration, delivery failure and no unrelated recipient transmission"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Seven local EMAIL source checks cover normal SendMessageAction dispatch, exact SMTP envelope and decoded MIME body, recipient isolation, invalid receiver/provider configuration, SMTP refusal and post-DATA delivery failure. Pending independent review and full composition. Explicit Reply-To is not passing: a local red reproduction shows SendEmailAction drops a Reply-To after From; defect issue draft and trace retained in qqq-573-messaging-evidence (publication blocked by automatic approval review). SES/live providers, native/browser and published-artifact delivery are not verified by these checks.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testConfiguredMessageEnvelopeAndBody",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testSubsequentMessageDoesNotReuseRecipients",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testMissingAndUnknownProviderConfiguration",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testUnsupportedProviderType",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testInvalidReceiverRejectedBeforeTransmission",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testReceiverRefusalDoesNotTransmitBody",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testDeliveryFailureAfterBodyDoesNotFallback"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/573",

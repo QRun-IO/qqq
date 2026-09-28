@@ -21,7 +21,9 @@
 package com.kingsrook.qqq.api.model.metadata.tables;
 
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.api.ApiSupplementType;
 import com.kingsrook.qqq.api.actions.GetTableApiFieldsAction;
@@ -29,15 +31,19 @@ import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.actions.GetTableApiFieldsInput;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
+import com.kingsrook.qqq.api.model.metadata.fields.ApiFieldMetaData;
+import com.kingsrook.qqq.api.model.metadata.fields.ApiFieldMetaDataContainer;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QSupplementalTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -199,6 +205,25 @@ public class ApiTableMetaDataContainer extends QSupplementalTableMetaData
       for(String apiName : CollectionUtils.nonNullMap(apis).keySet())
       {
          ApiInstanceMetaData apiInstanceMetaData = ApiInstanceMetaDataContainer.of(qInstance).getApis().get(apiName);
+
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         // Replacement names address current table fields directly, not historical API aliases. //
+         // Inspect metadata rather than cached API maps; the target need not be API-exposed.     //
+         ///////////////////////////////////////////////////////////////////////////////////////////
+         Map<String, QFieldMetaData> tableFields = CollectionUtils.nonNullMap(tableMetaData.getFields());
+         List<QFieldMetaData> fields = new ArrayList<>(tableFields.values());
+         fields.addAll(CollectionUtils.nonNullList(apis.get(apiName).getRemovedApiFields()));
+         for(QFieldMetaData field : fields)
+         {
+            ApiFieldMetaData apiFieldMetaData = ApiFieldMetaDataContainer.ofOrNew(field).getApiFieldMetaData(apiName);
+            if(apiFieldMetaData != null && StringUtils.hasContent(apiFieldMetaData.getReplacedByFieldName()))
+            {
+               String replacementFieldName = apiFieldMetaData.getReplacedByFieldName();
+               qInstanceValidator.assertCondition(tableFields.containsKey(replacementFieldName),
+                  "Replacement field [" + replacementFieldName + "] for field [" + field.getName() + "] in api [" + apiName
+                     + "] on table [" + tableMetaData.getName() + "] is not a current field on this table.");
+            }
+         }
 
          //////////////////////////////////////////////////
          // iterate over supported versions for this api //

@@ -1530,3 +1530,39 @@ selected row) before restoration. All **46 Python checks passed**. The required
 feature report exits 1 because scenario review remains pending; all 11 method
 bindings resolve. All 130 original IDs, requirements, statuses, stages and release
 dispositions are preserved; only this row's gap and passing evidence changed.
+
+
+## Application API versioning source acceptance (#595)
+
+`SampleApplicationApiVersioningAcceptanceTest` exercises `ApiImplementation.get`,
+`update` and `runProcess` against the native sample Person/Pet/Pet Note schema in a
+unique owned H2 database. It checks opt-in tables/processes, explicitly selected
+fields, initial/final version boundaries, historical and external field names,
+bidirectional custom mapping, nested records, duplicate-name rejection and
+permission/record-security denials. JDBC independently checks persisted values and
+unchanged denied writes. Fixtures restore QContext, close H2, clear table/field API
+caches and remove their own process state; unique API names isolate process lookup
+caching. No new dependencies, external provider, HTTP server or browser is needed.
+
+**Validation and limits:** [#868](https://github.com/QRun-IO/qqq/issues/868)
+corrects the missing-replacement-target gap demonstrated by this fixture.
+`QInstanceValidator` now rejects `replacedByFieldName="missingTarget"` before the API
+can return a misleading null. Replacement targets must exist in current table
+metadata, but need not be exposed in the historical API version. The module's
+`ApiReplacementFieldValidationTest` preserves direct mapping semantics and custom
+computed fields, rejects unsupported removed-to-removed aliases, and checks
+revalidation after field maps are cached. Normal table-version inheritance for
+unconfigured fields is unchanged; the fixture explicitly excludes private fields
+and separately proves that default. The ledger remains `pending` until independent
+review and the main full gate; full HTTP (#596), OpenAPI (#597), published artifacts
+and release acceptance remain separate.
+
+After installing this source revision into an owned Maven cache, run from the
+repository root:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml \
+  -Dtest=SampleApplicationApiVersioningAcceptanceTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+```

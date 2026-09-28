@@ -77,9 +77,9 @@ public class QApplicationLauncher
 
 
    /***************************************************************************
-    ** something the launcher started, and how to stop it.
+    ** Something the launcher started, how to stop it, and optional final cleanup.
     ***************************************************************************/
-   private record StartedService(String name, Runnable stopper)
+   private record StartedService(String name, Runnable stopper, Runnable afterApplicationStop)
    {
    }
 
@@ -131,7 +131,7 @@ public class QApplicationLauncher
          // track the server (and the schedule manager, below) before starting it, //
          // so a failed start still stops whatever it got running.                 //
          ////////////////////////////////////////////////////////////////////////////
-         startedServices.add(new StartedService(JAVALIN_SERVER_SERVICE_NAME, server::stop));
+         startedServices.add(new StartedService(JAVALIN_SERVER_SERVICE_NAME, server::stop, null));
          server.start();
          qInstance = server.getQInstance();
 
@@ -143,7 +143,7 @@ public class QApplicationLauncher
             {
                scheduleManager.stop();
                scheduleManager.unInit();
-            }));
+            }, null));
             scheduleManager.start();
          }
          else
@@ -163,7 +163,7 @@ public class QApplicationLauncher
             serviceName = runtimeService.getName();
             LOG.info("Starting runtime service", logPair("service", serviceName));
             runtimeService.start(qInstance);
-            startedServices.add(new StartedService(serviceName, runtimeService::stop));
+            startedServices.add(new StartedService(serviceName, runtimeService::stop, runtimeService::afterApplicationStop));
          }
       }
       catch(Exception | LinkageError e)
@@ -224,8 +224,9 @@ public class QApplicationLauncher
 
    /*******************************************************************************
     ** Stop everything the launcher started, in reverse order.  An error stopping
-    ** one is logged, and the rest are still stopped.  Calling it again does
-    ** nothing.
+    ** one is logged, and the rest are still stopped. Then run runtime services'
+    ** final application cleanup in reverse order, isolating failures there too.
+    ** Calling it again does nothing.
     *******************************************************************************/
    public synchronized void stop()
    {
@@ -240,6 +241,23 @@ public class QApplicationLauncher
          catch(Exception | LinkageError e)
          {
             LOG.warn("Error stopping application service", e, logPair("service", startedService.name()));
+         }
+      }
+      for(int i = startedServices.size() - 1; i >= 0; i--)
+      {
+         StartedService startedService = startedServices.get(i);
+         if(startedService.afterApplicationStop() == null)
+         {
+            continue;
+         }
+
+         try
+         {
+            startedService.afterApplicationStop().run();
+         }
+         catch(Exception | LinkageError e)
+         {
+            LOG.warn("Error in final application service cleanup", e, logPair("service", startedService.name()));
          }
       }
       startedServices.clear();

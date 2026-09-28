@@ -127,6 +127,35 @@ class EsbLauncherLifecycleTest extends EsbRuntimeTestBase
 
 
    /*******************************************************************************
+    ** Direct service callers retain publishing through stop, then finalize resources.
+    ******************************************************************************/
+   @Test
+   void directServiceStopRetainsProviderUntilFinalApplicationCleanup() throws Exception
+   {
+      EsbRuntimeService service = new EsbRuntimeService();
+      service.start(applicationInstance());
+      awaitRuntime();
+      try(Session retained = EsbConnectionManager.getInstance().openSession(PROVIDER_NAME, false))
+      {
+         service.stop();
+         assertNotNull(retained.createMessage());
+         assertTrue(EsbConnectionManager.getInstance().isConnected(PROVIDER_NAME));
+         QContext.clear();
+         service.afterApplicationStop();
+         assertThrows(JMSException.class, retained::createMessage);
+         assertFalse(EsbConnectionManager.getInstance().isConnected(PROVIDER_NAME));
+         waitFor("direct service broker cleanup", () -> getEmbeddedBrokerServer().getConnectionCount() == 0);
+      }
+      finally
+      {
+         service.stop();
+         service.afterApplicationStop();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** The same provider name must use a different broker URL after app restart.
     ** Broker-side connection counts and an independent JMS receiver are oracles.
     ******************************************************************************/
@@ -223,7 +252,7 @@ class EsbLauncherLifecycleTest extends EsbRuntimeTestBase
 
    /*******************************************************************************
     ** Inject only a stop failure, after the actual native control channel closes.
-    ** The service finally must still close provider sessions and connections.
+    ** The final application callback must still close provider resources.
     ******************************************************************************/
    @Test
    void runtimeStopFailureStillClosesProviderResources() throws Exception

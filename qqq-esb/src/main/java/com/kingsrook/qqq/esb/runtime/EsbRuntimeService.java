@@ -62,20 +62,25 @@ public class EsbRuntimeService implements QRuntimeServiceInterface
 
 
    /*******************************************************************************
-    ** Application shutdown owns provider connections as well as consumers.
-    ** Independent QEsbRuntime.stop calls still retain connections for publishers.
+    ** Stop consumers while application-owned producers can still be draining.
+    ** Provider resources remain usable until final application cleanup.
     *******************************************************************************/
    @Override
    public void stop()
    {
-      try
-      {
-         QEsbRuntime.getInstance().stop();
-      }
-      finally
-      {
-         EsbConnectionManager.getInstance().closeAll();
-      }
+      QEsbRuntime.getInstance().stop();
+   }
+
+
+
+   /*******************************************************************************
+    ** Release provider resources after all application stop attempts, preserving
+    ** publishing leases while scheduler/HTTP work drains after consumer stop.
+    ******************************************************************************/
+   @Override
+   public void afterApplicationStop()
+   {
+      EsbConnectionManager.getInstance().closeAll();
    }
 
 }

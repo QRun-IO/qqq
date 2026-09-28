@@ -1566,3 +1566,51 @@ mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
   -Dtest=SampleApplicationApiVersioningAcceptanceTest test
 python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
 ```
+
+
+## Legacy OpenAPI model acceptance (#598)
+
+`SampleOpenApiModelsAcceptanceTest` constructs a legacy document with a typed path
+parameter, component schema/reference, response content and bearer security. It
+compares the complete parsed JSON tree and literal wire values for all four `In`
+and six `Type` constants through both setters and fluent methods. Four paired JDK
+compiler controls accept typed calls and reject each removed String overload of
+`Parameter.setIn/withIn` and `Schema.setType/withType` at the expected source line
+with an incompatible-type diagnostic; compilation uses the sample's resolved
+classpath. No new dependency, HTTP server, browser or external provider is needed.
+
+```sh
+mvn -f qqq-sample-project/pom.xml \
+  -Dtest=SampleOpenApiModelsAcceptanceTest,SampleMigration40ContractTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+python3 -B qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+```
+
+The positive consumer explicitly uses
+`JsonUtils.toJsonCustomized(value, builder -> builder.serializationInclusion(JsonInclude.Include.NON_NULL))`.
+Default `JsonUtils.toJson` uses `NON_EMPTY` and reproducibly changes
+`{"security":[{"BearerAuth":[]}]}` into `{"security":[{}]}`. A separate characterization
+asserts this loss and the existing customization's preservation; it does **not**
+claim the default serializer is fixed. The related security-description defect is
+tracked separately in [#869](https://github.com/QRun-IO/qqq/issues/869). `GenerateOpenApiSpecAction` uses these
+legacy models and `JsonUtils.toPrettyJson`; the JSON spec route returns that rendered
+string directly, without the handler's separate `ALWAYS` customization. A bounded
+generator diagnostic found non-empty permission scopes for an HTTP bearer scheme,
+not the empty-scope loss on that endpoint. Both behaviors are described in the
+separate issue; no production serializer change is included here.
+
+DTOs serialize missing `info`/`paths`,
+empty info, a path parameter without a name and with `required=false`, an operation
+without responses, and an array schema without items. Those negative fixtures
+characterize the existing permissive DTO boundary; they do not claim invalid-shape
+rejection. Null `In` throws `NullPointerException`; null `Type` clears the schema type.
+No documented required-shape validator contract was found in these DTOs, and
+[#598](https://github.com/QRun-IO/qqq/issues/598) does not require adding one.
+
+The focused source run at base `6215d2b1e` passed 6 acceptance and 7 existing migration
+tests, with zero failures/errors/skips and zero Checkstyle violations. It used a
+private copy of the verified source cache; all 27 OpenAPI and 1,033 core embedded
+Java sources matched that base. `openapi.models` stays **pending** for main integration
+and acceptance of the reviewed change. The separate defect is not described as
+fixed; no new validation or publication gate is introduced. Existing contracts and
+release deferrals remain unchanged.

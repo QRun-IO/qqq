@@ -58,6 +58,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
@@ -92,7 +93,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -395,21 +395,23 @@ class SampleApplicationApiVersioningAcceptanceTest
 
 
    /*******************************************************************************
-    ** Characterize the gap: nonexistent replacement targets are accepted by
-    ** metadata validation and read as null. This is not validation success.
+    ** Reject a missing replacement target at validation, before the API can
+    ** silently return null for a historical field whose value is still stored.
     *******************************************************************************/
    @Test
-   void testMissingReplacementTargetRemainsAnExplicitValidationGap() throws Exception
+   void testMissingReplacementTargetRejectedDuringMetadataValidation() throws Exception
    {
       assertFalse(instance.getTable("person").getFields().containsKey("missingTarget"));
       ApiTableMetaDataContainer.of(instance.getTable("person")).getApiTableMetaData(apiName).getRemovedApiFields().get(0)
          .withSupplementalMetaData(new ApiFieldMetaDataContainer().withApiFieldMetaData(apiName,
             new ApiFieldMetaData().withInitialVersion(V1).withFinalVersion(V1).withReplacedByFieldName("missingTarget")));
       GetTableApiFieldsAction.clearCaches();
-      assertDoesNotThrow(() -> new QInstanceValidator().revalidate(instance));
-      Map<String, Serializable> record = ApiImplementation.get(api, V1, "people", "1");
-      assertTrue(record.containsKey("workDays"));
-      assertNull(record.get("workDays"));
+      QInstanceValidationException error = assertThrows(QInstanceValidationException.class,
+         () -> new QInstanceValidator().revalidate(instance));
+      for(String detail : List.of("person", apiName, "workDays", "missingTarget"))
+      {
+         assertTrue(error.getMessage().contains(detail), error.getMessage());
+      }
       assertEquals("1001", personValues().get(2));
    }
 

@@ -4887,7 +4887,7 @@
       "negative_cases": [
         "Unexposed table/field/version stays unavailable, invalid mapping and denied data"
       ],
-      "gap": "Eight runnable source scenarios cover explicit table/field/process exposure, version boundaries, renamed/custom-mapped fields, nested sample records, duplicate mappings and denied data. Known limitation: QInstanceValidator accepts a removed field whose replacedByFieldName names no table field; ApiImplementation.get returns that historical field as null. Unconfigured fields inherit the exposed table version during enrichment; the fixture explicitly excludes private fields and tests that default separately. Acceptance remains pending independent review and the main full gate. Full HTTP and OpenAPI acceptance remain #596 and #597.",
+      "gap": "Eight runnable source scenarios cover explicit table/field/process exposure, version boundaries, renamed/custom-mapped fields, nested sample records, duplicate mappings and denied data. The invalid replacement-target gap is corrected under #868: instance validation rejects targets absent from current table metadata before API reads; valid historical targets need not be exposed in the requested API version. Unconfigured fields inherit the exposed table version normally; explicit exclusions and that default are tested separately. Acceptance remains pending independent review and the main full gate. Full HTTP and OpenAPI acceptance remain #596 and #597. Defect: https://github.com/QRun-IO/qqq/issues/868.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testVersionedFieldsAndNestedRecords",
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testUnconfiguredFieldInheritsTableVersion",
@@ -4896,7 +4896,7 @@
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testOptInProcessAndVersionBoundaries",
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testDeniedDataCannotBeReadOrChanged",
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testDuplicateFieldMappingIsRejectedBeforeWrite",
-        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testMissingReplacementTargetRemainsAnExplicitValidationGap"
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testMissingReplacementTargetRejectedDuringMetadataValidation"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",

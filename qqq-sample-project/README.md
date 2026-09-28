@@ -1544,14 +1544,18 @@ unchanged denied writes. Fixtures restore QContext, close H2, clear table/field 
 caches and remove their own process state; unique API names isolate process lookup
 caching. No new dependencies, external provider, HTTP server or browser is needed.
 
-**Limits:** enrichment inherits the table's initial version for unconfigured
-fields, so this fixture explicitly excludes private fields and separately proves
-that default. The missing-replacement-target test characterizes a concrete gap:
-`QInstanceValidator` accepts `replacedByFieldName="missingTarget"`, then a real API
-GET returns the historical field as null although JDBC confirms its stored value.
-It is not evidence of invalid-target rejection. The ledger remains `pending`
-until independent review and the main full gate; full HTTP (#596), OpenAPI (#597),
-published artifacts and release acceptance remain separate.
+**Validation and limits:** [#868](https://github.com/QRun-IO/qqq/issues/868)
+corrects the missing-replacement-target gap demonstrated by this fixture.
+`QInstanceValidator` now rejects `replacedByFieldName="missingTarget"` before the API
+can return a misleading null. Replacement targets must exist in current table
+metadata, but need not be exposed in the historical API version. The module's
+`ApiReplacementFieldValidationTest` preserves direct mapping semantics and custom
+computed fields, rejects unsupported removed-to-removed aliases, and checks
+revalidation after field maps are cached. Normal table-version inheritance for
+unconfigured fields is unchanged; the fixture explicitly excludes private fields
+and separately proves that default. The ledger remains `pending` until independent
+review and the main full gate; full HTTP (#596), OpenAPI (#597), published artifacts
+and release acceptance remain separate.
 
 After installing this source revision into an owned Maven cache, run from the
 repository root:

@@ -4958,8 +4958,15 @@
       "negative_cases": [
         "Invalid/missing required shape; removed String overloads must not be used"
       ],
-      "gap": "Add sample consumer serialization/compatibility scenario. README claim that only Server remains is inaccurate; correction handed to parent.",
-      "verified_tests": [],
+      "gap": "Focused sample evidence covers legacy document serialization, exact enum wire values and compiler rejection of all four removed String overloads. Missing/invalid shape fixtures characterize permissive DTO serialization, not model validation; rejection policy remains an owner decision under #598. Default JsonUtils NON_EMPTY serialization also drops empty security scope arrays; the positive consumer explicitly uses the existing NON_NULL customization, while default behavior remains an owner-triage gap. Pending main full acceptance including the independently reviewed change.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testDocumentSerialization",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testDefaultSerializerDropsEmptySecurityScopes",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testExactEnumWireValues",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testMissingAndInvalidShapesAreNotValidated",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testNullEnumBoundaries",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testRemovedStringOverloadsDoNotCompile"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/598",

@@ -1530,3 +1530,44 @@ selected row) before restoration. All **46 Python checks passed**. The required
 feature report exits 1 because scenario review remains pending; all 11 method
 bindings resolve. All 130 original IDs, requirements, statuses, stages and release
 dispositions are preserved; only this row's gap and passing evidence changed.
+
+
+## Legacy OpenAPI model acceptance (#598)
+
+`SampleOpenApiModelsAcceptanceTest` constructs a legacy document with a typed path
+parameter, component schema/reference, response content and bearer security. It
+compares the complete parsed JSON tree and literal wire values for all four `In`
+and six `Type` constants through both setters and fluent methods. Four paired JDK
+compiler controls accept typed calls and reject each removed String overload of
+`Parameter.setIn/withIn` and `Schema.setType/withType` at the expected source line
+with an incompatible-type diagnostic; compilation uses the sample's resolved
+classpath. No new dependency, HTTP server, browser or external provider is needed.
+
+```sh
+mvn -f qqq-sample-project/pom.xml \
+  -Dtest=SampleOpenApiModelsAcceptanceTest,SampleMigration40ContractTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+python3 -B qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+```
+
+The positive consumer explicitly uses
+`JsonUtils.toJsonCustomized(value, builder -> builder.serializationInclusion(JsonInclude.Include.NON_NULL))`.
+Default `JsonUtils.toJson` uses `NON_EMPTY` and reproducibly changes
+`{"security":[{"BearerAuth":[]}]}` into `{"security":[{}]}`. A separate characterization
+asserts this loss and the existing customization's preservation; it does **not**
+claim the default serializer is fixed. Owner impact triage and separate defect
+tracking remain needed for that behavior. DTOs also serialize missing `info`/`paths`,
+empty info, a path parameter without a name and with `required=false`, an operation
+without responses, and an array schema without items. Those negative fixtures
+expose the absence of model validation, not successful invalid-shape rejection.
+Null `In` throws `NullPointerException`; null `Type` clears the schema type. Required
+shape rejection needs owner policy under [#598](https://github.com/QRun-IO/qqq/issues/598).
+
+The focused source run at base `6215d2b1e` passed 6 acceptance and 7 existing migration
+tests, with zero failures/errors/skips and zero Checkstyle violations. It used a
+private copy of the verified source cache; all 27 OpenAPI and 1,033 core embedded
+Java sources matched that base. `openapi.models` stays **pending** until main full
+acceptance includes the reviewed change and the shape/serialization gaps are
+resolved by the owner. This is source consumer evidence, not public-artifact,
+current API-generator or release-wide acceptance; existing contracts and release
+deferrals remain unchanged.

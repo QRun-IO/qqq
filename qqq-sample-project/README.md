@@ -1530,3 +1530,35 @@ selected row) before restoration. All **46 Python checks passed**. The required
 feature report exits 1 because scenario review remains pending; all 11 method
 bindings resolve. All 130 original IDs, requirements, statuses, stages and release
 dispositions are preserved; only this row's gap and passing evidence changed.
+
+
+## Application API versioning source acceptance (#595)
+
+`SampleApplicationApiVersioningAcceptanceTest` exercises `ApiImplementation.get`,
+`update` and `runProcess` against the native sample Person/Pet/Pet Note schema in a
+unique owned H2 database. It checks opt-in tables/processes, explicitly selected
+fields, initial/final version boundaries, historical and external field names,
+bidirectional custom mapping, nested records, duplicate-name rejection and
+permission/record-security denials. JDBC independently checks persisted values and
+unchanged denied writes. Fixtures restore QContext, close H2, clear table/field API
+caches and remove their own process state; unique API names isolate process lookup
+caching. No new dependencies, external provider, HTTP server or browser is needed.
+
+**Limits:** enrichment inherits the table's initial version for unconfigured
+fields, so this fixture explicitly excludes private fields and separately proves
+that default. The missing-replacement-target test characterizes a concrete gap:
+`QInstanceValidator` accepts `replacedByFieldName="missingTarget"`, then a real API
+GET returns the historical field as null although JDBC confirms its stored value.
+It is not evidence of invalid-target rejection. The ledger remains `pending`
+until independent review and the main full gate; full HTTP (#596), OpenAPI (#597),
+published artifacts and release acceptance remain separate.
+
+After installing this source revision into an owned Maven cache, run from the
+repository root:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml \
+  -Dtest=SampleApplicationApiVersioningAcceptanceTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+```

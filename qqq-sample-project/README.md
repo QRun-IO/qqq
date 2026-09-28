@@ -1555,19 +1555,26 @@ The positive consumer explicitly uses
 Default `JsonUtils.toJson` uses `NON_EMPTY` and reproducibly changes
 `{"security":[{"BearerAuth":[]}]}` into `{"security":[{}]}`. A separate characterization
 asserts this loss and the existing customization's preservation; it does **not**
-claim the default serializer is fixed. Owner impact triage and separate defect
-tracking remain needed for that behavior. DTOs also serialize missing `info`/`paths`,
+claim the default serializer is fixed. The related security-description defect is
+tracked separately in [#869](https://github.com/QRun-IO/qqq/issues/869). `GenerateOpenApiSpecAction` uses these
+legacy models and `JsonUtils.toPrettyJson`; the JSON spec route returns that rendered
+string directly, without the handler's separate `ALWAYS` customization. A bounded
+generator diagnostic found non-empty permission scopes for an HTTP bearer scheme,
+not the empty-scope loss on that endpoint. Both behaviors are described in the
+separate issue; no production serializer change is included here.
+
+DTOs serialize missing `info`/`paths`,
 empty info, a path parameter without a name and with `required=false`, an operation
 without responses, and an array schema without items. Those negative fixtures
-expose the absence of model validation, not successful invalid-shape rejection.
-Null `In` throws `NullPointerException`; null `Type` clears the schema type. Required
-shape rejection needs owner policy under [#598](https://github.com/QRun-IO/qqq/issues/598).
+characterize the existing permissive DTO boundary; they do not claim invalid-shape
+rejection. Null `In` throws `NullPointerException`; null `Type` clears the schema type.
+No documented required-shape validator contract was found in these DTOs, and
+[#598](https://github.com/QRun-IO/qqq/issues/598) does not require adding one.
 
 The focused source run at base `6215d2b1e` passed 6 acceptance and 7 existing migration
 tests, with zero failures/errors/skips and zero Checkstyle violations. It used a
 private copy of the verified source cache; all 27 OpenAPI and 1,033 core embedded
-Java sources matched that base. `openapi.models` stays **pending** until main full
-acceptance includes the reviewed change and the shape/serialization gaps are
-resolved by the owner. This is source consumer evidence, not public-artifact,
-current API-generator or release-wide acceptance; existing contracts and release
-deferrals remain unchanged.
+Java sources matched that base. `openapi.models` stays **pending** for main integration
+and acceptance of the reviewed change. The separate defect is not described as
+fixed; no new validation or publication gate is introduced. Existing contracts and
+release deferrals remain unchanged.

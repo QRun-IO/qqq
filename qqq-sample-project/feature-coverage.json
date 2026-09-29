@@ -4330,7 +4330,7 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending under validation-policy issue #820. Pending: complete String-key lookup/CRUD, join behavior (#524 can ignore aggregate joins), selected-source review; retain High #525/#526 and deferred #527–#531.",
+      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending under validation-policy issue #820. Native String identity boundaries are explicit (not full String-key CRUD support): ordinary-field reads succeed while unsupported key lookups/mutations refuse without retargeting (#884), with ObjectId CRUD controls. Explicit native joins refuse (#885 and join scope of #524); implemented common association fetching matches native membership and READ scope. Pending: #820 policy and selected-source review; retain High #525/#526 and deferred #527–#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMissingCollectionStartsEmptyAndIsCreatedByInsert",
@@ -4349,7 +4349,14 @@
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testRenamedPrimaryKeyUpdateIgnoresOrdinaryIdAsIdentity",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testVirtualNativeIdShadowRefusesDeleteBeforeCallbacks",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testUnstructuredLogicalIdShadowRefusesDeleteBeforeCallbacks",
-        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testReplaceUniqueMatchRefusesStringObjectIdCollisionBeforeUpdate"
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testReplaceUniqueMatchRefusesStringObjectIdCollisionBeforeUpdate",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testNativeStringKeyBoundariesNeverRetargetObjectIdOwners",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testExplicitQueryCountAndAggregateJoinsRefuse",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testSupportedAssociationFetchMatchesNativeMembershipAndReadScope",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testHiddenStringCounterpartPreservesDeniedReadResults",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testPersonalizedReadPolicyAppliesToStringCounterpartProbe",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testTypedObjectIdLookupRetainsItsNativeOwner",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testBatchedExpressionKeysAndReuseAfterRefusal"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",

@@ -74,6 +74,11 @@ public class MongoDBAggregateAction extends AbstractMongoDBAction implements Agg
     *******************************************************************************/
    public AggregateOutput execute(AggregateInput aggregateInput) throws QException
    {
+      if(aggregateInput.getQueryJoins() != null && !aggregateInput.getQueryJoins().isEmpty())
+      {
+         throw new QException("MongoDB explicit query joins are not supported");
+      }
+
       MongoClientContainer mongoClientContainer = null;
 
       Long       queryStartTime = System.currentTimeMillis();
@@ -101,7 +106,7 @@ public class MongoDBAggregateAction extends AbstractMongoDBAction implements Agg
          ////////////////////////////////////////////////////////////////////////
          // Filter original documents before adding the group and sort stages. //
          ////////////////////////////////////////////////////////////////////////
-         List<Bson> bsonList = makeFilterPipeline(table, backend, filter);
+         List<Bson> bsonList = makeFilterPipeline(table, backend, filter, mongoClientContainer);
          setQueryInQueryStat(new Document("pipeline", bsonList));
          queryToLog = bsonList;
 

@@ -71,6 +71,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
 import com.kingsrook.qqq.backend.core.model.actions.tables.replace.ReplaceInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.replace.ReplaceOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
@@ -88,11 +89,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.backend.module.mongodb.actions.MongoDBQueryAction;
 import com.kingsrook.qqq.backend.module.mongodb.actions.MongoDBTransaction;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBBackendMetaData;
 import com.kingsrook.qqq.backend.module.mongodb.model.metadata.MongoDBTableBackendDetails;
@@ -380,11 +383,16 @@ class SampleMongoDatabaseIT
    void testMalformedFilterRefusesWithoutNativeMutation() throws Exception
    {
       seedRows();
-      List<Document> before = nativeRows();
-      QueryInput input = new QueryInput(TABLE).withFilter(new QQueryFilter().withCriteria(
-         new QFilterCriteria("notAField", QCriteriaOperator.EQUALS, "probe")));
-      assertThrows(QException.class, () -> new QueryAction().execute(input));
-      assertEquals(before, nativeRows());
+      for(QInputSource source : List.of(QInputSource.USER, QInputSource.SYSTEM))
+      {
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("notAField", QCriteriaOperator.EQUALS, "probe"));
+         QueryInput query = new QueryInput(TABLE).withInputSource(source).withFilter(filter.clone());
+         CountInput count = countInput(source, filter.clone());
+         AggregateInput aggregate = aggregateInput(source, filter.clone(), new Aggregate("integerValue", AggregateOperator.COUNT));
+         readOnly("malformed Query / " + source, query, () -> refused("field", () -> new QueryAction().execute(query)));
+         readOnly("malformed Count / " + source, count, () -> refused("field", () -> new CountAction().execute(count)));
+         readOnly("malformed Aggregate / " + source, aggregate, () -> refused("field", () -> new AggregateAction().execute(aggregate)));
+      }
    }
 
 
@@ -478,6 +486,268 @@ class SampleMongoDatabaseIT
          assertEquals(List.of("First"), collection().find().map(row -> row.getString("name")).into(new ArrayList<>()));
          transaction.rollback();
          assertEquals(List.of("First"), collection().find().map(row -> row.getString("name")).into(new ArrayList<>()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Native STRING rows remain queryable by ordinary fields, but cannot masquerade
+    ** as supported ObjectId lookup/write identities, with or without a counterpart.
+    ******************************************************************************/
+   @Test
+   void testNativeStringKeyBoundariesNeverRetargetObjectIdOwners() throws Exception
+   {
+      for(QInputSource source : List.of(QInputSource.USER, QInputSource.SYSTEM))
+      {
+         for(String key : List.of("owned-string-key", id(90).toHexString()))
+         {
+            collection().drop();
+            insert(new QRecord().withValue("id", key).withValue("name", "String owner"));
+            for(Boolean counterpart : ObjectId.isValid(key) ? List.of(false, true) : List.of(false))
+            {
+               if(counterpart && ObjectId.isValid(key))
+               {
+                  collection().insertOne(new Document("_id", new ObjectId(key)).append("name", "ObjectId owner"));
+               }
+               List<QRecord> selected = new QueryAction().execute(new QueryInput(TABLE).withInputSource(source).withFilter(new QQueryFilter()
+                  .withCriteria(new QFilterCriteria("name", QCriteriaOperator.EQUALS, "String owner")))).getRecords();
+               assertEquals(1, selected.size());
+               assertEquals(key, selected.getFirst().getValue("id"));
+               assertEquals("String owner", collection().find(new Document("_id", key)).first().getString("name"));
+               List<Document> before = nativeRows();
+               GetInput get = fullGet(key).withInputSource(source);
+               readOnly("native String Get / " + source, get, () -> refused("key", () -> new GetAction().execute(get)));
+               QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IN, List.of(key)));
+               QueryInput query = new QueryInput(TABLE).withInputSource(source).withFilter(filter.clone());
+               CountInput count = countInput(source, filter.clone());
+               AggregateInput aggregate = aggregateInput(source, filter.clone(), new Aggregate("integerValue", AggregateOperator.COUNT));
+               readOnly("native String Query / " + source, query, () -> refused("key", () -> new QueryAction().execute(query)));
+               readOnly("native String Count / " + source, count, () -> refused("key", () -> new CountAction().execute(count)));
+               readOnly("native String Aggregate / " + source, aggregate, () -> refused("key", () -> new AggregateAction().execute(aggregate)));
+               refused("key", () -> new UpdateAction().execute(new UpdateInput(TABLE).withInputSource(source)
+                  .withRecord(new QRecord().withValue("id", key).withValue("name", "Must not update"))));
+               refused("key", () -> new DeleteAction().execute(new DeleteInput(TABLE).withInputSource(source).withPrimaryKeys(List.of(key))));
+               assertEquals(before, nativeRows());
+            }
+            if(ObjectId.isValid(key))
+            {
+               assertEquals(1, collection().deleteOne(new Document("_id", key)).getDeletedCount());
+               assertEquals("ObjectId owner", new GetAction().execute(fullGet(key).withInputSource(source)).getRecord().getValue("name"));
+               var updated = new UpdateAction().execute(new UpdateInput(TABLE).withInputSource(source)
+                  .withRecord(new QRecord().withValue("id", key).withValue("name", "Updated ObjectId owner")));
+               assertTrue(updated.getRecords().getFirst().getErrors().isEmpty());
+               assertEquals("Updated ObjectId owner", collection().find(new Document("_id", new ObjectId(key))).first().getString("name"));
+               assertEquals(1, new DeleteAction().execute(new DeleteInput(TABLE).withInputSource(source).withPrimaryKeys(List.of(key))).getDeletedRecordCount());
+               assertEquals(0, collection().countDocuments());
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A hidden native STRING counterpart must not turn denied reads into an error.
+    ******************************************************************************/
+   @Test
+   void testHiddenStringCounterpartPreservesDeniedReadResults() throws Exception
+   {
+      instance.addSecurityKeyType(new QSecurityKeyType().withName(OWNER_KEY));
+      session.withSecurityKeyValue(OWNER_KEY, 1L);
+      table().withRecordSecurityLock(new RecordSecurityLock().withFieldName("longValue").withSecurityKeyType(OWNER_KEY)
+         .withLockScope(RecordSecurityLock.LockScope.READ).withNullValueBehavior(RecordSecurityLock.NullValueBehavior.DENY));
+      String key = id(90).toHexString();
+      for(QInputSource source : List.of(QInputSource.USER, QInputSource.SYSTEM))
+      {
+         collection().drop();
+         collection().insertOne(new Document("_id", id(90)).append("name", "Hidden ObjectId owner").append("long_value", 2L));
+         assertNoReadableKeyRows(key, source);
+         collection().insertOne(new Document("_id", key).append("name", "Hidden String owner").append("long_value", 2L));
+         assertNoReadableKeyRows(key, source);
+         collection().updateOne(new Document("_id", key), new Document("$set", new Document("long_value", 1L)));
+         GetInput visibleString = fullGet(key).withInputSource(source);
+         readOnly("readable String counterpart refuses / " + source, visibleString, () -> refused("key", () -> new GetAction().execute(visibleString)));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** USER metadata controls probe visibility; unrestricted SYSTEM keeps its scope.
+    ******************************************************************************/
+   @Test
+   void testPersonalizedReadPolicyAppliesToStringCounterpartProbe() throws Exception
+   {
+      instance.addSecurityKeyType(new QSecurityKeyType().withName(OWNER_KEY));
+      session.withSecurityKeyValue(OWNER_KEY, 1L);
+      instance.addSupplementalCustomizer(TableMetaDataPersonalizerInterface.CUSTOMIZER_TYPE, new QCodeReference(UserOwnerPolicy.class));
+      String key = id(90).toHexString();
+      collection().insertOne(new Document("_id", id(90)).append("name", "Canonical owner").append("long_value", 2L));
+      assertNoReadableKeyRows(key, QInputSource.USER);
+      assertEquals("Canonical owner", new GetAction().execute(fullGet(key).withInputSource(QInputSource.SYSTEM)).getRecord().getValue("name"));
+      collection().insertOne(new Document("_id", key).append("name", "String owner").append("long_value", 2L));
+      assertNoReadableKeyRows(key, QInputSource.USER);
+      refused("key", () -> new GetAction().execute(fullGet(key).withInputSource(QInputSource.SYSTEM)));
+      assertTrue(table().getRecordSecurityLocks() == null || table().getRecordSecurityLocks().isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit native ObjectId input carries a type that public hexadecimal text lacks.
+    ******************************************************************************/
+   @Test
+   void testTypedObjectIdLookupRetainsItsNativeOwner() throws Exception
+   {
+      String key = id(90).toHexString();
+      collection().insertMany(List.of(new Document("_id", key).append("name", "String owner").append("integer_value", 2),
+         new Document("_id", id(90)).append("name", "ObjectId owner").append("integer_value", 1)));
+      for(QInputSource source : List.of(QInputSource.USER, QInputSource.SYSTEM))
+      {
+         GetInput get = fullGet(key).withPrimaryKey(id(90)).withInputSource(source);
+         readOnly("typed ObjectId Get / " + source, get, () -> assertEquals("ObjectId owner", new GetAction().execute(get).getRecord().getValue("name")));
+         QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IN, List.of(id(90))));
+         List<QRecord> records = new QueryAction().execute(new QueryInput(TABLE).withInputSource(source).withFilter(filter.clone())).getRecords();
+         assertEquals(List.of("ObjectId owner"), records.stream().map(row -> row.getValueString("name")).toList());
+         assertEquals(1, new CountAction().execute(countInput(source, filter.clone())).getCount());
+         AggregateInput aggregate = aggregateInput(source, filter.clone(), new Aggregate("integerValue", AggregateOperator.COUNT));
+         assertEquals(1, onlyAggregate(aggregate).getAggregateValue(aggregate.getAggregates().getFirst()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Batched and expression keys retain native identity checks, and a reused
+    ** action must recover from refusal without carrying previous lookup values.
+    ******************************************************************************/
+   @Test
+   void testBatchedExpressionKeysAndReuseAfterRefusal() throws Exception
+   {
+      collection().insertMany(List.of(new Document("_id", id(1)).append("name", "First"),
+         new Document("_id", id(2)).append("name", "Second"),
+         new Document("_id", id(2).toHexString()).append("name", "String counterpart")));
+      List<Document> before = nativeRows();
+      MongoDBQueryAction action = new MongoDBQueryAction();
+      QueryInput batch = new QueryInput(TABLE).withFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IN, List.of(id(1).toHexString(), id(2).toHexString()))));
+      refused("key", () -> action.execute(batch));
+      QueryInput first = new QueryInput(TABLE).withFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, id(1).toHexString())));
+      assertEquals(List.of("First"), action.execute(first).getRecords().stream().map(row -> row.getValueString("name")).toList());
+      AbstractFilterExpression<String> expression = new AbstractFilterExpression<>()
+      {
+         /*******************************************************************************
+          ** The existing expression contract resolves a value before native conversion.
+          ******************************************************************************/
+         @Override
+         public String evaluate(QFieldMetaData field)
+         {
+            return id(2).toHexString();
+         }
+      };
+      QueryInput derived = new QueryInput(TABLE).withFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, expression)));
+      refused("key", () -> action.execute(derived));
+      assertEquals(List.of("First"), action.execute(first).getRecords().stream().map(row -> row.getValueString("name")).toList());
+      assertEquals(before, nativeRows());
+   }
+
+
+
+   /*******************************************************************************
+    ** All read shapes must retain normal denied/not-found semantics without mutation.
+    ******************************************************************************/
+   private void assertNoReadableKeyRows(String key, QInputSource source) throws Exception
+   {
+      GetInput get = fullGet(key).withInputSource(source);
+      readOnly("denied Get / " + source, get, () -> assertNull(new GetAction().execute(get).getRecord()));
+      QQueryFilter filter = new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IN, List.of(key)));
+      QueryInput query = new QueryInput(TABLE).withInputSource(source).withFilter(filter.clone());
+      CountInput count = countInput(source, filter.clone());
+      AggregateInput aggregate = aggregateInput(source, filter.clone(), new Aggregate("integerValue", AggregateOperator.COUNT));
+      readOnly("denied Query / " + source, query, () -> assertTrue(new QueryAction().execute(query).getRecords().isEmpty()));
+      readOnly("denied Count / " + source, count, () -> assertEquals(0, new CountAction().execute(count).getCount()));
+      readOnly("denied Aggregate / " + source, aggregate, () -> assertTrue(new AggregateAction().execute(aggregate).getResults().isEmpty()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Unsupported explicit joins must not return an unrelated root-only result.
+    ******************************************************************************/
+   @Test
+   void testExplicitQueryCountAndAggregateJoinsRefuse() throws Exception
+   {
+      seedRows();
+      QJoinMetaData join = new QJoinMetaData().withName("fieldLabExplicitJoin").withLeftTable(TABLE).withRightTable(TABLE).withType(JoinType.MANY_TO_ONE)
+         .withJoinOn(new JoinOn("normalizedKey", "name"));
+      instance.addJoin(join);
+      assertEquals(0, collection().aggregate(List.of(new Document("$lookup", new Document("from", COLLECTION).append("localField", "normalized_key")
+         .append("foreignField", "name").append("as", "peer")), new Document("$unwind", "$peer"))).into(new ArrayList<>()).size());
+      var queryJoin = new com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin(TABLE).withAlias("peer").withBaseTableOrAlias(TABLE).withJoinMetaData(join);
+      for(QInputSource source : List.of(QInputSource.USER, QInputSource.SYSTEM))
+      {
+         QueryInput query = new QueryInput(TABLE).withInputSource(source).withQueryJoin(queryJoin.clone());
+         CountInput count = countInput(source, new QQueryFilter()).withQueryJoin(queryJoin.clone());
+         AggregateInput aggregate = aggregateInput(source, new QQueryFilter(), new Aggregate("integerValue", AggregateOperator.COUNT)).withQueryJoin(queryJoin.clone());
+         readOnly("unsupported Query join / " + source, query, () -> refused("join", () -> new QueryAction().execute(query)));
+         readOnly("unsupported Count join / " + source, count, () -> refused("join", () -> new CountAction().execute(count)));
+         readOnly("unsupported Aggregate join / " + source, aggregate, () -> refused("join", () -> new AggregateAction().execute(aggregate)));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Common association joins fetch matching children and retain physical READ
+    ** restrictions; this is distinct from unsupported native QueryJoin requests.
+    ******************************************************************************/
+   @Test
+   void testSupportedAssociationFetchMatchesNativeMembershipAndReadScope() throws Exception
+   {
+      seedRows();
+      String childName = "mongoAssociationChild";
+      String childCollection = "field_lab_children";
+      QTableMetaData child = new QTableMetaData().withName(childName).withBackendName(BACKEND).withPrimaryKeyField("id")
+         .withBackendDetails(new MongoDBTableBackendDetails().withTableName(childCollection))
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withBackendName("_id"))
+         .withField(new QFieldMetaData("parentNumber", QFieldType.INTEGER).withBackendName("parent_number"))
+         .withField(new QFieldMetaData("owner", QFieldType.INTEGER).withBackendName("owner"))
+         .withField(new QFieldMetaData("label", QFieldType.STRING).withBackendName("label"))
+         .withRecordSecurityLock(new RecordSecurityLock().withFieldName("owner").withSecurityKeyType(OWNER_KEY).withNullValueBehavior(RecordSecurityLock.NullValueBehavior.DENY));
+      instance.addTable(child);
+      instance.addSecurityKeyType(new QSecurityKeyType().withName(OWNER_KEY));
+      session.withSecurityKeyValue(OWNER_KEY, 1);
+      instance.addJoin(new QJoinMetaData().withName("fieldLabChildren").withLeftTable(TABLE).withRightTable(childName).withType(JoinType.ONE_TO_MANY)
+         .withJoinOn(new JoinOn("integerValue", "parentNumber")));
+      table().withAssociation(new Association().withName("children").withAssociatedTableName(childName).withJoinName("fieldLabChildren"));
+      MongoCollection<Document> children = database().getCollection(childCollection);
+      children.insertMany(List.of(
+         new Document("_id", id(101)).append("parent_number", 1).append("owner", 1).append("label", "Visible first"),
+         new Document("_id", id(102)).append("parent_number", 1).append("owner", 2).append("label", "Denied first"),
+         new Document("_id", id(103)).append("parent_number", 2).append("owner", 1).append("label", "Visible second"),
+         new Document("_id", id(104)).append("parent_number", 9).append("owner", 1).append("label", "Unrelated"),
+         new Document("_id", id(105)).append("parent_number", null).append("owner", 1).append("label", "Unassigned")));
+      List<String> childBefore = collectionSnapshot(childCollection);
+      for(QInputSource source : List.of(QInputSource.USER, QInputSource.SYSTEM))
+      {
+         QueryInput query = new QueryInput(TABLE).withInputSource(source).withIncludeAssociations(true).withAssociationNamesToInclude(List.of("children"))
+            .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderBy("integerValue")));
+         readOnly("implemented association fetch / " + source, query, () ->
+         {
+            List<QRecord> roots = new QueryAction().execute(query).getRecords();
+            assertEquals(4, roots.size());
+            for(Integer index = 0; index < roots.size(); index++)
+            {
+               QRecord root = roots.get(index);
+               assertEquals(index + 1, root.getValueInteger("integerValue"));
+               List<Document> expected = children.find(new Document("parent_number", index + 1).append("owner", 1)).into(new ArrayList<>());
+               List<QRecord> actual = root.getAssociatedRecords().get("children");
+               assertNotNull(actual);
+               assertEquals(expected.stream().map(row -> row.getObjectId("_id").toHexString()).toList(), actual.stream().map(row -> row.getValueString("id")).toList());
+               assertEquals(expected.stream().map(row -> row.getString("label")).toList(), actual.stream().map(row -> row.getValueString("label")).toList());
+            }
+         });
+         assertEquals(childBefore, collectionSnapshot(childCollection));
       }
    }
 

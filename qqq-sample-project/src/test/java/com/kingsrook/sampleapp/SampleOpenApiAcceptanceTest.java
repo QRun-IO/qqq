@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.kingsrook.qqq.api.actions.GenerateOpenApiSpecAction;
+import com.kingsrook.qqq.api.actions.GetTableApiFieldsAction;
 import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecInput;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
@@ -83,6 +84,7 @@ class SampleOpenApiAcceptanceTest
    void start() throws Exception
    {
       MemoryRecordStore.fullReset();
+      GetTableApiFieldsAction.clearCaches();
       instance = new QInstance();
       instance.registerAuthenticationProvider(AuthScope.instanceDefault(), new QAuthenticationMetaData().withType(QAuthenticationType.MOCK));
       instance.addBackend(new QBackendMetaData().withName("memory").withBackendType(MemoryBackendModule.class));
@@ -103,6 +105,12 @@ class SampleOpenApiAcceptanceTest
       instance.addTable(table("excluded", new ApiTableMetaData().withInitialVersion("2026.Q1").withIsExcluded(true)));
       instance.addTable(table("future", new ApiTableMetaData().withInitialVersion("2027.Q1")));
       instance.addTable(table("unconfigured", null));
+      ApiInstanceMetaDataContainer.of(instance).withApiInstanceMetaData(new ApiInstanceMetaData()
+         .withName("other").withPath("/other/").withLabel("Other owned API").withDescription("Separate field-name scope")
+         .withContactEmail("owner@example.test").withCurrentVersion(new APIVersion("2026.Q3"))
+         .withSupportedVersions(List.of(new APIVersion("2026.Q1"), new APIVersion("2026.Q3"))).withSecuritySchemes(Map.of()));
+      ApiTableMetaDataContainer.of(instance.getTable("person")).withApiTableMetaData("other",
+         new ApiTableMetaData().withInitialVersion("2026.Q1").withApiTableName("people"));
       QContext.init(instance, null);
       try
       {
@@ -137,6 +145,7 @@ class SampleOpenApiAcceptanceTest
       {
          QContext.clear();
          MemoryRecordStore.fullReset();
+         GetTableApiFieldsAction.clearCaches();
       }
    }
 
@@ -228,10 +237,10 @@ class SampleOpenApiAcceptanceTest
 
 
    /*******************************************************************************
-    ** Known gap #874: documented aliases fail as filters; this is not acceptance.
+    ** Regression #874: the documented alias must select the correct owned record.
     *******************************************************************************/
    @Test
-   void testKnownGapRenamedQueryFieldIsRejected() throws Exception
+   void testRenamedQueryFieldMatchesDocumentedAlias() throws Exception
    {
       JsonNode document = spec("2026.Q3", "json");
       Set<String> parameters = new HashSet<>();
@@ -241,9 +250,66 @@ class SampleOpenApiAcceptanceTest
       }
       assertTrue(parameters.contains("name"));
       assertFalse(parameters.contains("displayName"));
-      JsonNode error = getJson("/owned/2026.Q3/people/query?name=foo", 500);
-      assertEquals("Query Filter contained 1 unrecognized field name: name", error.path("error").asText());
+      for(String version : List.of("2026.Q1", "2026.Q3"))
+      {
+         JsonNode result = getJson("/owned/" + version + "/people/query?name=foo", 200);
+         assertEquals(1, result.path("count").asInt());
+         assertEquals(1, result.path("records").size());
+         assertEquals(1, result.at("/records/0/id").asInt());
+         assertEquals("foo", result.at("/records/0/name").asText());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Historical aliases still map through their explicit replacement field.
+    *******************************************************************************/
+   @Test
+   void testHistoricalQueryReplacementAndVersionBoundaries() throws Exception
+   {
+      QFieldMetaData legacy = new QFieldMetaData("retiredInternalName", QFieldType.STRING)
+         .withSupplementalMetaData(new ApiFieldMetaDataContainer().withApiFieldMetaData("owned", new ApiFieldMetaData()
+            .withApiFieldName("legacyName").withInitialVersion("2026.Q1").withFinalVersion("2026.Q1").withReplacedByFieldName("displayName")));
+      QContext.init(instance, null);
+      new QInstanceEnricher(instance).enrichField(legacy);
+      ApiTableMetaDataContainer.of(instance.getTable("person")).getApiTableMetaData("owned").withRemovedApiField(legacy);
+      QContext.clear();
+      JsonNode result = getJson("/owned/2026.Q1/people/query?legacyName=foo", 200);
+      assertEquals(1, result.path("count").asInt());
+      assertEquals(1, result.path("records").size());
+      assertEquals(1, result.at("/records/0/id").asInt());
+      assertEquals("foo", result.at("/records/0/legacyName").asText());
+      JsonNode error = getJson("/owned/2026.Q3/people/query?legacyName=foo", 400);
+      assertEquals("Unrecognized filter criteria field: legacyName", error.path("error").asText());
       assertFalse(error.has("records"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Internal, excluded, unknown and wrong-version/API aliases remain rejected.
+    *******************************************************************************/
+   @Test
+   void testQueryAliasScopeAndInvalidCriteria() throws Exception
+   {
+      for(String field : List.of("displayName", "secret", "unknown"))
+      {
+         JsonNode error = getJson("/owned/2026.Q3/people/query?" + field + "=foo", 400);
+         assertEquals("Unrecognized filter criteria field: " + field, error.path("error").asText());
+         assertFalse(error.has("records"));
+      }
+      assertEquals("Unrecognized filter criteria field: later", getJson("/owned/2026.Q1/people/query?later=42", 400).path("error").asText());
+      assertEquals("Unrecognized filter criteria field: name", getJson("/other/2026.Q3/people/query?name=foo", 400).path("error").asText());
+      JsonNode other = getJson("/other/2026.Q3/people/query?displayName=foo", 200);
+      assertEquals(1, other.path("count").asInt());
+      assertEquals(1, other.path("records").size());
+      assertEquals(1, other.at("/records/0/id").asInt());
+      assertEquals("foo", other.at("/records/0/displayName").asText());
+      JsonNode invalid = getJson("/owned/2026.Q3/people/query?name=" + URLEncoder.encode("BETWEEN foo", StandardCharsets.UTF_8), 400);
+      assertTrue(invalid.path("error").asText().contains("for field name requires 2 values"));
+      assertFalse(invalid.has("records"));
+      assertEquals(0, getJson("/owned/2026.Q3/people/query?name=absent", 200).path("records").size());
    }
 
 

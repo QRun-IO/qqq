@@ -1676,3 +1676,51 @@ Run `mvn -pl qqq-middleware-api install`, then
 against the same Maven repository. Native local sockets are required. The focused
 checks exercise no external auth provider and introduce no release deferral;
 [#869](https://github.com/QRun-IO/qqq/issues/869) records the original defect.
+
+### Lambda dispatch source acceptance (#601)
+
+[`SampleLambdaDispatchAcceptanceTest`](../qqq-middleware-lambda/src/test/java/com/kingsrook/sampleapp/SampleLambdaDispatchAcceptanceTest.java)
+exercises real Lambda stream/custom handlers and `/processes/{name}/init` locally.
+It lives in the Lambda module's test tree to use existing dependencies; the sample
+POM is unchanged. Events, memory metadata and identities are owned synthetic
+fixtures. The application adapter supplies already-resolved sessions using the
+existing MOCK provider and clears `QContext` in `finally`; this is explicit
+application behavior, not authentication or automatic cleanup supplied by
+`QStandardLambdaHandler`. Its default `setupSession()` is empty, and
+`setQInstance()` alone is insufficient.
+
+| Method | Observed boundary |
+| --- | --- |
+| `testCustomStreamRequestResponse` | Stream parsing, UTF-8 custom values, path/query/header mapping and distinct request IDs. |
+| `testMalformedCustomRequestsNeverDispatch` | Malformed event/body, unsupported content type and missing request context produce errors without calling custom logic. |
+| `testCustomExceptionsPreserveRequestIdentity` | User-facing and internal custom exceptions produce correlated error bodies. |
+| `testConfiguredProcessInitAndRequestIsolation` | Actual process steps receive request bodies and the configured instance/session; successive callers have separate outputs and process UUIDs. |
+| `testMissingAndInvalidSessionCannotRunProcess` | Core rejects missing/invalid MOCK sessions before executing a step; a valid-session control executes. |
+| `testUnconfiguredStandardHandlerDoesNotSupplyContext` | Setting the handler instance without application context fails before process execution. |
+| `testProcessFailuresAndRecoveryCleanContext` | User-facing/internal process errors remain body errors; application cleanup precedes a successful recovery request. |
+| `testUnknownPathAndProcessDoNotExecute` | Unknown paths and process names cannot invoke the configured process. |
+| `testUnimplementedStandardRoutesStayUnavailable` | Metadata/query/count/export/get/update/delete/possible-values/widget stubs return errors, not supported CRUD. |
+
+The stream writes `QLambdaResponse.Body`, not the Java status/header envelope;
+deployed HTTP semantics require application event mapping. Process callers must
+inspect `body.error`/`body.userFacingError`. All nine methods assert caller context
+is clear immediately after invocation, before teardown. No AWS account, endpoint,
+credentials, broker, browser or new dependency is used. Long-running async
+completion and deployed/published-artifact behavior are not covered.
+
+Run from the repository root with a source-matching owned cache:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local="$OWNED_M2" -pl qqq-middleware-lambda clean verify
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+mkdir -p qqq-sample-project/target/surefire-reports
+cp qqq-middleware-lambda/target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest.xml qqq-sample-project/target/surefire-reports/
+python3 -B qqq-sample-project/verify-feature-coverage.py --stage source --report-only --require-feature lambda.dispatch
+```
+
+The explicit copy imports the freshly generated module report for the sample
+ledger verifier; it is not a sample-module test run. The required-feature command
+continues to return 1 while `lambda.dispatch` remains **pending** independent
+review and combined acceptance. All 130 contracts, stages, statuses, issue links,
+release dispositions and deferrals are preserved. Focused evidence lives in the
+workspace's `qqq-601-lambda-dispatch-evidence`; this is not release approval.

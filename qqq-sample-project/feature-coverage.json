@@ -5148,8 +5148,18 @@
         "Malformed request, unknown path, missing/invalid session, process exception and clean context after request",
         "Standard metadata/query/count/export/get/update/delete/widget branches are TODO stubs; verify/document unavailable routes rather than treating them as supported CRUD"
       ],
-      "gap": "Add first-party stream/process/custom-handler acceptance and explicit support boundary. QStandardLambdaHandler.setupSession is empty; application must supply valid context/session. README standard-dispatch wording needs qualification; handed to parent.",
-      "verified_tests": [],
+      "gap": "Nine local stream/custom/process-init checks cover owned application-configured context/session, caller isolation, malformed/unknown requests, missing/invalid sessions, process failure/recovery and unavailable standard routes. The application adapter owns request cleanup; QStandardLambdaHandler.setupSession remains empty. Tests live in the Lambda module and its fresh report is explicitly imported for the sample ledger. Pending independent review and combined acceptance; no AWS/deployment, long-running async, browser or published-artifact acceptance. No standard CRUD support is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testCustomStreamRequestResponse",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testMalformedCustomRequestsNeverDispatch",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testCustomExceptionsPreserveRequestIdentity",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testConfiguredProcessInitAndRequestIsolation",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testMissingAndInvalidSessionCannotRunProcess",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnconfiguredStandardHandlerDoesNotSupplyContext",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testProcessFailuresAndRecoveryCleanContext",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnknownPathAndProcessDoNotExecute",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnimplementedStandardRoutesStayUnavailable"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/601",

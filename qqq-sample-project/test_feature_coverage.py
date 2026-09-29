@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from test_next_acceptance import digest, write_fixture
 
 
 class FeatureCoverageGateTest(unittest.TestCase):
@@ -21,7 +22,10 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.sha = subprocess.check_output(['git', '-C', str(self.sample), 'rev-parse', 'HEAD'], text=True).strip()
         shutil.copy(Path(__file__).with_name('verify-feature-coverage.py'), self.sample)
         shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
+        shutil.copy(Path(__file__).with_name('next_acceptance.py'), self.sample)
         self.inventory = json.loads(Path(__file__).with_name('feature-coverage.json').read_text())
+        write_fixture(self.sample, self.inventory['features'], self.sha)
+        self.next_receipt_sha = digest(self.sample / 'target/next-acceptance/receipt.json')
         for feature in self.inventory['features']:
             if feature['acceptance_status'] != 'unsupported' and feature['id'] != 'sample.bootstrap':
                 feature['acceptance_status'] = 'verified'
@@ -58,6 +62,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         if isinstance(required, str):
             required = (required,)
         run = subprocess.run([sys.executable, str(self.sample / 'verify-feature-coverage.py')]
+                             + ['--next-receipt-sha256', self.next_receipt_sha]
                              + ['--stage', stage] + (['--report-only'] if report_only else [])
                              + [option for feature in required for option in ('--require-feature', feature)],
                              capture_output=True, text=True)
@@ -81,6 +86,33 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.assertEqual(self.supported_count, result['verified'])
         self.feature['acceptance_status'] = 'pending'
         self.assertEqual(1, self.run_gate()[0])
+
+    def test_next_native_receipt_is_required_even_with_green_junit(self):
+        (self.sample / 'target/next-acceptance/receipt.json').unlink()
+        code, result = self.run_gate(stage='source', required='core.widget.row_builder')
+        self.assertEqual(1, code)
+        self.assertFalse(result['required_passed'])
+
+    def test_next_import_never_promotes_pending_ledger_status(self):
+        feature = next(f for f in self.inventory['features'] if f['id'] == 'core.widget.row_builder')
+        feature['verified_tests'] = []
+        self.assertEqual(0, self.run_gate(stage='source', required=feature['id'])[0])
+        feature['acceptance_status'] = 'pending'
+        code, result = self.run_gate(stage='source', required=feature['id'])
+        self.assertEqual(1, code)
+        self.assertIn('scenario review is pending', next(g['reasons'] for g in result['gaps'] if g['id'] == feature['id']))
+        self.assertEqual('pending', json.loads((self.sample / 'feature-coverage.json').read_text())['features'][
+            self.inventory['features'].index(feature)]['acceptance_status'])
+
+    def test_next_preserves_historical_material_mapping_without_inventing_junit(self):
+        feature = next(f for f in self.inventory['features'] if f['id'] == 'core.widget.blocks')
+        original = json.loads(Path(__file__).with_name('feature-coverage.json').read_text())
+        feature['verified_tests'] = next(f['verified_tests'] for f in original['features'] if f['id'] == feature['id'])
+        self.assertEqual(0, self.run_gate(stage='source', required=feature['id'])[0])
+        classname, name = feature['verified_tests'][0].split('#')
+        (self.reports / 'TEST-material.xml').write_text(
+            '<testsuite><testcase classname="' + classname + '" name="' + name + '"><failure/></testcase></testsuite>')
+        self.assertEqual(1, self.run_gate(stage='source', required=feature['id'])[0])
 
     def test_source_pending_requires_explicit_approved_deferral(self):
         self.feature['acceptance_status'] = 'pending'

@@ -336,6 +336,7 @@ public class ApiImplementation
                      if(StringUtils.hasContent(apiFieldMetaData.getReplacedByFieldName()))
                      {
                         criteria.setFieldName(apiFieldMetaData.getReplacedByFieldName());
+                        convertDateCriteriaValues(table.getField(criteria.getFieldName()), criteria);
                      }
                      else if(apiFieldMetaData.getCustomValueMapper() != null)
                      {
@@ -345,6 +346,7 @@ public class ApiImplementation
                      else
                      {
                         criteria.setFieldName(field.getName());
+                        convertDateCriteriaValues(field, criteria);
                      }
 
                      filter.addCriteria(criteria);
@@ -1348,6 +1350,25 @@ public class ApiImplementation
          this.positiveOperator = positiveOperator;
          this.negativeOperator = negativeOperator;
          this.noOfValues = noOfValues;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Match native DATE values without taking conversion ownership from custom mappers.
+    *******************************************************************************/
+   private static void convertDateCriteriaValues(QFieldMetaData nativeField, QFilterCriteria criteria) throws QException
+   {
+      if(nativeField != null && nativeField.getType() == QFieldType.DATE && criteria.getValues() != null
+         && criteria.getOperator() != QCriteriaOperator.LIKE && criteria.getOperator() != QCriteriaOperator.NOT_LIKE)
+      {
+         List<Serializable> values = new ArrayList<>();
+         for(Serializable value : criteria.getValues())
+         {
+            values.add(ValueUtils.getValueAsLocalDate(value));
+         }
+         criteria.setValues(values);
       }
    }
 

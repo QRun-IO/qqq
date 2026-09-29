@@ -1658,3 +1658,21 @@ issue draft, cache provenance and focused logs are retained in the workspace's
 `qqq-573-messaging-evidence` directory. Ordinary single-From delivery supplies the
 passing cases above. All 130 ledger contracts, stages, statuses, issue links and
 release dispositions are preserved; this is not release approval.
+
+
+## Public OpenAPI security requirements (#869)
+
+`SampleOpenApiSecurityAcceptanceTest` exercises the real JSON and YAML spec routes
+using owned memory metadata and an ephemeral loopback HTTP server. Explicit HTTP
+bearer and API-key requirements retain their named empty scope arrays; OAuth
+permission scopes remain non-empty, and anonymous operations retain `security: []`.
+An unsupported version returns the existing error response rather than a spec.
+These checks cover security descriptions, not authentication enforcement. The
+generator's document rendering selects `NON_NULL` through existing JSON/YAML hooks;
+shared serialization defaults remain unchanged, as the #598 characterization shows.
+
+Run `mvn -pl qqq-middleware-api install`, then
+`mvn -f qqq-sample-project/pom.xml -Dtest=SampleOpenApiSecurityAcceptanceTest,SampleOpenApiModelsAcceptanceTest,SampleMigration40ContractTest test`
+against the same Maven repository. Native local sockets are required. The focused
+checks exercise no external auth provider and introduce no release deferral;
+[#869](https://github.com/QRun-IO/qqq/issues/869) records the original defect.

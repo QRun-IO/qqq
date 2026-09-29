@@ -31,6 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.APIVersionRange;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecInput;
@@ -542,7 +544,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
       List<Map<String, List<String>>> rs = new ArrayList<>();
       for(Map.Entry<String, SecurityScheme> entry : CollectionUtils.nonNullMap(apiInstanceMetaData.getSecuritySchemes()).entrySet())
       {
-         rs.add(MapBuilder.of(entry.getKey(), List.of(permissionName)));
+         rs.add(MapBuilder.of(entry.getKey(), entry.getValue().getTypeEnum() == SecuritySchemeType.OAUTH2 ? List.of(permissionName) : List.of()));
       }
       return (rs);
    }
@@ -1217,8 +1219,12 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
       GenerateOpenApiSpecOutput output = new GenerateOpenApiSpecOutput();
       output.setOpenAPI(openAPI);
-      output.setYaml(YamlUtils.toYaml(openAPI));
-      output.setJson(JsonUtils.toPrettyJson(openAPI));
+      output.setYaml(YamlUtils.toYamlCustomized(openAPI, builder -> builder.serializationInclusion(JsonInclude.Include.NON_NULL)));
+      output.setJson(JsonUtils.toJsonCustomized(openAPI, builder ->
+      {
+         builder.serializationInclusion(JsonInclude.Include.NON_NULL);
+         builder.enable(SerializationFeature.INDENT_OUTPUT);
+      }));
       return (output);
    }
 

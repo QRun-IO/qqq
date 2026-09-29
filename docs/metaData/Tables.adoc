@@ -262,6 +262,17 @@ A QQQ Table can have end-user defined Script records associated with individual 
 The "types" of these scripts (e.g., how they are used in an application) are wholly application-designed & managed.
 QQQ provides the mechanism for UI's to present and manage such scripts (e.g., the *Developer Mode* screen in the Material Dashboard), as well as an interface to load & execute such scripts `RunAssociatedScriptAction`).
 
+[WARNING]
+====
+*Script Test executes against live application data.* Explicit write calls such as
+`qqq.update(...)` persist changes using the caller's permissions. Writes completed
+before a later script error can remain committed. Test does not save its draft
+revision or execution logs, and local changes to an input record are not saved
+unless the script explicitly writes them. Test does not isolate Java calls or
+external service effects. Use disposable records and a test environment for code
+that can change data.
+====
+
 *AssociatedScript Properties:*
 
 * `fieldName` - *String, Required* - name of a {link-field} in the table which stores the id of the associated script record.

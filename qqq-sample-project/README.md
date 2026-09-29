@@ -1487,17 +1487,29 @@ These are unversioned scripts exercising the existing QRecord fallback; the API
 adapter emits a warning when no script API version is specified. Versioned API
 record conversion, browser editing and concurrent revision storage are not covered.
 
-**Open non-persistence gap:** [#849](https://github.com/QRun-IO/qqq/issues/849)
-records a failing native control: calling the registered `testScript` process with
-`qqq.update('person', qqq.newRecord().withValue('id', 1).withValue('firstName',
-'Draft write'))` leaves that update committed. The independent SQL assertion
-expected `Avery` and observed `Draft write`. Test does not save its draft revision
-or logs, but it is not a write-isolation sandbox. The passing local-mutation test
-above must not be read as proving otherwise. No production correction or new
-runtime policy is included; the intended explicit-write boundary needs resolution.
-The original #572 requirement remains unchanged and the ledger row stays pending
-for this gap, independent review and combined full verification. Its existing
-post-4.0 disposition is not a 4.1 release approval.
+**Warning: Test executes against live application data.** Explicit calls such as
+`qqq.update(...)` persist changes using the caller's permissions, including writes
+completed before a later script failure. Test does not save the draft revision or
+its execution logs. It does not roll back data writes or isolate Java calls and
+external service effects. Use disposable records and a test environment when
+trying code that can change data.
+
+This preserves the existing behavior approved by the maintainer on September 29,
+2026 in [#849](https://github.com/QRun-IO/qqq/issues/849). The #572 non-persistence
+boundary applies to the draft revision, persisted logs and implicit local record
+mutations; it does not prohibit explicit writes. The native H2 tests below exercise
+the registered Test process and independently query its database:
+
+| Test method | Verified boundary |
+| --- | --- |
+| `testRecordDraftExplicitWritePersistsWithoutSavingDraftOrLogs` | An explicit update changes only the selected record; stored source, current revision and persisted logs remain unchanged. |
+| `testRecordDraftWriteRemainsAfterScriptFailure` | A completed write remains after a later script exception; no draft revision or logs are saved. |
+| `testRecordDraftWriteDeniedThenGranted` | A read-only caller's write is denied; the same caller succeeds after receiving edit permission. |
+
+These checks do not claim a general script sandbox or external-side-effect
+isolation. All 14 focused cases and 26 ledger checks pass; independent review found no
+actionable issues. Combined verification remains required for the ledger row.
+Browser warning delivery is tracked separately in #849.
 
 **Composition prerequisite:** #591 signed head `65ad000b4` owns the sample's
 test-scoped JavaScript provider dependency. This #572 branch adds no dependencies

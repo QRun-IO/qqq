@@ -419,6 +419,137 @@ class SampleMongoReplicaSetIT
 
 
    /*******************************************************************************
+    ** Once the first row arrives, later native batches retain no query deadline.
+    ******************************************************************************/
+   @Test
+   void testFirstRowDisarmsTimeoutBeforeSlowLaterBatch() throws Exception
+   {
+      List<Document> rows = new ArrayList<>();
+      for(int i = 0; i < 102; i++)
+      {
+         rows.add(new Document("name", "Row " + i).append("sequence", i));
+      }
+      collection().insertMany(rows);
+      String view = "owned_streaming_view";
+      client.getDatabase(DATABASE).createView(view, COLLECTION, List.of(new Document("$match", new Document("$expr", new Document("$function",
+         new Document("body", "function(sequence) { if (sequence === 101) { const start = Date.now(); while (Date.now() - start < 2500) {} } return true; }")
+            .append("args", List.of("$sequence")).append("lang", "js"))))));
+      QContext.getQInstance().getTable(TABLE).setBackendDetails(new MongoDBTableBackendDetails().withTableName(view));
+      String applicationName = "qqqStreaming-" + UUID.randomUUID();
+      ((MongoDBBackendMetaData) QContext.getQInstance().getBackend(BACKEND)).setUrlSuffix("directConnection=true&appName=" + applicationName);
+      long start = System.nanoTime();
+      assertEquals(102, new QueryAction().execute(new QueryInput(TABLE).withTimeoutSeconds(1)).getRecords().size());
+      assertTrue(System.nanoTime() - start >= TimeUnit.SECONDS.toNanos(2));
+      assertTrue(awaitOperations(new Document("appName", applicationName), List::isEmpty).isEmpty());
+      assertEquals(102, collection().countDocuments());
+   }
+
+
+
+   /*******************************************************************************
+    ** Null, zero and negative values continue to leave native execution unbounded.
+    ******************************************************************************/
+   @Test
+   void testDisabledTimeoutsAllowSlowFirstResult() throws Exception
+   {
+      collection().insertOne(new Document("name", "Survivor"));
+      String view = "owned_unbounded_view";
+      client.getDatabase(DATABASE).createView(view, COLLECTION, List.of(new Document("$match", new Document("$expr", new Document("$function",
+         new Document("body", "function() { const start = Date.now(); while (Date.now() - start < 1200) {} return true; }")
+            .append("args", List.of()).append("lang", "js"))))));
+      QContext.getQInstance().getTable(TABLE).setBackendDetails(new MongoDBTableBackendDetails().withTableName(view));
+      String applicationName = "qqqUnbounded-" + UUID.randomUUID();
+      ((MongoDBBackendMetaData) QContext.getQInstance().getBackend(BACKEND)).setUrlSuffix("directConnection=true&appName=" + applicationName);
+      for(Integer timeoutSeconds : java.util.Arrays.asList(null, 0, -1))
+      {
+         assertEquals(1, new QueryAction().execute(new QueryInput(TABLE).withTimeoutSeconds(timeoutSeconds)).getRecords().size());
+         assertTrue(awaitOperations(new Document("appName", applicationName), List::isEmpty).isEmpty());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A configured timeout cancels the observed owned action session.
+    ******************************************************************************/
+   @Test
+   void testOwnedTimeoutCancelsNativeExecution() throws Exception
+   {
+      assertTimeoutCancelsNativeExecution(false);
+   }
+
+
+
+   /*******************************************************************************
+    ** A borrowed owner survives timeout cancellation and explicit rollback.
+    ******************************************************************************/
+   @Test
+   void testBorrowedTimeoutCancelsNativeExecution() throws Exception
+   {
+      assertTimeoutCancelsNativeExecution(true);
+   }
+
+
+
+   /*******************************************************************************
+    ** Observe configured cancellation with ordinary read/write credentials while
+    ** the query occupies its single-connection pool.
+    ******************************************************************************/
+   private void assertTimeoutCancelsNativeExecution(boolean borrowed) throws Exception
+   {
+      new InsertAction().execute(new InsertInput(TABLE).withRecord(new QRecord().withValue("name", "Survivor")));
+      QInstance instance = QContext.getQInstance();
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) instance.getBackend(BACKEND);
+      String applicationName = "qqqSessionCancel-" + UUID.randomUUID();
+      String username = "ownedReader-" + UUID.randomUUID();
+      client.getDatabase("admin").runCommand(new Document("createUser", username).append("pwd", "owned-fixture-only")
+         .append("roles", List.of(new Document("role", "readWrite").append("db", DATABASE))));
+      backend.setUsername(username);
+      backend.setPassword("owned-fixture-only");
+      backend.setUrlSuffix("directConnection=true&maxPoolSize=1&appName=" + applicationName);
+      String view = "owned_slow_view";
+      client.getDatabase(DATABASE).createView(view, COLLECTION, List.of(new Document("$match", new Document("$expr",
+         new Document("$function", new Document("body", "function() { const start = Date.now(); while (Date.now() - start < 10000) {} return true; }")
+            .append("args", List.of()).append("lang", "js"))))));
+      instance.getTable(TABLE).setBackendDetails(new MongoDBTableBackendDetails().withTableName(view));
+      try(QBackendTransaction transaction = borrowed ? QBackendTransaction.openFor(new InsertInput(TABLE)) : null;
+         var executor = Executors.newSingleThreadExecutor())
+      {
+         var query = executor.submit(() ->
+         {
+            QContext.init(instance, new QSession());
+            try
+            {
+               assertThrows(QUserFacingException.class, () -> new QueryAction().execute(new QueryInput(TABLE).withTimeoutSeconds(1).withTransaction(transaction)));
+            }
+            finally
+            {
+               QContext.clear();
+            }
+         });
+         List<Document> entered = awaitOperations(new Document("appName", applicationName).append("command.aggregate", view), rows -> !rows.isEmpty());
+         assertEquals(1, entered.size());
+         Object operationId = entered.getFirst().get("opid");
+         assertNotNull(operationId);
+         query.get(3, TimeUnit.SECONDS);
+         assertTrue(awaitOperations(new Document("opid", operationId), List::isEmpty).isEmpty());
+         instance.getTable(TABLE).setBackendDetails(new MongoDBTableBackendDetails().withTableName(COLLECTION));
+         if(borrowed)
+         {
+            MongoDBTransaction mongo = assertInstanceOf(MongoDBTransaction.class, transaction);
+            assertEquals(1.0, mongo.getMongoClient().getDatabase("admin").runCommand(new Document("ping", 1)).getDouble("ok"));
+            transaction.rollback();
+            assertEquals(1, new QueryAction().execute(new QueryInput(TABLE).withTransaction(transaction)).getRecords().size());
+            transaction.commit();
+         }
+         assertEquals(1, new QueryAction().execute(new QueryInput(TABLE)).getRecords().size());
+      }
+      assertTrue(awaitOperations(new Document("appName", applicationName), List::isEmpty).isEmpty());
+   }
+
+
+
+   /*******************************************************************************
     ** Closing an uncommitted transaction releases its session and client, and
     ** a subsequent action can still use the server without seeing its write.
     ******************************************************************************/

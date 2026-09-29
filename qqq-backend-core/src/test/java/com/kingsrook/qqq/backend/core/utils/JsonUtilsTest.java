@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.utils;
 
 
+import javax.xml.datatype.Duration;
 import java.io.IOException;
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -56,6 +57,20 @@ import static org.junit.jupiter.api.Assertions.fail;
  *******************************************************************************/
 class JsonUtilsTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** XML duration values must respect the numeric parsing limit.
+    *******************************************************************************/
+   @Test
+   void testXmlDurationNumericLimit() throws IOException
+   {
+      assertEquals("P1Y", JsonUtils.toObject("\"P1Y\"", Duration.class).toString());
+
+      String oversizedDuration = "\"P" + "9".repeat(1001) + "Y\"";
+      assertThrows(IOException.class, () -> JsonUtils.toObject(oversizedDuration, Duration.class));
+   }
+
+
 
    /*******************************************************************************
     **

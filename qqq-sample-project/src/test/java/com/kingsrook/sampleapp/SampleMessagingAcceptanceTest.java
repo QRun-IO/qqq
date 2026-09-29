@@ -139,6 +139,8 @@ class SampleMessagingAcceptanceTest
          assertEquals(SUBJECT, mime.getSubject());
          assertEquals("sender@example.invalid", ((InternetAddress) mime.getFrom()[0]).getAddress());
          assertEquals("Owned Sender", ((InternetAddress) mime.getFrom()[0]).getPersonal());
+         assertNull(mime.getHeader("Reply-To"));
+         assertEquals("sender@example.invalid", ((InternetAddress) mime.getReplyTo()[0]).getAddress());
          assertEquals(1, mime.getRecipients(Message.RecipientType.TO).length);
          assertEquals("to@example.invalid", ((InternetAddress) mime.getRecipients(Message.RecipientType.TO)[0]).getAddress());
          assertEquals(1, mime.getRecipients(Message.RecipientType.CC).length);
@@ -151,6 +153,75 @@ class SampleMessagingAcceptanceTest
          assertEquals(TEXT, body.getBodyPart(0).getContent());
          assertTrue(body.getBodyPart(1).isMimeType("text/html"));
          assertEquals(HTML, body.getBodyPart(1).getContent());
+         unrelated.assertNoConnection();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** An explicit reply address replaces the implicit From fallback on the wire.
+    *******************************************************************************/
+   @Test
+   void testExplicitReplyToAfterFrom() throws Exception
+   {
+      assertReplyToDelivery(new MultiParty()
+         .withParty(new Party().withAddress("sender@example.invalid").withRole(EmailPartyRole.FROM))
+         .withParty(new Party().withAddress("reply@example.invalid").withLabel("Owned Reply").withRole(EmailPartyRole.REPLY_TO)),
+         List.of("reply@example.invalid"), List.of("Owned Reply"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Appending reply addresses must retain all explicit parties, never the sender.
+    *******************************************************************************/
+   @Test
+   void testMultipleExplicitReplyToAfterFrom() throws Exception
+   {
+      assertReplyToDelivery(new MultiParty()
+         .withParty(new Party().withAddress("sender@example.invalid").withRole(EmailPartyRole.FROM))
+         .withParty(new Party().withAddress("reply@example.invalid").withLabel("Owned Reply").withRole(EmailPartyRole.REPLY_TO))
+         .withParty(new Party().withAddress("second-reply@example.invalid").withLabel("Second Reply").withRole(EmailPartyRole.REPLY_TO)),
+         List.of("reply@example.invalid", "second-reply@example.invalid"), List.of("Owned Reply", "Second Reply"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Setting From between reply parties must not replace or truncate their list.
+    *******************************************************************************/
+   @Test
+   void testMultipleExplicitReplyToAroundFrom() throws Exception
+   {
+      assertReplyToDelivery(new MultiParty()
+         .withParty(new Party().withAddress("reply@example.invalid").withLabel("Owned Reply").withRole(EmailPartyRole.REPLY_TO))
+         .withParty(new Party().withAddress("sender@example.invalid").withRole(EmailPartyRole.FROM))
+         .withParty(new Party().withAddress("second-reply@example.invalid").withLabel("Second Reply").withRole(EmailPartyRole.REPLY_TO)),
+         List.of("reply@example.invalid", "second-reply@example.invalid"), List.of("Owned Reply", "Second Reply"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Reply parties belong in MIME headers and must never become SMTP recipients.
+    *******************************************************************************/
+   private void assertReplyToDelivery(MultiParty from, List<String> addresses, List<String> labels) throws Exception
+   {
+      try(SmtpReceiver receiver = new SmtpReceiver(0); SmtpReceiver unrelated = new SmtpReceiver(0))
+      {
+         configure(PROVIDER, receiver);
+         configure("unrelatedMessagingAcceptance", unrelated);
+         new SendMessageAction().execute(message().withFrom(from)
+            .withTo(new Party().withAddress("to@example.invalid")));
+         Receipt receipt = receiver.receipt();
+         assertTrue(receipt.accepted());
+         assertEquals(List.of("MAIL FROM:<sender@example.invalid>", "RCPT TO:<to@example.invalid>"), receipt.envelope());
+         MimeMessage mime = parse(receipt);
+         assertEquals("sender@example.invalid", ((InternetAddress) mime.getFrom()[0]).getAddress());
+         assertEquals(1, mime.getHeader("Reply-To").length);
+         assertThat(mime.getReplyTo()).extracting(address -> ((InternetAddress) address).getAddress()).containsExactlyElementsOf(addresses);
+         assertThat(mime.getReplyTo()).extracting(address -> ((InternetAddress) address).getPersonal()).containsExactlyElementsOf(labels);
          unrelated.assertNoConnection();
       }
    }

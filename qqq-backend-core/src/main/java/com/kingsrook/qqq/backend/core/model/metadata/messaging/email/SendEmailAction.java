@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.messaging.email;
 
 
 import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
@@ -146,14 +147,19 @@ public class SendEmailAction
       if(EmailPartyRole.REPLY_TO.equals(party.getRole()))
       {
          InternetAddress internetAddress = getInternetAddressFromParty(party);
-         Address[]       replyTo         = emailMessage.getReplyTo();
+
+         /////////////////////////////////////////////////////////////////////
+         // getReplyTo otherwise supplies From, not explicit reply parties. //
+         /////////////////////////////////////////////////////////////////////
+         Address[] replyTo = emailMessage.getHeader("Reply-To") == null ? null : emailMessage.getReplyTo();
          if(replyTo == null || replyTo.length == 0)
          {
             emailMessage.setReplyTo(new Address[] { internetAddress });
          }
          else
          {
-            List<Address> replyToList = Arrays.asList(replyTo);
+            List<Address> replyToList = new ArrayList<>(Arrays.asList(replyTo));
+            replyToList.add(internetAddress);
             emailMessage.setReplyTo(replyToList.toArray(new Address[0]));
          }
       }

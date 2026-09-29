@@ -1539,13 +1539,17 @@ provider in the sample instance. An owned standard-library SMTP receiver binds
 only `127.0.0.1` on an ephemeral port and never relays. Every address is synthetic
 under `example.invalid`; there are no credentials, environment-derived endpoints,
 live AWS/SMTP/Slack/SMS/email accounts or recipients, added dependencies, or
-runtime changes. Source inspection found EMAIL host/port configuration and SES
-region/credentials configuration; the existing SES fixture injects a client below
-normal dispatch, so this acceptance slice uses EMAIL. The seven methods cover:
+runtime changes in the original #573 slice. Source inspection found EMAIL
+host/port configuration and SES region/credentials configuration; the existing SES fixture injects a client below
+normal dispatch, so this acceptance slice uses EMAIL. With the bounded #870
+Reply-To correction, the ten methods cover:
 
 | Method | Observed boundary |
 | --- | --- |
 | `testConfiguredMessageEnvelopeAndBody` | Exact MAIL FROM and To/Cc/Bcc RCPT envelope, decoded sender/subject/UTF-8 text and HTML, Bcc hidden in MIME, unselected provider untouched. |
+| `testExplicitReplyToAfterFrom` | Actual MIME has the requested reply address/label, excluding the implicit sender fallback. |
+| `testMultipleExplicitReplyToAfterFrom` | All explicit reply addresses survive in order; SMTP delivery recipients remain unchanged. |
+| `testMultipleExplicitReplyToAroundFrom` | A From party between reply parties does not overwrite or truncate the explicit list. |
 | `testSubsequentMessageDoesNotReuseRecipients` | Reconfigured owned receiver gets only the new recipient, without old Cc/Bcc. |
 | `testMissingAndUnknownProviderConfiguration` | Null/empty/blank and unknown provider names fail without a receiver connection. |
 | `testUnsupportedProviderType` | Unsupported configured type fails without fallback transmission. |
@@ -1564,13 +1568,17 @@ python3 -B qqq-sample-project/verify-feature-coverage.py \
 
 The `core.messaging` row remains **pending**; these are focused source checks,
 not full composition, independent review, live provider, native/browser or
-published-artifact acceptance. Explicit Reply-To is **not passing**: a local wire
+published-artifact acceptance. [#870](https://github.com/QRun-IO/qqq/issues/870)
+tracks the provisionally Medium Reply-To defect discovered in #573: the wire
 reproduction expected `reply@example.invalid` but observed `sender@example.invalid`.
-`SendEmailAction.addSender()` uses `getReplyTo()` (which defaults to From), then
-rebuilds its nonempty list without adding the requested party. That provisionally
-Medium defect remains unfixed; automatic approval review blocked publishing its
-separate issue under the no-external-messages restriction. The red test, trace,
-issue draft, cache provenance and focused logs are retained in the workspace's
-`qqq-573-messaging-evidence` directory. Ordinary single-From delivery supplies the
-passing cases above. All 130 ledger contracts, stages, statuses, issue links and
-release dispositions are preserved; this is not release approval.
+This branch corrects `SendEmailAction.addSender()` to inspect only an explicit
+Reply-To header and append each supplied reply party. Three retained wire
+regressions cover single/multiple addresses after From and multiple addresses
+around From; the ordinary From case also preserves its absent-header fallback.
+Reply parties are never added to the SMTP envelope. The original #573 candidate
+remains at `f9c4a9b91e7c`; its evidence is in `qqq-573-messaging-evidence`.
+The fix's red/green reports, rebuilt-core provenance and focused logs are in
+`qqq-870-email-reply-to-evidence`. Run these added tests against the rebuilt core
+in an owned cache; the original unpatched cache fails all three regressions.
+All 130 ledger contracts, stages, statuses, original issue links and release
+dispositions are preserved; this is not release approval.

@@ -139,6 +139,13 @@ jobs:
             # This QBit is a source-only fixture, installed into this job's local cache.
             mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -DskipTests -f qqq-sample-data-qbit/pom.xml clean install
             mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
+      - run:
+          name: Run utility Lambda source acceptance
+          command: |
+            set -euo pipefail
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -pl qqq-utility-lambdas clean verify
+            mkdir -p qqq-sample-project/target/surefire-reports
+            cp qqq-utility-lambdas/target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest.xml qqq-sample-project/target/surefire-reports/
       - when:
           condition: << parameters.require_complete_coverage >>
           steps:

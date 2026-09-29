@@ -1614,3 +1614,47 @@ Java sources matched that base. `openapi.models` stays **pending** for main inte
 and acceptance of the reviewed change. The separate defect is not described as
 fixed; no new validation or publication gate is introduced. Existing contracts and
 release deferrals remain unchanged.
+
+
+## Configured messaging source acceptance (#573)
+
+`SampleMessagingAcceptanceTest` uses the normal `SendMessageAction` → `EMAIL`
+provider in the sample instance. An owned standard-library SMTP receiver binds
+only `127.0.0.1` on an ephemeral port and never relays. Every address is synthetic
+under `example.invalid`; there are no credentials, environment-derived endpoints,
+live AWS/SMTP/Slack/SMS/email accounts or recipients, added dependencies, or
+runtime changes. Source inspection found EMAIL host/port configuration and SES
+region/credentials configuration; the existing SES fixture injects a client below
+normal dispatch, so this acceptance slice uses EMAIL. The seven methods cover:
+
+| Method | Observed boundary |
+| --- | --- |
+| `testConfiguredMessageEnvelopeAndBody` | Exact MAIL FROM and To/Cc/Bcc RCPT envelope, decoded sender/subject/UTF-8 text and HTML, Bcc hidden in MIME, unselected provider untouched. |
+| `testSubsequentMessageDoesNotReuseRecipients` | Reconfigured owned receiver gets only the new recipient, without old Cc/Bcc. |
+| `testMissingAndUnknownProviderConfiguration` | Null/empty/blank and unknown provider names fail without a receiver connection. |
+| `testUnsupportedProviderType` | Unsupported configured type fails without fallback transmission. |
+| `testInvalidReceiverRejectedBeforeTransmission` | Invalid recipient role and malformed address, even after a valid party, fail before any connection. |
+| `testReceiverRefusalDoesNotTransmitBody` | Local SMTP 550 rejection propagates; no DATA, acceptance, or unrelated-provider connection. |
+| `testDeliveryFailureAfterBodyDoesNotFallback` | Local SMTP 554 after DATA propagates; captured body is not reported as accepted and no fallback occurs. |
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-matching-cache \
+  -f qqq-sample-project/pom.xml -Dtest=SampleMessagingAcceptanceTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+# Expected exit 1 while independent review/full composition remain pending.
+python3 -B qqq-sample-project/verify-feature-coverage.py \
+  --stage source --report-only --require-feature core.messaging
+```
+
+The `core.messaging` row remains **pending**; these are focused source checks,
+not full composition, independent review, live provider, native/browser or
+published-artifact acceptance. Explicit Reply-To is **not passing**: a local wire
+reproduction expected `reply@example.invalid` but observed `sender@example.invalid`.
+`SendEmailAction.addSender()` uses `getReplyTo()` (which defaults to From), then
+rebuilds its nonempty list without adding the requested party. That provisionally
+Medium defect remains unfixed; automatic approval review blocked publishing its
+separate issue under the no-external-messages restriction. The red test, trace,
+issue draft, cache provenance and focused logs are retained in the workspace's
+`qqq-573-messaging-evidence` directory. Ordinary single-From delivery supplies the
+passing cases above. All 130 ledger contracts, stages, statuses, issue links and
+release dispositions are preserved; this is not release approval.

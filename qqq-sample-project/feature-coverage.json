@@ -4330,7 +4330,7 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending under validation-policy issue #820. Native String identity boundaries are explicit (not full String-key CRUD support): ordinary-field reads succeed while unsupported key lookups/mutations refuse without retargeting (#884), with ObjectId CRUD controls. Explicit native joins refuse (#885 and join scope of #524); implemented common association fetching matches native membership and READ scope. Pending: #820 policy and selected-source review; retain High #525/#526 and deferred #527–#531.",
+      "gap": "The #820 policy is resolved by the maintainer: preserve native SYSTEM value handling and verify native USER/HTTP boundaries separately. The complete standalone Mongo class and application HTTP acceptance class pass 38 cases against the selected source candidate. Native insert/update preserve Integer, numeric String and nonnumeric String values for SYSTEM and USER, with independent BSON and public Get readback. The application API rejects malformed values on its canonical H2 fixture; this is not Mongo HTTP evidence or a universal adapter policy. Existing String-key/native-join unsupported boundaries remain explicit. Independent review passed; combined CI and accepted integration remain before promoting this row from pending.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMissingCollectionStartsEmptyAndIsCreatedByInsert",
@@ -4356,12 +4356,19 @@
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testHiddenStringCounterpartPreservesDeniedReadResults",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testPersonalizedReadPolicyAppliesToStringCounterpartProbe",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testTypedObjectIdLookupRetainsItsNativeOwner",
-        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testBatchedExpressionKeysAndReuseAfterRefusal"
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testBatchedExpressionKeysAndReuseAfterRefusal",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testNativeInsertAndUpdatePreserveSuppliedFieldTypes"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/583",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "contract_decision": {
+        "issue": "https://github.com/QRun-IO/qqq/issues/820#issuecomment-5894351276",
+        "owner": "James Maes",
+        "date": "2026-09-29",
+        "decision": "Preserve and document existing SYSTEM behavior; test native USER and HTTP adapter boundaries separately. No generic type-rejection policy change."
+      }
     },
     {
       "id": "backend.mongodb.lifecycle",

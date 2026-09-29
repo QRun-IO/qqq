@@ -21,6 +21,7 @@
 package com.kingsrook.sampleapp;
 
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -772,6 +773,41 @@ class SampleMongoDatabaseIT
       assertThrows(QException.class, () -> new InsertAction().execute(new InsertInput(TABLE).withSkipUniqueKeyCheck(true)
          .withRecord(new QRecord().withValue("id", key).withValue("name", "Cannot replace owner"))));
       assertEquals(before, collectionSnapshot(COLLECTION));
+   }
+
+
+
+   /*******************************************************************************
+    ** Native input sources retain caller-supplied value types; they do not impose
+    ** a generic field-type conversion policy on Mongo's BSON storage.
+    *******************************************************************************/
+   @Test
+   void testNativeInsertAndUpdatePreserveSuppliedFieldTypes() throws Exception
+   {
+      for(QInputSource source : List.of(QInputSource.SYSTEM, QInputSource.USER))
+      {
+         for(Serializable value : List.<Serializable>of(7, "7", "not-an-integer"))
+         {
+            QRecord supplied = new QRecord().withValue("name", source + " " + value.getClass().getSimpleName() + " " + value)
+               .withValue("integerValue", value);
+            List<QRecord> insertedRecords = new InsertAction().execute(new InsertInput(TABLE).withInputSource(source).withRecord(supplied)).getRecords();
+            assertEquals(1, insertedRecords.size(), supplied.getErrorsAsString());
+            QRecord inserted = insertedRecords.get(0);
+            successful(inserted);
+            String key = inserted.getValueString("id");
+            assertEquals(value, nativeRow(key).get("integer_value"));
+            assertEquals(value, new GetAction().execute(fullGet(key).withInputSource(source)).getRecord().getValue("integerValue"));
+
+            successful(new UpdateAction().executeForRecord(new UpdateInput(TABLE).withInputSource(source)
+               .withRecord(new QRecord().withValue("id", key).withValue("integerValue", 8))));
+            assertEquals(8, nativeRow(key).get("integer_value"));
+
+            successful(new UpdateAction().executeForRecord(new UpdateInput(TABLE).withInputSource(source)
+               .withRecord(new QRecord().withValue("id", key).withValue("integerValue", value))));
+            assertEquals(value, nativeRow(key).get("integer_value"));
+            assertEquals(value, new GetAction().execute(fullGet(key).withInputSource(source)).getRecord().getValue("integerValue"));
+         }
+      }
    }
 
 

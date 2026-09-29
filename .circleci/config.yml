@@ -2,6 +2,17 @@
 
 version: 2.1
 
+parameters:
+  next_acceptance_bundle_url:
+    type: string
+    default: ""
+  next_acceptance_bundle_sha256:
+    type: string
+    default: ""
+  next_acceptance_receipt_sha256:
+    type: string
+    default: ""
+
 orbs:
   qqq-orb: kingsrook/qqq-orb@0.6.0
 
@@ -94,6 +105,10 @@ jobs:
 
   sample_acceptance:
     executor: qqq-orb/java
+    environment:
+      QQQ_NEXT_CI_BUNDLE_URL: << pipeline.parameters.next_acceptance_bundle_url >>
+      QQQ_NEXT_BUNDLE_SHA256: << pipeline.parameters.next_acceptance_bundle_sha256 >>
+      QQQ_NEXT_RECEIPT_SHA256: << pipeline.parameters.next_acceptance_receipt_sha256 >>
     parameters:
       require_complete_coverage:
         type: boolean
@@ -133,9 +148,7 @@ jobs:
       - run:
           name: Run sample data, HTTP and browser acceptance
           command: |
-            python3 qqq-sample-project/test_feature_coverage.py
-            python3 -m unittest discover -s qqq-sample-project -p test_published_bom.py
-            python3 qqq-sample-project/test_data_qbit_packaging.py
+            python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
             # This QBit is a source-only fixture, installed into this job's local cache.
             mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -DskipTests -f qqq-sample-data-qbit/pom.xml clean install
             mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
@@ -190,15 +203,21 @@ jobs:
               --maven-settings /tmp/circleci/mvn-settings.xml \
               --report-dir qqq-sample-project/target/surefire-reports
       - run:
+          name: Stage independently reviewed Next evidence after clean builds
+          when: always
+          command: python3 -B qqq-sample-project/next_acceptance_ci.py stage
+      - run:
           name: Report sample feature coverage
           when: always
-          command: python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+          command: python3 -B qqq-sample-project/next_acceptance_ci.py report
       - when:
           condition: << parameters.require_complete_coverage >>
           steps:
             - run:
                 name: Require reviewed source-stage coverage before publication
-                command: python3 qqq-sample-project/verify-feature-coverage.py --stage source
+                command: python3 -B qqq-sample-project/next_acceptance_ci.py strict
+      - store_artifacts:
+          path: qqq-sample-project/target/next-acceptance-stage.json
       - run:
           name: Collect JUnit test reports
           when: always

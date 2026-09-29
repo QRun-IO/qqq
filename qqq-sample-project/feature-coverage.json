@@ -4377,7 +4377,7 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, correlated currentOp disappearance after timeout reporting, fresh-action recovery, cooperative cancellation of an observed native cursor, and owned versus borrowed native connection/session accounting through commit and close-abort. #821 focused tests cover one transaction-owned session and injected initialization/close failures. #875 native regressions require owned and borrowed server execution to stop within the bounded timeout observation under enforced readWrite authorization, with anonymous/restricted privileged-command denial controls, borrowed recovery, first-row streaming and disabled deadlines. Cancellation failure or unsupported native commands do not guarantee prompt termination. Pending: independent #875 and combined-source review; retain High #525/#526 and deferred #527–#531.",
+      "gap": "Source acceptance verified against dc6cea5d7548a0a82d5a374b8211d709f5a5b278 after independent #584/#875 review and the fresh combined 120-module/40-native/46-Python gates. All 17 lifecycle bindings are unchanged in this composition. The 17 sample bindings cover standalone session reuse/non-atomic rollback and mixed/failed batches; replica-set commit visibility, rollback/reuse, duplicate-key atomic failure, close-abort, cooperative cursor cancellation and correlated owned/borrowed connection/session cleanup. Authenticated readWrite-only timeout cases include exact-role and privileged-command denial controls, native operation disappearance and fresh/borrowed recovery with maxPoolSize1. Query completion is required within3s after observing the operation, followed by up-to5s disappearance polling; this is not an absolute end-to-end deadline. First-row streaming and disabled deadlines remain unchanged. Cancellation rejected, unreachable or unsupported cannot guarantee prompt termination; QQQ defines no shared Mongo pool policy and currentOp does not count every cached logical session. #821/#842 module tests retain initialization/close-failure and fixture-ownership controls. Retain High #525/#526 and deferred #527–#531; no Mongo data, join or type-policy acceptance is implied.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",
@@ -4397,7 +4397,7 @@
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testDisabledTimeoutsAllowSlowFirstResult",
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testAnonymousCannotRunPrivilegedCommand"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/584",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."

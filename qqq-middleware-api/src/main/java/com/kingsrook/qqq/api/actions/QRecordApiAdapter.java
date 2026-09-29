@@ -49,6 +49,7 @@ import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaDataContainer;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
@@ -61,6 +62,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.ListBuilder;
 import org.apache.commons.lang3.BooleanUtils;
 import org.json.JSONArray;
@@ -410,6 +412,28 @@ public class QRecordApiAdapter
          if(apiFieldsMap.containsKey(jsonKey))
          {
             setValueFromApiFieldInQRecord(jsonObject, jsonKey, apiName, apiFieldsMap, qRecord, includeNonEditableFields);
+
+            ///////////////////////////////////////////////////////////////////////
+            // Reject native conversion failures at the request boundary. Keep  //
+            // raw values and native coercions; custom mappers own their input. //
+            // Replacements use the destination field's current physical type. //
+            ///////////////////////////////////////////////////////////////////////
+            QFieldMetaData field = apiFieldsMap.get(jsonKey);
+            ApiFieldMetaData apiFieldMetaData = ObjectUtils.tryAndRequireNonNullElse(() -> ApiFieldMetaDataContainer.of(field).getApiFieldMetaData(apiName), new ApiFieldMetaData());
+            String targetName = StringUtils.hasContent(apiFieldMetaData.getReplacedByFieldName()) ? apiFieldMetaData.getReplacedByFieldName() : field.getName();
+            QFieldMetaData targetField = table.getField(targetName);
+            if(targetField != null && qRecord.getValues().containsKey(targetName)
+               && (StringUtils.hasContent(apiFieldMetaData.getReplacedByFieldName()) || apiFieldMetaData.getCustomValueMapper() == null))
+            {
+               try
+               {
+                  ValueUtils.getValueAsFieldType(targetField.getType(), qRecord.getValue(targetName));
+               }
+               catch(QValueException e)
+               {
+                  throw new QBadRequestException("Invalid value for field " + jsonKey + ": expected " + targetField.getType(), e);
+               }
+            }
          }
          else if(associationMap.containsKey(jsonKey))
          {

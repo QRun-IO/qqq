@@ -4950,8 +4950,18 @@
         "Invalid JSON/type/filter, missing/unknown record, unauthenticated/forbidden request and server error mapping",
         "Wrong HTTP method returns configured 405; no assumed standalone count route unless registered by the application"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Owned-loopback sample scenarios cover configured data/bulk routes, five custom process methods and their explicit 405s, async status, response/status/Content-Type transformation, native authentication/permissions, bad requests and server-error mapping. #872 rejects invalid directly mapped field types before persistence while retaining native coercions and custom mapping. Independent review, the main full gate and published-artifact acceptance remain pending; query counts do not imply a standalone count route.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testGetAndQuery",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testInsertPatchAndDelete",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testBulkInsertUpdateDelete",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testBadRequestsAndUnknownRecords",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testInvalidFieldTypes",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testAuthenticationPermissionsAndServerError",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testConfiguredProcessMethodsAnd405",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testResponseStatusAndHeaderTransformation",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testAsyncStatus"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/596",

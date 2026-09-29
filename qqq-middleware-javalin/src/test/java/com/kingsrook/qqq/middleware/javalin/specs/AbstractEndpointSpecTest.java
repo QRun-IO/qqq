@@ -22,20 +22,68 @@ package com.kingsrook.qqq.middleware.javalin.specs;
 
 
 import java.util.List;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.AuthenticationMetaDataSpecV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.ProcessInitSpecV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Method;
+import io.javalin.http.Context;
+import jakarta.servlet.ServletException;
+import org.eclipse.jetty.http.BadMessageException;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 
 /*******************************************************************************
- ** Tests the shared OpenAPI method definition used by endpoint specs.
+ ** Tests shared endpoint definitions and request parsing boundaries.
  *******************************************************************************/
 class AbstractEndpointSpecTest
 {
+   /*******************************************************************************
+    ** The native multipart parser may wrap its client error in a servlet exception.
+    *******************************************************************************/
+   @Test
+   void testMultipartParserBadRequestUsesExistingBoundaryException()
+   {
+      Context context = mock(Context.class);
+      when(context.contentType()).thenReturn("multipart/form-data; boundary=owned");
+      RuntimeException failure = new RuntimeException(new ServletException(new BadMessageException(400, "bad multipart")));
+      when(context.formParam("values")).thenThrow(failure);
+      AbstractEndpointSpec<?, ?, ?> spec = new ProcessInitSpecV1();
+      QRuntimeException exception = assertThrows(QRuntimeException.class, () -> spec.getRequestParam(context, "values"));
+      QBadRequestException badRequest = ExceptionUtils.findClassInRootChain(exception, QBadRequestException.class);
+      assertNotNull(badRequest);
+      assertSame(failure, badRequest.getCause());
+   }
+
+
+
+   /*******************************************************************************
+    ** Failures other than the parser's 400 retain their existing classification.
+    *******************************************************************************/
+   @Test
+   void testMultipartOtherFailuresRemainUnchanged()
+   {
+      for(RuntimeException failure : List.of(new IllegalStateException("owned server failure"), new BadMessageException(413, "owned size limit")))
+      {
+         Context context = mock(Context.class);
+         when(context.contentType()).thenReturn("multipart/form-data; boundary=owned");
+         when(context.formParam("values")).thenThrow(failure);
+         AbstractEndpointSpec<?, ?, ?> spec = new ProcessInitSpecV1();
+         assertSame(failure, assertThrows(RuntimeException.class, () -> spec.getRequestParam(context, "values")));
+      }
+   }
+
+
+
    /*******************************************************************************
     ** An endpoint may omit its tag and still define a complete operation.
     *******************************************************************************/

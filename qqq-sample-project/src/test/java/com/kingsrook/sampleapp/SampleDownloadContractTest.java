@@ -85,7 +85,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.reports.BasicRunReportProcess;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemBackendMetaData;
-import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
@@ -108,7 +108,8 @@ class SampleDownloadContractTest
    @TempDir
    Path directory;
 
-   private SampleJavalinServer server;
+   private QApplicationJavalinServer server;
+   private SampleUploadTestFixture fixture;
    private ApiProcessMetaData reportApi;
    private final AtomicReference<Javalin> service = new AtomicReference<>();
    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
@@ -120,20 +121,18 @@ class SampleDownloadContractTest
     **
     *******************************************************************************/
    @AfterEach
-   void cleanUp()
+   void cleanUp() throws Exception
    {
       try
       {
-         if(server != null)
+         if(fixture != null)
          {
-            server.stop();
+            fixture.close();
          }
       }
       finally
       {
          client.close();
-         QContext.clear();
-         ConnectionManager.resetConnectionProviders();
       }
    }
 
@@ -657,17 +656,8 @@ class SampleDownloadContractTest
          instance.getAuthentication().setCustomizer(new QCodeReference(NoTablePermissions.class));
          instance.getTable(SampleMetaDataProvider.TABLE_NAME_CITY).setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
       }
-      server = new SampleJavalinServer(new SampleMetaDataProvider()
-      {
-         /*******************************************************************************
-          **
-          *******************************************************************************/
-         @Override
-         public QInstance defineQInstance()
-         {
-            return instance;
-         }
-      });
+      fixture = new SampleUploadTestFixture(instance);
+      server = fixture.server();
       server.setPort(0);
       server.withJavalinConfigurationCustomizer(service::set);
       server.start();

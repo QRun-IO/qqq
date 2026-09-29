@@ -31,10 +31,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
@@ -54,6 +56,7 @@ import io.javalin.http.ContentType;
 import io.javalin.http.Context;
 import io.javalin.http.Handler;
 import org.apache.commons.lang3.NotImplementedException;
+import org.eclipse.jetty.http.BadMessageException;
 import org.json.JSONObject;
 
 
@@ -472,7 +475,19 @@ public abstract class AbstractEndpointSpec<
                String value = null;
                if(ContentType.MULTIPART_FORM_DATA.getMimeType().equals(requestContentType))
                {
-                  value = context.formParam(name);
+                  try
+                  {
+                     value = context.formParam(name);
+                  }
+                  catch(Exception e)
+                  {
+                     BadMessageException badMessage = ExceptionUtils.findClassInRootChain(e, BadMessageException.class);
+                     if(badMessage != null && badMessage.getCode() == 400)
+                     {
+                        throw new QRuntimeException(new QBadRequestException("Malformed multipart request", e));
+                     }
+                     throw e;
+                  }
                }
                else if(ContentType.APPLICATION_JSON.getMimeType().equals(requestContentType))
                {

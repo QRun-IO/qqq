@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.api.javalin.QBadRequestException;
 import com.kingsrook.qqq.api.model.APIVersion;
@@ -134,7 +135,7 @@ public class ApiImplementation
    ///////////////////////////////////////////////////////////////////
    // key:  Pair<apiName, apiVersion>, value: Map<name => metaData> //
    ///////////////////////////////////////////////////////////////////
-   private static Map<Pair<String, String>, Map<String, QTableMetaData>> tableApiNameMap = new HashMap<>();
+   private static final Map<Pair<String, String>, Map<String, QTableMetaData>> tableApiNameMap = new ConcurrentHashMap<>();
 
 
 
@@ -1526,7 +1527,7 @@ public class ApiImplementation
       // the second level is keyed by tableApiNames.                                             //
       /////////////////////////////////////////////////////////////////////////////////////////////
       Pair<String, String> key = new Pair<>(apiName, version);
-      if(tableApiNameMap.get(key) == null)
+      Map<String, QTableMetaData> tables = tableApiNameMap.computeIfAbsent(key, ignored ->
       {
          Map<String, QTableMetaData> map = new HashMap<>();
 
@@ -1548,10 +1549,10 @@ public class ApiImplementation
             }
          }
 
-         tableApiNameMap.put(key, map);
-      }
+         return map;
+      });
 
-      return (tableApiNameMap.get(key).get(tableApiName));
+      return (tables.get(tableApiName));
    }
 
 

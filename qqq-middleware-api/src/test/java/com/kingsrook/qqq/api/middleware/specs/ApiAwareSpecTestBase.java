@@ -23,6 +23,7 @@ package com.kingsrook.qqq.api.middleware.specs;
 
 
 import com.kingsrook.qqq.api.TestUtils;
+import com.kingsrook.qqq.api.actions.ApiImplementation;
 import com.kingsrook.qqq.api.middleware.specs.v1.ApiAwareMiddlewareVersionV1;
 import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
@@ -46,6 +47,7 @@ public abstract class ApiAwareSpecTestBase extends SpecTestBase
    @Override
    protected QInstance defineQInstance() throws QException
    {
+      ApiImplementation.clearCaches();
       return (TestUtils.defineInstance());
    }
 

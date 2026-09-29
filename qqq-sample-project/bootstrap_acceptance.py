@@ -233,6 +233,7 @@ def main():
         return run_acceptance(args)
     except ValueError as error:
         parser.error(str(error))
+        return 2
 
 
 if __name__ == "__main__":

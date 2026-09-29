@@ -346,26 +346,37 @@ class SampleUploadContractTest
 
 
    /*******************************************************************************
-    ** Both parsers reject malformed bodies before writes or execution. V1 currently
-    ** loses the parser's client-error status; this check does not certify its 4xx.
+    ** Malformed multipart keeps its client-error status before writes or execution,
+    ** including a resumed V1 process whose pending step must remain usable.
     *******************************************************************************/
    @Test
    void testMalformedMultipartDoesNotArchiveOrExecute() throws Exception
    {
       start(false, "city", false);
+      HttpResponse<byte[]> initialized = client.send(HttpRequest.newBuilder(uri("/qqq/v1/processes/interactiveUpload/init"))
+         .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofByteArray());
+      assertEquals(200, initialized.statusCode(), body(initialized));
+      String stepPath = "/qqq/v1/processes/interactiveUpload/" + new JSONObject(body(initialized)).getString("processUUID") + "/step/input";
       List<Integer> statuses = new ArrayList<>();
-      for(String path : List.of("/processes/uploadProbe/run", "/qqq/v1/processes/uploadProbe/init"))
+      for(String path : List.of("/processes/uploadProbe/run", "/qqq/v1/processes/uploadProbe/init", stepPath))
       {
          HttpResponse<byte[]> response = client.send(HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(10))
             .header("Content-Type", "multipart/form-data; boundary=OwnedMissingBoundary")
             .POST(HttpRequest.BodyPublishers.ofString("not a multipart body")).build(), HttpResponse.BodyHandlers.ofByteArray());
          statuses.add(response.statusCode());
          assertTrue(new JSONObject(body(response)).has("error"), body(response));
-         assertTrue(response.statusCode() >= 400 && response.statusCode() < 600, body(response));
          assertEquals(0, EXECUTIONS.get());
          assertTrue(snapshot().isEmpty());
       }
-      assertEquals(400, statuses.get(0), "Legacy malformed multipart retains the parser client-error status");
+      assertEquals(List.of(400, 400, 400), statuses, "Malformed multipart status: legacy run, V1 init, V1 step");
+      byte[] bytes = "owned valid retry".getBytes(StandardCharsets.UTF_8);
+      HttpResponse<byte[]> retried = uploadTo(stepPath, false, new Part("retry.txt", bytes));
+      assertEquals(200, retried.statusCode(), body(retried));
+      JSONObject values = new JSONObject(body(retried)).getJSONObject("values");
+      assertArrayEquals(bytes, Base64.getDecoder().decode(values.getJSONArray("receivedBytes").getString(0)));
+      assertArrayEquals(bytes, Files.readAllBytes(directory.resolve("cities").resolve(values.getJSONArray("storageReferences").getString(0))));
+      assertEquals(1, EXECUTIONS.get());
+      assertEquals(1, snapshot().size());
    }
 
 

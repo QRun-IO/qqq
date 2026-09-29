@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
-from next_acceptance import evaluate as evaluate_next
+from next_acceptance import accepted_release, evaluate as evaluate_next
 
 
 # Reviewed 130-feature scope, including separate source/published bootstrap; change only after reviewing the source
@@ -56,6 +56,7 @@ def main():
                         help='Require each named reviewed feature even with --report-only')
     parser.add_argument('--next-receipt-sha256',
                         help='Independently reviewed SHA256 of target/next-acceptance/receipt.json')
+    parser.add_argument('--candidate-version', help='Apply only the reviewed exception for this exact release candidate')
     args = parser.parse_args()
     sample = Path(__file__).resolve().parent
     output = sample / 'target' / 'feature-coverage-result.json'
@@ -100,6 +101,11 @@ def main():
             parser.error('Stale or invalid release deferral: ' + feature_id)
         release_deferrals.add(feature_id)
 
+    try:
+        accepted_next = accepted_release(sample, args.candidate_version)
+    except (OSError, ValueError, KeyError, TypeError, ET.ParseError) as error:
+        parser.error('Invalid Next release exception: ' + str(error))
+
     outcomes = {}
     for directory in ('surefire-reports', 'failsafe-reports', 'starter-application-junit'):
         for report in (sample / 'target' / directory).glob('TEST-*.xml'):
@@ -118,6 +124,7 @@ def main():
     unsupported = []
     deferred = []
     applied_release_deferrals = []
+    accepted_next_features = []
     for feature in features:
         if args.stage == 'source' and feature.get('acceptance_stage') == 'published':
             deferred.append(feature['id'])
@@ -140,6 +147,9 @@ def main():
         # and still surface an actual failing compatibility report if one was supplied.
         failed_tests = [test for test in tests if not outcomes.get(test, False)
                         and (test not in historical_tests or test in outcomes)]
+        if accepted_next and feature['id'] in accepted_next['features'] and not failed_tests:
+            accepted_next_features.append(feature['id'])
+            continue
         if native:
             reasons.extend(native['reasons'])
         if args.stage == 'source' and feature['id'] in release_deferrals and not failed_tests and not reasons:
@@ -156,19 +166,20 @@ def main():
         if reasons:
             gaps.append({'id': feature['id'], 'reasons': reasons})
 
-    unavailable = (set(deferred) | set(applied_release_deferrals)
+    unavailable = (set(deferred) | set(applied_release_deferrals) | set(accepted_next_features)
                    | {item['id'] for item in unsupported} | {gap['id'] for gap in gaps})
     required_passed = all(required not in unavailable and by_id[required]['acceptance_status'] == 'verified'
                           for required in args.require_feature)
     result = {
-        'inventory_entries': len(features), 'features': len(features) - len(unsupported) - len(deferred) - len(applied_release_deferrals),
-        'verified': len(features) - len(unsupported) - len(deferred) - len(applied_release_deferrals) - len(gaps),
+        'inventory_entries': len(features), 'features': len(features) - len(unsupported) - len(deferred) - len(applied_release_deferrals) - len(accepted_next_features),
+        'verified': len(features) - len(unsupported) - len(deferred) - len(applied_release_deferrals) - len(accepted_next_features) - len(gaps),
         'unsupported': unsupported, 'deferred': deferred,
         'release_deferrals': applied_release_deferrals, 'stage': args.stage,
         'next_acceptance': next_evidence,
+        'accepted_next_release': accepted_next, 'accepted_next_features': accepted_next_features,
         'stage_passed': not gaps,
         'required_features': args.require_feature, 'required_passed': required_passed,
-        'complete': not args.report_only and not gaps and not deferred and not applied_release_deferrals, 'gaps': gaps,
+        'complete': not args.report_only and not gaps and not deferred and not applied_release_deferrals and not accepted_next_features, 'gaps': gaps,
         'scope': 'This checks recorded scenarios against these reports. Inventory completeness requires source review; use clean verify to avoid stale reports.',
     }
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -14,7 +14,7 @@ parameters:
     default: ""
 
 orbs:
-  qqq-orb: kingsrook/qqq-orb@0.6.0
+  qqq-orb: kingsrook/qqq-orb@0.6.8
 
 commands:
   configure-package-install:
@@ -106,10 +106,14 @@ jobs:
   sample_acceptance:
     executor: qqq-orb/java
     environment:
+      QQQ_ACCEPTED_NEXT_CANDIDATE: << parameters.accepted_next_candidate >>
       QQQ_NEXT_CI_BUNDLE_URL: << pipeline.parameters.next_acceptance_bundle_url >>
       QQQ_NEXT_BUNDLE_SHA256: << pipeline.parameters.next_acceptance_bundle_sha256 >>
       QQQ_NEXT_RECEIPT_SHA256: << pipeline.parameters.next_acceptance_receipt_sha256 >>
     parameters:
+      accepted_next_candidate:
+        type: string
+        default: ""
       require_complete_coverage:
         type: boolean
         default: false
@@ -127,13 +131,13 @@ jobs:
           command: |
             git clone https://github.com/QRun-IO/qqq-frontend-material-dashboard.git /tmp/sample-material-dashboard
             cd /tmp/sample-material-dashboard
-            git checkout --detach 8ec1be7ad0e1836801e33c503f4417e47f332066
+            git checkout --detach f9124fb7d26ff07aa11cce38924ca3dee9430f2a
             # Consumers read this installed POM without the build's command-line properties.
             python3 -c '
             from pathlib import Path
             pom = Path("pom.xml")
             text = pom.read_text()
-            old = "<qqq.version>4.0.0-RC.3</qqq.version>"
+            old = "<qqq.version>4.0.0</qqq.version>"
             assert text.count(old) == 1, "Pinned dashboard QQQ version changed"
             pom.write_text(text.replace(old, "<qqq.version>0.0.0-sample-acceptance</qqq.version>"))
             '
@@ -382,6 +386,7 @@ workflows:
                 - /release\/.*/
       - sample_acceptance:
           name: candidate_sample_acceptance
+          accepted_next_candidate: "4.1.0-RC.1"
           require_complete_coverage: true
           requires: [sample_bootstrap_source]
           filters:

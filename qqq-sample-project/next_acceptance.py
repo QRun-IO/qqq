@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 
 FEATURE_IDS = ('core.widget.data_bag_viewer', 'core.widget.pivot_table_setup',
                'core.widget.filter_and_columns_setup', 'core.widget.row_builder',
@@ -34,6 +35,39 @@ def unique_object(pairs):
 
 def read_json(path):
     return json.loads(path.read_text(), object_pairs_hook=unique_object)
+
+
+
+def accepted_release(sample, candidate_version, before_publish=False):
+    """Read the explicit candidate exception without changing native evidence."""
+    if not candidate_version:
+        return None
+    policy = read_json(sample / 'release-deferrals.json').get('accepted_next_release')
+    require(isinstance(policy, dict), 'candidate has no approved Next release exception')
+    require(candidate_version == policy['qqq_version'] == '4.1.0-RC.1', 'Next exception is only approved for QQQ4.1.0-RC.1')
+    require(policy['next_version'] == '1.0.0-RC.1'
+            and policy['next_sha'] == 'e901df91017204add7ebffa81765a02094e581b0'
+            and policy['jar_sha256'] == '5a5f56e892164c2b3c220d929372cf57c019dabaa35340839be3b9a6907076eb',
+            'Next exception must identify the accepted immutable public RC1')
+    require(policy['owner_approval'] == 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-5899058345',
+            'Next exception lacks the reviewed maintainer decision')
+    require(len(policy['features']) == len(FEATURE_IDS) and set(policy['features']) == set(FEATURE_IDS),
+            'Next exception must preserve the seven successor coverage contracts')
+    require(policy.get('rationale') and policy.get('target_release'), 'Next exception needs rationale and follow-up target')
+    ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+    root_pom = ET.parse(sample.parent / 'pom.xml').getroot()
+    revision = root_pom.findtext('m:properties/m:revision', namespaces=ns)
+    allowed_revisions = ('4.1.0-SNAPSHOT',) if before_publish else ('4.1.0-SNAPSHOT', '4.1.0-RC.1')
+    require(revision in allowed_revisions, 'QQQ source revision cannot use the RC1 exception')
+    sample_pom = ET.parse(sample / 'pom.xml').getroot()
+    require(sample_pom.findtext('m:properties/m:qqq.frontend.next.version', namespaces=ns) == policy['next_version'],
+            'sample Next pin differs from the accepted release')
+    bom = ET.parse(sample.parent / 'qqq-bom/pom.xml').getroot()
+    next_pins = [d.findtext('m:version', namespaces=ns)
+                 for d in bom.findall('m:dependencyManagement/m:dependencies/m:dependency', ns)
+                 if d.findtext('m:artifactId', namespaces=ns) == 'qqq-frontend-next']
+    require(next_pins == [policy['next_version']], 'BOM Next pin differs from the accepted release')
+    return policy
 
 
 def hashed_file(root, reference):

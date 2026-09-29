@@ -13,7 +13,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
     def setUp(self):
         self.work = tempfile.TemporaryDirectory()
         self.addCleanup(self.work.cleanup)
-        self.sample = Path(self.work.name)
+        self.sample = Path(self.work.name) / 'qqq-sample-project'
+        self.sample.mkdir()
         subprocess.run(['git', 'init', '-q', str(self.sample)], check=True)
         subprocess.run(['git', '-C', str(self.sample), '-c', 'user.name=Fixture',
                         '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false',
@@ -51,7 +52,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
                              'SamplePackagedConfigurationIT': {'tests': 4}},
         }))
 
-    def run_gate(self, features=None, outcome='', report_only=False, stage='published', required=()):
+    def run_gate(self, features=None, outcome='', report_only=False, stage='published', required=(), candidate_version=None):
         inventory = dict(self.inventory)
         if features is not None:
             inventory['features'] = features
@@ -64,6 +65,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         run = subprocess.run([sys.executable, str(self.sample / 'verify-feature-coverage.py')]
                              + ['--next-receipt-sha256', self.next_receipt_sha]
                              + ['--stage', stage] + (['--report-only'] if report_only else [])
+                             + (['--candidate-version', candidate_version] if candidate_version else [])
                              + [option for feature in required for option in ('--require-feature', feature)],
                              capture_output=True, text=True)
         result = self.sample / 'target' / 'feature-coverage-result.json'
@@ -78,6 +80,68 @@ class FeatureCoverageGateTest(unittest.TestCase):
         return {'id': feature_id or self.feature['id'],
                 'owner_approval': 'https://github.com/QRun-IO/qqq/issues/790#issuecomment-123456',
                 'rationale': 'Scenario awaits a supported fixture', 'target_release': '4.1.1'}
+
+    def configure_accepted_next(self):
+        shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
+        (self.sample / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
+            '<qqq.frontend.next.version>1.0.0-RC.1</qqq.frontend.next.version></properties></project>')
+        (self.sample.parent / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
+            '<revision>4.1.0-SNAPSHOT</revision></properties></project>')
+        bom = self.sample.parent / 'qqq-bom'
+        bom.mkdir(exist_ok=True)
+        (bom / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies>'
+            '<dependency><artifactId>qqq-frontend-next</artifactId><version>1.0.0-RC.1</version></dependency>'
+            '</dependencies></dependencyManagement></project>')
+
+    def test_accepted_next_is_explicit_and_does_not_certify_missing_native_evidence(self):
+        self.configure_accepted_next()
+        (self.sample / 'target/next-acceptance/receipt.json').unlink()
+        self.assertEqual(1, self.run_gate(stage='source')[0])
+        code, result = self.run_gate(stage='source', candidate_version='4.1.0-RC.1')
+        self.assertEqual(0, code)
+        self.assertFalse(result['complete'])
+        self.assertEqual(7, len(result['accepted_next_features']))
+        self.assertEqual(self.supported_count - 2 - 7, result['verified'])
+        self.assertTrue(result['next_acceptance']['problems'])
+        self.assertEqual(1, self.run_gate(stage='source', candidate_version='4.1.0-RC.1',
+                                         required='core.widget.row_builder')[0])
+        for version in ('4.1.0', '4.1.0-RC.2', '4.2.0-RC.1'):
+            self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=version)[0])
+
+    def test_accepted_next_cannot_hide_framework_failures_or_public_gaps(self):
+        self.configure_accepted_next()
+        self.assertEqual(1, self.run_gate(stage='source', candidate_version='4.1.0-RC.1', outcome='<failure/>')[0])
+        self.feature['acceptance_status'] = 'pending'
+        self.assertEqual(1, self.run_gate(stage='source', candidate_version='4.1.0-RC.1')[0])
+        self.feature['acceptance_status'] = 'verified'
+        public = next(f for f in self.inventory['features'] if f['id'] == 'train.bom')
+        public['acceptance_status'] = 'pending'
+        self.assertEqual(1, self.run_gate(stage='published', candidate_version='4.1.0-RC.1')[0])
+
+    def test_accepted_next_rejects_changed_artifact_scope_or_approval(self):
+        self.configure_accepted_next()
+        path = self.sample / 'release-deferrals.json'
+        original = json.loads(path.read_text())
+        for field, value in (('next_version', '1.0.0-RC.2'), ('next_sha', '0' * 40),
+                             ('jar_sha256', '0' * 64), ('owner_approval', 'unapproved'),
+                             ('features', ['core.security.authentication']), ('target_release', '')):
+            with self.subTest(field=field):
+                changed = json.loads(json.dumps(original))
+                changed['accepted_next_release'][field] = value
+                path.write_text(json.dumps(changed))
+                self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.1')[0])
+        path.write_text(json.dumps(original))
+        root_pom = self.sample.parent / 'pom.xml'
+        root_content = root_pom.read_text()
+        for revision in ('4.1.0', '4.1.0-RC.2', '4.2.0-SNAPSHOT'):
+            root_pom.write_text(root_content.replace('4.1.0-SNAPSHOT', revision))
+            self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.1')[0])
+        root_pom.write_text(root_content)
+        for pom in (self.sample / 'pom.xml', self.sample.parent / 'qqq-bom/pom.xml'):
+            content = pom.read_text()
+            pom.write_text(content.replace('1.0.0-RC.1', '1.0.0-RC.2'))
+            self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.1')[0])
+            pom.write_text(content)
 
     def test_reviewed_passing_test_is_required(self):
         code, result = self.run_gate()

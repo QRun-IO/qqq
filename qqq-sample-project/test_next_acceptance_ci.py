@@ -70,6 +70,33 @@ class NextAcceptanceCiTest(unittest.TestCase):
         self.assertFalse(result['complete'])
         self.assertEqual(1, self.coverage())
 
+    def test_explicit_candidate_acceptance_does_not_need_a_fabricated_receipt(self):
+        self.fixture.configure_accepted_next()
+        self.env = {'QQQ_ACCEPTED_NEXT_CANDIDATE': '4.1.0-RC.1'}
+        self.stage()
+        self.assertFalse(self.bundle.exists())
+        self.assertEqual(0, self.coverage())
+        result = json.loads((self.sample / 'target/feature-coverage-result.json').read_text())
+        self.assertFalse(result['complete'])
+        self.assertEqual(7, len(result['accepted_next_features']))
+        self.env = {}
+        self.assertEqual(1, self.coverage())
+
+    def test_candidate_exception_checks_actual_publication_branch_and_source_version(self):
+        self.fixture.configure_accepted_next()
+        self.env = {'QQQ_ACCEPTED_NEXT_CANDIDATE': '4.1.0-RC.1', 'CIRCLE_BRANCH': 'release/4.1'}
+        self.assertEqual(0, self.coverage())
+        for branch in ('release/4.2', 'develop', 'hotfix/4.1.1'):
+            self.env['CIRCLE_BRANCH'] = branch
+            self.assertEqual(1, self.coverage())
+        for extra in ({'CIRCLE_TAG': 'v4.1.0'}, {'CIRCLECI': 'true'}, {'CIRCLE_BRANCH': ''}):
+            self.env = {'QQQ_ACCEPTED_NEXT_CANDIDATE': '4.1.0-RC.1', **extra}
+            self.assertEqual(1, self.coverage())
+        self.env = {'QQQ_ACCEPTED_NEXT_CANDIDATE': '4.1.0-RC.1', 'CIRCLE_BRANCH': 'release/4.1'}
+        root_pom = self.sample.parent / 'pom.xml'
+        root_pom.write_text(root_pom.read_text().replace('4.1.0-SNAPSHOT', '4.1.0-RC.1'))
+        self.assertEqual(1, self.coverage(), 'the publisher would increment existing RC1 to RC2')
+
     def test_partial_inputs_and_wrong_archive_or_receipt_hash_fail_closed(self):
         for key in ('QQQ_NEXT_CI_BUNDLE_URL', 'QQQ_NEXT_BUNDLE_SHA256', 'QQQ_NEXT_RECEIPT_SHA256'):
             original = self.env[key]

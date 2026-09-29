@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-from next_acceptance import read_json, require
+from next_acceptance import accepted_release, read_json, require
 
 MAX_ARCHIVE_BYTES = 2 * 1024**3
 MAX_EXPANDED_BYTES = 4 * 1024**3
@@ -147,12 +147,25 @@ def coverage(sample, environment, report_only):
         # Missing or invalid staging must leave ready=False so strict coverage fails below.
         pass
     command = [sys.executable, '-B', str(sample / 'verify-feature-coverage.py'), '--stage', 'source']
+    candidate_version = environment.get('QQQ_ACCEPTED_NEXT_CANDIDATE', '')
+    try:
+        accepted_next = accepted_release(sample, candidate_version, before_publish=True)
+        if accepted_next:
+            require(not environment.get('CIRCLE_TAG'), 'RC1 exception is not allowed in a tag pipeline')
+            if environment.get('CIRCLECI') or 'CIRCLE_BRANCH' in environment:
+                require(environment.get('CIRCLE_BRANCH') in ('release/4.1', 'release/4.1.0'),
+                        'RC1 exception is only allowed before the first 4.1 candidate publication')
+    except (OSError, ValueError, KeyError, TypeError):
+        print('Invalid candidate binding for the approved Next RC1 exception', file=sys.stderr)
+        return 1
+    if candidate_version:
+        command += ['--candidate-version', candidate_version]
     if ready:
         command += ['--next-receipt-sha256', receipt_sha]
     if report_only:
         command += ['--report-only']
     status = subprocess.run(command, cwd=sample).returncode
-    return status if report_only or ready else 1
+    return status if report_only or ready or accepted_next else 1
 
 
 def main(argv=None, sample=None, environment=None):

@@ -47,7 +47,7 @@ class PublishedBomTest(unittest.TestCase):
         source = SCRIPT.parent.parent / "qqq-bom/pom.xml"
         inventory = verifier.parse_bom(source.read_text())
         self.assertIn("qqq-esb", inventory.modules)
-        self.assertEqual("0.2.1", inventory.next_version)
+        self.assertEqual("1.0.0-RC.1", inventory.next_version)
         self.assertEqual(len(inventory.modules) + 1,
                          len(ET.fromstring(verifier.build_consumer_pom("4.1.0-RC.1", inventory))
                              .findall("m:dependencies/m:dependency", verifier.NAMESPACE)))

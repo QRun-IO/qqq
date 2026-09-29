@@ -1,5 +1,23 @@
 {
   "schema_version": 1,
   "review_procedure": "Before merging a deferral, the release owner must approve its exact feature ID, rationale, and target release in a QQQ issue comment or PR review. Copy that direct permalink into owner_approval. The reviewer must open the link and confirm the author and matching details; URL format validation alone does not prove approval. Record accepted deferrals in release issue #790 before publishing, and remove each entry once verified.",
-  "deferrals": []
+  "deferrals": [],
+  "accepted_next_release": {
+    "qqq_version": "4.1.0-RC.1",
+    "next_version": "1.0.0-RC.1",
+    "next_sha": "e901df91017204add7ebffa81765a02094e581b0",
+    "jar_sha256": "5a5f56e892164c2b3c220d929372cf57c019dabaa35340839be3b9a6907076eb",
+    "owner_approval": "https://github.com/QRun-IO/qqq/issues/798#issuecomment-5899058345",
+    "features": [
+      "core.widget.data_bag_viewer",
+      "core.widget.pivot_table_setup",
+      "core.widget.filter_and_columns_setup",
+      "core.widget.row_builder",
+      "core.widget.script_viewer",
+      "core.widget.blocks",
+      "dashboard.acceptance"
+    ],
+    "rationale": "Maintainer accepts the published NextRC1 browser/parity/visual limitations for coordinated RC1. Full successor certification remains pending; source and public compatibility checks remain required. This does not certify any missing or failed test.",
+    "target_release": "Next 1.0 final; intermediate Next RCs pair with new QQQ4.1 RCs and explicit updated acceptance decisions."
+  }
 }

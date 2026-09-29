@@ -144,6 +144,7 @@ def coverage(sample, environment, report_only):
                  and staged['ready'] is True and staged['source_sha'] == source_sha(sample, environment)
                  and staged['archive_sha256'] == archive_sha and staged['receipt_sha256'] == receipt_sha)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
+        # Missing or invalid staging must leave ready=False so strict coverage fails below.
         pass
     command = [sys.executable, '-B', str(sample / 'verify-feature-coverage.py'), '--stage', 'source']
     if ready:

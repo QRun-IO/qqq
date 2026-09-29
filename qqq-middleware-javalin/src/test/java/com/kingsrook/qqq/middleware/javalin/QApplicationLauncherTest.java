@@ -23,6 +23,11 @@ package com.kingsrook.qqq.middleware.javalin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -66,6 +71,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -85,6 +91,9 @@ class QApplicationLauncherTest
    private static Server stoppedHttpServer;
    private static boolean failHttpStop;
 
+   private static Runnable stopAction;
+   private static Runnable finalAction;
+
    private QApplicationLauncher launcher;
 
 
@@ -99,6 +108,8 @@ class QApplicationLauncherTest
       serviceStartedWithInstance = null;
       stoppedHttpServer = null;
       failHttpStop = false;
+      stopAction = () -> {};
+      finalAction = () -> {};
    }
 
 
@@ -434,6 +445,190 @@ class QApplicationLauncherTest
 
 
    /*******************************************************************************
+    ** Same-thread final cleanup reentry must not repeat either shutdown pass.
+    ******************************************************************************/
+   @Test
+   void testFinalCleanupCanReenterStop() throws Exception
+   {
+      startCallbackApplication();
+      AtomicBoolean reentered = new AtomicBoolean();
+      finalAction = () ->
+      {
+         if(reentered.compareAndSet(false, true))
+         {
+            launcher.stop();
+         }
+      };
+      launcher.stop();
+      assertCallbackApplicationStoppedOnce();
+   }
+
+
+
+   /*******************************************************************************
+    ** The same guard also protects callbacks in the original stopper pass.
+    ******************************************************************************/
+   @Test
+   void testServiceStopCanReenterStop() throws Exception
+   {
+      startCallbackApplication();
+      AtomicBoolean reentered = new AtomicBoolean();
+      stopAction = () ->
+      {
+         if(reentered.compareAndSet(false, true))
+         {
+            launcher.stop();
+         }
+      };
+      launcher.stop();
+      assertCallbackApplicationStoppedOnce();
+   }
+
+
+
+   /*******************************************************************************
+    ** Another thread waits for final cleanup and then observes completed shutdown.
+    ******************************************************************************/
+   @Test
+   void testConcurrentStopWaitsForFinalCleanup() throws Exception
+   {
+      startCallbackApplication();
+      CountDownLatch entered = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      CountDownLatch secondStarted = new CountDownLatch(1);
+      finalAction = () ->
+      {
+         entered.countDown();
+         try
+         {
+            assertTrue(release.await(10, TimeUnit.SECONDS));
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+         }
+      };
+      try(var executor = Executors.newFixedThreadPool(2))
+      {
+         try
+         {
+            var first = executor.submit(launcher::stop);
+            assertTrue(entered.await(10, TimeUnit.SECONDS));
+            var second = executor.submit(() ->
+            {
+               secondStarted.countDown();
+               launcher.stop();
+            });
+            assertTrue(secondStarted.await(10, TimeUnit.SECONDS));
+            assertThrows(TimeoutException.class, () -> second.get(100, TimeUnit.MILLISECONDS));
+            release.countDown();
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+         }
+         finally
+         {
+            release.countDown();
+         }
+      }
+      assertCallbackApplicationStoppedOnce();
+   }
+
+
+
+   /*******************************************************************************
+    ** An error outside the existing catch policy must not permanently block retry.
+    ******************************************************************************/
+   @Test
+   void testEscapingFinalCleanupErrorAllowsStopRetry() throws Exception
+   {
+      startCallbackApplication();
+      finalAction = () ->
+      {
+         throw new AssertionError("owned escaping final cleanup error");
+      };
+      assertThrows(AssertionError.class, launcher::stop);
+      assertFalse(launcher.getStartedServiceNames().isEmpty());
+      finalAction = () -> {};
+      launcher.stop();
+      assertTrue(launcher.getStartedServiceNames().isEmpty());
+      assertNull(launcher.getShutdownHook());
+      assertEquals(1, events.stream().filter("final:finalA"::equals).count());
+      List<String> completed = List.copyOf(events);
+      launcher.stop();
+      assertEquals(completed, events);
+   }
+
+
+
+   /*******************************************************************************
+    ** A callback can create and stop another launcher; shutdown ownership is local.
+    ******************************************************************************/
+   @Test
+   void testFinalCleanupCanStartAndStopAnotherLauncher() throws Exception
+   {
+      startCallbackApplication();
+      finalAction = () ->
+      {
+         try
+         {
+            QApplicationLauncher nested = QApplicationLauncher.run(new TestApplication(instance -> instance
+               .withRuntimeService(new QCodeReference(ServiceA.class))), new QApplicationLauncherConfig()
+               .withRegisterShutdownHook(false).withServerCustomizer(server -> server.withPort(0)
+                  .withServeFrontendNext(false).withServeFrontendMaterialDashboard(false)
+                  .withJavalinConfigCustomizer(config -> config.jetty.host = "127.0.0.1")));
+            try
+            {
+               assertEquals(List.of(QApplicationLauncher.JAVALIN_SERVER_SERVICE_NAME, ServiceA.NAME), nested.getStartedServiceNames());
+            }
+            finally
+            {
+               nested.stop();
+               QContext.clear();
+            }
+            assertTrue(nested.getStartedServiceNames().isEmpty());
+         }
+         catch(QException e)
+         {
+            throw new AssertionError(e);
+         }
+      };
+      launcher.stop();
+      assertEquals(List.of("start:finalA", "start:finalB", "stop:finalB", "stop:finalA", "stop:http", "final:finalB",
+         "start:serviceA", "stop:serviceA", "final:finalA"), events);
+      assertTrue(launcher.getStartedServiceNames().isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Real HTTP lifecycle plus callbacks supplied by each reentrancy test.
+    ******************************************************************************/
+   private void startCallbackApplication() throws QException
+   {
+      launcher = QApplicationLauncher.run(new TestApplication(instance -> instance
+         .withRuntimeService(new QCodeReference(FinalServiceA.class))
+         .withRuntimeService(new QCodeReference(CallbackService.class))), finalCleanupConfig());
+      QContext.clear();
+   }
+
+
+
+   /*******************************************************************************
+    ** Also verify a later ordinary stop remains a no-op.
+    ******************************************************************************/
+   private void assertCallbackApplicationStoppedOnce()
+   {
+      assertEquals(List.of("start:finalA", "start:finalB", "stop:finalB", "stop:finalA", "stop:http", "final:finalB", "final:finalA"), events);
+      assertTrue(launcher.getStartedServiceNames().isEmpty());
+      assertNull(launcher.getShutdownHook());
+      launcher.stop();
+      assertEquals(7, events.size());
+   }
+
+
+
+   /*******************************************************************************
     ** Observe the real HTTP lifecycle on an owned port; optionally fail after stop.
     ******************************************************************************/
    private static QApplicationLauncherConfig finalCleanupConfig()
@@ -682,6 +877,36 @@ class QApplicationLauncherTest
       public String getName()
       {
          return "finalB";
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Exercise application callbacks through real launcher-owned service entries.
+    ******************************************************************************/
+   public static class CallbackService extends FinalServiceB
+   {
+      /*******************************************************************************
+       **
+       ******************************************************************************/
+      @Override
+      public void stop()
+      {
+         super.stop();
+         stopAction.run();
+      }
+
+
+
+      /*******************************************************************************
+       **
+       ******************************************************************************/
+      @Override
+      public void afterApplicationStop()
+      {
+         super.afterApplicationStop();
+         finalAction.run();
       }
    }
 

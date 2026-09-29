@@ -71,6 +71,7 @@ public class QApplicationLauncher
    private QApplicationJavalinServer server;
    private QInstance                 qInstance;
    private Thread                    shutdownHook;
+   private boolean                   stopping;
 
    private final List<StartedService> startedServices = new ArrayList<>();
 
@@ -226,56 +227,70 @@ public class QApplicationLauncher
     ** Stop everything the launcher started, in reverse order.  An error stopping
     ** one is logged, and the rest are still stopped. Then run runtime services'
     ** final application cleanup in reverse order, isolating failures there too.
-    ** Calling it again does nothing.
+    ** Reentrant calls on the stopping thread do nothing; concurrent callers wait.
+    ** Calling it again after completion does nothing.
     *******************************************************************************/
    public synchronized void stop()
    {
-      for(int i = startedServices.size() - 1; i >= 0; i--)
+      if(stopping)
       {
-         StartedService startedService = startedServices.get(i);
-         try
+         return;
+      }
+
+      stopping = true;
+      try
+      {
+         for(int i = startedServices.size() - 1; i >= 0; i--)
          {
-            LOG.info("Stopping application service", logPair("service", startedService.name()));
-            startedService.stopper().run();
+            StartedService startedService = startedServices.get(i);
+            try
+            {
+               LOG.info("Stopping application service", logPair("service", startedService.name()));
+               startedService.stopper().run();
+            }
+            catch(Exception | LinkageError e)
+            {
+               LOG.warn("Error stopping application service", e, logPair("service", startedService.name()));
+            }
          }
-         catch(Exception | LinkageError e)
+         for(int i = startedServices.size() - 1; i >= 0; i--)
          {
-            LOG.warn("Error stopping application service", e, logPair("service", startedService.name()));
+            StartedService startedService = startedServices.get(i);
+            if(startedService.afterApplicationStop() == null)
+            {
+               continue;
+            }
+
+            try
+            {
+               startedService.afterApplicationStop().run();
+            }
+            catch(Exception | LinkageError e)
+            {
+               LOG.warn("Error in final application service cleanup", e, logPair("service", startedService.name()));
+            }
+         }
+         startedServices.clear();
+
+         if(shutdownHook != null)
+         {
+            try
+            {
+               Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            }
+            catch(IllegalStateException e)
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // the jvm is already shutting down (e.g., this is running in the hook), //
+               // so the hook can't be - and needn't be - removed.                      //
+               ///////////////////////////////////////////////////////////////////////////
+            }
+            shutdownHook = null;
          }
       }
-      for(int i = startedServices.size() - 1; i >= 0; i--)
+      finally
       {
-         StartedService startedService = startedServices.get(i);
-         if(startedService.afterApplicationStop() == null)
-         {
-            continue;
-         }
-
-         try
-         {
-            startedService.afterApplicationStop().run();
-         }
-         catch(Exception | LinkageError e)
-         {
-            LOG.warn("Error in final application service cleanup", e, logPair("service", startedService.name()));
-         }
-      }
-      startedServices.clear();
-
-      if(shutdownHook != null)
-      {
-         try
-         {
-            Runtime.getRuntime().removeShutdownHook(shutdownHook);
-         }
-         catch(IllegalStateException e)
-         {
-            ///////////////////////////////////////////////////////////////////////////
-            // the jvm is already shutting down (e.g., this is running in the hook), //
-            // so the hook can't be - and needn't be - removed.                      //
-            ///////////////////////////////////////////////////////////////////////////
-         }
-         shutdownHook = null;
+         stopping = false;
       }
    }
 

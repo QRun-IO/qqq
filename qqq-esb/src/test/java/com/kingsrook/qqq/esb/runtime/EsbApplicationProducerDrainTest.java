@@ -402,6 +402,8 @@ class EsbApplicationProducerDrainTest extends EsbRuntimeTestBase
          stopper.join(5000);
          assertFalse(stopper.isAlive());
          assertTrue(launcher.getStartedServiceNames().isEmpty());
+         System.out.println("OWNED_DRAIN immediatelyAfterReturnNativeConnections=" + getEmbeddedBrokerServer().getConnectionCount());
+         waitFor("broker observes final provider close before fixture cleanup", () -> getEmbeddedBrokerServer().getConnectionCount() == 0);
          int nativeConnections = getEmbeddedBrokerServer().getConnectionCount();
          boolean managerConnected = EsbConnectionManager.getInstance().isConnected(PROVIDER_NAME);
          System.out.println("OWNED_DRAIN launcherReturned=true servicesEmpty=true nativeConnections=" + nativeConnections + " managerConnected=" + managerConnected);

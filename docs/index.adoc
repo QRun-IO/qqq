@@ -82,3 +82,7 @@ include::utilities/RecordLookupHelper.adoc[leveloffset=+1]
 == Migration Guides
 
 * xref:migration/4.0.adoc[Migrating to QQQ 4.0] — step-by-step guide for consumers upgrading from 0.x to 4.0
+
+== Release Operations
+
+* xref:release/4.1.adoc[QQQ 4.1 release, rollback and hotfix procedure]

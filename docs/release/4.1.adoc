@@ -1,0 +1,26 @@
+= QQQ 4.1 release procedure
+
+This is a preparation procedure, not an announcement of availability. The release record is https://github.com/QRun-IO/qqq/issues/790[#790]; strict acceptance is tracked in https://github.com/QRun-IO/qqq/issues/798[#798]. Record exact commits, workflow runs, versions and artifact digests there. Existing release authorization applies after the gates pass; repository protections still apply.
+
+== Before a publishing branch or tag
+
+* Merge the reviewed integration into `develop` through the protected PR workflow. It includes the branch reconciliation and Apache consistency work from #796/#797; confirm their ancestry rather than applying them twice.
+* Release and pin the reviewed successor orb from https://github.com/QRun-IO/qqq-orb/pull/13[orb #13]. The current `0.6.0` pin is not cleared for this release. Verify settings redaction, candidate-tag behavior and version calculations before using publishing workflows.
+* Require the full reactor, sample, static analysis, both real-broker suites and separately owned Next/default-entry-point acceptance against the intended source. A report-only green job does not satisfy strict acceptance. Every supported scenario must pass or have an exact, owner-approved deferral in `qqq-sample-project/release-deferrals.json`; a historical ledger note is not that approval.
+* Supply independently reviewed Next source/runtime receipts through the xref:../../qqq-sample-project/acceptance/next/README.md[receipt handoff]. Match the actual tested Next commit, QQQ commit and runtime bytes; a PR head, test-merge commit and mutable `develop` reference are not interchangeable. Missing evidence must stop publication.
+* Confirm the accepted Next artifact and all BOM-managed coordinates, generated POM licenses, source JAR headers and signatures. Derive the artifact list from the reviewed BOM. Check that the proposed versions and tags are unused.
+
+== Candidate, final release and distribution
+
+. Record the approved `develop` SHA and create `release/4.1` from it. Before pushing, dry-run the pinned orb's calculator for the next unused `4.1.0-RC.N`; `release/*` pushes activate candidate publication. Review the exact candidate source and receipt inputs first.
+. Publish through the gated candidate workflow. Verify the immutable RC artifacts and signatures in the public registry, then run the published bootstrap/BOM consumer from an empty Maven repository and smoke a real first-party application. A locally installed snapshot is not candidate evidence. Fixes require a new unused candidate and renewed acceptance.
+. After candidate acceptance, prepare the reviewed `4.1.0` version commit with the release workflow's `[skip ci]` convention. Merge through the protected path into `main`, place an annotated, signed `v4.1.0` tag on that merge commit, and push the intended main ref and tag together. Confirm the tag workflow's strict sample, broker, static and publication prerequisites; do not substitute an ordinary main push for the release trigger.
+. Verify final Central artifacts, signatures, GitHub release and a fresh consumer before announcing availability. Back-merge to `develop`, explicitly set `4.2.0-SNAPSHOT`, and verify the pinned calculator again.
+. Release the QBit parent importing QQQ 4.1, then all eight included qbits, then the qqq-all parent/BOM and image. Follow https://github.com/QRun-IO/qqq-all/issues/10[qqq-all #10] and its reviewed `docs/release.md`. Require released dependency pins, exact-commit core/full smoke, both public Maven POMs, public GHCR bootstrap and an unauthenticated image pull. Verify the attached Compose file starts the published image. Preserve the independent Next version; do not force frontend and framework version numbers to match.
+
+== Failed publication, rollback and hotfix
+
+* Stop the release chain at the first failed gate. Inspect which registry artifacts, tags, images and GitHub release objects actually exist. A multi-registry release is not atomic. Never overwrite an immutable version or move a published tag to repair a partial release; use the documented workflow's recovery path or a new unused version.
+* For a runtime rollback, restore the application's previously verified dependency pins or image digest and compatible configuration. Preserve database and broker volumes. Check schema compatibility, pause consumers while replacing the application when needed, then resume and verify health and message processing. Reverting code does not undo completed external side effects or consumed messages.
+* Prepare a hotfix from the exact affected release tag in a non-publishing review branch. Record the next unused patch version and dry-run the pinned calculator. `hotfix/*` pushes activate publication: push that ref only after review and the required source, broker, Next and release checks are satisfied. Supply receipts for the exact hotfix source; old release receipts are not a substitute.
+* Verify the published patch and a fresh consumer, update the release record, and merge the fix back into both maintained `main` and `develop` lines. Keep the original release evidence and failure record.

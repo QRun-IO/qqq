@@ -23,26 +23,26 @@ python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
 {
   "schema_version": 1,
   "next_sha": "<exact tested 40-hex Git SHA matching the reviewed crosswalk>",
-  "qqq_sha": "<exact current QQQ HEAD tested by all three jobs>",
+  "qqq_sha": "<exact current QQQ HEAD tested by every job>",
   "mode": "javalin",
   "run_url": "https://github.com/QRun-IO/qqq-frontend-next/actions/runs/<run-id>",
   "jobs": [
     {
-      "name": "acceptance-chromium-touch",
-      "report": {"path": "acceptance-chromium-touch/report.json", "sha256": "<64-hex>"},
-      "gate": {"path": "acceptance-chromium-touch/gate.json", "sha256": "<64-hex>"},
-      "checkout_evidence": {"path": "acceptance-chromium-touch/checkout.txt", "sha256": "<64-hex>"},
+      "name": "acceptance-chromium",
+      "report": {"path": "acceptance-chromium/report.json", "sha256": "<64-hex>"},
+      "gate": {"path": "acceptance-chromium/gate.json", "sha256": "<64-hex>"},
+      "checkout_evidence": {"path": "acceptance-chromium/checkout.txt", "sha256": "<64-hex>"},
       "artifacts": {
-        "sample": {"path": "acceptance-chromium-touch/sample.jar", "sha256": "<64-hex>"},
-        "api": {"path": "acceptance-chromium-touch/api.jar", "sha256": "<64-hex>"},
-        "next": {"path": "acceptance-chromium-touch/next.jar", "sha256": "<64-hex>"}
+        "sample": {"path": "acceptance-chromium/sample.jar", "sha256": "<64-hex>"},
+        "api": {"path": "acceptance-chromium/api.jar", "sha256": "<64-hex>"},
+        "next": {"path": "acceptance-chromium/next.jar", "sha256": "<64-hex>"}
       }
     }
   ]
 }
 ```
 
-The illustration is intentionally incomplete and cannot pass: all three jobs are mandatory, named `acceptance-chromium-touch`, `acceptance-firefox`, and `acceptance-webkit`. Their project sets are respectively `chromium/mobile/tablet`, `firefox`, and `webkit`. Include actual artifact bytes and sanitized checkout/build evidence for **each job**. Preserve the original native JSON bytes; the importer checks the hashes, native `config.metadata.ci.commitHash`, `gitCommit.hash` and `ci.buildHref`. A PR head and its GitHub test merge are different SHAs: the reviewer must reconcile the actual tested commit and update the source crosswalk deliberately, not relabel a receipt. Mutable `develop`/dispatch references alone are insufficient.
+The illustration is intentionally incomplete and cannot pass. Current Next receipts require four jobs: `acceptance-chromium` (`chromium`), `acceptance-touch` (`mobile/tablet`), `acceptance-firefox` (`firefox`), and `acceptance-webkit` (`webkit`). The historical three-job layout remains supported: `acceptance-chromium-touch` (`chromium/mobile/tablet`), `acceptance-firefox` (`firefox`), and `acceptance-webkit` (`webkit`). Use one complete layout matching the actual run; mixed layouts, missing or duplicate jobs, and a job with the wrong project set are rejected. Both layouts require all five projects. Include actual artifact bytes and sanitized checkout/build evidence for **each job**. Preserve the original native JSON bytes; the importer checks the hashes, native `config.metadata.ci.commitHash`, `gitCommit.hash` and `ci.buildHref`. A PR head and its GitHub test merge are different SHAs: the reviewer must reconcile the actual tested commit and update the source crosswalk deliberately, not relabel a receipt. Mutable `develop`/dispatch references alone are insufficient.
 
 Copy each source file listed in the crosswalk to `sources/<repository-relative-path>` within the bundle. Its SHA256 must match the reviewed exact Next source. This includes the matrix, mapped specs, gate, browser config and workflow. No path may escape the bundle, including through symlinks. The three pinned Next real-service exclusions are not waivers for the seven retained QQQ requirements.
 
@@ -76,7 +76,7 @@ The operator supplies these string [CircleCI pipeline parameters](https://circle
 
 For a private signed URL, leave the URL parameter empty and supply `QQQ_NEXT_BUNDLE_URL` through an existing secure project/context environment configuration. **Pipeline parameters are not secret storage.** This change does not create a context, publish artifacts, choose a hosting service, or add bearer/basic authentication. The supplied HTTPS location must already be accessible, including any signed query needed for access. URL credentials/userinfo and HTTP downgrade redirects are rejected; neither URL nor exception text is logged. The URL is read as environment data, never interpolated into shell commands. Both digest parameters remain explicit reviewed inputs; the job does not derive its own trust anchor from the download.
 
-Package the documented receipt bundle with `receipt.json`, `sources/`, and its referenced per-job files at ZIP root, **not** inside a surrounding directory. Include actual sample/API/Next runtime JAR bytes and the reviewed checkout/build evidence, not locally reconstructed substitutes. Use regular files/directories only: no symlinks, devices, duplicate names, encrypted members or escaping paths. The transport bounds are 2 GiB compressed, 4 GiB expanded and 10,000 entries; the minimal receipt bundle need not contain the full HTML/video/trace archive. Archive integrity is verified before manual extraction into a fresh owned staging directory. The old target bundle is removed first, so a missing, expired, corrupt or stale input cannot reuse yesterday's result. All three native jobs, actual test/project outcomes and source/runtime hashes are subsequently checked by the existing importer.
+Package the documented receipt bundle with `receipt.json`, `sources/`, and its referenced per-job files at ZIP root, **not** inside a surrounding directory. Include actual sample/API/Next runtime JAR bytes and the reviewed checkout/build evidence, not locally reconstructed substitutes. Use regular files/directories only: no symlinks, devices, duplicate names, encrypted members or escaping paths. The transport bounds are 2 GiB compressed, 4 GiB expanded and 10,000 entries; the minimal receipt bundle need not contain the full HTML/video/trace archive. Archive integrity is verified before manual extraction into a fresh owned staging directory. The old target bundle is removed first, so a missing, expired, corrupt or stale input cannot reuse yesterday's result. All required native jobs, actual test/project outcomes and source/runtime hashes are subsequently checked by the existing importer.
 
 Run-specific digests stay in pipeline inputs, **not in the tested commit**. First finish the intended code/version/tag commit, obtain independently reviewed Next evidence testing that exact QQQ SHA, then trigger CircleCI for that same immutable commit via its candidate/hotfix ref or release tag. The stager checks the receipt against `git rev-parse HEAD` and, when provided, `CIRCLE_SHA1`; the exact tested Next commit must also match the reviewed crosswalk. A prior main SHA, PR head substituted for a merge SHA, moved branch/tag, version-changing commit or different runtime bundle is not interchangeable. Automatic release pipelines without inputs deliberately remain blocked; re-trigger with matching reviewed inputs rather than relaxing the gate. If the intended source changes, obtain matching evidence and new reviewed inputs. This mechanism neither fills missing behavior mappings nor grants a release waiver.
 

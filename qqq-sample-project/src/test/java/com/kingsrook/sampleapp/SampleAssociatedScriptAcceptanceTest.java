@@ -166,7 +166,7 @@ class SampleAssociatedScriptAcceptanceTest
 
 
    /*******************************************************************************
-    ** Draft record mutations are transient; explicit write isolation is open in #849.
+    ** Local record changes require an explicit write call to reach the database.
     *******************************************************************************/
    @Test
    void testRecordDraftLocalMutationDoesNotPersist() throws Exception
@@ -179,6 +179,74 @@ class SampleAssociatedScriptAcceptanceTest
          assertEquals(List.of(List.of("0")), fixture.rows("SELECT COUNT(*) FROM script_log"));
          assertEquals(List.of(List.of("1")), fixture.rows("SELECT COUNT(*) FROM script_revision"));
          assertEquals(List.of(List.of("Avery")), fixture.rows("SELECT first_name FROM person WHERE id=1"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Test executes live writes without storing the draft revision or its logs.
+    *******************************************************************************/
+   @Test
+   void testRecordDraftExplicitWritePersistsWithoutSavingDraftOrLogs() throws Exception
+   {
+      try(Fixture fixture = new Fixture())
+      {
+         Integer scriptId = fixture.storeRecordScript("return 'saved';");
+         List<List<String>> currentRevision = fixture.rows("SELECT current_script_revision_id FROM script");
+         RunProcessOutput tested = fixture.testDraft(scriptId, "qqq.update('person', qqq.newRecord().withValue('id', 1).withValue('firstName', 'Draft write')); logger.log('live update');", Map.of("recordPrimaryKeyList", "1"));
+         assertEquals("live update", ((QRecord) ((List<?>) tested.getValues().get("scriptLogLines")).get(0)).getValueString("text"));
+         assertEquals(List.of(List.of("Draft write"), List.of("Blair")), fixture.rows("SELECT first_name FROM person WHERE id IN(1,2) ORDER BY id"));
+         assertEquals(List.of(List.of("1", "return 'saved';")), fixture.rows("SELECT r.sequence_no,f.contents FROM script_revision r JOIN script_revision_file f ON f.script_revision_id=r.id"));
+         assertEquals(currentRevision, fixture.rows("SELECT current_script_revision_id FROM script"));
+         assertEquals(List.of(List.of("0")), fixture.rows("SELECT COUNT(*) FROM script_log"));
+         assertEquals(List.of(List.of("0")), fixture.rows("SELECT COUNT(*) FROM script_log_line"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Test does not roll back a completed write if a later statement fails.
+    *******************************************************************************/
+   @Test
+   void testRecordDraftWriteRemainsAfterScriptFailure() throws Exception
+   {
+      try(Fixture fixture = new Fixture())
+      {
+         Integer scriptId = fixture.storeRecordScript("return 'saved';");
+         assertThat(assertThrows(QException.class, () -> fixture.testDraft(scriptId, "qqq.update('person', qqq.newRecord().withValue('id', 1).withValue('firstName', 'Before failure')); throw new Error('draft failure');", Map.of("recordPrimaryKeyList", "1"))))
+            .hasStackTraceContaining("draft failure");
+         assertEquals(List.of(List.of("Before failure"), List.of("Blair")), fixture.rows("SELECT first_name FROM person WHERE id IN(1,2) ORDER BY id"));
+         assertEquals(List.of(List.of("1", "return 'saved';")), fixture.rows("SELECT r.sequence_no,f.contents FROM script_revision r JOIN script_revision_file f ON f.script_revision_id=r.id"));
+         assertEquals(List.of(List.of("0")), fixture.rows("SELECT COUNT(*) FROM script_log"));
+         assertEquals(List.of(List.of("0")), fixture.rows("SELECT COUNT(*) FROM script_log_line"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The Test process keeps the caller's write permissions on live records.
+    *******************************************************************************/
+   @Test
+   void testRecordDraftWriteDeniedThenGranted() throws Exception
+   {
+      try(Fixture fixture = new Fixture())
+      {
+         Integer scriptId = fixture.storeRecordScript("return 'saved';");
+         String draft = "qqq.update('person', qqq.newRecord().withValue('id', 1).withValue('firstName', 'Allowed draft'));";
+         QContext.getQInstance().getTable("person").withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+         QContext.getQSession().withPermissions("person.read");
+         assertThat(assertThrows(QException.class, () -> fixture.testDraft(scriptId, draft, Map.of("recordPrimaryKeyList", "1"))))
+            .hasStackTraceContaining("Permission denied");
+         assertEquals(List.of(List.of("Avery")), fixture.rows("SELECT first_name FROM person WHERE id=1"));
+         QContext.getQSession().withPermissions("person.read", "person.edit");
+         fixture.testDraft(scriptId, draft, Map.of("recordPrimaryKeyList", "1"));
+         assertEquals(List.of(List.of("Allowed draft")), fixture.rows("SELECT first_name FROM person WHERE id=1"));
+         assertEquals(List.of(List.of("1", "return 'saved';")), fixture.rows("SELECT r.sequence_no,f.contents FROM script_revision r JOIN script_revision_file f ON f.script_revision_id=r.id"));
+         assertEquals(List.of(List.of("0")), fixture.rows("SELECT COUNT(*) FROM script_log"));
+         assertEquals(List.of(List.of("0")), fixture.rows("SELECT COUNT(*) FROM script_log_line"));
       }
    }
 

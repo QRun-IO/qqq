@@ -25,7 +25,7 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def write_fixture(sample, features, qqq_sha):
+def write_fixture(sample, features, qqq_sha, split_touch=False):
     """Use the inspected report shape, with explicitly synthetic source/artifact bytes."""
     crosswalk = json.loads(Path(__file__).with_name('next-acceptance-crosswalk.json').read_text())
     crosswalk['next_sha'] = NEXT_SHA
@@ -47,8 +47,10 @@ def write_fixture(sample, features, qqq_sha):
             requirement['pending'] = None
             requirement['tests'] = [{'matrix_id': 'WID-028', 'file': FILE, 'title': TITLE, 'projects': list(PROJECTS)}]
     jobs = []
-    for name, projects in [('acceptance-chromium-touch', ['chromium', 'mobile', 'tablet']),
-                           ('acceptance-firefox', ['firefox']), ('acceptance-webkit', ['webkit'])]:
+    browser_jobs = [('acceptance-chromium', ['chromium']), ('acceptance-touch', ['mobile', 'tablet'])] if split_touch else [
+        ('acceptance-chromium-touch', ['chromium', 'mobile', 'tablet'])]
+    browser_jobs.extend([('acceptance-firefox', ['firefox']), ('acceptance-webkit', ['webkit'])])
+    for name, projects in browser_jobs:
         tests = [{'timeout': 90000, 'annotations': [], 'expectedStatus': 'passed',
                   'projectId': project, 'projectName': project, 'status': 'expected',
                   'results': [{'workerIndex': 0, 'parallelIndex': 0, 'status': 'passed', 'duration': 10,
@@ -141,6 +143,43 @@ class NextAcceptanceTest(unittest.TestCase):
         self.assert_rejected('provenance')
         (self.bundle / 'receipt.json').unlink()
         self.assert_rejected()
+
+    def split_touch_fixture(self):
+        self.crosswalk, self.bundle = write_fixture(self.sample, self.features, self.sha, split_touch=True)
+        self.receipt_sha256 = digest(self.bundle / 'receipt.json')
+
+    def test_split_touch_jobs_cover_all_five_projects_once(self):
+        self.split_touch_fixture()
+        result = self.result()
+        self.assertFalse(result['problems'])
+        for row in result['features'].values():
+            self.assertEqual([], row['reasons'])
+            self.assertEqual(5, len(row['tests']))
+            self.assertEqual(set(PROJECTS), {t['project'] for t in row['tests']})
+
+    def test_split_touch_missing_duplicate_and_mixed_jobs_fail(self):
+        self.split_touch_fixture()
+        path = self.bundle / 'receipt.json'
+        receipt = json.loads(path.read_text())
+        for change in [lambda jobs: jobs.pop(1),
+                       lambda jobs: jobs.append(copy.deepcopy(jobs[0])),
+                       lambda jobs: jobs[1].update(name='acceptance-chromium'),
+                       lambda jobs: jobs[0].update(name='acceptance-chromium-touch')]:
+            with self.subTest(change=change):
+                altered = copy.deepcopy(receipt)
+                change(altered['jobs'])
+                write_json(path, altered)
+                self.repin()
+                self.assert_rejected('browser job')
+
+    def test_split_touch_job_cannot_replace_a_touch_project_with_chromium(self):
+        self.split_touch_fixture()
+        path = self.bundle / 'acceptance-touch/report.json'
+        report = json.loads(path.read_text())
+        report['config']['projects'][0]['name'] = 'chromium'
+        write_json(path, report)
+        self.repin()
+        self.assert_rejected('browser project')
 
     def test_native_failure_skip_retry_expected_failure_and_missing_attempt_fail(self):
         changes = [lambda t: t['results'][0].update(status='failed'),

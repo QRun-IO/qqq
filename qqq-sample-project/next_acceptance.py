@@ -8,8 +8,12 @@ import re
 FEATURE_IDS = ('core.widget.data_bag_viewer', 'core.widget.pivot_table_setup',
                'core.widget.filter_and_columns_setup', 'core.widget.row_builder',
                'core.widget.script_viewer', 'core.widget.blocks', 'dashboard.acceptance')
-JOBS = {'acceptance-chromium-touch': ('chromium', 'mobile', 'tablet'),
-        'acceptance-firefox': ('firefox',), 'acceptance-webkit': ('webkit',)}
+JOB_LAYOUTS = (
+    {'acceptance-chromium': ('chromium',), 'acceptance-touch': ('mobile', 'tablet'),
+     'acceptance-firefox': ('firefox',), 'acceptance-webkit': ('webkit',)},
+    {'acceptance-chromium-touch': ('chromium', 'mobile', 'tablet'),
+     'acceptance-firefox': ('firefox',), 'acceptance-webkit': ('webkit',)},
+)
 PROJECTS = {'chromium', 'firefox', 'webkit', 'mobile', 'tablet'}
 MATRICES = ('navigation', 'performance', 'processes', 'query', 'records', 'security', 'widgets')
 EXCLUSIONS = {'WID-033', 'SEC-030', 'PRC-039'}
@@ -181,7 +185,9 @@ def evaluate(sample, features, source_sha, receipt_sha256=None):
                 'invalid Next run provenance')
         matrix = matrix_rows(bundle, crosswalk['sources'])
         jobs = receipt['jobs']
-        require(len(jobs) == len(JOBS) and {j['name'] for j in jobs} == set(JOBS), 'missing or duplicate Next browser job')
+        layout = next((candidate for candidate in JOB_LAYOUTS
+                       if len(jobs) == len(candidate) and {j['name'] for j in jobs} == set(candidate)), None)
+        require(layout is not None, 'missing, duplicate or unsupported Next browser job layout')
         tests = []
         for job in jobs:
             require(set(job['artifacts']) == {'sample', 'api', 'next'}, 'missing runtime artifact provenance')
@@ -190,7 +196,7 @@ def evaluate(sample, features, source_sha, receipt_sha256=None):
             require(hashed_file(bundle, job['checkout_evidence']).stat().st_size > 0, 'missing checkout/build evidence')
             report = read_json(hashed_file(bundle, job['report']))
             gate = read_json(hashed_file(bundle, job['gate']))
-            tests.extend(native_results(report, gate, JOBS[job['name']], matrix, receipt))
+            tests.extend(native_results(report, gate, layout[job['name']], matrix, receipt))
         for row in rows:
             for case in row['requirements']:
                 for required in case['tests']:

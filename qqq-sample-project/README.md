@@ -1566,3 +1566,37 @@ mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
   -Dtest=SampleApplicationApiVersioningAcceptanceTest test
 python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
 ```
+
+
+## Application API HTTP source acceptance (#596)
+
+`SampleApplicationApiHttpAcceptanceTest` configures real `QJavalinApiHandler`
+routes on an owned `127.0.0.1` ephemeral port, native table-based session-cookie
+authentication, and the sample Person/Pet schema in private H2. Nine scenarios
+exercise get/query (including query counts), insert/patch/delete, mixed bulk
+outcomes, five custom process methods and their configured 405s, deterministic
+async status, process body/status/Content-Type transformation, CORS headers and
+HTML error negotiation. Negatives cover malformed JSON, invalid types/filters,
+missing/unknown records, missing/invalid sessions, denied processes and server
+errors. JDBC checks persisted and unchanged rows. Fixtures disable unrelated ESB
+metadata, restore context/server state and remove their owned process/session
+state; no external service, browser or additional dependency is required.
+
+[#872](https://github.com/QRun-IO/qqq/issues/872) records the native red proof that
+a malformed numeric field produced 500. The API input adapter now rejects invalid
+directly mapped values as 400 before table actions, using the destination field's
+native type without rewriting raw values. Custom mappers retain control of their
+input syntax; unrelated process errors remain 500. Module regressions cover
+current, renamed and historical fields, valid coercion/null/ignored-field behavior
+and custom mapping. This is source evidence only: the ledger stays `pending` for
+independent review and the main full gate. No standalone count endpoint is assumed;
+OpenAPI acceptance (#597), security generation (#869), published artifacts and
+release acceptance remain separate. After installing this revision into an owned
+Maven cache, run from the repository root:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml \
+  -Dtest=SampleApplicationApiHttpAcceptanceTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+```

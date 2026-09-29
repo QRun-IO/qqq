@@ -21,260 +21,181 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
-import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
-import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
-import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import com.kingsrook.qqq.middleware.javalin.executors.io.BackChannelLogoutInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.BackChannelLogoutOutputInterface;
-import org.json.JSONObject;
-import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.util.DefaultResourceRetriever;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.JWTParser;
+import com.nimbusds.jwt.SignedJWT;
+import com.nimbusds.oauth2.sdk.id.ClientID;
+import com.nimbusds.oauth2.sdk.id.Issuer;
+import com.nimbusds.openid.connect.sdk.claims.LogoutTokenClaimsSet;
+import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
+import com.nimbusds.openid.connect.sdk.validators.LogoutTokenValidator;
 
 
 /*******************************************************************************
- ** Executor for the OIDC back-channel logout endpoint.
- **
- ** Handles logout tokens sent by the IdP when a user logs out from the IdP
- ** or another application in the SSO ecosystem.
- **
- ** Per OIDC Back-Channel Logout spec:
- ** - The logout_token JWT contains either 'sub' (subject) or 'sid' (session ID)
- ** - We find and delete matching QQQ sessions
- ** - Return HTTP 200 on success (even if no sessions found)
+ ** Validate a provider's signed logout event before modifying stored OAuth2 sessions.
  *******************************************************************************/
 public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackChannelLogoutInput, BackChannelLogoutOutputInterface>
 {
-   private static final QLogger LOG = QLogger.getLogger(BackChannelLogoutExecutor.class);
+   private static final Duration MAX_TOKEN_AGE = Duration.ofMinutes(5);
+   private static final Memoization<List<String>, LogoutTokenValidator> VALIDATORS = new Memoization<List<String>, LogoutTokenValidator>()
+      .withTimeout(Duration.ofMinutes(10)).withMaxSize(100);
+   private static final Map<List<Object>, Instant> PROCESSED_TOKENS = new HashMap<>();
 
 
 
-   /***************************************************************************
-    **
-    ***************************************************************************/
+   /*******************************************************************************
+    ** Invalid requests must fail before acquiring a SYSTEM session or deleting data.
+    *******************************************************************************/
    @Override
    public void execute(BackChannelLogoutInput input, BackChannelLogoutOutputInterface output) throws QException
    {
-      String logoutToken = input.getLogoutToken();
-      if(logoutToken == null || logoutToken.isBlank())
+      QInstance instance = QContext.getQInstance();
+      if(!(instance.getAuthentication() instanceof OAuth2AuthenticationMetaData authentication)
+         || !StringUtils.hasContent(authentication.getUserSessionTableName())
+         || instance.getTable(authentication.getUserSessionTableName()) == null)
       {
-         LOG.warn("Back-channel logout received with empty logout_token");
-         return;
+         throw (new QBadRequestException("Back-channel logout requires configured OAuth2 session storage"));
       }
 
+      LogoutTokenClaimsSet claims = validateToken(input.getLogoutToken(), authentication);
+      List<Object> replayKey = List.of(instance, claims.getIssuer().getValue(), authentication.getClientId(), authentication.getUserSessionTableName(), claims.getJWTID().getValue());
+      synchronized(PROCESSED_TOKENS)
+      {
+         Instant now = Instant.now();
+         PROCESSED_TOKENS.entrySet().removeIf(entry -> !entry.getValue().isAfter(now));
+         if(PROCESSED_TOKENS.containsKey(replayKey))
+         {
+            throw (new QBadRequestException("Logout token has already been processed"));
+         }
+         if(PROCESSED_TOKENS.size() >= 10000)
+         {
+            throw (new QBadRequestException("Logout replay protection is at capacity"));
+         }
+         deleteMatchingSessions(authentication.getUserSessionTableName(), claims);
+         PROCESSED_TOKENS.put(replayKey, now.plus(Duration.ofMinutes(6)));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Trust provider/client configuration, never URLs or issuer claims from the token.
+    *******************************************************************************/
+   private LogoutTokenClaimsSet validateToken(String token, OAuth2AuthenticationMetaData authentication) throws QBadRequestException
+   {
       try
       {
-         //////////////////////////////////////////////////////////////////////////
-         // Parse the logout_token JWT payload (middle section)                   //
-         // Note: Full signature validation requires JWKS fetch - for now we      //
-         // trust the token since it comes over HTTPS from configured IdP         //
-         //////////////////////////////////////////////////////////////////////////
-         JSONObject payload = parseJwtPayload(logoutToken);
-
-         String sub = payload.optString("sub", null);
-         String sid = payload.optString("sid", null);
-
-         if(sub == null && sid == null)
+         if(!StringUtils.hasContent(token) || !StringUtils.hasContent(authentication.getBaseUrl()) || !StringUtils.hasContent(authentication.getClientId()))
          {
-            LOG.warn("Back-channel logout token missing both 'sub' and 'sid' claims");
-            return;
+            throw (new IllegalArgumentException("Missing token or provider configuration"));
          }
-
-         LOG.info("Processing back-channel logout", logPair("sub", sub), logPair("sid", sid));
-
-         QInstance qInstance     = QContext.getQInstance();
-         int       deletedCount  = 0;
-
-         ///////////////////////////////////////////////////////////////////////////
-         // If 'sub' is present, we can efficiently query by userId               //
-         // (UserSession.userId stores the 'sub' claim from the access token)     //
-         ///////////////////////////////////////////////////////////////////////////
-         if(sub != null)
+         String issuer = StringUtils.hasContent(authentication.getExternalBaseUrl()) ? authentication.getExternalBaseUrl() : authentication.getBaseUrl();
+         List<String> providerKey = List.of(authentication.getBaseUrl(), issuer, authentication.getClientId());
+         LogoutTokenValidator validator = VALIDATORS.getResultThrowing(providerKey, key ->
          {
-            deletedCount = deleteSessionsByUserId(qInstance, sub);
-         }
+            Issuer expectedIssuer = new Issuer(issuer);
+            OIDCProviderMetadata provider = OIDCProviderMetadata.resolve(expectedIssuer,
+               OIDCProviderMetadata.resolveURL(new Issuer(authentication.getBaseUrl())), 5000, 5000);
+            return (new LogoutTokenValidator(expectedIssuer, new ClientID(authentication.getClientId()), JWSAlgorithm.RS256,
+               provider.getJWKSetURI().toURL(), new DefaultResourceRetriever(5000, 5000, 1000000)));
+         }).orElseThrow();
 
-         ///////////////////////////////////////////////////////////////////////////
-         // If only 'sid' is present, we need to scan sessions and check their    //
-         // access tokens for matching session IDs                                //
-         ///////////////////////////////////////////////////////////////////////////
-         if(sid != null && deletedCount == 0)
+         LogoutTokenClaimsSet claims = validator.validate(SignedJWT.parse(token));
+         Instant now = Instant.now();
+         if(claims.getIssueTime().toInstant().isBefore(now.minus(MAX_TOKEN_AGE))
+            || claims.getIssueTime().toInstant().isAfter(now.plusSeconds(60))
+            || !StringUtils.hasContent(claims.getJWTID().getValue()))
          {
-            deletedCount = deleteSessionsByOidcSessionId(qInstance, sid);
+            throw (new IllegalArgumentException("Invalid logout token age or identifier"));
          }
-
-         LOG.info("Back-channel logout completed", logPair("deletedSessions", deletedCount));
+         return (claims);
       }
       catch(Exception e)
       {
-         LOG.warn("Error processing back-channel logout", e);
+         throw (new QBadRequestException("Invalid logout token"));
       }
    }
 
 
 
    /*******************************************************************************
-    ** Parse JWT payload (middle section) to JSONObject.
+    ** Match every supplied subject/session claim and retain sessions from other issuers.
     *******************************************************************************/
-   private JSONObject parseJwtPayload(String jwt)
+   private void deleteMatchingSessions(String tableName, LogoutTokenClaimsSet claims) throws QException
    {
-      String[] parts = jwt.split("\\.");
-      if(parts.length < 2)
-      {
-         return new JSONObject();
-      }
-      String payload = new String(Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
-      return new JSONObject(payload);
-   }
-
-
-
-   /*******************************************************************************
-    ** Delete sessions by userId (the 'sub' claim).
-    *******************************************************************************/
-   private int deleteSessionsByUserId(QInstance qInstance, String userId) throws QException
-   {
-      if(qInstance.getTable(UserSession.TABLE_NAME) == null)
-      {
-         LOG.debug("UserSession table not found in QInstance, skipping back-channel logout");
-         return 0;
-      }
-
-      var beforeSession = QContext.getQSession();
+      var previousSession = QContext.getQSession();
       try
       {
          QContext.setQSession(new QSystemUserSession());
-
-         ///////////////////////////////////////
-         // Query for sessions with this userId //
-         ///////////////////////////////////////
-         QueryInput queryInput = new QueryInput();
-         queryInput.setTableName(UserSession.TABLE_NAME);
-         queryInput.setFilter(new QQueryFilter(new QFilterCriteria("userId", QCriteriaOperator.EQUALS, userId)));
-         queryInput.setShouldOmitHiddenFields(false);
-
-         QueryOutput queryOutput = new QueryAction().execute(queryInput);
-         List<QRecord> sessions = queryOutput.getRecords();
-
-         if(sessions.isEmpty())
-         {
-            LOG.debug("No sessions found for userId", logPair("userId", userId));
-            return 0;
-         }
-
-         ///////////////////////////////////////
-         // Delete the matching sessions       //
-         ///////////////////////////////////////
-         List<String> uuidsToDelete = new ArrayList<>();
-         for(QRecord session : sessions)
-         {
-            uuidsToDelete.add(session.getValueString("uuid"));
-         }
-
-         DeleteInput deleteInput = new DeleteInput();
-         deleteInput.setTableName(UserSession.TABLE_NAME);
-         deleteInput.setQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.IN, uuidsToDelete)));
-         new DeleteAction().execute(deleteInput);
-
-         LOG.debug("Deleted sessions by userId", logPair("userId", userId), logPair("count", uuidsToDelete.size()));
-         return uuidsToDelete.size();
-      }
-      finally
-      {
-         QContext.setQSession(beforeSession);
-      }
-   }
-
-
-
-   /*******************************************************************************
-    ** Delete sessions by OIDC session ID ('sid' claim).
-    **
-    ** This requires scanning sessions and checking each access token for the
-    ** matching 'sid' claim. Less efficient than userId lookup but necessary
-    ** when only 'sid' is provided in the logout token.
-    *******************************************************************************/
-   private int deleteSessionsByOidcSessionId(QInstance qInstance, String targetSid) throws QException
-   {
-      if(qInstance.getTable(UserSession.TABLE_NAME) == null)
-      {
-         LOG.debug("UserSession table not found in QInstance, skipping back-channel logout");
-         return 0;
-      }
-
-      var beforeSession = QContext.getQSession();
-      try
-      {
-         QContext.setQSession(new QSystemUserSession());
-
-         ///////////////////////////////////////
-         // Query all sessions                 //
-         ///////////////////////////////////////
-         QueryInput queryInput = new QueryInput();
-         queryInput.setTableName(UserSession.TABLE_NAME);
-         queryInput.setShouldOmitHiddenFields(false);
-         queryInput.setShouldMaskPasswords(false);
-
-         QueryOutput queryOutput = new QueryAction().execute(queryInput);
-         List<QRecord> sessions = queryOutput.getRecords();
-
-         ///////////////////////////////////////
-         // Find sessions with matching 'sid'  //
-         ///////////////////////////////////////
-         List<String> uuidsToDelete = new ArrayList<>();
-         for(QRecord session : sessions)
+         String subject = claims.getSubject() == null ? null : claims.getSubject().getValue();
+         String sessionId = claims.getSessionID() == null ? null : claims.getSessionID().getValue();
+         QueryInput query = new QueryInput(tableName);
+         query.setShouldOmitHiddenFields(false);
+         query.setShouldMaskPasswords(false);
+         List<String> sessionUuids = new ArrayList<>();
+         for(QRecord session : new QueryAction().execute(query).getRecords())
          {
             String accessToken = session.getValueString("accessToken");
-            if(accessToken != null)
+            if(!StringUtils.hasContent(accessToken))
             {
-               try
+               continue;
+            }
+            try
+            {
+               JWTClaimsSet storedClaims = JWTParser.parse(accessToken).getJWTClaimsSet();
+               if(claims.getIssuer().getValue().equals(storedClaims.getIssuer())
+                  && (subject == null || subject.equals(storedClaims.getSubject()))
+                  && (sessionId == null || sessionId.equals(storedClaims.getStringClaim("sid"))))
                {
-                  JSONObject tokenPayload = parseJwtPayload(accessToken);
-                  String sessionSid = tokenPayload.optString("sid", null);
-                  if(targetSid.equals(sessionSid))
-                  {
-                     uuidsToDelete.add(session.getValueString("uuid"));
-                  }
-               }
-               catch(Exception e)
-               {
-                  LOG.debug("Error parsing access token during sid lookup", e);
+                  sessionUuids.add(session.getValueString("uuid"));
                }
             }
+            catch(java.text.ParseException | IllegalArgumentException e)
+            {
+               /////////////////////////////
+               // Unreadable sessions cannot establish a matching issuer/session. //
+               /////////////////////////////
+            }
          }
-
-         if(uuidsToDelete.isEmpty())
+         if(!sessionUuids.isEmpty())
          {
-            return 0;
+            var deleted = new DeleteAction().execute(new DeleteInput().withTableName(tableName)
+               .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.IN, sessionUuids))));
+            if(deleted.getRecordsWithErrors() != null && !deleted.getRecordsWithErrors().isEmpty())
+            {
+               throw (new QException("Could not delete all matching logout sessions"));
+            }
          }
-
-         ///////////////////////////////////////
-         // Delete the matching sessions       //
-         ///////////////////////////////////////
-         DeleteInput deleteInput = new DeleteInput();
-         deleteInput.setTableName(UserSession.TABLE_NAME);
-         deleteInput.setQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.IN, uuidsToDelete)));
-         new DeleteAction().execute(deleteInput);
-
-         LOG.debug("Deleted sessions by sid", logPair("sid", targetSid), logPair("count", uuidsToDelete.size()));
-         return uuidsToDelete.size();
       }
       finally
       {
-         QContext.setQSession(beforeSession);
+         QContext.setQSession(previousSession);
       }
    }
 

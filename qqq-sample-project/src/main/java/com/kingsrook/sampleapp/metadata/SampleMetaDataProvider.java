@@ -27,6 +27,7 @@ import java.io.InputStream;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,7 @@ import com.amazonaws.regions.Regions;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.QuickSightChartRenderer;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
@@ -702,7 +704,12 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withName(PROCESS_NAME_SLEEP_INTERACTIVE)
          .withStep(new QFrontendStepMetaData()
             .withName(SCREEN_0)
-            .withComponent(new QFrontendComponentMetaData().withType(QComponentType.VIEW_FORM))
+            .withComponent(new QFrontendComponentMetaData().withType(QComponentType.EDIT_FORM)
+               .withValue("includeFieldNames", new ArrayList<>(List.of(SleeperStep.FIELD_SLEEP_MILLIS))))
+            .withComponent(new QFrontendComponentMetaData().withType(QComponentType.VIEW_FORM)
+               .withValue("includeFieldNames", new ArrayList<>(List.of("outputMessage"))))
+            .withFormField(new QFieldMetaData(SleeperStep.FIELD_SLEEP_MILLIS, QFieldType.INTEGER)
+               .withLabel("Sleep duration (milliseconds)").withIsRequired(true).withDefaultValue(1000))
             .withFormField(new QFieldMetaData("outputMessage", QFieldType.STRING)))
          .withStep(SleeperStep.getMetaData())
          .withStep(new QFrontendStepMetaData()
@@ -727,7 +734,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
    /*******************************************************************************
     ** Testing backend step - just sleeps however long you ask it to (or, throws if
-    ** you don't provide a number of seconds to sleep).
+    ** you do not provide a non-negative number of milliseconds to sleep).
     *******************************************************************************/
    public static class SleeperStep implements BackendStep
    {
@@ -742,13 +749,20 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       @Override
       public void run(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput) throws QException
       {
+         Integer sleepMillis = runBackendStepInput.getValueInteger(FIELD_SLEEP_MILLIS);
+         if(sleepMillis == null || sleepMillis < 0)
+         {
+            throw new QUserFacingException("Enter a sleep duration of zero or more milliseconds.");
+         }
          try
          {
-            Thread.sleep(runBackendStepInput.getValueInteger(FIELD_SLEEP_MILLIS));
+            Thread.sleep(sleepMillis);
+            runBackendStepOutput.addValue("outputMessage", "Slept for " + sleepMillis + " milliseconds.");
          }
          catch(InterruptedException e)
          {
-            throw (new QException("Interrupted while sleeping..."));
+            Thread.currentThread().interrupt();
+            throw new QException("Interrupted while sleeping...", e);
          }
       }
 

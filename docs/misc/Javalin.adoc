@@ -178,3 +178,5 @@ public class MyDynamicSiteProcessStep implements BackendStep
    }
 }
 ----
+
+include::BackChannelLogout.adoc[leveloffset=+2]

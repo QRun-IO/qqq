@@ -735,7 +735,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          ///////////////////////////////////////////
          // clear the session from memoization cache //
          ///////////////////////////////////////////
-         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+         clearAccessTokenCache(sessionUUID);
 
          LOG.debug("Logged out session", logPair("sessionUUID", sessionUUID));
       }
@@ -747,6 +747,16 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       {
          QContext.setQSession(beforeSession);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Forget a cached token after its authoritative session has been removed.
+    *******************************************************************************/
+   public static void clearAccessTokenCache(String sessionUUID)
+   {
+      getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
    }
 
 

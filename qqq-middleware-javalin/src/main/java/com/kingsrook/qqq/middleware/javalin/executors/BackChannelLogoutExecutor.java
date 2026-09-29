@@ -41,6 +41,8 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import com.kingsrook.qqq.middleware.javalin.executors.io.BackChannelLogoutInput;
@@ -97,7 +99,7 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
          {
             throw (new QBadRequestException("Logout replay protection is at capacity"));
          }
-         deleteMatchingSessions(authentication.getUserSessionTableName(), claims);
+         deleteMatchingSessions(authentication.getUserSessionTableName(), claims, authentication.getSessionStoreEnabled());
          PROCESSED_TOKENS.put(replayKey, now.plus(Duration.ofMinutes(6)));
       }
    }
@@ -121,7 +123,7 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
          {
             Issuer expectedIssuer = new Issuer(issuer);
             OIDCProviderMetadata provider = OIDCProviderMetadata.resolve(expectedIssuer,
-               OIDCProviderMetadata.resolveURL(new Issuer(authentication.getBaseUrl())), 5000, 5000);
+               java.net.URI.create(authentication.getBaseUrl()).toURL(), 5000, 5000);
             return (new LogoutTokenValidator(expectedIssuer, new ClientID(authentication.getClientId()), JWSAlgorithm.RS256,
                provider.getJWKSetURI().toURL(), new DefaultResourceRetriever(5000, 5000, 1000000)));
          }).orElseThrow();
@@ -147,7 +149,7 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
    /*******************************************************************************
     ** Match every supplied subject/session claim and retain sessions from other issuers.
     *******************************************************************************/
-   private void deleteMatchingSessions(String tableName, LogoutTokenClaimsSet claims) throws QException
+   private void deleteMatchingSessions(String tableName, LogoutTokenClaimsSet claims, Boolean useSessionStore) throws QException
    {
       var previousSession = QContext.getQSession();
       try
@@ -185,11 +187,22 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
          }
          if(!sessionUuids.isEmpty())
          {
-            var deleted = new DeleteAction().execute(new DeleteInput().withTableName(tableName)
-               .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.IN, sessionUuids))));
-            if(deleted.getRecordsWithErrors() != null && !deleted.getRecordsWithErrors().isEmpty())
+            if(Boolean.TRUE.equals(useSessionStore))
             {
-               throw (new QException("Could not delete all matching logout sessions"));
+               QSessionStoreRegistry.getInstance().getProvider().ifPresent(provider -> sessionUuids.forEach(provider::remove));
+            }
+            try
+            {
+               var deleted = new DeleteAction().execute(new DeleteInput().withTableName(tableName)
+                  .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.IN, sessionUuids))));
+               if(deleted.getRecordsWithErrors() != null && !deleted.getRecordsWithErrors().isEmpty())
+               {
+                  throw (new QException("Could not delete all matching logout sessions"));
+               }
+            }
+            finally
+            {
+               sessionUuids.forEach(OAuth2AuthenticationModule::clearAccessTokenCache);
             }
          }
       }

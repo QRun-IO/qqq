@@ -72,6 +72,13 @@ public class LogoutTestProvider implements AutoCloseable
          issuer = "http://127.0.0.1:" + server.getAddress().getPort();
          server.createContext("/", exchange ->
          {
+            String path = exchange.getRequestURI().getPath();
+            if(!path.equals("/jwks") && !path.equals("/.well-known/openid-configuration"))
+            {
+               exchange.sendResponseHeaders(404, -1);
+               exchange.close();
+               return;
+            }
             String response = exchange.getRequestURI().getPath().equals("/jwks")
                ? new JWKSet(key.toPublicJWK()).toString()
                : new JSONObject().put("issuer", issuer).put("jwks_uri", issuer + "/jwks")

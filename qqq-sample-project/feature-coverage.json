@@ -1309,12 +1309,24 @@
       "negative_cases": [
         "Missing/expired/invalid token, invalid credentials, disabled user, replay and unauthorized session"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Ten source sample scenarios use the canonical H2 records, native table credentials and owned loopback OAuth2/Auth0 discovery, client authentication, PKCE codes and real signed tokens. They cover authentication metadata without client-secret disclosure, protected record reads, HttpOnly cookie resumption, reauthentication, logout, callback state/code replay, provider-disabled grants, expired/mismatched stored identities and invalid credentials/signatures. Signed back-channel logout invalidates previously used sessions with and without the optional store; failed store eviction preserves rows and the same event can retry. #918/#919 correct discovery and stale-cache defects exposed by these sample paths. Session refresh here is native cookie/session resumption and reauthentication; no new provider refresh-token grant, browser login flow, cross-node cache eviction or in-flight-request cancellation is claimed. Final coordinated public-artifact acceptance remains separate.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAnonymousAndMockModes",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAuth0SignedTokenAndRejectedTokens",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelCacheFailureIsRetryable",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesSessionStore",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesUsedSessionAndRejectsReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCallbackStateAndCodeReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCodeResumeAndNormalLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthExpiredAndMismatchedStoredSession",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableCredentialsResumeAndLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableExpiredAndUnknownSessionDenied"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/565",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "review_note": "Focused independent review found no remaining actionable issues in the production corrections and all ten sample scenarios. Local10sample/20native-logout/4core-auth tests pass. Normal combined CI remains required before integration; the coverage verifier still requires actual passing results for every mapped method."
     },
     {
       "id": "core.security.permissions",
@@ -2647,7 +2659,7 @@
       "negative_cases": [
         "Invalid code/parameters, script exception, permission denial; Test does not save draft revisions/logs or implicitly save record mutations; explicit writes remain live and permission checked"
       ],
-      "gap": "Maintainer decision #849 on 2026-09-29 preserves live Test execution. Fourteen focused sample scenarios include explicit Test writes, a write followed by failure, caller permission denial/recovery, unchanged draft revisions/logs and existing Store/Test/Run boundaries. All 14 focused cases and 26 ledger checks pass; independent review found no actionable issues. Combined source verification remains pending. Browser warning delivery is tracked in #849. No rollback, Java sandbox or external-side-effect isolation is claimed.",
+      "gap": "Maintainer decision #849 preserves live Test execution. Fourteen reviewed sample scenarios cover explicit Test writes, writes followed by failure, caller permission denial/recovery, unchanged draft revisions/logs and Store/Test/Run boundaries. All fourteen passed combined source CI4470 at652c30888; the mapped test source is unchanged at this candidate. Material warning delivery is merged in PR157. Browser parity remains separately tracked; no rollback, arbitrary-Java sandbox or external-side-effect isolation is claimed.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testAdHocPinnedRevisionAndInvalidReferences",
         "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRunRecordProcessPersistsSelectedRecordsAndSummarizesBatches",
@@ -2664,11 +2676,12 @@
         "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordDraftWriteRemainsAfterScriptFailure",
         "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordDraftWriteDeniedThenGranted"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/572",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
-      "scope_decision": "James approved preserving live Test execution with clear warnings/tests on 2026-09-29 (#849). This explicitly clarifies the earlier #572 non-persistence requirement; it is not an unapproved coverage deferral."
+      "scope_decision": "James approved preserving live Test execution with clear warnings/tests on 2026-09-29 (#849). This explicitly clarifies the earlier #572 non-persistence requirement; it is not an unapproved coverage deferral.",
+      "review_note": "Independent source review previously completed with no actionable findings. Reconciled all14 exact mapped methods against CI4470 success receipts; no duplicate suite run. This is source evidence, not final public-artifact acceptance."
     },
     {
       "id": "core.messaging",
@@ -4845,12 +4858,24 @@
       "negative_cases": [
         "Expired/replayed token, bad callback/state, invalid logout token and unauthorized session reuse"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Ten source sample scenarios use the canonical H2 records, native table credentials and owned loopback OAuth2/Auth0 discovery, client authentication, PKCE codes and real signed tokens. They cover authentication metadata without client-secret disclosure, protected record reads, HttpOnly cookie resumption, reauthentication, logout, callback state/code replay, provider-disabled grants, expired/mismatched stored identities and invalid credentials/signatures. Signed back-channel logout invalidates previously used sessions with and without the optional store; failed store eviction preserves rows and the same event can retry. #918/#919 correct discovery and stale-cache defects exposed by these sample paths. Session refresh here is native cookie/session resumption and reauthentication; no new provider refresh-token grant, browser login flow, cross-node cache eviction or in-flight-request cancellation is claimed. Final coordinated public-artifact acceptance remains separate.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAnonymousAndMockModes",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAuth0SignedTokenAndRejectedTokens",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelCacheFailureIsRetryable",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesSessionStore",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesUsedSessionAndRejectsReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCallbackStateAndCodeReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCodeResumeAndNormalLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthExpiredAndMismatchedStoredSession",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableCredentialsResumeAndLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableExpiredAndUnknownSessionDenied"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/593",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "review_note": "Focused independent review found no remaining actionable issues in the production corrections and all ten sample scenarios. Local10sample/20native-logout/4core-auth tests pass. Normal combined CI remains required before integration; the coverage verifier still requires actual passing results for every mapped method."
     },
     {
       "id": "http.custom-routes",

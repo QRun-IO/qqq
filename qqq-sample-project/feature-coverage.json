@@ -4353,7 +4353,7 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, server-entered query timeout and fresh-action recovery, and owned versus borrowed client close behavior. #821 focused tests prove one transaction-owned session and owned cleanup after injected initialization/close failures. Pending: server-operation cancellation (currentOp is not inspected), broader resource accounting and combined-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, correlated currentOp disappearance after timeout reporting, fresh-action recovery, cooperative cancellation of an observed native cursor, and owned versus borrowed native connection/session accounting through commit and close-abort. #821 focused tests cover one transaction-owned session and injected initialization/close failures. #875 reproduces an active correlated server operation beyond the configured query timeout; eventual cleanup is not timely server cancellation. Pending: #875 correction and combined-source review; retain High #525/#526 and deferred #527\u2013#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",
@@ -4363,7 +4363,8 @@
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCommitPublishesBatchOnlyAfterCommit",
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testRollbackAndReusePreserveOnlyCommittedNativeRow",
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testDuplicateMidBatchRollsBackAllNativeWrites",
-        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testTimedOutQueryCancelsAndFreshActionRecovers",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testTimedOutQueryCleansUpAndFreshActionRecovers",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCooperativeCancellationClosesNativeCursorAndClient",
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCloseDiscardsUncommittedWriteAndReleasesOwnedClient",
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testOwnedAndBorrowedClientHandlesFollowTransactionOwnership"
       ],

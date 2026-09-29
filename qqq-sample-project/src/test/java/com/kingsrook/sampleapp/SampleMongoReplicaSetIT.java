@@ -26,7 +26,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
+import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
+import com.kingsrook.qqq.backend.core.actions.async.NonPersistedAsyncJobCallback;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -56,6 +62,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import org.bson.Document;
+import org.bson.types.Binary;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -268,36 +275,145 @@ class SampleMongoReplicaSetIT
 
    /*******************************************************************************
     ** Mongo's failCommand blocks only the QQQ aggregate operation, allowing a
-    ** separate native client to prove that timeout cancellation is recoverable.
+    ** separate native client to observe post-timeout cleanup and recovery.
+    ** This does not prove the configured deadline stops server execution.
     ******************************************************************************/
    @Test
-   void testTimedOutQueryCancelsAndFreshActionRecovers() throws Exception
+   void testTimedOutQueryCleansUpAndFreshActionRecovers() throws Exception
    {
       MongoDBBackendMetaData backend = (MongoDBBackendMetaData) QContext.getQInstance().getBackend(BACKEND);
       String originalSuffix = backend.getUrlSuffix();
       new InsertAction().execute(new InsertInput(TABLE).withRecord(new QRecord().withValue("name", "Survivor")));
       assertEquals(List.of("Survivor"), nativeNames());
 
-      backend.setUrlSuffix("directConnection=true&appName=qqqMongoTimeoutProbe");
+      String applicationName = "qqqTimeout-" + UUID.randomUUID();
+      QInstance instance = QContext.getQInstance();
+      backend.setUrlSuffix("directConnection=true&appName=" + applicationName);
       Document enabled = client.getDatabase("admin").runCommand(new Document("configureFailPoint", "failCommand")
          .append("mode", new Document("times", 1))
-         .append("data", new Document("failCommands", List.of("aggregate")).append("appName", "qqqMongoTimeoutProbe")
+         .append("data", new Document("failCommands", List.of("aggregate")).append("appName", applicationName)
             .append("blockConnection", true).append("blockTimeMS", 2500)));
-      try
+      try(var executor = Executors.newSingleThreadExecutor())
       {
-         QUserFacingException failure = assertThrows(QUserFacingException.class, () ->
-            new QueryAction().execute(new QueryInput(TABLE).withTimeoutSeconds(1)));
-         assertTrue(failure.getMessage().toLowerCase().contains("timed out"));
-         client.getDatabase("admin").runCommand(new Document("waitForFailPoint", "failCommand")
-            .append("timesEntered", enabled.getInteger("count") + 1).append("maxTimeMS", 1000));
-      }
-      finally
-      {
-         client.getDatabase("admin").runCommand(new Document("configureFailPoint", "failCommand").append("mode", "off"));
-         backend.setUrlSuffix(originalSuffix);
+         try
+         {
+            var query = executor.submit(() ->
+            {
+               QContext.init(instance, new QSession());
+               try
+               {
+                  QUserFacingException failure = assertThrows(QUserFacingException.class, () ->
+                     new QueryAction().execute(new QueryInput(TABLE).withTimeoutSeconds(1)));
+                  assertTrue(failure.getMessage().toLowerCase().contains("timed out"));
+               }
+               finally
+               {
+                  QContext.clear();
+               }
+            });
+            List<Document> entered = awaitOperations(new Document("appName", applicationName).append("command.aggregate", COLLECTION), rows -> !rows.isEmpty());
+            assertEquals(1, entered.size());
+            Object operationId = entered.getFirst().get("opid");
+            assertNotNull(operationId);
+            assertTrue(entered.getFirst().getBoolean("active"));
+            client.getDatabase("admin").runCommand(new Document("waitForFailPoint", "failCommand")
+               .append("timesEntered", enabled.getInteger("count") + 1).append("maxTimeMS", 1000));
+            query.get(10, TimeUnit.SECONDS);
+            assertTrue(awaitOperations(new Document("opid", operationId), List::isEmpty).isEmpty());
+            assertTrue(awaitOperations(new Document("appName", applicationName), List::isEmpty).isEmpty());
+         }
+         finally
+         {
+            client.getDatabase("admin").runCommand(new Document("configureFailPoint", "failCommand").append("mode", "off"));
+            backend.setUrlSuffix(originalSuffix);
+         }
       }
       assertEquals(List.of("Survivor"), nativeNames());
       assertEquals(1, new QueryAction().execute(new QueryInput(TABLE)).getRecords().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Cooperative cancellation during delivery closes the real server cursor and
+    ** owned client, while a fresh query can still return the complete native set.
+    ******************************************************************************/
+   @Test
+   void testCooperativeCancellationClosesNativeCursorAndClient() throws Exception
+   {
+      List<QRecord> records = new ArrayList<>();
+      for(int i = 0; i < 200; i++)
+      {
+         records.add(new QRecord().withValue("name", "Owned row " + i));
+      }
+      new InsertAction().execute(new InsertInput(TABLE).withRecords(records));
+      assertEquals(200L, collection().countDocuments());
+      QInstance instance = QContext.getQInstance();
+      MongoDBBackendMetaData backend = (MongoDBBackendMetaData) instance.getBackend(BACKEND);
+      String applicationName = "qqqCursor-" + UUID.randomUUID();
+      backend.setUrlSuffix("directConnection=true&appName=" + applicationName);
+      AsyncJobStatus status = new AsyncJobStatus();
+      CountDownLatch entered = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      QueryInput input = new QueryInput(TABLE);
+      input.setAsyncJobCallback(new NonPersistedAsyncJobCallback(UUID.randomUUID(), status)
+      {
+         /*******************************************************************************
+          ** The normal callback is reached after the first native result is read.
+          ******************************************************************************/
+         @Override
+         public boolean wasCancelRequested()
+         {
+            entered.countDown();
+            try
+            {
+               assertTrue(release.await(10, TimeUnit.SECONDS));
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               throw new AssertionError(e);
+            }
+            return super.wasCancelRequested();
+         }
+      });
+      Document cursorFilter = new Document("type", "idleCursor").append("ns", DATABASE + "." + COLLECTION);
+      assertTrue(awaitOperations(cursorFilter, List::isEmpty).isEmpty());
+      try(var executor = Executors.newSingleThreadExecutor())
+      {
+         try
+         {
+            var query = executor.submit(() ->
+            {
+               QContext.init(instance, new QSession());
+               try
+               {
+                  return new QueryAction().execute(input);
+               }
+               finally
+               {
+                  QContext.clear();
+               }
+            });
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            List<Document> cursors = awaitOperations(cursorFilter, rows -> !rows.isEmpty());
+            assertEquals(1, cursors.size());
+            Object cursorId = cursors.getFirst().get("cursor", Document.class).get("cursorId");
+            assertNotNull(cursorId);
+            assertFalse(awaitOperations(new Document("appName", applicationName), rows -> !rows.isEmpty()).isEmpty());
+            status.setCancelRequested(true);
+            release.countDown();
+            assertEquals(1, query.get(5, TimeUnit.SECONDS).getRecords().size());
+            assertTrue(awaitOperations(new Document("cursor.cursorId", cursorId), List::isEmpty).isEmpty());
+            assertTrue(awaitOperations(new Document("appName", applicationName), List::isEmpty).isEmpty());
+         }
+         finally
+         {
+            release.countDown();
+         }
+      }
+      assertEquals(200, new QueryAction().execute(new QueryInput(TABLE)).getRecords().size());
+      assertTrue(awaitOperations(new Document("appName", applicationName), List::isEmpty).isEmpty());
    }
 
 
@@ -309,7 +425,11 @@ class SampleMongoReplicaSetIT
    @Test
    void testCloseDiscardsUncommittedWriteAndReleasesOwnedClient() throws Exception
    {
+      String applicationName = "qqqAbort-" + UUID.randomUUID();
+      ((MongoDBBackendMetaData) QContext.getQInstance().getBackend(BACKEND)).setUrlSuffix("directConnection=true&appName=" + applicationName);
+      Document applicationFilter = new Document("appName", applicationName);
       MongoClient transactionClient;
+      Document sessionFilter;
       try(QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(TABLE)))
       {
          MongoDBTransaction mongo = assertInstanceOf(MongoDBTransaction.class, transaction);
@@ -317,8 +437,14 @@ class SampleMongoReplicaSetIT
          new InsertAction().execute(new InsertInput(TABLE).withTransaction(transaction)
             .withRecord(new QRecord().withValue("name", "Uncommitted")));
          assertEquals(0L, collection().countDocuments());
+         var sessionId = mongo.getClientSession().getServerSession().getIdentifier().getBinary("id");
+         sessionFilter = new Document("lsid.id", new Binary(sessionId.getType(), sessionId.getData())).append("type", "idleSession");
+         assertEquals(1, awaitOperations(sessionFilter, rows -> rows.size() == 1).size());
+         assertFalse(awaitOperations(applicationFilter, rows -> !rows.isEmpty()).isEmpty());
       }
       assertThrows(IllegalStateException.class, () -> transactionClient.getDatabase("admin").runCommand(new Document("ping", 1)));
+      assertTrue(awaitOperations(sessionFilter, List::isEmpty).isEmpty());
+      assertTrue(awaitOperations(applicationFilter, List::isEmpty).isEmpty());
       assertEquals(0L, collection().countDocuments());
       new InsertAction().execute(new InsertInput(TABLE).withRecord(new QRecord().withValue("name", "Fresh client")));
       assertEquals(List.of("Fresh client"), nativeNames());
@@ -335,19 +461,28 @@ class SampleMongoReplicaSetIT
    {
       MongoDBBackendMetaData backend = (MongoDBBackendMetaData) QContext.getQInstance().getBackend(BACKEND);
       AbstractMongoDBAction action = new AbstractMongoDBAction();
+      String applicationName = "qqqOwnership-" + UUID.randomUUID();
+      Document applicationFilter = new Document("appName", applicationName);
+      backend.setUrlSuffix("directConnection=true&appName=" + applicationName);
+      assertTrue(awaitOperations(applicationFilter, List::isEmpty).isEmpty());
       MongoClientContainer owned = action.openClient(backend, null);
       MongoClient ownedClient = owned.getMongoClient();
       try
       {
          assertEquals(1.0, ownedClient.getDatabase("admin").runCommand(owned.getMongoSession(), new Document("ping", 1)).getDouble("ok"));
+         assertFalse(awaitOperations(applicationFilter, rows -> !rows.isEmpty()).isEmpty());
+         assertNotNull(owned.getMongoSession().getServerSession());
       }
       finally
       {
          owned.closeIfNeeded();
       }
       assertThrows(IllegalStateException.class, () -> ownedClient.getDatabase("admin").runCommand(new Document("ping", 1)));
+      assertThrows(IllegalStateException.class, () -> owned.getMongoSession().getServerSession());
+      assertTrue(awaitOperations(applicationFilter, List::isEmpty).isEmpty());
 
       MongoClient transactionClient;
+      Document sessionFilter;
       try(QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(TABLE)))
       {
          MongoDBTransaction mongo = assertInstanceOf(MongoDBTransaction.class, transaction);
@@ -355,14 +490,55 @@ class SampleMongoReplicaSetIT
          MongoClientContainer borrowed = action.openClient(backend, transaction);
          assertSame(transactionClient, borrowed.getMongoClient());
          assertSame(mongo.getClientSession(), borrowed.getMongoSession());
-         borrowed.closeIfNeeded();
          new InsertAction().execute(new InsertInput(TABLE).withTransaction(transaction)
             .withRecord(new QRecord().withValue("name", "Borrowed owner")));
+         var sessionId = mongo.getClientSession().getServerSession().getIdentifier().getBinary("id");
+         sessionFilter = new Document("lsid.id", new Binary(sessionId.getType(), sessionId.getData())).append("type", "idleSession");
+         assertEquals(1, awaitOperations(sessionFilter, rows -> rows.size() == 1).size());
+         List<Object> connections = awaitOperations(applicationFilter, rows -> !rows.isEmpty()).stream()
+            .filter(row -> row.containsKey("connectionId")).map(row -> row.get("connectionId")).distinct().toList();
+         assertFalse(connections.isEmpty());
+         borrowed.closeIfNeeded();
+         assertSame(mongo.getClientSession().getServerSession(), borrowed.getMongoSession().getServerSession());
+         assertEquals(1, awaitOperations(sessionFilter, rows -> rows.size() == 1).size());
+         assertTrue(awaitOperations(applicationFilter, rows -> !rows.isEmpty()).stream()
+            .map(row -> row.get("connectionId")).toList().containsAll(connections));
          transaction.commit();
+         assertTrue(awaitOperations(sessionFilter, List::isEmpty).isEmpty());
+         assertFalse(awaitOperations(applicationFilter, rows -> !rows.isEmpty()).isEmpty());
       }
       assertThrows(IllegalStateException.class, () -> transactionClient.getDatabase("admin").runCommand(new Document("ping", 1)));
+      assertTrue(awaitOperations(sessionFilter, List::isEmpty).isEmpty());
+      assertTrue(awaitOperations(applicationFilter, List::isEmpty).isEmpty());
       assertEquals(List.of("Borrowed owner"), nativeNames());
       assertEquals(1, new QueryAction().execute(new QueryInput(TABLE)).getRecords().size());
+      assertTrue(awaitOperations(applicationFilter, List::isEmpty).isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Observe only correlated fixture resources, including idle native handles.
+    ******************************************************************************/
+   private static List<Document> awaitOperations(Document filter, Predicate<List<Document>> ready) throws InterruptedException
+   {
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      List<Document> operations;
+      do
+      {
+         operations = client.getDatabase("admin").aggregate(List.of(
+            new Document("$currentOp", new Document("allUsers", true).append("idleConnections", true)
+               .append("idleCursors", true).append("idleSessions", true)),
+            new Document("$match", filter))).into(new ArrayList<>());
+         if(ready.test(operations))
+         {
+            return operations;
+         }
+         Thread.sleep(25);
+      }
+      while(System.nanoTime() < deadline);
+      assertTrue(ready.test(operations), "Correlated native operations did not reach expected state; count=" + operations.size());
+      return operations;
    }
 
 

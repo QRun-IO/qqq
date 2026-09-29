@@ -49,8 +49,21 @@ public interface QRuntimeServiceInterface
    void start(QInstance qInstance) throws QException;
 
    /***************************************************************************
-    ** Stop the service, releasing what start acquired.
+    ** Stop the service's work. Resources shared with other application work may
+    ** be released in afterApplicationStop instead, once all stops are attempted.
     ***************************************************************************/
    void stop();
+
+
+   /***************************************************************************
+    ** Release application-owned resources after the launcher has attempted every
+    ** service stop, including scheduler and HTTP shutdown. Called at most once
+    ** for each successfully started service, including failed application startup.
+    ** No QContext is guaranteed. Failed or timed-out stops may leave work running;
+    ** this callback does not extend their deadlines or force that work to finish.
+    ***************************************************************************/
+   default void afterApplicationStop()
+   {
+   }
 
 }

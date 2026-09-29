@@ -4996,7 +4996,7 @@
       "negative_cases": [
         "Missing required metadata, excluded endpoints must remain absent and dangling schema references"
       ],
-      "gap": "First-party served JSON/YAML evidence covers configured versions, field/schema/route comparisons with real records, executable query examples, security declarations, required generator metadata, excluded endpoints and local reference resolution. #873 corrects malformed example pointers; #874 corrects directly mapped query aliases, with current/historical/version/API-scope positive and negative HTTP checks. Pending main review and integrated acceptance; no full OpenAPI validation, exhaustive filter-type coverage or live OAuth enforcement claim.",
+      "gap": "First-party served JSON/YAML evidence covers configured versions, field/schema/route comparisons with real records, executable query examples, security declarations, required generator metadata, excluded endpoints and local reference resolution. #873 corrects malformed example pointers; #874 corrects directly mapped query aliases, with current/historical/version/API-scope positive and negative HTTP checks. #877 covers native DATE criterion conversion with real HTTP current/historical equality, invalid-date 400 responses and custom-mapper controls. Pending main review and integrated acceptance; no full OpenAPI validation, exhaustive filter-type coverage or live OAuth enforcement claim.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedVersionsFieldsRoutesAndSecurityMatchRecords",
         "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedQueryExamplesSelectTheDocumentedRecords",
@@ -5010,7 +5010,11 @@
         "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testAnonymousSpecRetainsEmptyRequirements",
         "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testUnsupportedVersionDoesNotReturnSpec",
         "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testHistoricalQueryReplacementAndVersionBoundaries",
-        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testQueryAliasScopeAndInvalidCriteria"
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testQueryAliasScopeAndInvalidCriteria",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testCurrentAndHistoricalDateEquality",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testBlankStringAndVersionControls",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testInvalidDateValuesReturnBadRequest",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testCustomMapperRetainsRawInput"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",

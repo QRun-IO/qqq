@@ -56,6 +56,7 @@ import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.QJavalinUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.TableQueryExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableQueryInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableQueryOutputInterface;
@@ -73,6 +74,7 @@ public class ApiAwareTableQueryExecutor extends TableQueryExecutor implements Ap
    @Override
    public void execute(TableQueryInput input, TableQueryOutputInterface output) throws QException
    {
+      ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
       List<String> badRequestMessages = new ArrayList<>();
 
       // todo - new operation?  move all this to the api impl class??

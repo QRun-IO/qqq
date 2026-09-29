@@ -60,7 +60,9 @@ import java.util.regex.Pattern;
  ** and, only for the analytics providers the instance configures (QQQ_ENV_*
  ** GOOGLE_ANALYTICS_*, POSTHOG_*, ANALYTICS_PLUGIN_SCRIPTS; QRun-IO/qqq#730),
  ** their script origins to script-src and the origins they send to to
- ** connect-src (see NextDashboardAnalyticsOrigins).
+ ** connect-src (see NextDashboardAnalyticsOrigins). When both Google Drive
+ ** browser settings are configured, Google identity and picker script, frame,
+ ** connect and style sources are added as well.
  ** Applications change the policy with
  ** QApplicationJavalinServer.withNextDashboardSecurityHeadersCustomizer, which
  ** receives this object after those additions.

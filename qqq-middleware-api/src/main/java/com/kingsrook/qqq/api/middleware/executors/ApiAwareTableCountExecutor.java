@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.TableCountExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableCountInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableCountOutputInterface;
@@ -59,6 +60,7 @@ public class ApiAwareTableCountExecutor extends TableCountExecutor implements Ap
    @Override
    public void execute(TableCountInput input, TableCountOutputInterface output) throws QException
    {
+      ExecutorSessionUtils.setTableVariantInSession(input.getTableVariant());
       List<String> badRequestMessages = new ArrayList<>();
 
       // todo - new operation?  move all this to the api impl class??

@@ -136,9 +136,9 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    /*******************************************************************************
     ** The origins an instance's metadata adds to the policy.
     *******************************************************************************/
-   private record InstanceOrigins(Set<String> connect, Set<String> frame, Set<String> script)
+   private record InstanceOrigins(Set<String> connect, Set<String> frame, Set<String> script, Set<String> style)
    {
-      static final InstanceOrigins NONE = new InstanceOrigins(Set.of(), Set.of(), Set.of());
+      static final InstanceOrigins NONE = new InstanceOrigins(Set.of(), Set.of(), Set.of(), Set.of());
 
 
 
@@ -150,6 +150,7 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
          connect = Collections.unmodifiableSet(new LinkedHashSet<>(connect));
          frame = Collections.unmodifiableSet(new LinkedHashSet<>(frame));
          script = Collections.unmodifiableSet(new LinkedHashSet<>(script));
+         style = Collections.unmodifiableSet(new LinkedHashSet<>(style));
       }
    }
 
@@ -239,7 +240,8 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
     ** The origins an instance's metadata adds: its identity providers and its
     ** configured analytics providers (connect-src), a QuickSight widget's embed
     ** origin (frame-src), and its customComponent bundles' and configured
-    ** analytics scripts' origins (script-src).
+    ** analytics scripts' origins (script-src), plus configured Google Drive
+    ** identity and picker script, frame, connect and style sources.
     *******************************************************************************/
    private static InstanceOrigins instanceOrigins(QInstance qInstance)
    {
@@ -251,7 +253,24 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
       Set<String> script = new LinkedHashSet<>(customComponentOrigins(qInstance));
       script.addAll(analytics.getScript());
 
-      return (new InstanceOrigins(connect, hasQuickSightWidget(qInstance) ? Set.of(QUICKSIGHT_FRAME_SOURCE) : Set.of(), script));
+      Set<String> frame = new LinkedHashSet<>();
+      Set<String> style = new LinkedHashSet<>();
+      if(hasQuickSightWidget(qInstance))
+      {
+         frame.add(QUICKSIGHT_FRAME_SOURCE);
+      }
+      Map<String, String> environment = qInstance.getEnvironmentValues();
+      if(environment != null && environment.get("GOOGLE_APP_CLIENT_ID") != null && !environment.get("GOOGLE_APP_CLIENT_ID").isBlank()
+         && environment.get("GOOGLE_APP_API_KEY") != null && !environment.get("GOOGLE_APP_API_KEY").isBlank())
+      {
+         script.add("https://accounts.google.com/gsi/client");
+         script.add("https://apis.google.com");
+         connect.add("https://accounts.google.com/gsi/");
+         frame.add("https://accounts.google.com/gsi/");
+         frame.add("https://docs.google.com");
+         style.add("https://accounts.google.com/gsi/style");
+      }
+      return (new InstanceOrigins(connect, frame, script, style));
    }
 
 
@@ -265,6 +284,7 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
       instanceOrigins.connect().forEach(origin -> headers.withSources("connect-src", origin));
       instanceOrigins.frame().forEach(origin -> headers.withSources("frame-src", origin));
       instanceOrigins.script().forEach(origin -> headers.withSources(NextDashboardSecurityHeaders.SCRIPT_SRC, origin));
+      instanceOrigins.style().forEach(origin -> headers.withSources("style-src", origin));
       if(securityHeadersCustomizer != null)
       {
          securityHeadersCustomizer.accept(headers);

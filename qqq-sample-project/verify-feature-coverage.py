@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the sample's feature ledger against actual Maven test reports."""
+"""Check the sample's feature ledger against Maven and reviewed native Next reports."""
 import argparse
 import hashlib
 import json
@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from next_acceptance import evaluate as evaluate_next
 
 
 # Reviewed 130-feature scope, including separate source/published bootstrap; change only after reviewing the source
@@ -53,6 +54,8 @@ def main():
     parser.add_argument('--report-only', action='store_true', help='List gaps without certifying acceptance')
     parser.add_argument('--require-feature', action='append', default=[],
                         help='Require each named reviewed feature even with --report-only')
+    parser.add_argument('--next-receipt-sha256',
+                        help='Independently reviewed SHA256 of target/next-acceptance/receipt.json')
     args = parser.parse_args()
     sample = Path(__file__).resolve().parent
     output = sample / 'target' / 'feature-coverage-result.json'
@@ -105,6 +108,12 @@ def main():
                 passed = not any(case.find(result) is not None for result in ('failure', 'error', 'skipped'))
                 outcomes[name] = outcomes.get(name, True) and passed
 
+    try:
+        source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=sample,
+                                             text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        source_sha = None
+    next_evidence = evaluate_next(sample, features, source_sha, args.next_receipt_sha256)
     gaps = []
     unsupported = []
     deferred = []
@@ -125,13 +134,20 @@ def main():
                 unsupported.append({'id': feature['id'], 'reason': review['reason']})
                 continue
             reasons.append('unsupported disposition requires a reviewed enum-only boundary without test claims')
-        failed_tests = [test for test in tests if not outcomes.get(test, False)]
-        if args.stage == 'source' and feature['id'] in release_deferrals and not failed_tests:
+        native = next_evidence['features'].get(feature['id'])
+        historical_tests = native['historical_tests'] if native else []
+        # Next is the authorized successor target. Retain old mappings as historical provenance,
+        # and still surface an actual failing compatibility report if one was supplied.
+        failed_tests = [test for test in tests if not outcomes.get(test, False)
+                        and (test not in historical_tests or test in outcomes)]
+        if native:
+            reasons.extend(native['reasons'])
+        if args.stage == 'source' and feature['id'] in release_deferrals and not failed_tests and not reasons:
             applied_release_deferrals.append(feature['id'])
             continue
         if feature['acceptance_status'] != 'verified':
             reasons.append('scenario review is pending')
-        if not tests:
+        if not tests and not (native and native['tests']):
             reasons.append('no acceptance tests are mapped')
         for test in failed_tests:
             reasons.append('test did not pass in these reports: ' + test)
@@ -149,6 +165,7 @@ def main():
         'verified': len(features) - len(unsupported) - len(deferred) - len(applied_release_deferrals) - len(gaps),
         'unsupported': unsupported, 'deferred': deferred,
         'release_deferrals': applied_release_deferrals, 'stage': args.stage,
+        'next_acceptance': next_evidence,
         'stage_passed': not gaps,
         'required_features': args.require_feature, 'required_passed': required_passed,
         'complete': not args.report_only and not gaps and not deferred and not applied_release_deferrals, 'gaps': gaps,

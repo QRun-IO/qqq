@@ -39,6 +39,11 @@
    </properties>
 
    <dependencies>
+      <dependency>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter-engine</artifactId>
+         <scope>test</scope>
+      </dependency>
       <!-- 3rd party deps specifically for this module -->
       <dependency>
          <groupId>com.amazonaws</groupId>

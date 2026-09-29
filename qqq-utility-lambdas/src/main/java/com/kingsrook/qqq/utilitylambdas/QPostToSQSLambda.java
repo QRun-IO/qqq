@@ -54,13 +54,18 @@ public class QPostToSQSLambda implements RequestStreamHandler
 
       try
       {
+         String queueUrl = System.getenv("QUEUE_URL");
+         if(queueUrl == null || queueUrl.isBlank())
+         {
+            throw new IllegalStateException("Environment variable QUEUE_URL must be configured.");
+         }
+
          String input = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-         log("Full Input: " + input);
 
          final AmazonSQS sqs = AmazonSQSClientBuilder.defaultClient();
 
          SendMessageRequest sendMessageRequest = new SendMessageRequest()
-            .withQueueUrl(System.getenv("QUEUE_URL"))
+            .withQueueUrl(queueUrl)
             .withMessageBody(input);
          sqs.sendMessage(sendMessageRequest);
 

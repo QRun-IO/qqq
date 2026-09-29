@@ -5235,8 +5235,17 @@
       "negative_cases": [
         "Missing QUEUE_URL, service/credential error, empty/malformed input and sensitive-payload logging policy"
       ],
-      "gap": "Handler currently uses default AWS credentials and logs incoming body; add first-party capture/fixture and failure assertions without unrelated accounts or data.",
-      "verified_tests": [],
+      "gap": "Eight local native-SDK/stream checks cover exact owned queue/body, raw malformed text, empty/service/credential failures, absent/blank QUEUE_URL, and no incoming body in captured Lambda logs after #878/#879. Tests run in the utility module; fresh XML is explicitly imported for the sample ledger. Pending independent review and combined acceptance. No live AWS/IAM/deployment, arbitrary provider-error sanitization, or published-artifact claim.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testExactQueueAndBody",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testMalformedJsonIsForwardedAsRawText",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testEmptyBodyServiceRejection",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testServiceRefusal",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testMissingCredentialsCannotSend",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testMissingQueueUrlFailsBeforeCredentials",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testBlankQueueUrlFailsBeforeCredentials",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testPayloadIsNotLogged"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/604",

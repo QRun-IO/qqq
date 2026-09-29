@@ -1736,3 +1736,22 @@ mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
   -Dtest=SampleApplicationApiHttpAcceptanceTest test
 python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
 ```
+
+
+## SQS utility source acceptance (#604)
+
+[`SampleSqsUtilityAcceptanceTest`](../qqq-utility-lambdas/src/test/java/com/kingsrook/sampleapp/SampleSqsUtilityAcceptanceTest.java) lives in the utility module and calls the real stream handler/default AWS SDK client. Fresh child JVMs use cleared environments, isolated credentials/home, disabled instance metadata, and synthetic identities. An owned loopback SQS JSON protocol listener independently checks exact QueueUrl and MessageBody. This is separate from the new ESB and does not change its providers or replace existing SQS integration.
+
+Eight cases cover UTF-8/raw malformed text, empty-message/service rejection, credential failure without send, absent/blank queue configuration, and no input body in captured success/failure Lambda logs. [#878](https://github.com/QRun-IO/qqq/issues/878) removes unconditional body logging; [#879](https://github.com/QRun-IO/qqq/issues/879) validates queue configuration before credentials. Error diagnostics still include service-provided text; this does not certify arbitrary provider-message sanitization, live AWS/IAM, deployed Lambda behavior or published artifacts.
+
+The sample does not automatically run the utility module. Run its normal source gate and explicitly import the fresh report for the existing ledger verifier:
+
+```sh
+mvn -B -o -Dmaven.repo.local="$OWNED_M2" -pl qqq-utility-lambdas clean verify
+mkdir -p qqq-sample-project/target/surefire-reports
+cp qqq-utility-lambdas/target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest.xml qqq-sample-project/target/surefire-reports/
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+python3 -B qqq-sample-project/verify-feature-coverage.py --stage source --report-only --require-feature utility-lambda.sqs
+```
+
+The last command still reports pending scenario review until independent and combined acceptance are complete. All130 original contracts/statuses/stages and release dispositions are preserved; no release deferral is added.

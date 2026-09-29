@@ -1614,3 +1614,21 @@ Java sources matched that base. `openapi.models` stays **pending** for main inte
 and acceptance of the reviewed change. The separate defect is not described as
 fixed; no new validation or publication gate is introduced. Existing contracts and
 release deferrals remain unchanged.
+
+
+## V1 metadata/query/count source acceptance (#592)
+
+`SampleV1TableHttpAcceptanceTest` serves sample metadata through `QApplicationJavalinServer` against a unique H2 database seeded with the canonical synthetic Person/Pet rows. It avoids the demo launcher's default database priming and broker startup. A unique first-name sentinel must appear over HTTP, and the actual connection URL must match the direct JDBC oracle; teardown restores the caller's context objects. It asserts V1 instance/table/process metadata, filtered/joined/sorted query and count with independent JDBC identities, empty responses, default limits and explicit paging. The configured two-row default bounds requests without a limit; count remains independent. Missing/null filters retain unfiltered behavior. Wrong non-null filter types return400 after [#871](https://github.com/QRun-IO/qqq/issues/871); malformed JSON/operators and unknown tables cannot return successful data.
+
+Permission controls require403 for Person query/count while Pet remains readable. The existing mock authentication provider's `Bearer Deny` token exercises actual401 responses on all five endpoint families, each with an allowed control. This proves local middleware rejection, not an external identity-provider integration. Existing presentation and joined-privacy tests run alongside the seven new cases. No Next UI change or browser/public-artifact acceptance is included.
+
+Run with a source-matching private cache after installing the corrected Javalin module:
+
+```sh
+mvn -B -o -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml \
+  -Dtest=SampleV1TableHttpAcceptanceTest,SamplePresentationMetadataTest,SampleJavalinServerTest test
+python3 -m unittest discover -s qqq-sample-project -p 'test_*.py'
+```
+
+`http.metadata.tables` remains pending independent review and full combined acceptance. All original feature contracts, stages, statuses and release dispositions remain unchanged.

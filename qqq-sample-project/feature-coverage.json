@@ -4696,8 +4696,19 @@
       "negative_cases": [
         "Unknown table, malformed body/filter, unauthenticated/forbidden request and default query limit enforcement"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Owned V1 HTTP/H2 scenarios bind the native application HTTP server to a unique database, verify its JDBC URL and an HTTP-visible sentinel, restore caller context objects, and cover instance/table/process metadata shapes, filtered/sorted/joined query and count with independent SQL identities, empty records, omitted/default/explicit limits, unknown table, malformed JSON/operator and non-object filters, actual mock-provider 401 denial and table READ 403. Non-object filters are rejected with 400 under #871; absent/null and valid structured filters retain their behavior. Pending independent review and main full composition; no live identity provider, browser or published-artifact acceptance is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testVersionedMetadataShapes",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testConfiguredDefaultLimitAndExplicitPaging",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testFilterJoinAndEmptyResponse",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testUnknownTablesAndMalformedRequests",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testNonObjectFilterIsRejected",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testAuthenticationDenialHasAllowedControls",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testReadPermissionDenial",
+        "com.kingsrook.sampleapp.SamplePresentationMetadataTest#testCanonicalNavigationBrandingAndSections",
+        "com.kingsrook.sampleapp.SamplePresentationMetadataTest#testDeniedAndHiddenMetadata",
+        "com.kingsrook.sampleapp.SampleJavalinServerTest#testJoinedFieldPrivacyAcrossHttpReads"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/592",

@@ -1595,3 +1595,10 @@ Run `mvn -pl qqq-middleware-api install`, then
 against the same Maven repository. Native local sockets are required. The focused
 checks exercise no external auth provider and introduce no release deferral;
 [#869](https://github.com/QRun-IO/qqq/issues/869) records the original defect.
+
+
+### Metadata-driven OpenAPI acceptance (#597)
+
+`SampleOpenApiAcceptanceTest` uses the shared `SampleOpenApiHttpFixture` to parse real loopback JSON/YAML specs for two configured versions, compare external field names and schemas with served records, execute documented string/number query examples, and check HTTP security declarations. It asserts excluded, unconfigured and future endpoints are absent from both the documents and served API. Missing API metadata/name/version and a missing table primary key exercise existing generator errors; these checks do not introduce DTO validation. Every local reference is resolved, and deleting the referenced table schema from a document copy proves the dangling-reference oracle fails. [#873](https://github.com/QRun-IO/qqq/issues/873) fixes the reproduced malformed example-pointer prefix.
+
+Run `mvn -f qqq-sample-project/pom.xml -Dtest=SampleOpenApiAcceptanceTest,SampleOpenApiSecurityAcceptanceTest test` against matching framework sources. [#874](https://github.com/QRun-IO/qqq/issues/874) remains a concrete gap: a documented renamed query field returns HTTP 500; `testKnownGapRenamedQueryFieldIsRejected` characterizes that failure and is not successful alias-filter acceptance. The owned MOCK authentication fixture proves document/route behavior, not live OAuth authentication or permission enforcement. This is focused evidence, not full OpenAPI schema validation or exhaustive API acceptance; the ledger remains pending main review/integration and retains its existing release disposition.

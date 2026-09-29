@@ -21,16 +21,11 @@
 package com.kingsrook.sampleapp;
 
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-import com.kingsrook.qqq.api.javalin.QJavalinApiHandler;
 import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
@@ -52,7 +47,6 @@ import com.kingsrook.qqq.openapi.model.OAuth2;
 import com.kingsrook.qqq.openapi.model.OAuth2Flow;
 import com.kingsrook.qqq.openapi.model.SecurityScheme;
 import com.kingsrook.qqq.openapi.model.SecuritySchemeType;
-import io.javalin.Javalin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,8 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class SampleOpenApiSecurityAcceptanceTest
 {
-   private Javalin server;
-   private HttpClient client;
+   private SampleOpenApiHttpFixture http;
 
 
 
@@ -110,13 +103,7 @@ class SampleOpenApiSecurityAcceptanceTest
       {
          QContext.clear();
       }
-      server = Javalin.create(config ->
-      {
-         config.routes.apiBuilder(new QJavalinApiHandler(instance).getRoutes());
-         config.routes.after(context -> QContext.clear());
-      });
-      server.start("127.0.0.1", 0);
-      client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+      http = new SampleOpenApiHttpFixture(instance);
    }
 
 
@@ -127,21 +114,11 @@ class SampleOpenApiSecurityAcceptanceTest
    @AfterEach
    void stop()
    {
-      try
+      if(http != null)
       {
-         if(client != null)
-         {
-            client.close();
-         }
+         http.close();
       }
-      finally
-      {
-         if(server != null)
-         {
-            server.stop();
-         }
-         QContext.clear();
-      }
+      QContext.clear();
    }
 
 
@@ -198,7 +175,7 @@ class SampleOpenApiSecurityAcceptanceTest
    {
       for(String format : List.of("json", "yaml"))
       {
-         HttpResponse<String> response = get("/bearer/2025.Q1/openapi." + format);
+         HttpResponse<String> response = http.get("/bearer/2025.Q1/openapi." + format);
          assertEquals(500, response.statusCode());
          JsonNode body = JsonUtils.toObject(response.body(), JsonNode.class);
          assertTrue(body.get("error").asText().contains("not a supported API Version"));
@@ -216,7 +193,7 @@ class SampleOpenApiSecurityAcceptanceTest
    {
       for(String format : List.of("json", "yaml"))
       {
-         HttpResponse<String> response = get("/" + api + "/2026.Q3/openapi." + format);
+         HttpResponse<String> response = http.get("/" + api + "/2026.Q3/openapi." + format);
          assertEquals(200, response.statusCode());
          assertTrue(response.headers().firstValue("Content-Type").orElse("").contains(format));
          JsonNode document = "json".equals(format) ? JsonUtils.toObject(response.body(), JsonNode.class) : new YAMLMapper().readTree(response.body());
@@ -236,14 +213,4 @@ class SampleOpenApiSecurityAcceptanceTest
       }
    }
 
-
-
-   /*******************************************************************************
-    ** Use the bound loopback port and a bounded request timeout.
-    *******************************************************************************/
-   private HttpResponse<String> get(String path) throws Exception
-   {
-      return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port() + path))
-         .timeout(Duration.ofSeconds(10)).GET().build(), HttpResponse.BodyHandlers.ofString());
-   }
 }

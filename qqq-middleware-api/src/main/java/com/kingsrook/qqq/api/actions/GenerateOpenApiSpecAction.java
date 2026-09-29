@@ -344,7 +344,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
       for(String exampleRef : exampleRefs)
       {
-         rs.put(exampleRef, new Example().withRef("#components/examples/" + exampleRef));
+         rs.put(exampleRef, new Example().withRef("#/components/examples/" + exampleRef));
       }
 
       return (rs);

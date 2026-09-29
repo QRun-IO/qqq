@@ -4935,8 +4935,20 @@
       "negative_cases": [
         "Missing required metadata, excluded endpoints must remain absent and dangling schema references"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "First-party served JSON/YAML evidence covers configured versions, field/schema/route comparisons with real records, executable query examples, security declarations, required generator metadata, excluded endpoints and local reference resolution. #873 corrects malformed example pointers. Renamed query filters remain a reproduced product gap (#874); their characterization is not successful alias-filter acceptance. Pending main review and integrated acceptance; no full OpenAPI validation or live OAuth enforcement claim.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedVersionsFieldsRoutesAndSecurityMatchRecords",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedQueryExamplesSelectTheDocumentedRecords",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testExcludedEndpointsAreNotDocumentedOrServed",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testMissingRequiredMetadataRejectsGeneration",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedReferencesResolveAndDanglingSchemaIsDetected",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testKnownGapRenamedQueryFieldIsRejected",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testBearerSpecRetainsEmptyScopeRequirement",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testApiKeySpecRetainsEmptyScopeRequirement",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testOAuthSpecRetainsPermissionScopes",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testAnonymousSpecRetainsEmptyRequirements",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testUnsupportedVersionDoesNotReturnSpec"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/597",

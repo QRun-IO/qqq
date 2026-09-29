@@ -1676,3 +1676,62 @@ Run `mvn -pl qqq-middleware-api install`, then
 against the same Maven repository. Native local sockets are required. The focused
 checks exercise no external auth provider and introduce no release deferral;
 [#869](https://github.com/QRun-IO/qqq/issues/869) records the original defect.
+
+
+## Slack route and message source acceptance (#602 / #603)
+
+`SampleSlackRoutesAcceptanceTest` sends real encoded form POSTs to the native
+`QSlackImplementation` routes on an owned `127.0.0.1` ephemeral listener. It uses
+canonical sample Person/Pet records in UUID H2, verifies the provider URL, and
+checks a unique SQL value in the get response. Query output is the existing
+record-identity text, not a full record projection. Metadata lists tables and
+processes; a process execution command is unsupported. Missing/unknown native
+sessions, denied Person READ with a readable Pet control, and malformed commands
+produce the existing HTTP200 Slack Error-block envelope. The fixture restores
+context objects/static instances, removes owned session state and closes H2/HTTP.
+
+Authentication is QQQ's real table-based session-cookie module with synthetic
+local identities. Slack form `user_id` and `token` do not authenticate requests
+and are not verified: a valid QQQ cookie remains authoritative. This is not proof
+of Slack signing, live token validation, external identity providers, or browser
+cookie behavior. [#880](https://github.com/QRun-IO/qqq/issues/880) corrects session
+setup ordering before table input setters; [#881](https://github.com/QRun-IO/qqq/issues/881)
+handles untyped widgets in metadata; [#883](https://github.com/QRun-IO/qqq/issues/883)
+applies existing USER/READ checks to query/get/export. Export transport itself is
+not exercised by these sample cases. No process-execution feature is added.
+
+`SampleSlackMessagesAcceptanceTest` converts statistics/chart/line data and
+inspects actual SDK HTTP payloads at an owned local receiver. Each outbound call
+uses a separate JVM with an empty inherited environment, a fresh temporary cwd,
+and only synthetic token/channel values. The production helper hardcodes the
+SDK's immutable singleton, so test-only reflection redirects its endpoint inside
+that child before any call; endpoint equality is asserted. Native request
+construction remains intact. The SDK's `auth.test` lookup and `chat.postMessage`
+are both local, and the captured channel/text/markdown/authentication are checked.
+The child explicitly exits after SDK close; natural whole-JVM termination and
+parallel shared-server isolation are not claimed.
+
+Empty/unsupported widget messages and API/HTTP rejection are asserted. The void
+adapter logs service rejection and does not return delivery confirmation.
+[#882](https://github.com/QRun-IO/qqq/issues/882) prevents dispatch when the token
+or channel is absent. No live Slack service, account, recipient, export upload or
+additional third-party library is used. The sample's only dependency wiring adds
+the existing reactor-version Slack module in test scope.
+
+After installing source-matching modules into an owned cache:
+
+```sh
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -pl qqq-middleware-slack clean install
+mvn -B -o -nsu -Dmaven.repo.local=/path/to/owned-cache \
+  -f qqq-sample-project/pom.xml \
+  -Dtest=SampleSlackRoutesAcceptanceTest,SampleSlackMessagesAcceptanceTest,SamplePresentationMetadataTest,SampleMetaDataProviderTest test
+python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+```
+
+The Slack module currently has no module-local tests; its normal build runs
+Checkstyle/static checks, while these native sample tests supply the regressions.
+No module coverage ratio is claimed. Both ledger rows stay `pending` for
+independent review and the main full gate. All130 original contracts, stages,
+statuses and release dispositions remain unchanged; no Next or held OAuth work is
+included, and no full sample/published/release acceptance is claimed.

@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -80,13 +81,17 @@ public class QuerySpecUtils
     ***************************************************************************/
    public static QQueryFilter getFilterFromRequestBody(JSONObject requestBody) throws IOException
    {
-      if(requestBody.has("filter"))
+      if(requestBody.has("filter") && !requestBody.isNull("filter"))
       {
          Object filterFromJson = requestBody.get("filter");
          if(filterFromJson instanceof JSONObject filterJsonObject)
          {
             return (JsonUtils.toObject(filterJsonObject.toString(), QQueryFilter.class));
          }
+         ///////////////////////////////////////////////////////////////////////////////////////
+         // Keep the parser's IOException contract; middleware maps this user-facing cause400. //
+         ///////////////////////////////////////////////////////////////////////////////////////
+         throw new IOException(new QBadRequestException("Request filter must be a JSON object or null."));
       }
 
       return (null);

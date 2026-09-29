@@ -342,6 +342,10 @@ public class ApiImplementation
                         ApiFieldCustomValueMapper customValueMapper = QCodeLoader.getAdHoc(ApiFieldCustomValueMapper.class, apiFieldMetaData.getCustomValueMapper());
                         customValueMapper.customizeFilterCriteriaForQueryOrCount(queryInput, filter, criteria, name, apiFieldMetaData);
                      }
+                     else
+                     {
+                        criteria.setFieldName(field.getName());
+                     }
 
                      filter.addCriteria(criteria);
                   }

@@ -4827,7 +4827,7 @@
         "Missing/malformed upload, oversized/config-invalid request, denied archive access and cleanup",
         "Unregistered server paths and storage references, forged process values, another session, changed references and directory escape are denied"
       ],
-      "gap": "Historical checkpoints mapped thirty-one native upload/download methods (9 upload,22 download); those earlier sources cover existing file grants/storage boundaries, named-report permission independent of raw-table READ, configured report denial through both routes, customizer-selected input source, invalid file formats, complete JSON/XLSX downloads, temporary-file cleanup and later-view failure without partial delivery. Saved-report archive/stream and later upload storage/process-failure cleanup, malformed/missing upload handling, remaining public route acceptance and final integrated acceptance remain pending. Ordinary export-window, internal-format, header-free map and pipe-result/termination changes are deferred under #488-492; title/header capacity remains #465. Mixed tests retain file-format, invalid-name, direct/buffered query and ordinary native-pipe controls. Historical source acceptance is not final acceptance of this selection; all original feature requirements remain. Current report access selection retains narrow joined-table READ #493 and High #454\u2013458; source-policy #448, core/private-filter #494, hidden-header #495, personalized-preflight #496 and direct-response-completion #497 assertions are archived. Historical claims about those policies are superseded; original supported-feature requirements and ordinary controls remain.",
+      "gap": "Current source maps thirty-nine upload/download/saved-report methods, preserving the prior twenty-nine bindings (historical text counted thirty-one). Reused native HTTP fixtures now use QApplicationJavalinServer without demo priming or broker startup, a unique private H2 backend and owned filesystem roots; direct JDBC marker changes prove actual request data identity. Added evidence covers V1 init/step archive/process/download exact bytes, missing/malformed input without archive writes, saved-report archive/API stream bytes and history, per-session/reference grants, and documented retention plus application-owned cleanup after later storage/process failures. Legacy malformed multipart returns 400; V1 rejects without writes/execution but incorrectly returns 500, tracked separately in #876 (provisional Medium, unresolved). No client-error-status acceptance is claimed for V1. Final independent source review and integrated acceptance remain pending. Ordinary export-window, internal-format, header-free map and pipe-result/termination changes are deferred under #488-492; title/header capacity remains #465. Mixed tests retain file-format, invalid-name, direct/buffered query and ordinary native-pipe controls. Historical source acceptance is not final acceptance of this selection; all original feature requirements remain. Current report access selection retains narrow joined-table READ #493 and High #454\u2013458; source-policy #448, core/private-filter #494, hidden-header #495, personalized-preflight #496 and direct-response-completion #497 assertions are archived. Historical claims about those policies are superseded; original supported-feature requirements and ordinary controls remain.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testClientSuppliedServerPathIsDenied",
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testFailedReportRemovesTemporaryOutput",
@@ -4857,7 +4857,17 @@
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiDefaultedNamedReportPermissionIsRequired",
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiCustomizedNamedReportPermissionIsRequired",
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiNamedReportUsesItsOwnPermission",
-        "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiStandardProcessDenialPrecedesCustomizer"
+        "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiStandardProcessDenialPrecedesCustomizer",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testVersionedUploadsPreserveBytesAndDownloadGrants",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testMissingUploadLeavesNoArchive",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testMalformedMultipartDoesNotArchiveOrExecute",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testProcessFailureRetainsArchiveWithoutDownloadGrant",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testLaterStorageFailureRetainsEarlierArchiveForCleanup",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testSavedReportArchiveAndStreamUseOwnedJdbcRows",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testSavedReportProcessArchivesAndDownloadsBytes",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testApplicationApiOwnerReceivesArchivedReport",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testFailedSavedReportLeavesNoArchive",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testFailedSavedReportPreservesExistingArchive"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",

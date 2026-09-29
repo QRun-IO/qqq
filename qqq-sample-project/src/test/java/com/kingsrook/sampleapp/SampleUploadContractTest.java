@@ -34,6 +34,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.PreparedStatement;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -47,24 +48,26 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessFileDownload;
+import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
-import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemBackendMetaData;
-import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
@@ -89,9 +92,11 @@ class SampleUploadContractTest
    Path directory;
 
    private static final AtomicInteger EXECUTIONS = new AtomicInteger();
+   private static final AtomicReference<byte[]> FAILED_PROCESS_BYTES = new AtomicReference<>();
    private final AtomicReference<Javalin> service = new AtomicReference<>();
    private final HttpClient client = HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).build();
-   private SampleJavalinServer server;
+   private QApplicationJavalinServer server;
+   private SampleUploadTestFixture fixture;
 
 
 
@@ -99,20 +104,18 @@ class SampleUploadContractTest
     **
     *******************************************************************************/
    @AfterEach
-   void cleanUp()
+   void cleanUp() throws Exception
    {
       try
       {
-         if(server != null)
+         if(fixture != null)
          {
-            server.stop();
+            fixture.close();
          }
       }
       finally
       {
          client.close();
-         QContext.clear();
-         ConnectionManager.resetConnectionProviders();
       }
    }
 
@@ -192,12 +195,14 @@ class SampleUploadContractTest
    void testMultipleUploadsPreserveArchiveProcessAndDownloadBytes() throws Exception
    {
       start(false, "city", true);
+      String marker = markOwnedDatabase();
       byte[][] contents = {"owned first é".getBytes(StandardCharsets.UTF_8), new byte[] {0, 1, 2, 127, -1}};
       HttpResponse<byte[]> response = upload("uploadProbe", new Part("one é.txt", contents[0]), new Part("two.bin", contents[1]));
       assertEquals(200, response.statusCode(), body(response));
       JSONObject result = new JSONObject(body(response));
       assertFalse(result.has("error"), result.toString());
       JSONObject values = result.getJSONObject("values");
+      assertEquals(marker, values.getString("personName"));
       assertEquals(2, values.getJSONArray("receivedBytes").length());
       for(int i = 0; i < contents.length; i++)
       {
@@ -280,11 +285,172 @@ class SampleUploadContractTest
 
 
    /*******************************************************************************
+    ** V1 init and step uploads traverse native storage and scoped download routes.
+    *******************************************************************************/
+   @Test
+   void testVersionedUploadsPreserveBytesAndDownloadGrants() throws Exception
+   {
+      start(false, "city", false);
+      String marker = markOwnedDatabase();
+      byte[] contents = new byte[] {0, 9, 13, 10, 127, -1};
+      for(String process : List.of("uploadProbe", "interactiveUpload"))
+      {
+         String path = "/qqq/v1/processes/" + process + "/init";
+         if(process.equals("interactiveUpload"))
+         {
+            HttpResponse<byte[]> initial = client.send(HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(10))
+               .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200, initial.statusCode(), body(initial));
+            path = "/qqq/v1/processes/" + process + "/" + new JSONObject(body(initial)).getString("processUUID") + "/step/input";
+         }
+         HttpResponse<byte[]> response = uploadTo(path, false, new Part("owned.bin", contents));
+         assertEquals(200, response.statusCode(), body(response));
+         JSONObject result = new JSONObject(body(response));
+         assertFalse(result.has("error"), result.toString());
+         JSONObject values = result.getJSONObject("values");
+         assertEquals(marker, values.getString("personName"));
+         assertArrayEquals(contents, Base64.getDecoder().decode(values.getJSONArray("receivedBytes").getString(0)));
+         String reference = values.getJSONArray("storageReferences").getString(0);
+         assertArrayEquals(contents, Files.readAllBytes(directory.resolve("cities").resolve(reference)));
+         String downloadPath = "/qqq/v1/download/owned.bin?storageTableName=city&storageReference=" + URLEncoder.encode(reference, StandardCharsets.UTF_8);
+         HttpResponse<byte[]> downloaded = client.send(HttpRequest.newBuilder(uri(downloadPath)).build(), HttpResponse.BodyHandlers.ofByteArray());
+         assertEquals(200, downloaded.statusCode(), body(downloaded));
+         assertArrayEquals(contents, downloaded.body());
+         try(HttpClient anotherSession = HttpClient.newHttpClient())
+         {
+            assertEquals(403, anotherSession.send(HttpRequest.newBuilder(uri(downloadPath)).build(), HttpResponse.BodyHandlers.ofByteArray()).statusCode());
+         }
+         assertEquals(403, client.send(HttpRequest.newBuilder(uri(downloadPath + ".unregistered")).build(), HttpResponse.BodyHandlers.ofByteArray()).statusCode());
+      }
+      assertEquals(2, EXECUTIONS.get());
+      assertEquals(2, snapshot().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** A process that requires files reports its ordinary error for missing input.
+    *******************************************************************************/
+   @Test
+   void testMissingUploadLeavesNoArchive() throws Exception
+   {
+      start(false, "city", false);
+      HttpResponse<byte[]> response = upload("uploadProbe");
+      assertEquals(400, response.statusCode(), body(response));
+      assertTrue(new JSONObject(body(response)).has("error"), body(response));
+      assertTrue(body(response).contains("requires uploaded files"), body(response));
+      assertEquals(1, EXECUTIONS.get());
+      assertTrue(snapshot().isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Both parsers reject malformed bodies before writes or execution. V1 currently
+    ** loses the parser's client-error status; this check does not certify its 4xx.
+    *******************************************************************************/
+   @Test
+   void testMalformedMultipartDoesNotArchiveOrExecute() throws Exception
+   {
+      start(false, "city", false);
+      List<Integer> statuses = new ArrayList<>();
+      for(String path : List.of("/processes/uploadProbe/run", "/qqq/v1/processes/uploadProbe/init"))
+      {
+         HttpResponse<byte[]> response = client.send(HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(10))
+            .header("Content-Type", "multipart/form-data; boundary=OwnedMissingBoundary")
+            .POST(HttpRequest.BodyPublishers.ofString("not a multipart body")).build(), HttpResponse.BodyHandlers.ofByteArray());
+         statuses.add(response.statusCode());
+         assertTrue(new JSONObject(body(response)).has("error"), body(response));
+         assertTrue(response.statusCode() >= 400 && response.statusCode() < 600, body(response));
+         assertEquals(0, EXECUTIONS.get());
+         assertTrue(snapshot().isEmpty());
+      }
+      assertEquals(400, statuses.get(0), "Legacy malformed multipart retains the parser client-error status");
+   }
+
+
+
+   /*******************************************************************************
+    ** Documented archive retention is not rollback: the application owns cleanup.
+    *******************************************************************************/
+   @Test
+   void testProcessFailureRetainsArchiveWithoutDownloadGrant() throws Exception
+   {
+      start(false, "city", false);
+      Files.writeString(directory.resolve("existing.txt"), "owned-preserved-marker");
+      Map<String, String> before = snapshot();
+      byte[] bytes = "owned failure payload".getBytes(StandardCharsets.UTF_8);
+      HttpResponse<byte[]> response = upload("failingUpload", new Part("failure.txt", bytes));
+      assertEquals(200, response.statusCode(), body(response));
+      assertTrue(new JSONObject(body(response)).has("error"), body(response));
+      assertTrue(body(response).contains("owned failure after storage read"), body(response));
+      assertArrayEquals(bytes, FAILED_PROCESS_BYTES.get());
+      assertEquals(1, EXECUTIONS.get());
+      Map<String, String> after = snapshot();
+      after.keySet().removeAll(before.keySet());
+      assertEquals(1, after.size());
+      Path archived = directory.resolve(after.keySet().iterator().next());
+      assertArrayEquals(bytes, Files.readAllBytes(archived));
+      String reference = directory.resolve("cities").relativize(archived).toString();
+      HttpResponse<byte[]> denied = client.send(HttpRequest.newBuilder(uri("/download/failure.txt?storageTableName=city&storageReference="
+         + URLEncoder.encode(reference, StandardCharsets.UTF_8))).build(), HttpResponse.BodyHandlers.ofByteArray());
+      assertEquals(403, denied.statusCode(), body(denied));
+      Files.delete(archived);
+      assertEquals(before, snapshot());
+   }
+
+
+
+   /*******************************************************************************
+    ** A later native filesystem write failure retains the earlier accepted file.
+    ** Only the owned retained file is removed; an existing sibling survives.
+    *******************************************************************************/
+   @Test
+   void testLaterStorageFailureRetainsEarlierArchiveForCleanup() throws Exception
+   {
+      start(false, "city", false);
+      Files.writeString(directory.resolve("existing.txt"), "owned-preserved-marker");
+      Map<String, String> before = snapshot();
+      byte[] bytes = "owned first archived file".getBytes(StandardCharsets.UTF_8);
+      HttpResponse<byte[]> response = upload("uploadProbe", new Part("first.txt", bytes), new Part("x".repeat(300) + ".txt", new byte[] {2}));
+      assertEquals(200, response.statusCode(), body(response));
+      assertTrue(new JSONObject(body(response)).has("error"), body(response));
+      assertTrue(body(response).contains("File name too long"), body(response));
+      assertEquals(0, EXECUTIONS.get());
+      Map<String, String> after = snapshot();
+      after.keySet().removeAll(before.keySet());
+      assertEquals(1, after.size());
+      Path archived = directory.resolve(after.keySet().iterator().next());
+      assertArrayEquals(bytes, Files.readAllBytes(archived));
+      Files.delete(archived);
+      assertEquals(before, snapshot());
+   }
+
+
+
+   /*******************************************************************************
+    ** Change the actual JDBC row so canonical seed equality cannot mask misrouting.
+    *******************************************************************************/
+   private String markOwnedDatabase() throws Exception
+   {
+      String marker = "upload-" + UUID.randomUUID();
+      try(PreparedStatement statement = fixture.database().prepareStatement("UPDATE person SET first_name=? WHERE id=1"))
+      {
+         statement.setString(1, marker);
+         assertEquals(1, statement.executeUpdate());
+      }
+      return marker;
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private void start(Boolean denied, String archiveTable, Boolean smallRequestLimit) throws QException
    {
       EXECUTIONS.set(0);
+      FAILED_PROCESS_BYTES.set(null);
       QInstance instance = SampleMetaDataProvider.defineTestInstance();
       ((FilesystemBackendMetaData) instance.getBackend(SampleMetaDataProvider.FILESYSTEM_BACKEND_NAME)).setBasePath(directory.toString());
       instance.getAuthentication().setCustomizer(new QCodeReference(NoPermissions.class));
@@ -297,22 +463,22 @@ class SampleUploadContractTest
          process.setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
       }
       instance.addProcess(process);
-      server = new SampleJavalinServer(new SampleMetaDataProvider()
-      {
-         /*******************************************************************************
-          **
-          *******************************************************************************/
-         @Override
-         public QInstance defineQInstance()
-         {
-            return instance;
-         }
-      });
+      instance.addProcess(new QProcessMetaData().withName("interactiveUpload")
+         .withStep(new QFrontendStepMetaData().withName("input"))
+         .withStep(new QBackendStepMetaData().withName("inspect").withCode(new QCodeReference(InspectUploadsStep.class))));
+      instance.addProcess(new QProcessMetaData().withName("failingUpload")
+         .withStep(new QBackendStepMetaData().withName("fail").withCode(new QCodeReference(ReadThenFailUploadStep.class))));
+      fixture = new SampleUploadTestFixture(instance);
+      server = fixture.server();
       server.setPort(0);
       server.withJavalinConfigurationCustomizer(service::set);
       if(smallRequestLimit)
       {
-         server.withJavalinConfigCustomizer(config -> config.jetty.multipartConfig.maxTotalRequestSize(1024, SizeUnit.BYTES));
+         server.withJavalinConfigCustomizer(config ->
+         {
+            config.jetty.host = "127.0.0.1";
+            config.jetty.multipartConfig.maxTotalRequestSize(1024, SizeUnit.BYTES);
+         });
       }
       server.start();
    }
@@ -334,6 +500,16 @@ class SampleUploadContractTest
     *******************************************************************************/
    private HttpResponse<byte[]> upload(String process, Boolean chunked, Part... parts) throws Exception
    {
+      return uploadTo("/processes/" + process + "/run?_qStepTimeoutMillis=10000", chunked, parts);
+   }
+
+
+
+   /*******************************************************************************
+    ** Reuse the same multipart encoding against native legacy and V1 routes.
+    *******************************************************************************/
+   private HttpResponse<byte[]> uploadTo(String path, Boolean chunked, Part... parts) throws Exception
+   {
       String boundary = "OwnedUpload" + UUID.randomUUID();
       ByteArrayOutputStream requestBody = new ByteArrayOutputStream();
       for(Part part : parts)
@@ -344,7 +520,7 @@ class SampleUploadContractTest
          requestBody.write("\r\n".getBytes(StandardCharsets.UTF_8));
       }
       requestBody.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-      return client.send(HttpRequest.newBuilder(uri("/processes/" + process + "/run?_qStepTimeoutMillis=10000"))
+      return client.send(HttpRequest.newBuilder(uri(path))
          .header("Content-Type", "multipart/form-data; boundary=" + boundary).timeout(Duration.ofSeconds(15))
          .POST(chunked ? HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(requestBody.toByteArray()))
             : HttpRequest.BodyPublishers.ofByteArray(requestBody.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
@@ -357,7 +533,7 @@ class SampleUploadContractTest
     *******************************************************************************/
    private URI uri(String path)
    {
-      return URI.create("http://localhost:" + service.get().port() + path);
+      return URI.create("http://127.0.0.1:" + service.get().port() + path);
    }
 
 
@@ -448,8 +624,36 @@ class SampleUploadContractTest
             references.add(storage.getReference());
             ProcessFileDownload.registerStorage(storage);
          }
+         output.addValue("personName", new GetAction().executeForRecord(new GetInput("person").withPrimaryKey(1)).getValueString("firstName"));
          output.addValue("receivedBytes", bytes);
          output.addValue("storageReferences", references);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Consume the native archived bytes, then fail before granting any download.
+    *******************************************************************************/
+   public static class ReadThenFailUploadStep implements BackendStep
+   {
+      /***************************************************************************
+       ** The deliberate failure exercises the documented process error lifecycle.
+       ***************************************************************************/
+      @Override
+      public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         EXECUTIONS.incrementAndGet();
+         StorageInput storage = (StorageInput) ((List<?>) input.getValue("files")).get(0);
+         try(InputStream stream = new StorageAction().getInputStream(storage))
+         {
+            FAILED_PROCESS_BYTES.set(stream.readAllBytes());
+         }
+         catch(java.io.IOException e)
+         {
+            throw new QException("Could not read owned failure upload", e);
+         }
+         throw new QException("owned failure after storage read");
       }
    }
 }

@@ -62,11 +62,13 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    // the environment values published to frontends (QRun-IO/qqq#730): exactly  //
    // these names, plus any name in the analytics namespace (ANALYTICS_*), which //
    // analytics provider plugins and the frontends' analytics opt-ins use.       //
+   // Google Picker client IDs and browser API keys are public settings.         //
    ///////////////////////////////////////////////////////////////////////////////
    @OpenAPIExclude()
    public static final Set<String> PUBLISHED_ENVIRONMENT_VALUE_NAMES = Set.of(
       "ANALYTICS_PROVIDERS", "ANALYTICS_PLUGIN_SCRIPTS", "ANALYTICS_PLUGIN_SCRIPT_URLS",
       "GOOGLE_ANALYTICS_ENABLED", "GOOGLE_ANALYTICS_TRACKING_ID",
+      "GOOGLE_APP_CLIENT_ID", "GOOGLE_APP_API_KEY",
       "POSTHOG_ENABLED", "POSTHOG_API_KEY", "POSTHOG_PROJECT_API_KEY", "POSTHOG_HOST");
 
    @OpenAPIExclude()
@@ -105,7 +107,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    @OpenAPIDescription("Instance-level help content, by slot name (for example the query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource slots).  Omitted when the instance defines none.")
    @OpenAPIHasAdditionalProperties()
    private Map<String, List<QHelpContent>> helpContents;
-   @OpenAPIDescription("Environment values a frontend may use: the analytics settings (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS, GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED, POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit allow-list - never the whole environment.  Omitted when none are set.")
+   @OpenAPIDescription("Environment values a frontend may use: Google Picker public browser settings GOOGLE_APP_CLIENT_ID and GOOGLE_APP_API_KEY, and the analytics settings (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS, GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED, POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit allow-list - never the whole environment.  Omitted when none are set.")
    @OpenAPIMapValueType(String.class)
    private Map<String, String> environmentValues;
 

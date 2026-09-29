@@ -358,6 +358,26 @@ class MetaDataSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** Browser picker settings are public, but OAuth client secrets are not.
+    *******************************************************************************/
+   @Test
+   void testGoogleDriveEnvironmentValuesAreAllowListed()
+   {
+      serverQInstance.getEnvironmentValues().clear();
+      serverQInstance.getEnvironmentValues().put("GOOGLE_APP_CLIENT_ID", "owned-client");
+      serverQInstance.getEnvironmentValues().put("GOOGLE_APP_API_KEY", "owned-browser-key");
+      serverQInstance.getEnvironmentValues().put("GOOGLE_APP_CLIENT_SECRET", "never-published-client-secret");
+      String body = getMetaDataBody();
+      JSONObject values = JsonUtils.toJSONObject(body).getJSONObject("environmentValues");
+      assertEquals(Set.of("GOOGLE_APP_CLIENT_ID", "GOOGLE_APP_API_KEY"), values.keySet());
+      assertEquals("owned-client", values.getString("GOOGLE_APP_CLIENT_ID"));
+      assertEquals("owned-browser-key", values.getString("GOOGLE_APP_API_KEY"));
+      assertThat(body).doesNotContain("GOOGLE_APP_CLIENT_SECRET").doesNotContain("never-published-client-secret");
+   }
+
+
+
+   /*******************************************************************************
     ** Only the analytics environment values are published (QRun-IO/qqq#730):
     ** the named settings and the ANALYTICS_* namespace, never anything else from
     ** the environment.

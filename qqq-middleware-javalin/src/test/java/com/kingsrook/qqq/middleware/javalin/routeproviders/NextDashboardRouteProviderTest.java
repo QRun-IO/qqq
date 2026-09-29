@@ -251,6 +251,35 @@ class NextDashboardRouteProviderTest
 
 
    /*******************************************************************************
+    ** Drive origins are needed only for an instance with both picker settings.
+    *******************************************************************************/
+   @Test
+   void testGoogleDrivePickerOrigins() throws Exception
+   {
+      NextDashboardRouteProvider provider = new NextDashboardRouteProvider("test-next-dashboard");
+      String base = start(provider);
+      String strict = header(get(base + "/login/"), "Content-Security-Policy");
+      for(Map<String, String> environment : List.of(
+         Map.of("GOOGLE_APP_CLIENT_ID", "owned-client"),
+         Map.of("GOOGLE_APP_API_KEY", "owned-key"),
+         Map.of("GOOGLE_APP_CLIENT_ID", " ", "GOOGLE_APP_API_KEY", "owned-key")))
+      {
+         provider.setQInstance(instanceWithEnvironment(environment));
+         assertEquals(strict, header(get(base + "/login/"), "Content-Security-Policy"));
+      }
+      provider.setQInstance(instanceWithEnvironment(Map.of("GOOGLE_APP_CLIENT_ID", "owned-client", "GOOGLE_APP_API_KEY", "owned-key")));
+      assertThat(provider.getSecurityHeaders().getSources("script-src")).contains("https://accounts.google.com/gsi/client", "https://apis.google.com");
+      assertThat(provider.getSecurityHeaders().getSources("connect-src")).contains("https://accounts.google.com/gsi/");
+      assertThat(provider.getSecurityHeaders().getSources("frame-src")).contains("https://docs.google.com", "https://accounts.google.com/gsi/");
+      assertThat(header(get(base + "/login/"), "Content-Security-Policy")).contains("https://docs.google.com");
+      assertEquals(Set.of("'none'"), provider.getSecurityHeaders().getSources("object-src"));
+      provider.setQInstance(instanceWithEnvironment(Map.of()));
+      assertEquals(strict, header(get(base + "/login/"), "Content-Security-Policy"));
+   }
+
+
+
+   /*******************************************************************************
     ** Analytics providers extend the policy only when the instance configures
     ** them (QRun-IO/qqq#730): no analytics settings leave the policy unchanged;
     ** each configured provider adds exactly its own script and connect origins.

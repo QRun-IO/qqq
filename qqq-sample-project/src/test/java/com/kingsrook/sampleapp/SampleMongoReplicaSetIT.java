@@ -57,6 +57,7 @@ import com.kingsrook.sampleapp.metadata.FieldLabTableMetaDataProducer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
+import com.mongodb.MongoCommandException;
 import com.mongodb.MongoCredential;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -68,8 +69,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.mongodb.MongoDBContainer;
+import org.testcontainers.containers.wait.strategy.WaitAllStrategy;
+import org.testcontainers.images.builder.Transferable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -91,41 +94,69 @@ class SampleMongoReplicaSetIT
    private static final String DATABASE = "qqq_sample_rs_" + UUID.randomUUID().toString().replace("-", "");
    private static final String USERNAME = "sample";
    private static final String PASSWORD = "sample-fixture-only";
-   private static MongoDBContainer container;
+   private static GenericContainer<?> container;
    private static MongoClient client;
 
 
 
    /*******************************************************************************
-    ** The container and mapped port belong only to this class. A user is added
-    ** after Testcontainers initializes its single-node replica set.
+    ** The image initializes the root account before authenticated replica-set
+    ** bootstrap. Its entrypoint gives the private keyfile to the MongoDB user.
     ******************************************************************************/
    @BeforeAll
-   static void startMongo()
+   static void startMongo() throws Exception
    {
-      container = new MongoDBContainer("mongo:7.0").withReplicaSet();
-      container.withCommand("--replSet", "docker-rs", "--setParameter", "enableTestCommands=1");
-      container.waitingFor(Wait.forListeningPort());
+      String keyFile = "/data/configdb/qqq-keyfile";
+      container = new GenericContainer<>("mongo:7.0")
+         .withEnv("MONGO_INITDB_ROOT_USERNAME", USERNAME).withEnv("MONGO_INITDB_ROOT_PASSWORD", PASSWORD)
+         .withCopyToContainer(Transferable.of(UUID.randomUUID().toString().replace("-", ""), 0400), keyFile)
+         .withCommand("--replSet", "docker-rs", "--auth", "--keyFile", keyFile, "--bind_ip_all", "--setParameter", "enableTestCommands=1")
+         .withExposedPorts(27017)
+         .waitingFor(new WaitAllStrategy()
+            .withStrategy(Wait.forLogMessage(".*MongoDB init process complete; ready for start up.*", 1))
+            .withStrategy(Wait.forListeningPort())
+            .withStrategy(Wait.forSuccessfulCommand("""
+               mongosh --nodb --quiet --eval '
+               const uri = "mongodb://" + encodeURIComponent(process.env.MONGO_INITDB_ROOT_USERNAME) + ":" +
+                  encodeURIComponent(process.env.MONGO_INITDB_ROOT_PASSWORD) + "@127.0.0.1:27017/admin?directConnection=true&serverSelectionTimeoutMS=1000";
+               const admin = new Mongo(uri).getDB("admin");
+               if (admin.runCommand({connectionStatus: 1}).authInfo.authenticatedUsers.length !== 1 ||
+                  admin.runCommand({getCmdLineOpts: 1}).parsed.security.authorization !== "enabled") quit(1);
+               '
+               """)));
       try
       {
          container.start();
+         var bootstrap = container.execInContainer("mongosh", "--nodb", "--quiet", "--eval", """
+            try {
+            const uri = "mongodb://" + encodeURIComponent(process.env.MONGO_INITDB_ROOT_USERNAME) + ":" +
+               encodeURIComponent(process.env.MONGO_INITDB_ROOT_PASSWORD) + "@127.0.0.1:27017/admin?directConnection=true&serverSelectionTimeoutMS=1000";
+            const admin = new Mongo(uri).getDB("admin");
+            if (admin.runCommand({replSetInitiate: {_id: "docker-rs", members: [{_id: 0, host: "localhost:27017"}]}}).ok !== 1) quit(1);
+            const deadline = Date.now() + 30000;
+            while (!admin.hello().isWritablePrimary) {
+               if (Date.now() >= deadline) quit(2);
+               sleep(50);
+            }
+            } catch (failure) { print("OWNED_BOOTSTRAP_ERROR " + JSON.stringify({name: failure.name, code: failure.code, codeName: failure.codeName})); quit(1); }
+            """);
+         assertEquals(0, bootstrap.getExitCode(), "Authenticated replica-set bootstrap must complete " + bootstrap.getStdout().lines()
+            .filter(line -> line.startsWith("OWNED_BOOTSTRAP_ERROR ")).findFirst().orElse(""));
          String address = "mongodb://" + container.getHost() + ":" + container.getMappedPort(27017) + "/?directConnection=true";
-         try(MongoClient bootstrap = MongoClients.create(address))
-         {
-            bootstrap.getDatabase("admin").runCommand(new Document("createUser", USERNAME).append("pwd", PASSWORD)
-               .append("roles", List.of(new Document("role", "root").append("db", "admin"))));
-         }
          client = MongoClients.create(MongoClientSettings.builder().applyConnectionString(new ConnectionString(address))
             .credential(MongoCredential.createCredential(USERNAME, "admin", PASSWORD.toCharArray())).build());
-         client.getDatabase("admin").runCommand(new Document("ping", 1));
+         Document security = client.getDatabase("admin").runCommand(new Document("getCmdLineOpts", 1))
+            .get("parsed", Document.class).get("security", Document.class);
+         assertEquals("enabled", security.getString("authorization"));
+         assertEquals(keyFile, security.getString("keyFile"));
+         assertEquals(true, client.getDatabase("admin").runCommand(new Document("hello", 1)).getBoolean("isWritablePrimary"));
       }
-      catch(RuntimeException failure)
+      catch(Exception | AssertionError failure)
       {
          stopMongo();
          throw failure;
       }
    }
-
 
 
    /*******************************************************************************
@@ -470,6 +501,23 @@ class SampleMongoReplicaSetIT
 
 
    /*******************************************************************************
+    ** Published fixture ports must not expose privileged commands anonymously.
+    ******************************************************************************/
+   @Test
+   void testAnonymousCannotRunPrivilegedCommand()
+   {
+      String address = "mongodb://" + container.getHost() + ":" + container.getMappedPort(27017) + "/?directConnection=true";
+      try(MongoClient anonymous = MongoClients.create(address))
+      {
+         MongoCommandException denied = assertThrows(MongoCommandException.class,
+            () -> anonymous.getDatabase("admin").runCommand(new Document("getCmdLineOpts", 1)));
+         assertEquals(13, denied.getErrorCode());
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** A configured timeout cancels the observed owned action session.
     ******************************************************************************/
    @Test
@@ -507,6 +555,20 @@ class SampleMongoReplicaSetIT
       backend.setUsername(username);
       backend.setPassword("owned-fixture-only");
       backend.setUrlSuffix("directConnection=true&maxPoolSize=1&appName=" + applicationName);
+      MongoClientContainer restricted = new AbstractMongoDBAction().openClient(backend, null);
+      try
+      {
+         Document authInfo = restricted.getMongoClient().getDatabase("admin").runCommand(new Document("connectionStatus", 1)).get("authInfo", Document.class);
+         assertEquals(List.of(new Document("user", username).append("db", "admin")), authInfo.getList("authenticatedUsers", Document.class));
+         assertEquals(List.of(new Document("role", "readWrite").append("db", DATABASE)), authInfo.getList("authenticatedUserRoles", Document.class));
+         MongoCommandException denied = assertThrows(MongoCommandException.class,
+            () -> restricted.getMongoClient().getDatabase("admin").runCommand(new Document("getCmdLineOpts", 1)));
+         assertEquals(13, denied.getErrorCode());
+      }
+      finally
+      {
+         restricted.closeIfNeeded();
+      }
       String view = "owned_slow_view";
       client.getDatabase(DATABASE).createView(view, COLLECTION, List.of(new Document("$match", new Document("$expr",
          new Document("$function", new Document("body", "function() { const start = Date.now(); while (Date.now() - start < 10000) {} return true; }")

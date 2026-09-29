@@ -4353,7 +4353,7 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, correlated currentOp disappearance after timeout reporting, fresh-action recovery, cooperative cancellation of an observed native cursor, and owned versus borrowed native connection/session accounting through commit and close-abort. #821 focused tests cover one transaction-owned session and injected initialization/close failures. #875 native regressions now require owned and borrowed server execution to stop within the bounded timeout observation, preserve borrowed recovery, first-row streaming and disabled deadlines. Cancellation failure or unsupported native commands do not guarantee prompt termination. Pending: independent #875 and combined-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, correlated currentOp disappearance after timeout reporting, fresh-action recovery, cooperative cancellation of an observed native cursor, and owned versus borrowed native connection/session accounting through commit and close-abort. #821 focused tests cover one transaction-owned session and injected initialization/close failures. #875 native regressions require owned and borrowed server execution to stop within the bounded timeout observation under enforced readWrite authorization, with anonymous/restricted privileged-command denial controls, borrowed recovery, first-row streaming and disabled deadlines. Cancellation failure or unsupported native commands do not guarantee prompt termination. Pending: independent #875 and combined-source review; retain High #525/#526 and deferred #527\u2013#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",
@@ -4370,7 +4370,8 @@
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testOwnedTimeoutCancelsNativeExecution",
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testBorrowedTimeoutCancelsNativeExecution",
         "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testFirstRowDisarmsTimeoutBeforeSlowLaterBatch",
-        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testDisabledTimeoutsAllowSlowFirstResult"
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testDisabledTimeoutsAllowSlowFirstResult",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testAnonymousCannotRunPrivilegedCommand"
       ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",

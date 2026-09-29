@@ -27,18 +27,25 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.amazonaws.services.lambda.runtime.Context;
+import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
+import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
+import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -53,6 +60,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
+import com.kingsrook.qqq.backend.core.state.InMemoryStateProvider;
+import com.kingsrook.qqq.backend.core.state.StateType;
+import com.kingsrook.qqq.backend.core.state.UUIDAndTypeStateKey;
 import com.kingsrook.qqq.lambda.QAbstractLambdaHandler;
 import com.kingsrook.qqq.lambda.QBaseCustomLambdaHandler;
 import com.kingsrook.qqq.lambda.QStandardLambdaHandler;
@@ -80,6 +90,9 @@ class SampleLambdaDispatchAcceptanceTest
    private Map<String, Serializable> previousObjects;
    private QInstance instance;
    private final AtomicInteger processCalls = new AtomicInteger();
+   private final List<RunProcessInput> processInputs = new ArrayList<>();
+   private final UUIDAndTypeStateKey unrelatedProcessKey = new UUIDAndTypeStateKey(UUID.randomUUID(), StateType.PROCESS_STATUS);
+   private final UUIDAndTypeStateKey unrelatedJobKey = new UUIDAndTypeStateKey(UUID.randomUUID(), StateType.ASYNC_JOB_STATUS);
 
 
 
@@ -92,6 +105,8 @@ class SampleLambdaDispatchAcceptanceTest
       previousContext = QContext.capture();
       previousObjects = QContext.getObjects();
       QContext.clear();
+      RunProcessAction.getStateProvider().put(unrelatedProcessKey, "unrelated-process");
+      InMemoryStateProvider.getInstance().put(unrelatedJobKey, "unrelated-job");
       instance = new QInstance();
       instance.addBackend(new QBackendMetaData().withName("ownedMemory").withBackendType(MemoryBackendModule.class));
       instance.addTable(new QTableMetaData().withName("owned").withBackendName("ownedMemory")
@@ -121,14 +136,70 @@ class SampleLambdaDispatchAcceptanceTest
 
 
    /*******************************************************************************
-    ** Preserve the test runner's context; request cleanup is asserted separately.
+    ** Remove only this fixture's state and preserve unrelated entries and context.
     *******************************************************************************/
    @AfterEach
-   void tearDown()
+   void tearDown() throws Exception
    {
-      QContext.clear();
-      QContext.init(previousContext);
-      QContext.setObjects(previousObjects);
+      try
+      {
+         List<UUIDAndTypeStateKey> processKeys = new ArrayList<>();
+         List<UUIDAndTypeStateKey> jobKeys = new ArrayList<>();
+         for(RunProcessInput input : processInputs)
+         {
+            processKeys.add(new UUIDAndTypeStateKey(UUID.fromString(input.getProcessUUID()), StateType.PROCESS_STATUS));
+            jobKeys.add(ownedJobKey(input));
+         }
+         processKeys.forEach(key -> RunProcessAction.getStateProvider().remove(key));
+         jobKeys.forEach(key -> InMemoryStateProvider.getInstance().remove(key));
+         processKeys.forEach(key -> assertThat(RunProcessAction.getStateProvider().get(Serializable.class, key)).isEmpty());
+         jobKeys.forEach(key -> assertThat(InMemoryStateProvider.getInstance().get(Serializable.class, key)).isEmpty());
+         assertThat(RunProcessAction.getStateProvider().get(String.class, unrelatedProcessKey)).contains("unrelated-process");
+         assertThat(InMemoryStateProvider.getInstance().get(String.class, unrelatedJobKey)).contains("unrelated-job");
+      }
+      finally
+      {
+         RunProcessAction.getStateProvider().remove(unrelatedProcessKey);
+         InMemoryStateProvider.getInstance().remove(unrelatedJobKey);
+         QContext.clear();
+         QContext.init(previousContext);
+         QContext.setObjects(previousObjects);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Failed validation still creates a job, but its UUID is not in the response.
+    ** Inspect only the callback attached to our exact input, never global state.
+    *******************************************************************************/
+   private UUIDAndTypeStateKey ownedJobKey(RunProcessInput input) throws Exception
+   {
+      Field jobUUID = AsyncJobCallback.class.getDeclaredField("jobUUID");
+      jobUUID.setAccessible(true);
+      return new UUIDAndTypeStateKey((UUID) jobUUID.get(input.getAsyncJobCallback()), StateType.ASYNC_JOB_STATUS);
+   }
+
+
+
+   /*******************************************************************************
+    ** Prove cleanup has real entries to remove, including jobs rejected pre-step.
+    *******************************************************************************/
+   private void assertOwnedState(int expectedProcesses, int expectedJobs) throws Exception
+   {
+      int storedProcesses = 0;
+      assertEquals(expectedJobs, processInputs.size());
+      for(RunProcessInput input : processInputs)
+      {
+         if(RunProcessAction.getStateProvider().get(Serializable.class,
+            new UUIDAndTypeStateKey(UUID.fromString(input.getProcessUUID()), StateType.PROCESS_STATUS)).isPresent())
+         {
+            storedProcesses++;
+         }
+         AsyncJobStatus status = InMemoryStateProvider.getInstance().get(AsyncJobStatus.class, ownedJobKey(input)).orElseThrow();
+         assertThat(status.getState()).isIn(AsyncJobState.COMPLETE, AsyncJobState.ERROR);
+      }
+      assertEquals(expectedProcesses, storedProcesses);
    }
 
 
@@ -212,6 +283,7 @@ class SampleLambdaDispatchAcceptanceTest
       assertProcessResult(second, "process-two", "second λ", "owner-two");
       assertNotEquals(first.getJSONObject("body").getString("processUUID"), second.getJSONObject("body").getString("processUUID"));
       assertEquals(2, processCalls.get());
+      assertOwnedState(2, 2);
    }
 
 
@@ -229,6 +301,7 @@ class SampleLambdaDispatchAcceptanceTest
       JSONObject invalid = invoke(handler, event("/processes/ownedEcho/init", "POST", "invalid", "ignored"));
       assertThat(invalid.getJSONObject("body").getString("error")).contains("Invalid session");
       assertEquals(0, processCalls.get());
+      assertOwnedState(0, 2);
       handler.session = session("valid-owner");
       assertProcessResult(invoke(handler, event("/processes/ownedEcho/init", "POST", "valid", "accepted")), "valid", "accepted", "valid-owner");
       assertEquals(1, processCalls.get());
@@ -242,11 +315,12 @@ class SampleLambdaDispatchAcceptanceTest
    @Test
    void testUnconfiguredStandardHandlerDoesNotSupplyContext() throws Exception
    {
-      QStandardLambdaHandler handler = new QStandardLambdaHandler();
+      QStandardLambdaHandler handler = new TrackingStandardHandler();
       handler.setQInstance(instance);
       JSONObject result = invoke(handler, event("/processes/ownedEcho/init", "POST", "unconfigured", "ignored"));
       assertThat(result.getJSONObject("body").getString("error")).contains("QInstance was not set in QContext");
       assertEquals(0, processCalls.get());
+      assertOwnedState(0, 1);
    }
 
 
@@ -271,6 +345,7 @@ class SampleLambdaDispatchAcceptanceTest
       handler.session = session("recovery-owner");
       assertProcessResult(invoke(handler, event("/processes/ownedEcho/init", "POST", "recovery", "recovered")), "recovery", "recovered", "recovery-owner");
       assertEquals(3, processCalls.get());
+      assertOwnedState(3, 3);
    }
 
 
@@ -427,9 +502,30 @@ class SampleLambdaDispatchAcceptanceTest
 
 
    /*******************************************************************************
+    ** Retain the real input before validation, without supplying a session/context.
+    *******************************************************************************/
+   private class TrackingStandardHandler extends QStandardLambdaHandler
+   {
+      /***************************************************************************
+       ** The production handler later attaches the process UUID and job callback.
+       ***************************************************************************/
+      @Override
+      protected void setupSession(QLambdaRequest request, AbstractActionInput input)
+      {
+         if(input instanceof RunProcessInput processInput)
+         {
+            processInputs.add(processInput);
+         }
+         super.setupSession(request, input);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Explicit application-owned session/context wiring; not supplied by Lambda.
     *******************************************************************************/
-   private static class ApplicationHandler extends QStandardLambdaHandler
+   private class ApplicationHandler extends TrackingStandardHandler
    {
       private QSession session;
 
@@ -465,6 +561,7 @@ class SampleLambdaDispatchAcceptanceTest
       @Override
       protected void setupSession(QLambdaRequest request, AbstractActionInput input)
       {
+         super.setupSession(request, input);
          QContext.init(qInstance, session);
          QContext.setObject("ownedLambdaRequest", request.getRequestContext().getString("requestId"));
       }

@@ -1214,7 +1214,7 @@
         "Disabled capability/manager, thresholds, consumer/storage failures and collection recursion do not fabricate or leak statistics",
         "No cross-instance/session state or worker leakage; failed/terminated reads have an explicit truthful statistics outcome"
       ],
-      "gap": "Owned H2 evidence now covers direct/plain/association-buffered counts including tails, exact native timing/session/filter/order/join metadata, explicit and scheduled storage, caller context including an actual transaction and the identical named-object map, isolated supplier/storage objects and unchanged caller audit accumulation, disabled/threshold/consumer/storage failures, two-instance isolation across restart, repeated-start cleanup, in-flight flush/restart and consumer-generation isolation, and flush self-observation suppression/recovery. Seven former failing probes for #833\u2013#837 pass and run in ordinary discovery. Backend measurements remain valid after post-query rejection; no whole-request success is inferred. Latch-controlled native evidence now covers active JDBC cancellation with no completed measurement, callback cancellation during real row delivery with an exact partial count, and plain-pipe termination during active SQL with zero delivery and a retained backend measurement. Native readback, connection closure, owned worker/context cleanup and a fresh recovery query pass. These bounded H2 paths do not certify arbitrary thread interruption, blocked/full-pipe or association-buffer termination races. Independent original-requirement and composition reviews passed, followed by 821 regular and 117 integration tests (938 total), zero failures/errors/skips, at 64fd0466b4911cff66e20b34fb4b5e7425662f90. Native timestamp assertions respect the unchanged H2 column precision, with deterministic nanosecond rounding-up/down and second-boundary controls. Failed storage batches are still dropped; counts are consumer-only, and structured order direction/join type and persistent request outcomes are not provided. High #525/#526 and deferred #527\u2013#531 remain unchanged.",
+      "gap": "Owned H2 evidence now covers direct/plain/association-buffered counts including tails, exact native timing/session/filter/order/join metadata, explicit and scheduled storage, caller context including an actual transaction and the identical named-object map, isolated supplier/storage objects and unchanged caller audit accumulation, disabled/threshold/consumer/storage failures, two-instance isolation across restart, repeated-start cleanup, in-flight flush/restart and consumer-generation isolation, and flush self-observation suppression/recovery. Seven former failing probes for #833–#837 pass and run in ordinary discovery. Backend measurements remain valid after post-query rejection; no whole-request success is inferred. Latch-controlled native evidence now covers active JDBC cancellation with no completed measurement, callback cancellation during real row delivery with an exact partial count, and plain-pipe termination during active SQL with zero delivery and a retained backend measurement. Native readback, connection closure, owned worker/context cleanup and a fresh recovery query pass. These bounded H2 paths do not certify arbitrary thread interruption, blocked/full-pipe or association-buffer termination races. Independent original-requirement and composition reviews passed, followed by 821 regular and 117 integration tests (938 total), zero failures/errors/skips, at 64fd0466b4911cff66e20b34fb4b5e7425662f90. Native timestamp assertions respect the unchanged H2 column precision, with deterministic nanosecond rounding-up/down and second-boundary controls. Failed storage batches are still dropped; counts are consumer-only, and structured order direction/join type and persistent request outcomes are not provided. High #525/#526 and deferred #527–#531 remain unchanged.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testNativeFlushPreservesAndIsolatesNamedObjects",
         "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testFailedNativeFlushPreservesAndIsolatesNamedObjects",
@@ -2679,7 +2679,7 @@
       "negative_cases": [
         "Invalid receiver/configuration, delivery failure and no unrelated recipient transmission"
       ],
-      "gap": "Ten local EMAIL source checks cover normal SendMessageAction dispatch, exact SMTP envelope and decoded MIME body, recipient isolation, invalid receiver/provider configuration, SMTP refusal, post-DATA delivery failure and explicit Reply-To correctness. The Reply-To defect is tracked in https://github.com/QRun-IO/qqq/issues/870; this branch adds its bounded correction and retained single/multiple wire regressions. Pending independent review and full composition; SES/live providers, native/browser and published-artifact delivery are not verified by these checks.",
+      "gap": "Ten local EMAIL source checks cover normal SendMessageAction dispatch, exact SMTP envelope and decoded MIME body, recipient isolation, invalid receiver/provider configuration, SMTP refusal, post-DATA delivery failure and explicit Reply-To correctness. The #870 correction retains single/multiple explicit Reply-To wire regressions. Evidence is native local EMAIL source acceptance; SES/live providers, browser and published-artifact delivery are not verified by these checks.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testConfiguredMessageEnvelopeAndBody",
         "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testSubsequentMessageDoesNotReuseRecipients",
@@ -2692,10 +2692,24 @@
         "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testMultipleExplicitReplyToAfterFrom",
         "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testMultipleExplicitReplyToAroundFrom"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/573",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/573",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Configured local EMAIL transport, exact envelope/MIME, recipient isolation, configuration/delivery negatives and #870 Reply-To controls. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "core.maintenance",
@@ -4316,7 +4330,7 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending under validation-policy issue #820. Pending: complete String-key lookup/CRUD, join behavior (#524 can ignore aggregate joins), selected-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone Field Lab checks cover native CRUD/key/type, paging/filter/count/aggregate, READ policy, missing collection, disconnected endpoint, malformed filters and unsupported distinct/composition. A temporary source probe showed a noninteger String passed through InsertAction without errors, persisted as BSON String and returned by GetAction despite INTEGER metadata (see qqq-sample-project/README.md); malformed-type rejection remains pending under validation-policy issue #820. Pending: complete String-key lookup/CRUD, join behavior (#524 can ignore aggregate joins), selected-source review; retain High #525/#526 and deferred #527–#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMissingCollectionStartsEmptyAndIsCreatedByInsert",
@@ -4356,7 +4370,7 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, correlated currentOp disappearance after timeout reporting, fresh-action recovery, cooperative cancellation of an observed native cursor, and owned versus borrowed native connection/session accounting through commit and close-abort. #821 focused tests cover one transaction-owned session and injected initialization/close failures. #875 native regressions require owned and borrowed server execution to stop within the bounded timeout observation under enforced readWrite authorization, with anonymous/restricted privileged-command denial controls, borrowed recovery, first-row streaming and disabled deadlines. Cancellation failure or unsupported native commands do not guarantee prompt termination. Pending: independent #875 and combined-source review; retain High #525/#526 and deferred #527\u2013#531.",
+      "gap": "Owned standalone checks cover generated/mixed batches, session reuse, commit/rollback no-op durability, duplicate-key partial write/readback, rejected transaction mode and client close/reopen. Owned replica-set checks prove commit visibility, rollback/reuse, atomic duplicate-key failure, correlated currentOp disappearance after timeout reporting, fresh-action recovery, cooperative cancellation of an observed native cursor, and owned versus borrowed native connection/session accounting through commit and close-abort. #821 focused tests cover one transaction-owned session and injected initialization/close failures. #875 native regressions require owned and borrowed server execution to stop within the bounded timeout observation under enforced readWrite authorization, with anonymous/restricted privileged-command denial controls, borrowed recovery, first-row streaming and disabled deadlines. Cancellation failure or unsupported native commands do not guarantee prompt termination. Pending: independent #875 and combined-source review; retain High #525/#526 and deferred #527–#531.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",
@@ -4713,7 +4727,7 @@
       "negative_cases": [
         "Unknown table, malformed body/filter, unauthenticated/forbidden request and default query limit enforcement"
       ],
-      "gap": "Owned V1 HTTP/H2 scenarios bind the native application HTTP server to a unique database, verify its JDBC URL and an HTTP-visible sentinel, restore caller context objects, and cover instance/table/process metadata shapes, filtered/sorted/joined query and count with independent SQL identities, empty records, omitted/default/explicit limits, unknown table, malformed JSON/operator and non-object filters, actual mock-provider 401 denial and table READ 403. Non-object filters are rejected with 400 under #871; absent/null and valid structured filters retain their behavior. Pending independent review and main full composition; no live identity provider, browser or published-artifact acceptance is claimed.",
+      "gap": "Owned V1 HTTP/H2 scenarios bind the native application HTTP server to a unique database, verify its JDBC URL and an HTTP-visible sentinel, restore caller context objects, and cover instance/table/process metadata shapes, filtered/sorted/joined query and count with independent SQL identities, empty records, omitted/default/explicit limits, unknown table, malformed JSON/operator and non-object filters, actual mock-provider 401 denial and table READ 403. Non-object filters are rejected with 400 under #871; absent/null and valid structured filters retain their behavior. Evidence is source-scoped; mock-provider rejection is not live identity-provider authentication, and no browser or published-artifact acceptance is claimed.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testVersionedMetadataShapes",
         "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testConfiguredDefaultLimitAndExplicitPaging",
@@ -4726,10 +4740,24 @@
         "com.kingsrook.sampleapp.SamplePresentationMetadataTest#testDeniedAndHiddenMetadata",
         "com.kingsrook.sampleapp.SampleJavalinServerTest#testJoinedFieldPrivacyAcrossHttpReads"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/592",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/592",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Owned V1 metadata/query/count with SQL identity, joins/order/limits, malformed-filter and mock-provider/READ denials. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "http.process.lifecycle",
@@ -4847,7 +4875,7 @@
         "Missing/malformed upload, oversized/config-invalid request, denied archive access and cleanup",
         "Unregistered server paths and storage references, forged process values, another session, changed references and directory escape are denied"
       ],
-      "gap": "Current source maps thirty-nine upload/download/saved-report methods, preserving the prior twenty-nine bindings (historical text counted thirty-one). Reused native HTTP fixtures now use QApplicationJavalinServer without demo priming or broker startup, a unique private H2 backend and owned filesystem roots; direct JDBC marker changes prove actual request data identity. Added evidence covers V1 init/step archive/process/download exact bytes, missing/malformed input without archive writes, saved-report archive/API stream bytes and history, per-session/reference grants, and documented retention plus application-owned cleanup after later storage/process failures. The #876 follow-up verifies malformed multipart returns 400 on legacy run and V1 init/step before archive writes or execution; a valid retry of the rejected V1 step still consumes and archives exact bytes. The correction is limited to wrapped Jetty 400 failures while reading multipart form parameters; generic exception handling is unchanged. Final independent source review and integrated acceptance remain pending. Ordinary export-window, internal-format, header-free map and pipe-result/termination changes are deferred under #488-492; title/header capacity remains #465. Mixed tests retain file-format, invalid-name, direct/buffered query and ordinary native-pipe controls. Historical source acceptance is not final acceptance of this selection; all original feature requirements remain. Current report access selection retains narrow joined-table READ #493 and High #454\u2013458; source-policy #448, core/private-filter #494, hidden-header #495, personalized-preflight #496 and direct-response-completion #497 assertions are archived. Historical claims about those policies are superseded; original supported-feature requirements and ordinary controls remain.",
+      "gap": "Current source maps thirty-nine upload/download/saved-report methods, preserving the prior twenty-nine bindings (historical text counted thirty-one). Reused native HTTP fixtures now use QApplicationJavalinServer without demo priming or broker startup, a unique private H2 backend and owned filesystem roots; direct JDBC marker changes prove actual request data identity. Added evidence covers V1 init/step archive/process/download exact bytes, missing/malformed input without archive writes, saved-report archive/API stream bytes and history, per-session/reference grants, and documented retention plus application-owned cleanup after later storage/process failures. The #876 follow-up verifies malformed multipart returns 400 on legacy run and V1 init/step before archive writes or execution; a valid retry of the rejected V1 step still consumes and archives exact bytes. The correction is limited to wrapped Jetty 400 failures while reading multipart form parameters; generic exception handling is unchanged. Reviewed source evidence includes the #876 correction and preserves the existing archive/download boundaries. Ordinary export-window, internal-format, header-free map and pipe-result/termination changes are deferred under #488-492; title/header capacity remains #465. Mixed tests retain file-format, invalid-name, direct/buffered query and ordinary native-pipe controls. All original feature requirements remain; these source checks do not certify browser or published-artifact acceptance. Current report access selection retains narrow joined-table READ #493 and High #454–458; source-policy #448, core/private-filter #494, hidden-header #495, personalized-preflight #496 and direct-response-completion #497 assertions are archived. Historical claims about those policies are superseded; original supported-feature requirements and ordinary controls remain.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testClientSuppliedServerPathIsDenied",
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testFailedReportRemovesTemporaryOutput",
@@ -4889,7 +4917,7 @@
         "com.kingsrook.sampleapp.SampleSavedReportContractTest#testFailedSavedReportLeavesNoArchive",
         "com.kingsrook.sampleapp.SampleSavedReportContractTest#testFailedSavedReportPreservesExistingArchive"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "deferred_issues": [
         {
@@ -4918,7 +4946,21 @@
         }
       ],
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/594",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/594",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Owned archive/process/download bytes, malformed multipart #876, storage/session/reference denials and documented application-owned cleanup; existing policy deferrals retained. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "application-api.versioning",
@@ -4935,7 +4977,7 @@
       "negative_cases": [
         "Unexposed table/field/version stays unavailable, invalid mapping and denied data"
       ],
-      "gap": "Eight runnable source scenarios cover explicit table/field/process exposure, version boundaries, renamed/custom-mapped fields, nested sample records, duplicate mappings and denied data. The invalid replacement-target gap is corrected under #868: instance validation rejects targets absent from current table metadata before API reads; valid historical targets need not be exposed in the requested API version. Unconfigured fields inherit the exposed table version normally; explicit exclusions and that default are tested separately. Acceptance remains pending independent review and the main full gate. Full HTTP and OpenAPI acceptance remain #596 and #597. Defect: https://github.com/QRun-IO/qqq/issues/868.",
+      "gap": "Eight runnable source scenarios cover explicit table/field/process exposure, version boundaries, renamed/custom-mapped fields, nested sample records, duplicate mappings and denied data. The invalid replacement-target gap is corrected under #868: instance validation rejects targets absent from current table metadata before API reads; valid historical targets need not be exposed in the requested API version. Unconfigured fields inherit the exposed table version normally; explicit exclusions and that default are tested separately. HTTP and OpenAPI evidence is separately mapped under #596 and #597; these versioning checks do not certify live authentication, every HTTP filter type or published artifacts. Defect: https://github.com/QRun-IO/qqq/issues/868.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testVersionedFieldsAndNestedRecords",
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testUnconfiguredFieldInheritsTableVersion",
@@ -4946,10 +4988,24 @@
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testDuplicateFieldMappingIsRejectedBeforeWrite",
         "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testMissingReplacementTargetRejectedDuringMetadataValidation"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/595",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/595",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Exposure/version boundaries, renamed/replacement/custom mappings, nested records, invalid mapping and denied-data controls. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "application-api.http",
@@ -4966,7 +5022,7 @@
         "Invalid JSON/type/filter, missing/unknown record, unauthenticated/forbidden request and server error mapping",
         "Wrong HTTP method returns configured 405; no assumed standalone count route unless registered by the application"
       ],
-      "gap": "Owned-loopback sample scenarios cover configured data/bulk routes, five custom process methods and their explicit 405s, async status, response/status/Content-Type transformation, native authentication/permissions, bad requests and server-error mapping. #872 rejects invalid directly mapped field types before persistence while retaining native coercions and custom mapping. Independent review, the main full gate and published-artifact acceptance remain pending; query counts do not imply a standalone count route.",
+      "gap": "Owned-loopback sample scenarios cover configured data/bulk routes, five custom process methods and their explicit 405s, async status, response/status/Content-Type transformation, native authentication/permissions, bad requests and server-error mapping. #872 rejects invalid directly mapped field types before persistence while retaining native coercions and custom mapping. #877 supplies reviewed current/historical DATE query conversion and invalid-date 400 evidence, mapped under application-api.openapi. Native parser leniency, custom-mapper responsibility and DATE LIKE/NOT_LIKE behavior are unchanged; exhaustive filter-type coverage is not claimed. Malformed bulk field values reject the request before persistence, while action-level failures retain per-record 207 outcomes. Query counts do not imply a standalone count route. Evidence is local source acceptance, not browser, live-provider or published-artifact acceptance.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testGetAndQuery",
         "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testInsertPatchAndDelete",
@@ -4978,10 +5034,24 @@
         "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testResponseStatusAndHeaderTransformation",
         "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testAsyncStatus"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/596",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/596",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Native HTTP CRUD/bulk/process methods, async status, response transformations and error/auth boundaries; #872 input and #877 DATE corrections retained. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "application-api.openapi",
@@ -5002,7 +5072,7 @@
       "negative_cases": [
         "Missing required metadata, excluded endpoints must remain absent and dangling schema references"
       ],
-      "gap": "First-party served JSON/YAML evidence covers configured versions, field/schema/route comparisons with real records, executable query examples, security declarations, required generator metadata, excluded endpoints and local reference resolution. #873 corrects malformed example pointers; #874 corrects directly mapped query aliases, with current/historical/version/API-scope positive and negative HTTP checks. #877 covers native DATE criterion conversion with real HTTP current/historical equality, invalid-date 400 responses and custom-mapper controls. Pending main review and integrated acceptance; no full OpenAPI validation, exhaustive filter-type coverage or live OAuth enforcement claim.",
+      "gap": "First-party served JSON/YAML evidence covers configured versions, field/schema/route comparisons with real records, executable query examples, security declarations, required generator metadata, excluded endpoints and local reference resolution. #869 preserves empty HTTP/API-key security scopes and OAuth permission scopes; #873 corrects malformed example pointers; #874 corrects directly mapped query aliases, with current/historical/version/API-scope positive and negative HTTP checks. #877 covers native DATE criterion conversion with real HTTP current/historical equality, invalid-date 400 responses and custom-mapper controls. DATE conversion retains the existing parser and custom-mapper precedence; DATE LIKE/NOT_LIKE and SQL runtime compatibility are not newly certified. No full OpenAPI validation, exhaustive filter-type coverage, live OAuth enforcement or published-artifact claim.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedVersionsFieldsRoutesAndSecurityMatchRecords",
         "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedQueryExamplesSelectTheDocumentedRecords",
@@ -5022,10 +5092,24 @@
         "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testInvalidDateValuesReturnBadRequest",
         "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testCustomMapperRetainsRawInput"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/597",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/597",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Served JSON/YAML, executable examples, version/alias/security/reference boundaries and #877 DATE HTTP controls; no full validator or live OAuth proof. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "openapi.models",
@@ -5043,7 +5127,7 @@
       "negative_cases": [
         "Invalid/missing required shape; removed String overloads must not be used"
       ],
-      "gap": "Focused sample evidence covers legacy document serialization, exact enum wire values and compiler rejection of all four removed String overloads. Missing/invalid shape fixtures characterize the existing permissive DTO boundary; no new validator or owner rejection-policy decision is required by #598. Default NON_EMPTY serialization drops empty security scope arrays; the positive consumer uses existing NON_NULL customization. The related security-description defect, including generated non-empty HTTP permission scopes, is tracked separately in https://github.com/QRun-IO/qqq/issues/869 and is not claimed fixed. Pending main integration and acceptance of the reviewed change.",
+      "gap": "Focused sample evidence covers legacy document serialization, exact enum wire values and compiler rejection of all four removed String overloads. Missing/invalid shape fixtures characterize the existing permissive DTO boundary; no new validator or owner rejection-policy decision is required by #598. Default NON_EMPTY serialization drops empty security scope arrays; the positive consumer uses existing NON_NULL customization. The separate generator security-description defect #869 is corrected and covered under application-api.openapi; the legacy DTO default serializer behavior characterized here is unchanged. Evidence is consumer source compatibility, not a new DTO validator, runtime authentication or published-artifact acceptance.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testDocumentSerialization",
         "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testDefaultSerializerDropsEmptySecurityScopes",
@@ -5052,10 +5136,24 @@
         "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testNullEnumBoundaries",
         "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testRemovedStringOverloadsDoNotCompile"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/598",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/598",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Legacy DTO serialization, literal enum contracts, permissive invalid/null shapes and compiler rejection of removed String overloads; no new validator. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "health.endpoint",
@@ -5206,7 +5304,7 @@
         "Malformed request, unknown path, missing/invalid session, process exception and clean context after request",
         "Standard metadata/query/count/export/get/update/delete/widget branches are TODO stubs; verify/document unavailable routes rather than treating them as supported CRUD"
       ],
-      "gap": "Nine local stream/custom/process-init checks cover owned application-configured context/session, caller isolation, malformed/unknown requests, missing/invalid sessions, process failure/recovery and unavailable standard routes. The application adapter owns request cleanup; QStandardLambdaHandler.setupSession remains empty. Tests live in the Lambda module and its fresh report is explicitly imported for the sample ledger. Pending independent review and combined acceptance; no AWS/deployment, long-running async, browser or published-artifact acceptance. No standard CRUD support is claimed.",
+      "gap": "Nine local stream/custom/process-init checks cover owned application-configured context/session, caller isolation, malformed/unknown requests, missing/invalid sessions, process failure/recovery and unavailable standard routes. The application adapter owns request cleanup; QStandardLambdaHandler.setupSession remains empty. Tests live in the Lambda module and its fresh report is explicitly imported for the sample ledger. Owned process/job state is removed after bounded fixture work completes while unrelated state and caller context are preserved. No AWS/deployment, long-running async, browser or published-artifact acceptance. No standard CRUD support is claimed.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testCustomStreamRequestResponse",
         "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testMalformedCustomRequestsNeverDispatch",
@@ -5218,10 +5316,24 @@
         "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnknownPathAndProcessDoNotExecute",
         "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnimplementedStandardRoutesStayUnavailable"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/601",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/601",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Nine local stream/custom/process-init bindings with application-owned context/session and owned-state cleanup; unsupported standard routes remain unavailable. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "slack.routes",
@@ -5237,7 +5349,7 @@
       "negative_cases": [
         "Missing/invalid identity/token, denied operation and malformed command; no live outreach"
       ],
-      "gap": "Owned loopback Slack form routes use canonical sample records in a UUID H2 database and native table-based QQQ session cookies. Evidence covers query/get payloads and storage linkage, metadata/process listing, missing/unknown native sessions, form identity/token not being credentials, denied READ and malformed commands. #880 fixes request-context ordering; #881 skips untyped widgets in metadata; #883 applies existing USER/READ checks. Errors retain HTTP200 Slack Error blocks. Process execution and real Slack identity/token/signature verification are not implemented or claimed. Pending independent review and main full composition; no live Slack, browser or published-artifact acceptance.",
+      "gap": "Owned loopback Slack form routes use canonical sample records in a UUID H2 database and native table-based QQQ session cookies. Evidence covers query/get payloads and storage linkage, metadata/process listing, missing/unknown native sessions, form identity/token not being credentials, denied READ and malformed commands. #880 fixes request-context ordering; #881 skips untyped widgets in metadata; #883 applies existing USER/READ checks. Errors retain HTTP200 Slack Error blocks. Process execution and real Slack identity/token/signature verification are not implemented or claimed. Native export/upload transport, widget-command dispatch and browser cookie attributes are not exercised; these are limits outside the bounded #602 scenarios, not additional requirements. No live Slack, browser or published-artifact acceptance.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testNativeQueryAndGetResponses",
         "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMetadataListsProcessesAndRejectsProcessCommand",
@@ -5246,10 +5358,24 @@
         "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testDeniedReadWithAllowedControl",
         "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMalformedAndUnknownCommands"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/602",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/602",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Native QQQ-cookie identity, supported query/get and process-list responses, denial and malformed controls; no process execution or live Slack authentication claim. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "slack.messages",
@@ -5265,7 +5391,7 @@
       "negative_cases": [
         "Unsupported/empty widget, service rejection and absent configuration; no real recipient required"
       ],
-      "gap": "Owned-loopback evidence converts statistics/chart/line widget data and captures the normal SDK chat.postMessage payload, with local SDK auth.test lookup, synthetic configuration and no real recipient. Empty/unsupported widgets, service/HTTP rejection and missing-token/channel controls are retained. #882 prevents dispatch with absent required configuration. Service rejection remains logged by the void adapter, not returned as delivery confirmation. Test-only endpoint redirection is isolated in child JVMs because production uses the immutable SDK singleton; this is not production endpoint configurability or live-provider proof. Pending independent review and main full composition; no published-artifact acceptance.",
+      "gap": "Owned-loopback evidence converts statistics/chart/line widget data and captures the normal SDK chat.postMessage payload, with local SDK auth.test lookup, synthetic configuration and no real recipient. Empty/unsupported widgets, service/HTTP rejection and missing-token/channel controls are retained. #882 prevents dispatch with absent required configuration. Service rejection remains logged by the void adapter, not returned as delivery confirmation. Test-only endpoint redirection is isolated in child JVMs because production uses the immutable SDK singleton; this is not production endpoint configurability or live-provider proof. Evidence is local source acceptance; no live delivery, natural SDK JVM termination or published-artifact acceptance.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testStatisticsConversionAndOutboundPayload",
         "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testChartAndLineConversion",
@@ -5274,10 +5400,24 @@
         "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testHttpRejectionIsObservedLocally",
         "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testAbsentConfigurationDoesNotTransmit"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/603",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/603",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Supported widget conversion and owned-loopback SDK payload/configuration/rejection controls; logged rejection is not delivery confirmation. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "utility-lambda.sqs",
@@ -5293,7 +5433,7 @@
       "negative_cases": [
         "Missing QUEUE_URL, service/credential error, empty/malformed input and sensitive-payload logging policy"
       ],
-      "gap": "Eight local native-SDK/stream checks cover exact owned queue/body, raw malformed text, empty/service/credential failures, absent/blank QUEUE_URL, and no incoming body in captured Lambda logs after #878/#879. Tests run in the utility module; fresh XML is explicitly imported for the sample ledger. Pending independent review and combined acceptance. No live AWS/IAM/deployment, arbitrary provider-error sanitization, or published-artifact claim.",
+      "gap": "Eight local native-SDK/stream checks cover exact owned queue/body, raw malformed text, empty/service/credential failures, absent/blank QUEUE_URL, and no incoming body in captured Lambda logs after #878/#879. Tests run in the utility module; fresh XML is explicitly imported for the sample ledger. No live AWS/IAM/deployment, arbitrary provider-error sanitization, or published-artifact claim.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testExactQueueAndBody",
         "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testMalformedJsonIsForwardedAsRawText",
@@ -5304,10 +5444,24 @@
         "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testBlankQueueUrlFailsBeforeCredentials",
         "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testPayloadIsNotLogged"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/604",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/604",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Eight native-SDK handler bindings for exact queue/body, raw input, modeled failures, absent configuration/credentials and bounded payload-log controls; no live AWS/IAM claim. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "sample.bootstrap",

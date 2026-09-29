@@ -5227,8 +5227,15 @@
       "negative_cases": [
         "Missing/invalid identity/token, denied operation and malformed command; no live outreach"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Owned loopback Slack form routes use canonical sample records in a UUID H2 database and native table-based QQQ session cookies. Evidence covers query/get payloads and storage linkage, metadata/process listing, missing/unknown native sessions, form identity/token not being credentials, denied READ and malformed commands. #880 fixes request-context ordering; #881 skips untyped widgets in metadata; #883 applies existing USER/READ checks. Errors retain HTTP200 Slack Error blocks. Process execution and real Slack identity/token/signature verification are not implemented or claimed. Pending independent review and main full composition; no live Slack, browser or published-artifact acceptance.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testNativeQueryAndGetResponses",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMetadataListsProcessesAndRejectsProcessCommand",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMissingAndInvalidSession",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testSlackFormIdentityAndTokenDoNotAuthenticate",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testDeniedReadWithAllowedControl",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMalformedAndUnknownCommands"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/602",
@@ -5248,8 +5255,15 @@
       "negative_cases": [
         "Unsupported/empty widget, service rejection and absent configuration; no real recipient required"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
+      "gap": "Owned-loopback evidence converts statistics/chart/line widget data and captures the normal SDK chat.postMessage payload, with local SDK auth.test lookup, synthetic configuration and no real recipient. Empty/unsupported widgets, service/HTTP rejection and missing-token/channel controls are retained. #882 prevents dispatch with absent required configuration. Service rejection remains logged by the void adapter, not returned as delivery confirmation. Test-only endpoint redirection is isolated in child JVMs because production uses the immutable SDK singleton; this is not production endpoint configurability or live-provider proof. Pending independent review and main full composition; no published-artifact acceptance.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testStatisticsConversionAndOutboundPayload",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testChartAndLineConversion",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testEmptyAndUnsupportedWidgets",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testServiceRejectionIsObservedLocally",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testHttpRejectionIsObservedLocally",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testAbsentConfigurationDoesNotTransmit"
+      ],
       "acceptance_status": "pending",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/603",

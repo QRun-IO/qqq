@@ -31,6 +31,8 @@ import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.dashboard.RenderWidgetAction;
 import com.kingsrook.qqq.backend.core.actions.metadata.MetaDataAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.reporting.ExportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -360,7 +362,7 @@ public class QSlackImplementation
          //////////////////////////////
          String widgetName = widgetNameList.get(i);
          String widgetType = qInstance.getWidget(widgetName).getType();
-         if(!widgetType.contains("tatistics") && !widgetType.equals("table") && !widgetType.contains("ineChart"))
+         if(widgetType == null || (!widgetType.contains("tatistics") && !widgetType.equals("table") && !widgetType.contains("ineChart")))
          {
             continue;
          }
@@ -386,9 +388,11 @@ public class QSlackImplementation
       try
       {
          QueryInput queryInput = new QueryInput();
+         setupSession(context, queryInput);
          queryInput.setFilter(new QQueryFilter().withLimit(10));
          queryInput.setTableName(tableName);
-         setupSession(context, queryInput);
+         queryInput.setInputSource(QInputSource.USER);
+         PermissionsHelper.checkTablePermissionThrowing(queryInput, TablePermissionSubType.READ);
          QueryOutput output = new QueryAction().execute(queryInput);
 
          StringBuilder results = new StringBuilder();
@@ -428,14 +432,16 @@ public class QSlackImplementation
       try(ByteArrayOutputStream baos = new ByteArrayOutputStream())
       {
          ExportInput exportInput = new ExportInput();
+         setupSession(context, exportInput);
          exportInput.setLimit(1000);
          exportInput.setTableName(tableName);
+         exportInput.setInputSource(QInputSource.USER);
+         PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ);
 
          exportInput.setReportDestination(new ReportDestination()
             .withReportFormat(ReportFormat.valueOf(format))
             .withReportOutputStream(baos));
 
-         setupSession(context, exportInput);
          ExportOutput output = new ExportAction().execute(exportInput);
 
          JSONObject response    = new JSONObject();
@@ -481,9 +487,11 @@ public class QSlackImplementation
          QTableMetaData tableMetaData = qInstance.getTable(tableName);
 
          GetInput getInput = new GetInput();
+         setupSession(context, getInput);
          getInput.setPrimaryKey(id);
          getInput.setTableName(tableName);
-         setupSession(context, getInput);
+         getInput.setInputSource(QInputSource.USER);
+         PermissionsHelper.checkTablePermissionThrowing(getInput, TablePermissionSubType.READ);
          GetOutput output = new GetAction().execute(getInput);
 
          StringBuilder results = new StringBuilder();
@@ -653,9 +661,14 @@ public class QSlackImplementation
       //////////////////////////////////////////////////////////////
       // you can get this instance via ctx.client() in a Bolt app //
       //////////////////////////////////////////////////////////////
-      var    client       = Slack.getInstance().methods();
       String slackToken   = new QMetaDataVariableInterpreter().interpret("${env.SLACK_TOKEN}");
       String slackChannel = new QMetaDataVariableInterpreter().interpret("${env.SLACK_CHANNEL_ID}");
+      if(!StringUtils.hasContent(slackToken) || !StringUtils.hasContent(slackChannel))
+      {
+         LOG.warn("Slack token and channel must be configured before posting a message");
+         return;
+      }
+      var client = Slack.getInstance().methods();
 
       try
       {

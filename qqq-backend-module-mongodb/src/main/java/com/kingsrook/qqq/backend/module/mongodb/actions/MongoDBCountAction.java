@@ -59,6 +59,11 @@ public class MongoDBCountAction extends AbstractMongoDBAction implements CountIn
     *******************************************************************************/
    public CountOutput execute(CountInput countInput) throws QException
    {
+      if(countInput.getQueryJoins() != null && !countInput.getQueryJoins().isEmpty())
+      {
+         throw new QException("MongoDB explicit query joins are not supported");
+      }
+
       MongoClientContainer mongoClientContainer = null;
 
       Long       queryStartTime = System.currentTimeMillis();
@@ -82,7 +87,7 @@ public class MongoDBCountAction extends AbstractMongoDBAction implements CountIn
          actionTimeoutHelper.start();
 
          QQueryFilter filter = countInput.getFilter();
-         List<Bson> bsonList = makeFilterPipeline(table, backend, filter);
+         List<Bson> bsonList = makeFilterPipeline(table, backend, filter, mongoClientContainer);
          bsonList.add(Aggregates.group("_id", Accumulators.sum("count", 1)));
          queryToLog = bsonList;
          setQueryInQueryStat(new Document("pipeline", bsonList));

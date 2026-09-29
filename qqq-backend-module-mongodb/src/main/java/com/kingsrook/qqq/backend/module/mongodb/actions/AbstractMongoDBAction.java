@@ -68,6 +68,7 @@ import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoCredential;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import org.bson.Document;
@@ -84,6 +85,8 @@ public class AbstractMongoDBAction
    private static final QLogger LOG = QLogger.getLogger(AbstractMongoDBAction.class);
 
    protected QueryStat queryStat;
+
+   private final Set<String> primaryKeyLookupValues = new HashSet<>();
 
 
 
@@ -216,6 +219,29 @@ public class AbstractMongoDBAction
       addFieldFunctionFieldsFromFilter(addFieldsDocument, table, backend, filter);
 
       return addFieldsDocument;
+   }
+
+
+
+   /*******************************************************************************
+    ** Public keys encode ObjectIds as Strings. Refuse native STRING counterparts
+    ** before conversion can select a different readable owner. Honor active READ locks.
+    *******************************************************************************/
+   protected List<Bson> makeFilterPipeline(QTableMetaData table, MongoDBBackendMetaData backend, QQueryFilter filter, MongoClientContainer client) throws QException
+   {
+      primaryKeyLookupValues.clear();
+      List<Bson> pipeline = makeFilterPipeline(table, backend, filter);
+      if(!primaryKeyLookupValues.isEmpty())
+      {
+         MongoCollection<?> collection = client.getMongoClient().getDatabase(backend.getDatabaseName()).getCollection(getBackendTableName(table));
+         Bson requestedKeys = Filters.in("_id", new ArrayList<>(primaryKeyLookupValues));
+         Bson readableRows = makeSearchQueryDocumentWithoutSecurity(table, makeSecurityQueryFilter(table));
+         if(collection.find(client.getMongoSession(), Filters.and(requestedKeys, readableRows)).projection(new Document("_id", 1)).first() != null)
+         {
+            throw new QException("MongoDB primary-key lookup requires native ObjectId keys; native String keys are not supported");
+         }
+      }
+      return pipeline;
    }
 
 
@@ -711,7 +737,7 @@ public class AbstractMongoDBAction
    /*******************************************************************************
     ** w/o considering security, just map a QQueryFilter to a Bson searchQuery.
     *******************************************************************************/
-   private Bson makeSearchQueryDocumentWithoutSecurity(QTableMetaData table, QQueryFilter filter)
+   private Bson makeSearchQueryDocumentWithoutSecurity(QTableMetaData table, QQueryFilter filter) throws QException
    {
       return makeSearchQueryDocumentWithoutSecurity(table, filter, Map.of(), "");
    }
@@ -721,7 +747,7 @@ public class AbstractMongoDBAction
    /*******************************************************************************
     ** Resolve private computed aliases or physical fields within the source root.
     *******************************************************************************/
-   private Bson makeSearchQueryDocumentWithoutSecurity(QTableMetaData table, QQueryFilter filter, Map<QFilterCriteria, String> computedNames, String physicalPrefix)
+   private Bson makeSearchQueryDocumentWithoutSecurity(QTableMetaData table, QQueryFilter filter, Map<QFilterCriteria, String> computedNames, String physicalPrefix) throws QException
    {
       if(filter == null || !filter.hasAnyCriteria())
       {
@@ -796,7 +822,18 @@ public class AbstractMongoDBAction
             while(iterator.hasNext())
             {
                Serializable value = iterator.next();
-               iterator.set(new ObjectId(String.valueOf(value)));
+               String key = String.valueOf(value);
+               if(!ObjectId.isValid(key))
+               {
+                  throw new QException("MongoDB primary-key lookup requires an ObjectId hexadecimal key");
+               }
+               ObjectId objectId = new ObjectId(key);
+               if(!(value instanceof ObjectId))
+               {
+                  primaryKeyLookupValues.add(key);
+                  primaryKeyLookupValues.add(objectId.toHexString());
+               }
+               iterator.set(objectId);
             }
          }
 

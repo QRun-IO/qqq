@@ -150,6 +150,11 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
     *******************************************************************************/
    private QueryOutput execute(QueryInput queryInput, Boolean requireWriteIdentity) throws QException
    {
+      if(queryInput.getQueryJoins() != null && !queryInput.getQueryJoins().isEmpty())
+      {
+         throw new QException("MongoDB explicit query joins are not supported");
+      }
+
       MongoClientContainer mongoClientContainer = null;
 
       Long       queryStartTime = System.currentTimeMillis();
@@ -180,7 +185,7 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
          /////////////////////////////////////
          // build the aggregation pipeline  //
          /////////////////////////////////////
-         List<Bson> pipeline = makeFilterPipeline(table, backend, filter);
+         List<Bson> pipeline = makeFilterPipeline(table, backend, filter, mongoClientContainer);
 
          ///////////////////////////////////////////////////////////////////////
          // Preserve named virtual projection after filtering original values. //

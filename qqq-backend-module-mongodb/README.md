@@ -11,6 +11,12 @@ QQQ 4.0 requires Java 21. See the [release and build instructions](../README.md)
 - [MongoDBBackendModule](src/main/java/com/kingsrook/qqq/backend/module/mongodb/MongoDBBackendModule.java)
 - [Module tests](src/test/java/)
 
+## Key and join boundaries
+
+Primary-key lookup and mutation use native ObjectId values represented publicly as hexadecimal Strings. Supplied native BSON String keys can be inserted and queried by ordinary fields, but they are not supported lookup/write identities. Primary-key requests refuse non-ObjectId text and readable native String counterparts instead of selecting an ObjectId row with the same public text. The existing DML identity and decoded-key guards remain in force; no full native String-key CRUD support is claimed.
+
+Explicit `QueryJoin` requests are unsupported by native Query, Count and Aggregate and fail descriptively. Common association fetching through registered metadata joins is implemented separately and retains child READ restrictions. `SampleMongoDatabaseIT` checks these distinctions against an owned MongoDB server. These checks do not change SYSTEM field-type policy (#820), declared BSON conversion deferrals, or transaction/timeout behavior.
+
 ## License
 
 See the repository [LICENSE](../LICENSE), [NOTICE](../NOTICE), and the license headers in individual source files.

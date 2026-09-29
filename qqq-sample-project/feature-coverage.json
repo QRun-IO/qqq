@@ -4330,7 +4330,7 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "The #820 policy is resolved by the maintainer: preserve native SYSTEM value handling and verify native USER/HTTP boundaries separately. The complete standalone Mongo class and application HTTP acceptance class pass 38 cases against the selected source candidate. Native insert/update preserve Integer, numeric String and nonnumeric String values for SYSTEM and USER, with independent BSON and public Get readback. The application API rejects malformed values on its canonical H2 fixture; this is not Mongo HTTP evidence or a universal adapter policy. Existing String-key/native-join unsupported boundaries remain explicit. Independent review passed; combined CI and accepted integration remain before promoting this row from pending.",
+      "gap": "Native SYSTEM and USER insert/update preserve supplied Integer, numeric String and nonnumeric String BSON values, as approved in #820. Native CRUD/key/type, paging/filter/count/aggregate, READ policy, connection/collection/filter failures and implemented association fetching have reviewed source evidence. Unsupported native String-key mutations/lookups and explicit native joins retain their documented refusal boundaries. Application HTTP malformed-value rejection is independently verified on the canonical H2 fixture; this does not certify Mongo HTTP or a universal adapter policy.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMissingCollectionStartsEmptyAndIsCreatedByInsert",
@@ -4359,7 +4359,7 @@
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testBatchedExpressionKeysAndReuseAfterRefusal",
         "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testNativeInsertAndUpdatePreserveSuppliedFieldTypes"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/583",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
@@ -4368,6 +4368,14 @@
         "owner": "James Maes",
         "date": "2026-09-29",
         "decision": "Preserve and document existing SYSTEM behavior; test native USER and HTTP adapter boundaries separately. No generic type-rejection policy change."
+      },
+      "acceptance_review": {
+        "at": "2026-09-29T17:50:38.482652+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/583",
+        "source_sha": "97127ea3bc3470792e6cdbe9722b21b256827852",
+        "evidence": "https://circleci.com/gh/QRun-IO/qqq/4440",
+        "scope": "The approved #820 native type contract in reviewed PR899 is integrated into815. Its 29 Mongo and9 application HTTP cases passed locally, and the matching integration sample job passed. The CI coverage report lists only scenario review as the remaining Mongo gap, with no missing or failed mapped tests. Independent source review completed; all130 original contracts remain intact. Native USER preserves supplied BSON types too; application HTTP rejection evidence uses H2, not Mongo.",
+        "contract_decision": "https://github.com/QRun-IO/qqq/issues/820#issuecomment-5894351276"
       }
     },
     {

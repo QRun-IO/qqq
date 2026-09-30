@@ -63,7 +63,11 @@ function appLog(name) {
 }
 function groupAlive(pid) {
   try { process.kill(-pid, 0); return true }
-  catch (error) { if (error.code === 'ESRCH') return false; throw error }
+  catch (error) {
+    if (error.code === 'ESRCH') return false
+    if (error.code === 'EPERM') return true
+    throw error
+  }
 }
 async function stop(signal) {
   assert(app, 'No owned launcher')
@@ -88,7 +92,7 @@ async function stop(signal) {
   assert(!forced && !ownedResourcesRemain, 'Launcher cleanup failed; owned process group required forced cleanup')
   assert.equal(childErrors.length, 0, childErrors.join('\n'))
 }
-async function launch(name, frontend = 'next', first = false) {
+async function launch(name, frontend = 'next', first = false, expectedCompileFailure = false) {
   assert(!interrupted, 'Runner interrupted')
   phaseName = name
   for (const port of [8000, 61616]) assert(!await portOpen(port), `Port ${port} is occupied`)
@@ -108,12 +112,18 @@ async function launch(name, frontend = 'next', first = false) {
   const deadline = Date.now() + 360_000
   while (!launcherLog.includes('Ready in ')) {
     assert(!interrupted, 'Runner interrupted')
+    if (expectedCompileFailure && app.exitCode !== null) {
+      assert.notEqual(app.exitCode, 0, 'Invalid Java unexpectedly compiled')
+      assert(readFileSync(path.join(project, 'quickstart.log'), 'utf8').includes('COMPILATION ERROR'), 'Expected a real Java compilation failure')
+      return { name, frontend, ownedProcessGroup: app.pid, expectedCompileFailure: true, exitCode: app.exitCode }
+    }
     assert(app.exitCode === null && app.signalCode === null, `Launcher exited before readiness (${name}); see logs`)
     assert.equal(childErrors.length, 0, childErrors.join('\n'))
     assert(Date.now() < deadline, `Launcher readiness timed out (${name})`)
     await delay(200)
   }
-  return { name, frontend, launcherReadySeconds: (performance.now() - started) / 1000 }
+  assert(!expectedCompileFailure, 'Invalid Java unexpectedly reached readiness')
+  return { name, frontend, ownedProcessGroup: app.pid, launcherReadySeconds: (performance.now() - started) / 1000 }
 }
 async function nextReady(phase) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' })
@@ -189,6 +199,18 @@ try {
   assert.equal((await json(`/qqq/v1/table/person/${id}`)).record.values.firstName, 'Lifecycle Updated')
   phase.createdRecord = id
   await page.screenshot({ path: path.join(output, 'created-edited.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Record actions menu', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Greet Interactive', exact: true }).click()
+  await page.getByRole('textbox', { name: /Greeting Prefix/ }).fill('Hello')
+  await page.getByRole('textbox', { name: /Greeting Suffix/ }).fill('QQQ')
+  await page.getByRole('button', { name: 'Submit', exact: true }).click()
+  await expect(page.getByRole('cell', { name: 'Hello Lifecycle Updated QQQ', exact: true })).toBeVisible()
+  await expect(page.locator('[data-qqq-id="process-record-list-range"]')).toHaveText('1–1 of 1')
+  await page.screenshot({ path: path.join(output, 'next-process-results.png'), fullPage: true })
+  await page.getByRole('button', { name: 'Return', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Lifecycle Updated Verification', exact: true }).first()).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/app/person/${id}/?$`))
+  phase.greetingProcess = 'Exactly one selected record reached greeting result and returned to record'
   await initialContext.close()
   await stop('SIGINT')
   report.phases.push(phase)
@@ -202,6 +224,12 @@ try {
   const javaFile = path.join(project, 'qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java')
   const before = readFileSync(javaFile, 'utf8')
   assert.equal(before.split('.withAppName("QQQ Sample")').length, 2, 'Java edit anchor must match exactly once')
+  const brokenSource = before.replace('.withAppName("QQQ Sample")', '.withAppName(QQQ_ACCEPTANCE_UNDEFINED_APP_NAME)')
+  writeFileSync(javaFile, brokenSource)
+  phase = await launch('compile-failure', 'next', false, true)
+  await stop('SIGTERM')
+  assert.equal(readFileSync(javaFile, 'utf8'), brokenSource, 'Failed compilation discarded the local edit')
+  report.phases.push(phase)
   const edited = before.replace('.withAppName("QQQ Sample")', '.withAppName("QQQ Lifecycle Edit")')
   writeFileSync(javaFile, edited)
   phase = await launch('java-edit')
@@ -217,6 +245,47 @@ try {
   assert(html.includes('/static/js/'), 'Material assets were not selected')
   assert(!html.includes('/_next/static/'), 'Next served despite Material selection')
   assert.equal((await json('/qqq/v1/table/person/1')).record.values.firstName, 'Avery')
+  const materialContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' })
+  page = await materialContext.newPage()
+  page.setDefaultTimeout(20_000)
+  page.on('pageerror', (error) => report.pageErrors.push({ phase: 'material', message: error.message }))
+  const materialPerson = base + '/peopleApp/greetingsApp/person'
+  await page.goto(materialPerson)
+  await expect(page.getByText('Avery', { exact: true }).first()).toBeVisible()
+  await page.goto(base + '/peopleApp/greetingsApp/pet/1')
+  await expect(page.getByText('Viewing Pet: Charlie', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Avery Sample', exact: true }).click()
+  await expect(page.getByText('Viewing Person: Avery Sample', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('Viewing Person: Avery Sample', { exact: true })).toBeVisible()
+  await page.goto(materialPerson + '/create')
+  for (const [field, value] of Object.entries({ firstName: 'Material', lastName: 'Verification', email: 'material@example.invalid' }))
+    await page.locator(`input[name="${field}"]`).fill(value)
+  await page.getByRole('button', { name: /Save$/i }).click()
+  await expect(page.getByText('Viewing Person: Material Verification', { exact: true })).toBeVisible()
+  const materialId = new URL(page.url()).pathname.split('/').filter(Boolean).at(-1)
+  assert(/^\d+$/.test(materialId), 'Material created record ID missing')
+  await page.getByRole('button', { name: /Edit$/i }).click()
+  await page.locator('input[name="firstName"]').fill('Material Updated')
+  await page.getByRole('button', { name: /Save$/i }).click()
+  await expect(page.getByText('Viewing Person: Material Updated Verification', { exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('Viewing Person: Material Updated Verification', { exact: true })).toBeVisible()
+  assert.equal((await json(`/qqq/v1/table/person/${materialId}`)).record.values.firstName, 'Material Updated')
+  await page.getByRole('button', { name: /actions/i }).click()
+  await page.getByRole('menuitem', { name: /Greet Interactive/ }).click()
+  await page.locator('input[name="greetingPrefix"]').fill('Hello')
+  await page.locator('input[name="greetingSuffix"]').fill('QQQ')
+  await page.getByRole('button', { name: /Submit$/i }).click()
+  await expect(page.getByText('Hello Material Updated QQQ', { exact: true })).toBeVisible()
+  await expect(page.getByText('1–1 of 1', { exact: true })).toBeVisible()
+  await page.screenshot({ path: path.join(output, 'material-process-results.png'), fullPage: true })
+  await page.getByRole('button', { name: /Close$/i }).click()
+  await expect(page.getByText('Viewing Person: Material Updated Verification', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(`${materialPerson}/${materialId}`)
+  phase.createdRecord = materialId
+  phase.browserChecks = ['seeded query', 'Pet-to-Person link and refresh', 'create/edit/HTTP readback', 'selected-record greeting result and close']
+  await materialContext.close()
   await stop('SIGTERM')
   report.phases.push(phase)
   assert.deepEqual(report.pageErrors, [], 'Browser reported unhandled JavaScript errors')

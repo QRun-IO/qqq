@@ -40,7 +40,7 @@ files and the starter server log. Never point `--workdir` at existing data.
 
 The source gate pins starter `2fb62378fa76da1950dc9e67984c18fd0491ae3f`
 and the public template fix PR #5 head
-`4ff4ddbd9a38d633d846d6762217994a04925a8d`. The latter is fetched from
+`70a72a54f4a3024e39d07a7d86c5acf738283286`. The latter is fetched from
 `refs/pull/5/head` until that PR merges. CI rejects a different checkout head,
 uses a fresh dedicated Maven repository, and runs the copied consumer against
 the current QQQ source checkout. It records generated QBit and starter JUnit

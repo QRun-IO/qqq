@@ -1,19 +1,21 @@
 # QQQ Sample Project
 
-QRun-owned reference application for QQQ 4.1: tables, related records, processes, widgets, the default Next dashboard, the optional Material Dashboard 0.41.0, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
+QRun-owned reference application for QQQ 4.1: tables, related records, processes, widgets, the default Next dashboard, the optional Material Dashboard 0.42.0-RC.1, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
 
-## Quickstart with Next
+## Quickstart with Next — 4.1 RC1
+
+These instructions target QQQ **4.1.0-RC.1** and Next **1.0.0-RC.1**. Confirm the [QQQ RC1 release](https://github.com/QRun-IO/qqq/releases/tag/v4.1.0-RC.1) is available before running them. The [Next RC1 release notes](https://github.com/QRun-IO/qqq-frontend-next/releases/tag/v1.0.0-RC.1) list accepted browser and parity limitations; this candidate does not certify every Next feature. The [stable 4.0 sample](https://github.com/QRun-IO/qqq/tree/v4.0.0/qqq-sample-project) remains available.
 
 Requires JDK 21+, Git, curl and unzip, using Bash on macOS, Linux, or Windows WSL. No Maven, Node.js or Docker installation is needed. From a directory where you want the editable sample checkout:
 
 ```bash
-curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.1.0/quickstart.sh
+curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.1.0-RC.1/quickstart.sh
 bash quickstart.sh
 ```
 
-The script checks prerequisites and the port, clones into `qqq-sample`, compiles only this application against released QQQ 4.1.0, and opens <http://localhost:8000/app/person>. The sample depends on the `qqq-frontend-next` jar, so one Java process serves the API and the Next dashboard on port 8000. Local mock authentication and seeded H2 records require no provider account or database setup. Use this sample with local synthetic data.
+The script checks prerequisites and the port, clones into `qqq-sample`, compiles only this application against released QQQ 4.1.0-RC.1, and opens <http://localhost:8000/app/person>. The sample depends on the `qqq-frontend-next` jar, so one Java process serves the API and the Next dashboard on port 8000. Local mock authentication and seeded H2 records require no provider account or database setup. Use this sample with local synthetic data.
 
-Create a Person, edit and refresh it, then choose **Actions → Greet Interactive** from the record. Enter a greeting prefix and suffix and advance through the process. The Next dashboard's feature coverage is certified by the real-backend acceptance matrix in [qqq-frontend-next](https://github.com/QRun-IO/qqq-frontend-next/tree/main/docs/acceptance) ([#649](https://github.com/QRun-IO/qqq/issues/649)).
+Create a Person, edit and refresh it, then choose **Actions → Greet Interactive** from the record. Enter a greeting prefix and suffix and advance through the process. The Next dashboard's coverage evidence and remaining gaps are tracked by the real-backend acceptance matrix in [qqq-frontend-next](https://github.com/QRun-IO/qqq-frontend-next/tree/main/docs/acceptance) ([#649](https://github.com/QRun-IO/qqq/issues/649)).
 
 Press Ctrl+C to stop the application. Edit Java files under `qqq-sample/qqq-sample-project/src/main/java`, then run `./quickstart.sh` from `qqq-sample` to recompile and restart. Seeded data resets on each launch. Build and application output is in `qqq-sample/quickstart.log`. Use `bash quickstart.sh my-directory` for another destination; an existing destination is never overwritten. The script prints prerequisite installation links and reports an occupied port before downloading or starting anything. Run `QQQ_FRONTEND=material bash quickstart.sh` to open the Material Dashboard instead.
 
@@ -201,10 +203,10 @@ After committing the sample and publishing the release, validate those public ar
 For a published BOM candidate or GA release, first merge the **Published BOM consumer** workflow into default `develop` and carry it into `release/4.1` and the GA tag. After Central sync, dispatch it on `release/4.1` with the exact `4.1.0-RC.N` version. For GA, dispatch the workflow through GitHub CLI or API with tag ref `v4.1.0` and version input `4.1.0`; the web selector only lists branches. Require a successful RC run and retain its attached evidence before GA promotion; verify the GA artifact after it is public. The workflow checks that the selected source revision matches the requested version and runs `python3 qqq-sample-project/verify-published-bom.py 4.1.0-RC.1` (substitute the literal published version). The checker imports the public BOM through Maven Central with empty settings and a fresh cache, compares every normalized managed coordinate, and resolves every managed QQQ jar plus the pinned Next dashboard. It checks direct dependency scopes and compares each cached BOM/jar byte-for-byte with a separate HTTPS fetch from Central. It fails on absent, wrong-version, or snapshot dependencies and keeps `pom.xml`, `settings.xml`, `maven.log`, `dependency-tree.json`, the isolated cache, and `evidence.json` under `qqq-sample-project/target/published-bom-*`. Local runs can archive that directory; the workflow attaches the report, consumer POM, Maven log, and dependency tree. This checks the published BOM consumer contract, while the sample acceptance command below checks runtime behavior.
 
 ```bash
-python3 qqq-sample-project/verify-published.py 4.1.0 --material-version 0.41.0 --next-version 0.2.1
+python3 qqq-sample-project/verify-published.py 4.1.0-RC.1 --material-version 0.42.0-RC.1 --next-version 1.0.0-RC.1
 ```
 
-Supply the core and dashboard versions actually published; the command above selects final core 4.1.0, Next dashboard 0.2.1 and Material Dashboard 0.41.0. This exports committed `HEAD`, resolves the literal parent and dashboard from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and reports the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`, including separate test-acceptance and feature-coverage results. Add `--require-complete-coverage` when the deferred comprehensive feature gate is required; without it, a successful run does not certify the deferred scenarios.
+Supply the core and dashboard versions actually published; the command above selects core 4.1.0-RC.1, Next dashboard 1.0.0-RC.1 and Material Dashboard 0.42.0-RC.1. This exports committed `HEAD`, resolves the literal parent and dashboard from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and reports the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`, including separate test-acceptance and feature-coverage results. Add `--require-complete-coverage` when the deferred comprehensive feature gate is required; without it, a successful run does not certify the deferred scenarios.
 
 ## Source entry points
 

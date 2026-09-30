@@ -182,7 +182,7 @@ jobs:
             git clone https://github.com/QRun-IO/qbit-template-application.git "$consumer_root/template"
             git -C "$consumer_root/template" fetch origin refs/pull/5/head
             git -C "$consumer_root/template" checkout --detach FETCH_HEAD
-            test "$(git -C "$consumer_root/template" rev-parse HEAD)" = 4ff4ddbd9a38d633d846d6762217994a04925a8d
+            test "$(git -C "$consumer_root/template" rev-parse HEAD)" = 70a72a54f4a3024e39d07a7d86c5acf738283286
             docker pull mysql:8.4
             QQQ_STARTER_SOURCE="$consumer_root/starter" QQQ_TEMPLATE_SOURCE="$consumer_root/template" \
               python3 -m unittest discover -s qqq-sample-project/acceptance -p test_starter_application.py -v
@@ -199,7 +199,7 @@ jobs:
           name: Verify generated infrastructure extension in a separate host
           command: |
             git clone https://github.com/QRun-IO/qbit-template-extension.git /tmp/sample-extension-template
-            git -C /tmp/sample-extension-template checkout --detach 92f2ec557bd9c908127d289172b00cd205e6d802
+            git -C /tmp/sample-extension-template checkout --detach a3c5b6afddacb9a98a46ffbb9f3e93924c26480a
             python3 qqq-sample-project/acceptance/extension/run_extension.py \
               --qqq-source . \
               --template-source /tmp/sample-extension-template \

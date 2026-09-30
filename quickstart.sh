@@ -13,8 +13,8 @@ if [[ ${1:-} == --help || ${1:-} == -h ]]; then usage; exit 0; fi
 if (( $# > 1 )); then usage >&2; exit 1; fi
 
 started=$SECONDS
-source_ref=${QQQ_QUICKSTART_REF:-quickstart-4.1.0}
-qqq_version=${QQQ_QUICKSTART_VERSION:-4.1.0}
+source_ref=${QQQ_QUICKSTART_REF:-quickstart-4.1.0-RC.1}
+qqq_version=${QQQ_QUICKSTART_VERSION:-4.1.0-RC.1}
 frontend=${QQQ_FRONTEND:-next}
 app_pid=
 

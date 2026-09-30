@@ -2,19 +2,30 @@
 
 This is a preparation procedure, not an announcement of availability. The release record is https://github.com/QRun-IO/qqq/issues/790[#790]; strict acceptance is tracked in https://github.com/QRun-IO/qqq/issues/798[#798]. Record exact commits, workflow runs, versions and artifact digests there. Existing release authorization applies after the gates pass; repository protections still apply.
 
+== Candidate pairing and accepted limitations
+
+The current pair is QQQ `4.1.0-RC.1` with public Next `1.0.0-RC.1`. For each newly published Next RC, publish a new immutable QQQ 4.1 RC with that exact dependency, affected compatibility and quickstart checks, matching documentation and known limitations. Reuse unchanged valid evidence. Never overwrite an earlier candidate or infer general availability from an RC. Stable `4.0.0` and `main` remain unchanged until a separate final-release decision.
+
+For this pair, James https://github.com/QRun-IO/qqq/issues/798#issuecomment-5899058345[accepted the published Next RC1 limitations]: Firefox/WebKit/tablet failures, base-path hosting (#732), Google Drive picker (#704), report/query parity (#722), input blocks/icons (#728), script autocomplete (#724) and remaining visual comparisons. The seven affected Next contracts remain pending and excluded from verified counts. The exact artifact identity and scoped exception are recorded in `qqq-sample-project/release-deferrals.json`; other source, security, Material, public-consumer and quickstart requirements still apply. This exception does not certify a newer Next artifact or final release.
+
 == Before a publishing branch or tag
 
 * Merge the reviewed integration into `develop` through the protected PR workflow. It includes the branch reconciliation and Apache consistency work from #796/#797; confirm their ancestry rather than applying them twice.
-* Release and pin the reviewed successor orb from https://github.com/QRun-IO/qqq-orb/pull/13[orb #13]. The current `0.6.0` pin is not cleared for this release. Verify settings redaction, candidate-tag behavior and version calculations before using publishing workflows.
+* Use the pinned public `kingsrook/qqq-orb@0.6.8`. Its reviewed successor work includes settings redaction, candidate-tag behavior, version calculations and tokenless frontend publishing. Confirm the exact runtime and dry-run version calculation before using publishing workflows.
 * Require the full reactor, sample, static analysis, both real-broker suites and separately owned Next/default-entry-point acceptance against the intended source. A report-only green job does not satisfy strict acceptance. Every supported scenario must pass or have an exact, owner-approved deferral in `qqq-sample-project/release-deferrals.json`; a historical ledger note is not that approval.
-* Supply independently reviewed Next source/runtime receipts through the xref:../../qqq-sample-project/acceptance/next/README.md[receipt handoff]. Match the actual tested Next commit, QQQ commit and runtime bytes; a PR head, test-merge commit and mutable `develop` reference are not interchangeable. Missing evidence must stop publication.
+* Supply independently reviewed Next source/runtime receipts through the xref:../../qqq-sample-project/acceptance/next/README.md[receipt handoff], or the exact scoped RC1 exception above. Match the actual tested Next commit, QQQ commit and runtime bytes; a PR head, test-merge commit and mutable `develop` reference are not interchangeable. Missing non-exempt evidence must stop publication.
 * Confirm the accepted Next artifact and all BOM-managed coordinates, generated POM licenses, source JAR headers and signatures. Derive the artifact list from the reviewed BOM. Check that the proposed versions and tags are unused.
 
-== Candidate, final release and distribution
+== Candidate publication and distribution
 
 . Record the approved `develop` SHA and create `release/4.1` from it. Before pushing, dry-run the pinned orb's calculator for the next unused `4.1.0-RC.N`; `release/*` pushes activate candidate publication. Review the exact candidate source and receipt inputs first.
 . Publish through the gated candidate workflow. Verify the immutable RC artifacts and signatures in the public registry, then run the published bootstrap/BOM consumer from an empty Maven repository and smoke a real first-party application. A locally installed snapshot is not candidate evidence. Fixes require a new unused candidate and renewed acceptance.
-. After candidate acceptance, prepare the reviewed `4.1.0` version commit with the release workflow's `[skip ci]` convention. Merge through the protected path into `main`, place an annotated, signed `v4.1.0` tag on that merge commit, and push the intended main ref and tag together. Confirm the tag workflow's strict sample, broker, static and publication prerequisites; do not substitute an ordinary main push for the release trigger.
+. Publish the compatible QBit parent RC importing the exact QQQ RC, then the eight included QBit RCs and the qqq-all parent/BOM/image RC. The candidate dependency order and exact pins are tracked in https://github.com/QRun-IO/qqq/issues/921[#921]. Require public, non-snapshot dependencies, core/full consumer smoke and an unauthenticated image pull. Keep the existing final-release tickets open; an RC does not satisfy their GA gates.
+. Create the GitHub prerelease and candidate quickstart ref, verify Next is the default and Material remains selectable, and publish matching RC documentation. Verify anonymous startup, restart, seeded data and the declared timing environment against the published bytes. Retain the stable 4.0 entry point. Keep frontend and framework versions independent.
+
+== Final release — separate owner decision
+
+. After candidate acceptance and explicit GA authorization, prepare the reviewed `4.1.0` version commit with the release workflow's `[skip ci]` convention. Merge through the protected path into `main`, place an annotated, signed `v4.1.0` tag on that merge commit, and push the intended main ref and tag together. Confirm the tag workflow's strict sample, broker, static and publication prerequisites; do not substitute an ordinary main push for the release trigger.
 . Verify final Central artifacts, signatures, GitHub release and a fresh consumer before announcing availability. Back-merge to `develop`, explicitly set `4.2.0-SNAPSHOT`, and verify the pinned calculator again.
 . Release the QBit parent importing QQQ 4.1, then all eight included qbits, then the qqq-all parent/BOM and image. Follow https://github.com/QRun-IO/qqq-all/issues/10[qqq-all #10] and its reviewed `docs/release.md`. Require released dependency pins, exact-commit core/full smoke, both public Maven POMs, public GHCR bootstrap and an unauthenticated image pull. Verify the attached Compose file starts the published image. Preserve the independent Next version; do not force frontend and framework version numbers to match.
 

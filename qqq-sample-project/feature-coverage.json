@@ -1214,9 +1214,36 @@
         "Disabled capability/manager, thresholds, consumer/storage failures and collection recursion do not fabricate or leak statistics",
         "No cross-instance/session state or worker leakage; failed/terminated reads have an explicit truthful statistics outcome"
       ],
-      "gap": "Final selected-source acceptance remains open. High #525/#526 retained; independent provider refinements #527\u2013#531 deferred. Original requirements remain; historical evidence is source-specific.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Owned H2 evidence now covers direct/plain/association-buffered counts including tails, exact native timing/session/filter/order/join metadata, explicit and scheduled storage, caller context including an actual transaction and the identical named-object map, isolated supplier/storage objects and unchanged caller audit accumulation, disabled/threshold/consumer/storage failures, two-instance isolation across restart, repeated-start cleanup, in-flight flush/restart and consumer-generation isolation, and flush self-observation suppression/recovery. Seven former failing probes for #833\u2013#837 pass and run in ordinary discovery. Backend measurements remain valid after post-query rejection; no whole-request success is inferred. Latch-controlled native evidence now covers active JDBC cancellation with no completed measurement, callback cancellation during real row delivery with an exact partial count, and plain-pipe termination during active SQL with zero delivery and a retained backend measurement. Native readback, connection closure, owned worker/context cleanup and a fresh recovery query pass. These bounded H2 paths do not certify arbitrary thread interruption, blocked/full-pipe or association-buffer termination races. Independent original-requirement and composition reviews passed, followed by 821 regular and 117 integration tests (938 total), zero failures/errors/skips, at 64fd0466b4911cff66e20b34fb4b5e7425662f90. Native timestamp assertions respect the unchanged H2 column precision, with deterministic nanosecond rounding-up/down and second-boundary controls. Failed storage batches are still dropped; counts are consumer-only, and structured order direction/join type and persistent request outcomes are not provided. High #525/#526 and deferred #527\u2013#531 remain unchanged.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testNativeFlushPreservesAndIsolatesNamedObjects",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testFailedNativeFlushPreservesAndIsolatesNamedObjects",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testRestartWaitsForNativeFlushAndRetiresPreviousWorker",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testDirectQuerySnapshotAndExplicitNativeStorage",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testPlainPipeCountsEmptyFullBatchesAndTails",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testNativeTimingFilterOrderAndJoinMetadata",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testDisabledCapabilitiesAndManager",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testThresholdAndThrowingConsumerDoNotBreakRead",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testExplicitMetadataOptOutPreventsRecursiveCollection",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testStorageFailureDropsBatchAndFreshReadRecovers",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testFailedNativeQueryHasNoSuccessStatistic",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testPreterminatedPlainPipeRecordsZeroDeliveredRows",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testScheduledFlushUsesOwnedSessionAndStopsWithoutWorkerLeak",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testStopDropsPendingBatchAndSequentialRestartKeepsSessionIdentity",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testPostQueryRejectionRetainsCompletedBackendMeasurement",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testAssociationShortTailCount",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testAssociationFullBatchCount",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testAssociationFullBatchAndTailCount",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testExplicitFlushPreservesCallerContext",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testForeignInstanceDoesNotWriteToStartedInstance",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testStatisticsTableDoesNotCollectItsOwnWrites",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceRegressionTest#testRepeatedStartThenStopLeavesNoWorker",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceCancellationTest#testNativeStatementCancellationDoesNotPublishCompletedStatistic",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceCancellationTest#testConcurrentPlainPipeTerminationRetainsZeroDeliveryMeasurement",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceCancellationTest#testAsyncCancellationDuringDeliveryRetainsExactPartialMeasurement",
+        "com.kingsrook.sampleapp.SampleQueryStatisticsAcceptanceTest#testNanosecondTimestampsUseNativeColumnPrecision"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "review_note": "Source scope reviewed in query-statistics-inventory-scope-review.md. Separate from column statistics, widgets, DML audit and the common Query output contract; all previous128 IDs retained.",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/564",
@@ -1282,12 +1309,24 @@
       "negative_cases": [
         "Missing/expired/invalid token, invalid credentials, disabled user, replay and unauthorized session"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Ten source sample scenarios use the canonical H2 records, native table credentials and owned loopback OAuth2/Auth0 discovery, client authentication, PKCE codes and real signed tokens. They cover authentication metadata without client-secret disclosure, protected record reads, HttpOnly cookie resumption, reauthentication, logout, callback state/code replay, provider-disabled grants, expired/mismatched stored identities and invalid credentials/signatures. Signed back-channel logout invalidates previously used sessions with and without the optional store; failed store eviction preserves rows and the same event can retry. #918/#919 correct discovery and stale-cache defects exposed by these sample paths. Session refresh here is native cookie/session resumption and reauthentication; no new provider refresh-token grant, browser login flow, cross-node cache eviction or in-flight-request cancellation is claimed. Final coordinated public-artifact acceptance remains separate.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAnonymousAndMockModes",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAuth0SignedTokenAndRejectedTokens",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelCacheFailureIsRetryable",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesSessionStore",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesUsedSessionAndRejectsReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCallbackStateAndCodeReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCodeResumeAndNormalLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthExpiredAndMismatchedStoredSession",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableCredentialsResumeAndLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableExpiredAndUnknownSessionDenied"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/565",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "review_note": "Focused independent review found no remaining actionable issues in the production corrections and all ten sample scenarios. Local10sample/20native-logout/4core-auth tests pass. Normal combined CI remains required before integration; the coverage verifier still requires actual passing results for every mapped method."
     },
     {
       "id": "core.security.permissions",
@@ -1410,12 +1449,18 @@
       "negative_cases": [
         "Denied audit access, no event for failed write, sensitive-value policy and missing record"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testPersonFieldHistoryThroughAuditProcess",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testNoneRecordAndExplicitAuditEvents",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testAuditRetrievalRequiresPermission",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testFailedWriteAndMissingRecordHaveNoAuditEvent",
+        "com.kingsrook.sampleapp.SampleAuditContractTest#testPasswordAuditMasksOldAndNewValues"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/566",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "acceptance_review": "The sample's H2 Person table and Field Lab password field exercise real DML, audit metadata, and GetAuditsForRecord; audit rows use the sample memory backend. HTTP process access denies a caller with Person read but no audit read. Failed Person updates preserve the row and add no audit event. Password audit details omit old and new secret values. This source scenario does not assert audit persistence across restarts or provider-specific audit storage."
     },
     {
       "id": "core.automation",
@@ -1432,9 +1477,19 @@
       "negative_cases": [
         "Handler failure, retries/duplicate work, invalid status/provider; PRE_DELETE is documented unimplemented and excluded"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Nine source-only sample acceptance cases exercise public Person/Pet record APIs, code/process handlers, priority/re-filtering, batches, associations and status recovery with native H2 SQL oracles. Failed batches can retain and repeat partial writes; completed polling does not repeat work. Invalid metadata and ambiguous implicit providers reject; unknown/null persisted statuses remain untouched. Regression #845 rejects an explicit unknown provider without changing pending rows, then verifies valid-provider recovery. Existing null/blank single-provider defaults and known-provider no-op behavior are preserved. PRE_DELETE remains unsupported/excluded. Independent requirement/composition review and the combined 975-test sample run passed; no scheduler, concurrent-worker or exactly-once guarantee is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInsertUpdateAndCompletedWorkIsNotRepeated",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testUnknownRuntimeProviderRejectsWithoutWritesAndValidRetryRecovers",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testPriorityFiltersAndAssociationLoading",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testProcessHandlerRespectsBatchSizeAndSelectedRecords",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testFailedInsertBatchRequiresRecoveryAndRepeatsPartialWork",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testFailedUpdateProcessRecoversWithoutImplicitRetry",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testRecoveryStaleRunningAndInvalidPersistedStatuses",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInvalidProviderAndStatusMetadataRejectedWithoutWrites",
+        "com.kingsrook.sampleapp.SampleAutomationAcceptanceTest#testInvalidManualProcessInputsPreservePendingWork"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/567",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
@@ -1813,9 +1868,37 @@
       "negative_cases": [
         "Unrelated records, denied record, unique conflict and failed merge rollback"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Twenty-seven first-party registered-process H2 cases cover selection/survivor/fields, child and grandchild persistence, ID/filter delete-before-replacement and unique-name reuse in process/page transactions, unrelated/denied/unique-conflict cases, supported transaction rollback and cleanup-error precedence. #843 corrects confirmed association loss and ignored write errors. Independent requirement/composition review and the combined 975-test sample run passed; autocommit can retain earlier writes, and cross-backend atomicity/browser interaction are not claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#selectedDuplicateMergesFieldsAndPreservesAssociations",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#choosingSecondSurvivorPreservesAllPetsAndGrandchildren",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#previewDoesNotWriteAndConfirmationPersistsMerge",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#selectedSurvivorAndFieldsPersistWithoutAssociationMoves",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#unrelatedSelectionAndInvalidSurvivorDoNotMutate",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#readDeniedDuplicateIsNotMerged",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#writeDeniedSurvivorDoesNotConsumeDuplicate",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#uniqueConflictDoesNotConsumeDuplicate",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#thrownLoadFailureRollsBackAlreadyUpdatedSurvivor",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#deniedAssociationReassignmentRollsBackMerge",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#deniedDuplicateDeletionRollsBackMerge",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#autocommitFailureStopsDeletionWithoutClaimingRollback",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#cleanupFailuresDoNotMaskThrownMergeFailure",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#cleanupFailuresDoNotMaskErrorBearingReassignment",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#successfulMergeSurfacesCloseFailure",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#successfulPageMergeSurfacesCloseFailure",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#repeatedPrimaryInstanceIsNotSuppressedOntoItself",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#processReplacementByFilter",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#processReplacementById",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#processUniqueReplacementByFilter",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#processUniqueReplacementById",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#pageReplacementByFilter",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#pageReplacementById",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#pageUniqueReplacementByFilter",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#pageUniqueReplacementById",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#replacementExceptionRollsBackDeletes",
+        "com.kingsrook.sampleapp.SampleMergeAcceptanceTest#replacementRecordErrorRollsBackDeletes"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/568",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
@@ -1834,12 +1917,42 @@
       "negative_cases": [
         "Invalid cron, duplicate job, job exception, timeout, shutdown cleanup and context isolation"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Twenty-four first-party native Quartz/Simple/H2 cases cover interval/cron/delay, process/automation/owned-protocol queue runners, serial/parallel variants, management and negative cases. #847 corrects ignored initial delay; #853 isolates/restores scheduler named objects; #855 bootstraps only missing nonpersistent jobs through the real launcher, with existing paused/normal RAM jobs, JDBC-store startup guard, persisted dynamic rows and mixed-scheduler controls. The acceptance-only actual Simple stop-timeout case proves the existing 300-second false/STOPPING boundary with retained native work, then explicit release, committed data, exact worker context restoration and worker termination. The shorter observer timeout is separate; neither claims forced cancellation or an application deadline. Queue fixture does not certify external SQS semantics or SDK-client shutdown.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#quartzHonorsInitialDelay",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#simpleIntervalAndInitialDelayPersistProcessWrites",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#quartzIntervalPauseResumeRescheduleAndUnschedule",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#cronScheduleDispatchesAndUnscheduleAllRemovesIt",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#invalidCronPreservesNativeScheduleAndData",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#launcherStartupDispatchesFreshQuartzJob",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#startupPreservesExistingPausedRamJob",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#startupDispatchesMixedSimpleAndQuartzJobs",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#startupRegistersPersistedDynamicJob",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#persistentQuartzStartupRetainsGuard",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#quartzDelayPrecedesActualProcessWrite",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#serialVariantsPersistDistinctRowsWithoutOverlap",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#parallelVariantsOverlapWithIsolatedSessionsAndRows",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#failedProcessDoesNotPreventNextInterval",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#observerTimeoutDoesNotCancelAndShutdownWaitsForOwnedWork",
+        "com.kingsrook.sampleapp.SampleSchedulingTimeoutAcceptanceIT#actualSimpleStopTimeoutRetainsWorkThenCleansUp",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#automationRunnerPersistsHandlerResultAndStatus",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#queueRunnerPersistsBodyBeforeAcknowledging",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#queueRunnerDoesNotAcknowledgeFailedProcess",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#quartzContextSuccessIsolatedAndRestored",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#quartzContextFailureRestoresAndNextRunRecovers",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#simpleContextSuccessIsolatedAndRestored",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#simpleContextFailureRestoresAndNextRunRecovers",
+        "com.kingsrook.sampleapp.SampleSchedulingAcceptanceTest#disabledManagerDoesNotRegisterOrDispatch"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/569",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-28",
+        "issue": "https://github.com/QRun-IO/qqq/issues/569",
+        "scope": "Reviewed scheduling fixes and isolated native fixtures passed combined source acceptance at 6215d2b1e: 23 ordinary scheduling cases and the actual 300-second stop-timeout integration case. The full sample ran 898 regular and 118 integration tests with no failures, errors or skips. This verifies scheduler-owned work and context cleanup; ESB application-final cleanup remains separately tracked in #851. The preceding SQS fixture completion timeout was not reproduced in isolated, class, or full unchanged-source runs; no timeout or assertion was relaxed and no root-cause fix is claimed."
+      }
     },
     {
       "id": "core.reporting.export",
@@ -2486,12 +2599,24 @@
       "negative_cases": [
         "Missing template/context, syntax error and unescaped data"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testResourceFormsRenderLoopsAndBothConditionBranches",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testStringFormsRenderLoopsAndBothConditionBranches",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testLiteralEscapesAcrossStringAndResourceForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testCallerEscapedHtmlAndRawDataAcrossForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testContextDataIsNotReevaluatedAsTemplateCode",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingContextAndValuesAcrossForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingCodeRejectedAndEmptyCodeAccepted",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingResourceIsRejected",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testSyntaxErrorsAcrossStringAndResourceForms",
+        "com.kingsrook.sampleapp.SampleTemplateRenderingTest#testMissingTemplateTypeIsRejected"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/570",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source scenarios covered for 4.1; integrated and published-artifact acceptance remain separate gates.",
+      "acceptance_review": "All three existing entrypoints (execute, render and renderVelocity) consume inline strings and owned UTF-8 resources with literal output assertions. Tests cover ordered/empty loops, both condition branches, VTL literal escaping, explicitly caller-escaped HTML versus raw HTML, non-reevaluation of context data, optional/missing context and keys, null versus empty code, missing resource/type and syntax failures. Resources are loaded by the sample consumer; no resource-rendering API, automatic HTML sanitization, browser, PDF or published-candidate guarantee is claimed."
     },
     {
       "id": "core.templates.pdf",
@@ -2506,9 +2631,14 @@
       "negative_cases": [
         "Malformed HTML, missing asset and conversion failure; no external private resources"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Four source sample scenarios now reopen serialized PDF bytes with the existing PDFBox parser and assert page-specific text, pagination and embedded-image presence. Native OpenHTMLToPDF controls distinguish strict malformed-XML rejection from QQQ HTML repair, tolerated missing local images from successful image loading, and an output-sink IOException from QQQ exception wrapping. All resources are owned and local; the failure case confirms subsequent conversion succeeds, not output rollback. No visual-fidelity, custom-font, remote-asset, publication or release certification is claimed. Independent review and combined full sample verification passed; existing post-4.0 disposition remains unchanged and grants no new release approval.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testSampleTemplateProducesTwoReadablePagesAndLocalImage",
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testMalformedHtmlIsRepairedWithoutLosingText",
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testMissingLocalAssetPreservesTextWithoutImage",
+        "com.kingsrook.sampleapp.SamplePdfAcceptanceTest#testOutputFailureRetainsCauseAndNextConversionSucceeds"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/571",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
@@ -2527,14 +2657,31 @@
         "Script revisions, record/process script input/output, test versus persist and summary"
       ],
       "negative_cases": [
-        "Invalid code/parameters, script exception, permission denial and test run must not persist"
+        "Invalid code/parameters, script exception, permission denial; Test does not save draft revisions/logs or implicitly save record mutations; explicit writes remain live and permission checked"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Maintainer decision #849 preserves live Test execution. Fourteen reviewed sample scenarios cover explicit Test writes, writes followed by failure, caller permission denial/recovery, unchanged draft revisions/logs and Store/Test/Run boundaries. All fourteen passed combined source CI4470 at652c30888; the mapped test source is unchanged at this candidate. Material warning delivery is merged in PR157. Browser parity remains separately tracked; no rollback, arbitrary-Java sandbox or external-side-effect isolation is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testAdHocPinnedRevisionAndInvalidReferences",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRunRecordProcessPersistsSelectedRecordsAndSummarizesBatches",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testInvalidDraftCodeParametersAndAssociatedReference",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordDraftLocalMutationDoesNotPersist",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testStoreRevisionsAndRunCurrentAssociatedScript",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRunRecordProcessReportsScriptFailuresWithoutImplicitWrites",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testAssociatedDraftReturnsOutputWithoutPersistingRevisionOrLogs",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordScriptPermissionDeniedThenGrantedWrite",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testStoredSyntaxAndRuntimeFailuresThenValidRevisionRecovery",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testStoreRevisionDeniedByRecordLockThenAuthorized",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testAdHocRecordInputsOutputsAndExplicitPersistence",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordDraftExplicitWritePersistsWithoutSavingDraftOrLogs",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordDraftWriteRemainsAfterScriptFailure",
+        "com.kingsrook.sampleapp.SampleAssociatedScriptAcceptanceTest#testRecordDraftWriteDeniedThenGranted"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/572",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "scope_decision": "James approved preserving live Test execution with clear warnings/tests on 2026-09-29 (#849). This explicitly clarifies the earlier #572 non-persistence requirement; it is not an unapproved coverage deferral.",
+      "review_note": "Independent source review previously completed with no actionable findings. Reconciled all14 exact mapped methods against CI4470 success receipts; no duplicate suite run. This is source evidence, not final public-artifact acceptance."
     },
     {
       "id": "core.messaging",
@@ -2549,12 +2696,37 @@
       "negative_cases": [
         "Invalid receiver/configuration, delivery failure and no unrelated recipient transmission"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Ten local EMAIL source checks cover normal SendMessageAction dispatch, exact SMTP envelope and decoded MIME body, recipient isolation, invalid receiver/provider configuration, SMTP refusal, post-DATA delivery failure and explicit Reply-To correctness. The #870 correction retains single/multiple explicit Reply-To wire regressions. Evidence is native local EMAIL source acceptance; SES/live providers, browser and published-artifact delivery are not verified by these checks.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testConfiguredMessageEnvelopeAndBody",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testSubsequentMessageDoesNotReuseRecipients",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testMissingAndUnknownProviderConfiguration",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testUnsupportedProviderType",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testInvalidReceiverRejectedBeforeTransmission",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testReceiverRefusalDoesNotTransmitBody",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testDeliveryFailureAfterBodyDoesNotFallback",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testExplicitReplyToAfterFrom",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testMultipleExplicitReplyToAfterFrom",
+        "com.kingsrook.sampleapp.SampleMessagingAcceptanceTest#testMultipleExplicitReplyToAroundFrom"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/573",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/573",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Configured local EMAIL transport, exact envelope/MIME, recipient isolation, configuration/delivery negatives and #870 Reply-To controls. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "core.maintenance",
@@ -2570,12 +2742,25 @@
       "negative_cases": [
         "Nonexpired/denied records untouched, empty table and invalid configuration"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Independent review, focused source scenarios and the combined full sample acceptance profiles passed. No published-candidate or scheduler evidence is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testConfiguredExpiryAndRepeatPreserveNonexpiredRecords",
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testExplicitCutoffPreservesEqualAndLaterDates",
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testReadDeniedExpiredRecordsRemainUntilGranted",
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testWriteDeniedExpiredRecordsRemainUntilGranted",
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testEmptyCleanupAndStatistics",
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testInvalidCleanupFieldPreservesEveryRecord",
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testInvalidStatisticsFieldPreservesRecordsAndRecovers",
+        "com.kingsrook.sampleapp.SampleMaintenanceAcceptanceTest#testInvalidStatisticsConfigurationPreservesRecords",
+        "com.kingsrook.sampleapp.SampleAggregateColumnStatsContractTest#testRegisteredProcessPublishesNativeCountsAndStats",
+        "com.kingsrook.sampleapp.SampleAggregateColumnStatsContractTest#testUserBaseReadScopeReachesBothAggregates",
+        "com.kingsrook.sampleapp.SampleAggregateColumnStatsContractTest#testJoinedTableReadPermissionForTargetAndFilter"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/574",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": "Source base 4da03460068dd9cabea50caf65bf5405754d716f: 8 maintenance and 9 existing column-statistics tests pass with zero failures/errors/skips in an isolated matching-source Maven cache. Registered garbage collection uses the sample Field Lab metadata and existing schema in an owned H2 database; native JDBC snapshots check configured expiry, exact cutoff, repeat execution, READ/WRITE-denied and null-owner preservation, empty tables, invalid expiry field and column-statistics configuration. Reused registered column-statistics SQL oracles compare counts/groups/sum/average/extrema and scoped READ behavior. No schedule, cascade, external database or published-artifact claim; independent review and combined full acceptance passed at fd7743b3773e02cb0ee59e570191ede2e48b40f2 (817 regular +110 integration tests, zero failures/errors/skips)."
     },
     {
       "id": "core.widget.alert",
@@ -3989,12 +4174,28 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testCrudTypesGeneratedKeyAndNullRoundTrip",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testCountFiltersSortAndPagingAgainstSql",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testScalarAndGroupedAggregatesAgainstSql",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testInnerAndLeftJoinsAgainstSql",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testDuplicateMissingTableAndMalformedInputs",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testUnsupportedStorageFailsExplicitly",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testDeniedRowsAcrossReadAggregateAndWrites",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testConnectionFailureAndRecovery",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testBatchWritesAndGeneratedIdentityCorrelation",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresTemporalValuesAcrossHostTimeZones",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresNativeConstraintsCoverRoundingCollationAndConcurrentWrites",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCanonicalAssociationsAndInsertPrimaryKeys",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCountTimeoutAndCancellation",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresQueryTimeoutAndCancellation"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/581",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source scenarios covered for 4.1; integrated and published-artifact acceptance remain separate gates.",
+      "acceptance_review": "Owned postgres:17-alpine sample fixtures exercise real QQQ CRUD/count/aggregate/query actions against independent JDBC oracles: scalar/binary/null/temporal types, generated/manual/default keys, deterministic pages, filters, INNER/LEFT joins and all six aggregate operators. Native SQLSTATEs establish connection/missing-table/constraint failures; malformed filter/type inputs and row-lock denials have unchanged-storage and allowed controls. Existing live sample methods prove blocked Count/Query timeout and cancellation. PostgreSQL is relational (collection cases do not apply); its file-storage interface fails explicitly. No UI/authentication or published-candidate acceptance is claimed."
     },
     {
       "id": "backend.postgres.lifecycle",
@@ -4010,12 +4211,22 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Add first-party disposable backend fixtures and persisted-result/rollback assertions; framework module tests alone are insufficient sample evidence.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testBatchWritesAndGeneratedIdentityCorrelation",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testTransactionCommitVisibilityAndConnectionClose",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testExplicitRollbackRestoresAllWrites",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testAutocommitMidBatchFailurePreservesEarlierStatement",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testMidBatchFailureRollbackAndRecovery",
+        "com.kingsrook.sampleapp.SamplePostgresAcceptanceIT#testPoolReuseCheckoutTimeoutAndOwnedCleanup",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresCountTimeoutAndCancellation",
+        "com.kingsrook.sampleapp.SampleDatabaseIT#testPostgresQueryTimeoutAndCancellation"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/582",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source scenarios covered for 4.1; integrated and published-artifact acceptance remain separate gates.",
+      "acceptance_review": "Actual PostgreSQL transaction-local and independent JDBC readback proves batch writes, commit visibility, explicit rollback of insert/update/delete, aborted mid-batch state and recovery. A matching autocommit control proves earlier statements can remain after failure; no automatic batch atomicity or sequence rollback is claimed. A uniquely named size-one C3P0 pool proves physical PID reuse, bounded checkout failure, uncommitted-row rollback and state reset on return. The consumer explicitly destroys only its owned pool and checks pg_stat_activity; ConnectionManager registry reset is not pool shutdown. Existing sample Count/Query methods prove live driver timeout/cancellation, native work cleanup and recovery. Docker failures do not skip this evidence."
     },
     {
       "id": "backend.sqlite.data",
@@ -4136,12 +4347,53 @@
       "negative_cases": [
         "Connection failure, missing table/collection, duplicate key, malformed filter/type, denied rows and timeout; unsupported operations fail explicitly"
       ],
-      "gap": "Final selected-source acceptance remains open. High #525/#526 retained; independent provider refinements #527\u2013#531 deferred. Original requirements remain; historical evidence is source-specific.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Native SYSTEM and USER insert/update preserve supplied Integer, numeric String and nonnumeric String BSON values, as approved in #820. Native CRUD/key/type, paging/filter/count/aggregate, READ policy, connection/collection/filter failures and implemented association fetching have reviewed source evidence. Unsupported native String-key mutations/lookups and explicit native joins retain their documented refusal boundaries. Application HTTP malformed-value rejection is independently verified on the canonical H2 fixture; this does not certify Mongo HTTP or a universal adapter policy.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMissingCollectionStartsEmptyAndIsCreatedByInsert",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testConnectionFailureDoesNotReturnSuccessOrWrite",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMalformedFilterRefusesWithoutNativeMutation",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testSuppliedStringKeyAndDuplicatePreserveStoredOwner",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testScalarTextPasswordAndDecimalTypesRoundTrip",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testDateTimeAndInstantTypesRetainValuesAndTypes",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testSparseUpdateExplicitNullAndDeletePreserveOtherRows",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testSortedPagedQueryAndCountMatchNativeRows",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testAggregateOperatorsAndGroupsMatchNativeBson",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testComputedPredicatesAndPersonalizedReadUseOriginalOwners",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testUnsupportedDistinctAndCompositionRefuse",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testNameFilteredDeleteNeverRetargetsStringKeyToObjectIdDecoy",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testRenamedPrimaryKeyUpdateIgnoresOrdinaryIdAsIdentity",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testVirtualNativeIdShadowRefusesDeleteBeforeCallbacks",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testUnstructuredLogicalIdShadowRefusesDeleteBeforeCallbacks",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testReplaceUniqueMatchRefusesStringObjectIdCollisionBeforeUpdate",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testNativeStringKeyBoundariesNeverRetargetObjectIdOwners",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testExplicitQueryCountAndAggregateJoinsRefuse",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testSupportedAssociationFetchMatchesNativeMembershipAndReadScope",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testHiddenStringCounterpartPreservesDeniedReadResults",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testPersonalizedReadPolicyAppliesToStringCounterpartProbe",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testTypedObjectIdLookupRetainsItsNativeOwner",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testBatchedExpressionKeysAndReuseAfterRefusal",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testNativeInsertAndUpdatePreserveSuppliedFieldTypes"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/583",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "contract_decision": {
+        "issue": "https://github.com/QRun-IO/qqq/issues/820#issuecomment-5894351276",
+        "owner": "James Maes",
+        "date": "2026-09-29",
+        "decision": "Preserve and document existing SYSTEM behavior; test native USER and HTTP adapter boundaries separately. No generic type-rejection policy change."
+      },
+      "acceptance_review": {
+        "at": "2026-09-29T17:50:38.482652+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/583",
+        "source_sha": "97127ea3bc3470792e6cdbe9722b21b256827852",
+        "evidence": "https://circleci.com/gh/QRun-IO/qqq/4440",
+        "scope": "The approved #820 native type contract in reviewed PR899 is integrated into815. Its 29 Mongo and9 application HTTP cases passed locally, and the matching integration sample job passed. The CI coverage report lists only scenario review as the remaining Mongo gap, with no missing or failed mapped tests. Independent source review completed; all130 original contracts remain intact. Native USER preserves supplied BSON types too; application HTTP rejection evidence uses H2, not Mongo.",
+        "contract_decision": "https://github.com/QRun-IO/qqq/issues/820#issuecomment-5894351276"
+      }
     },
     {
       "id": "backend.mongodb.lifecycle",
@@ -4157,9 +4409,27 @@
       "negative_cases": [
         "Mid-batch failure, rollback/readback, timeout/cancellation and pool/client cleanup"
       ],
-      "gap": "Final selected-source acceptance remains open. High #525/#526 retained; independent provider refinements #527\u2013#531 deferred. Original requirements remain; historical evidence is source-specific.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Source acceptance verified against dc6cea5d7548a0a82d5a374b8211d709f5a5b278 after independent #584/#875 review and the fresh combined 120-module/40-native/46-Python gates. All 17 lifecycle bindings are unchanged in this composition. The 17 sample bindings cover standalone session reuse/non-atomic rollback and mixed/failed batches; replica-set commit visibility, rollback/reuse, duplicate-key atomic failure, close-abort, cooperative cursor cancellation and correlated owned/borrowed connection/session cleanup. Authenticated readWrite-only timeout cases include exact-role and privileged-command denial controls, native operation disappearance and fresh/borrowed recovery with maxPoolSize1. Query completion is required within3s after observing the operation, followed by up-to5s disappearance polling; this is not an absolute end-to-end deadline. First-row streaming and disabled deadlines remain unchanged. Cancellation rejected, unreachable or unsupported cannot guarantee prompt termination; QQQ defines no shared Mongo pool policy and currentOp does not count every cached logical session. #821/#842 module tests retain initialization/close-failure and fixture-ownership controls. Retain High #525/#526 and deferred #527\u2013#531; no Mongo data, join or type-policy acceptance is implied.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testGeneratedSingleAndBatchKeysRoundTripThroughGet",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testCanonicalNormalizationAndRequiredMixedBatch",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testStandaloneSessionReuseCommitAndRollbackLimit",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testStandaloneServerRefusesTransactionModeWithoutWriting",
+        "com.kingsrook.sampleapp.SampleMongoDatabaseIT#testMidBatchDuplicateLeavesNativePartialWriteOnStandaloneRollback",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCommitPublishesBatchOnlyAfterCommit",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testRollbackAndReusePreserveOnlyCommittedNativeRow",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testDuplicateMidBatchRollsBackAllNativeWrites",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testTimedOutQueryCleansUpAndFreshActionRecovers",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCooperativeCancellationClosesNativeCursorAndClient",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testCloseDiscardsUncommittedWriteAndReleasesOwnedClient",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testOwnedAndBorrowedClientHandlesFollowTransactionOwnership",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testOwnedTimeoutCancelsNativeExecution",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testBorrowedTimeoutCancelsNativeExecution",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testFirstRowDisarmsTimeoutBeforeSlowLaterBatch",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testDisabledTimeoutsAllowSlowFirstResult",
+        "com.kingsrook.sampleapp.SampleMongoReplicaSetIT#testAnonymousCannotRunPrivilegedCommand"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/584",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
@@ -4179,12 +4449,30 @@
       "negative_cases": [
         "Non-2xx/timeout, missing/malformed body, missing record, bad response type and no duplicate writes"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testGetInsertUpdateDeleteTranslation",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testQueryPaginationAndNestedResponseTranslation",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testQueryEmptyPageAndExplicitLimitSkipFilter",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testCountUsesProviderTotalAndFilter",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testNon2xxFailuresAndNoDuplicateWrites",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testTimeoutsAndNoDuplicateWrites",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testGetRejectsMissingMalformedAndWrongResponseTypes",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testQueryMalformedWrongTypeAndEmptyResponses",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testCountRejectsMissingMalformedAndWrongResponseTypes",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testInsertRejectsMissingMalformedAndWrongResponseWithoutRetry",
+        "com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest#testUnsupportedProviderMappingsCannotBroadenAnOperation"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/585",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-27T02:59:04.819610+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/585",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleApiMappingAcceptanceTest.xml",
+        "scope": "Native QQQ six-action API mapping in the sample QInstance against owned loopback HTTP; independent literal request/response oracles, nested and UTF-8 translation, generated key, offset pagination/filter/count total; 400/503, withheld-response timeout, malformed/missing/wrong-shape bodies, 404, single-attempt failed writes and unsupported provider mappings. Query empty bodies are native empty results. Source-built dependencies from 9a526e330; no published-candidate, generic strict field-type, remote persistence or OAuth/security claim."
+      }
     },
     {
       "id": "backend.api.authentication",
@@ -4200,12 +4488,17 @@
       "negative_cases": [
         "Missing/rejected credential, expired token, malformed token response and secret-free diagnostic output"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Disposable loopback HTTP fixtures exercise all seven configured modes through GetAction, missing and rejected credentials, OAuth refresh with a distinct token, and malformed token responses. Each successful mode persists a secret-free outbound API log row; rejected provider echoes, query keys and fetched bearer tokens stay out of exception text and API diagnostics.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testSevenConfiguredOutboundModes",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testMissingAndRejectedCredentials",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testExpiredOAuthTokenRefreshes",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testMalformedOAuthTokenResponse",
+        "com.kingsrook.sampleapp.SampleApiAuthenticationAcceptanceTest#testSecretFreeDiagnostics"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
-      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/586",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/586"
     },
     {
       "id": "backend.filesystem.local",
@@ -4221,12 +4514,43 @@
       "negative_cases": [
         "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
       ],
-      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testOneInsertQueryCountDeleteAndPaths",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testFilenameWithSpaces",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testUnicodeFilename",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testOneKeepsRawBytesForBothFormats",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testCsvJsonManyParsingAndCounts",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testDuplicateCsvHeadersAndMissingCells",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testMalformedAndTruncatedFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testInvalidNumericValueAtTypedAccess",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPostReadCustomizationAndFailures",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testUnsupportedMutationsPreserveFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRawStorageAndReplacement",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testStorageRejectsInvalidPathsAndMissingInput",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPartialStorageCopyRetainsPrefix",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPartialInsertAndInvalidPath",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testMissingRecordFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testLocalPermissionFailures",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordInsertCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testFileDeleteMissingOutsideTargetIsNoop",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordDeleteCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordInsertCannotFollowOutsideSymlink",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordQueryCannotFollowOutsideSymlink",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testRecordSymlinkWithinTableRemainsUsable",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testJsonNullValue"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/587",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_note": "Owned temporary files, actual sample QQQ record/storage actions and independent native readback. Supported cases pass after correcting JSON null, literal filename handling and local record path confinement. Unsupported updates/MANY writes, lazy numeric conversion, MANY-only post-read hooks, the existing CSV header-suffix collision limitation and non-atomic stream writes remain explicit boundaries. Local OS denial is exercised as an unprivileged user; transport credentials/timeouts have no local analogue. No SFTP/S3 acceptance, UI/auth or public-candidate claim.",
+      "acceptance_review": {
+        "at": "2026-09-27T04:30:07.228867+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/587",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest.xml",
+        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. At 9b3bc4cea (reviewed #823 cherry-pick atop ff0e98890), one exclusive -Pacceptance-tests clean verify with HTTP errors/channel diagnostics passes 743 unit and 78 integration/browser tests with zero failures/errors/skips, 39/41 class coverage and clean Checkstyle. Both owned rows have no source-report gaps; overall source gate remains incomplete at 89/127. Earlier HTTP EOF logs retained without attributing cause or claiming #824 fixed. Original requirements and limitation links preserved."
+      }
     },
     {
       "id": "backend.filesystem.s3",
@@ -4242,9 +4566,34 @@
       "negative_cases": [
         "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
       ],
-      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Twenty-four source cases retain the reviewed 17-case baseline and add full UTF-8 key-length/prefix, exact wire-path, provider-limit, metadata-signing and genuine connection-establishment-timeout evidence. Native 1024-byte ASCII/multibyte names and prefixes pass read/replace/delete. LocalStack 1.4 accepts 1025-byte keys and aliases valid period segments, while SDK/QQQ wire paths remain exact; excess parent segments return emulator HTTP500 with the whole owned bucket unchanged. These named limitation tests do not prove AWS key validation. Production metadata access keys/secrets reach the SDK signer (independent HMAC proof); existing 403 cases prove error propagation, not IAM enforcement. An owned network-none Linux JVM proves native backlog saturation, QQQ ConnectTimeoutException with SocketTimeoutException cause, same-listener recovery and native no-mutation. Independent review of all 16 original scenario labels and full combined verification passed. Native AWS overlong-key rejection and literal period-key preservation remain unproved provider limits; independent requirement review accepted the documented provider limits without adding live-AWS, blanket key-policy or IAM-certification gates. The original invalid-path scenario has actual native failure/whole-bucket no-mutation and missing-object-reference/glob checks. #459 source-copy partial publication remains unchanged. Full verification of this provider-contract delta passed 817 regular and 117 integration tests (934 total), zero failures/errors/skips, at 9b687321ed5a515414b9cb4c42f69b1d9e2991f3. All 41 sample classes were covered. Published-candidate/AWS acceptance remains separate.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#oneRecordRoundTripAndUnsupportedUpdate",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#manyCsvJsonAndPostReadHaveNativeOracles",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#oneJsonNamesHeavySelectionAndReplacement",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#manyScalarValuesNullsAndFailedCustomizer",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#rawStorageRoundTripAndMissingRead",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#storageUrlAndAclHaveNativeMetadataOracles",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#malformedCsvAndJsonRefuseWithoutMutation",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#missingBucketAndInvalidGlobDoNotMutate",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#multipartPublishesOnCloseAndReleasesUpload",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#failedCopyPublishesPrefixAndPreservesOtherKeys",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#permissionAndCredentialResponsesPropagateWithoutNativeWrites",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#readTimeoutPropagatesWithoutNativeMutation",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#rawStorageOffsetWritesExactSlice",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#failedMultipartWriteAbortsUploadAndPreservesExistingObject",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#failedMultipartFinalPartAbortsUploadWithoutPublishing",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#failedMultipartCompletionAbortsUploadAndPreservesExistingObject",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#failedMultipartAbortPreservesOriginalAndResidualParts",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#exactUtf8KeyLengthBoundaryPreservesNativeBytes",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#localstackDoesNotEnforceAwsKeyByteLimit",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#localstackNormalizesValidPeriodSegments",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#sdkAndQqqSendOpaquePeriodSegmentsWithoutNormalization",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#excessParentSegmentsDoNotMutateNativeObjects",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#connectionEstablishmentTimeoutHasNativeCauseAndRecovery(Path)",
+        "com.kingsrook.sampleapp.SampleS3AcceptanceIT#metadataCredentialsReachSdkSigner"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/588",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
@@ -4263,12 +4612,43 @@
       "negative_cases": [
         "Missing file, malformed CSV/JSON, permission/credential failure, connection timeout, invalid path and partial write"
       ],
-      "gap": "Add disposable local fixtures for every supported transport; assert data/file readback and cleanup. Use a QRun-controlled sandbox only for a service contract that cannot be tested locally.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testOneCrudAndNativeReadback",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testManyFormatsAndCounts",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testNamesPathsAndNonrecursiveListing",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testStorageStreamsAndReplacement",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testUnsupportedOperationsPreserveFiles",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testConfiguredGlobExcludesNonRecords",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testMissingAndMalformedFiles",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testPostReadCustomizationAndFailures",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testBadCredentialsAndRecovery",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRealPermissionsAndRecovery",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testOneRawFormatsAndPostReadBoundary",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testInvalidPathsAndPartialRecordBatch",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testPartialStreamFailurePreservesActualPrefix",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testSilentPeerConnectionTimeoutAndRecovery",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRecordPathCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testStoragePathCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testGlobAppliesToExplicitNestedPaths",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRecordAndStorageReadCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testRecordDeleteCannotEscapeTableDirectory",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testOutsideSymlinkTargetsPreserveSentinels",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testNewFilesThroughLinkedParents",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testConfiguredRootsAndTableRootSymlink",
+        "com.kingsrook.sampleapp.SampleSftpAcceptanceTest#testInTableSymlinkControl"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/589",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_note": "SampleSftpAcceptanceTest uses the sample QInstance, actual QQQ record/storage APIs, existing Apache SSHD 2.16.0, owned dynamic loopback ports/temporary roots and native Files oracles. Original 19 cases reproduced five failures; all 23 current cases pass without skips. Bounds resolve remote links/existing parents and preserve in-table controls; raw SSHD separately reproduces its existing inability to delete through a symlinked parent, which remains an explicit negative control. Missing delete remains an error; updates/MANY mutations/public URLs remain unsupported. Listings are nonrecursive, parents must exist, writes are non-atomic, and server permissions remain authoritative. The timeout case lowers/restores the existing SSHD auth-timeout against a silent owned peer; no new QQQ timeout policy. #459/#463 remain separate. No public-candidate or complete release-gate claim.",
+      "acceptance_review": {
+        "at": "2026-09-27T05:54:52.498179+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/589",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleSftpAcceptanceTest.xml",
+        "scope": "Source head cbbddae72: 23 native SFTP methods pass, including regressions for #830 globs and #831 remote table bounds. Matching data-QBit fixture built in the owned cache; full -Pacceptance-tests,data-qbit-acceptance clean verify passes 772 unit tests (766 ordinary plus six data-QBit host tests) and 78 ITs, zero failures/errors/skips, 39/41 class coverage (95.12%) and clean Checkstyle. Filesystem module clean verify passes 108 executed tests plus four pre-existing skips (112 total). Initial full failure was solely a 76-character JVM banner introduced by JAVA_TOOL_OPTIONS diagnostics; exact child comparison and unchanged focused method verified the Maven-property invocation correction, with original reports retained. Existing SSHD symlinked-parent delete limitation and unsupported transport operations remain explicit. No published-candidate or complete release-gate claim."
+      }
     },
     {
       "id": "backend.filesystem.formats",
@@ -4285,12 +4665,27 @@
       "negative_cases": [
         "Malformed/truncated file, invalid data type, duplicate headers and customizer failure"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testOneKeepsRawBytesForBothFormats",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testCsvJsonManyParsingAndCounts",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testDuplicateCsvHeadersAndMissingCells",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testMalformedAndTruncatedFiles",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testInvalidNumericValueAtTypedAccess",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testPostReadCustomizationAndFailures",
+        "com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest#testJsonNullValue"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/590",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_note": "Owned temporary files, actual sample QQQ record/storage actions and independent native readback. Supported cases pass after correcting JSON null, literal filename handling and local record path confinement. Unsupported updates/MANY writes, lazy numeric conversion, MANY-only post-read hooks, the existing CSV header-suffix collision limitation and non-atomic stream writes remain explicit boundaries. Local OS denial is exercised as an unprivileged user; transport credentials/timeouts have no local analogue. No SFTP/S3 acceptance, UI/auth or public-candidate claim.",
+      "acceptance_review": {
+        "at": "2026-09-27T04:30:07.228867+00:00",
+        "issue": "https://github.com/QRun-IO/qqq/issues/590",
+        "evidence": "target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLocalFilesystemAcceptanceTest.xml",
+        "scope": "23 first-party filesystem methods and 9 core JSON-adapter tests pass. Full filesystem module clean verify passes 106 tests with four pre-existing disabled metadata-serialization tests. At 9b3bc4cea (reviewed #823 cherry-pick atop ff0e98890), one exclusive -Pacceptance-tests clean verify with HTTP errors/channel diagnostics passes 743 unit and 78 integration/browser tests with zero failures/errors/skips, 39/41 class coverage and clean Checkstyle. Both owned rows have no source-report gaps; overall source gate remains incomplete at 89/127. Earlier HTTP EOF logs retained without attributing cause or claiming #824 fixed. Original requirements and limitation links preserved."
+      }
     },
     {
       "id": "javascript.executor",
@@ -4306,12 +4701,24 @@
       "negative_cases": [
         "Syntax/runtime exception, missing code reference, invalid result type and no unintended persistence"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Owned sample pre-update customizer executes original inline QCodeReference through ExecuteCodeAction and the actual Nashorn QCodeExecutor. Six ordinary sample cases cover typed Java context, execution logger, returned QRecord identity/mutation, syntax/runtime diagnostics, absent reference/inline source, invalid application result type and native H2 before/after persistence oracles. The engine truthfully reports success for a primitive result; the sample customizer rejects that result before DML. The existing JavaScript module is declared at ${revision} in test scope; no diagnostic classpath override or production JavaScript runtime is claimed. Independent review and combined source acceptance passed; no engine sandbox, script rollback or publication claim.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testTypedContextLoggerAndReturnedRecordPersistOnlyIntendedChange",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testSyntaxFailureLogsDiagnosticAndPreservesNativeRows",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testRuntimeFailureAfterMutationPreservesNativeRows",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testMissingCodeReferenceFailsWithoutNativeWrite",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testMissingInlineScriptFailsWithoutNativeWrite",
+        "com.kingsrook.sampleapp.SampleJavaScriptAcceptanceTest#testInvalidResultTypeIsRejectedBeforeNativeWrite"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/591",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-28",
+        "issue": "https://github.com/QRun-IO/qqq/issues/591",
+        "scope": "Reviewed sample customizer executes the real Nashorn engine through ExecuteCodeAction. All six mapped JavaScript cases passed in the unchanged-source 6215d2b1e full sample run (898 regular and 118 integration tests, no failures/errors/skips). SQL before/after oracles verify intended record mutation and persistence boundaries; invalid result rejection belongs to the sample consumer, not a claimed engine sandbox."
+      }
     },
     {
       "id": "http.server.lifecycle",
@@ -4359,12 +4766,37 @@
       "negative_cases": [
         "Unknown table, malformed body/filter, unauthenticated/forbidden request and default query limit enforcement"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Owned V1 HTTP/H2 scenarios bind the native application HTTP server to a unique database, verify its JDBC URL and an HTTP-visible sentinel, restore caller context objects, and cover instance/table/process metadata shapes, filtered/sorted/joined query and count with independent SQL identities, empty records, omitted/default/explicit limits, unknown table, malformed JSON/operator and non-object filters, actual mock-provider 401 denial and table READ 403. Non-object filters are rejected with 400 under #871; absent/null and valid structured filters retain their behavior. Evidence is source-scoped; mock-provider rejection is not live identity-provider authentication, and no browser or published-artifact acceptance is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testVersionedMetadataShapes",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testConfiguredDefaultLimitAndExplicitPaging",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testFilterJoinAndEmptyResponse",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testUnknownTablesAndMalformedRequests",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testNonObjectFilterIsRejected",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testAuthenticationDenialHasAllowedControls",
+        "com.kingsrook.sampleapp.SampleV1TableHttpAcceptanceTest#testReadPermissionDenial",
+        "com.kingsrook.sampleapp.SamplePresentationMetadataTest#testCanonicalNavigationBrandingAndSections",
+        "com.kingsrook.sampleapp.SamplePresentationMetadataTest#testDeniedAndHiddenMetadata",
+        "com.kingsrook.sampleapp.SampleJavalinServerTest#testJoinedFieldPrivacyAcrossHttpReads"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/592",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/592",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Owned V1 metadata/query/count with SQL identity, joins/order/limits, malformed-filter and mock-provider/READ denials. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "http.process.lifecycle",
@@ -4426,12 +4858,24 @@
       "negative_cases": [
         "Expired/replayed token, bad callback/state, invalid logout token and unauthorized session reuse"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Ten source sample scenarios use the canonical H2 records, native table credentials and owned loopback OAuth2/Auth0 discovery, client authentication, PKCE codes and real signed tokens. They cover authentication metadata without client-secret disclosure, protected record reads, HttpOnly cookie resumption, reauthentication, logout, callback state/code replay, provider-disabled grants, expired/mismatched stored identities and invalid credentials/signatures. Signed back-channel logout invalidates previously used sessions with and without the optional store; failed store eviction preserves rows and the same event can retry. #918/#919 correct discovery and stale-cache defects exposed by these sample paths. Session refresh here is native cookie/session resumption and reauthentication; no new provider refresh-token grant, browser login flow, cross-node cache eviction or in-flight-request cancellation is claimed. Final coordinated public-artifact acceptance remains separate.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAnonymousAndMockModes",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testAuth0SignedTokenAndRejectedTokens",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelCacheFailureIsRetryable",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesSessionStore",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthBackChannelInvalidatesUsedSessionAndRejectsReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCallbackStateAndCodeReplay",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthCodeResumeAndNormalLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testOAuthExpiredAndMismatchedStoredSession",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableCredentialsResumeAndLogout",
+        "com.kingsrook.sampleapp.SampleAuthenticationAcceptanceTest#testTableExpiredAndUnknownSessionDenied"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/593",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "review_note": "Focused independent review found no remaining actionable issues in the production corrections and all ten sample scenarios. Local10sample/20native-logout/4core-auth tests pass. Normal combined CI remains required before integration; the coverage verifier still requires actual passing results for every mapped method."
     },
     {
       "id": "http.custom-routes",
@@ -4482,7 +4926,7 @@
         "Missing/malformed upload, oversized/config-invalid request, denied archive access and cleanup",
         "Unregistered server paths and storage references, forged process values, another session, changed references and directory escape are denied"
       ],
-      "gap": "Historical checkpoints mapped thirty-one native upload/download methods (9 upload,22 download); those earlier sources cover existing file grants/storage boundaries, named-report permission independent of raw-table READ, configured report denial through both routes, customizer-selected input source, invalid file formats, complete JSON/XLSX downloads, temporary-file cleanup and later-view failure without partial delivery. Saved-report archive/stream and later upload storage/process-failure cleanup, malformed/missing upload handling, remaining public route acceptance and final integrated acceptance remain pending. Ordinary export-window, internal-format, header-free map and pipe-result/termination changes are deferred under #488-492; title/header capacity remains #465. Mixed tests retain file-format, invalid-name, direct/buffered query and ordinary native-pipe controls. Historical source acceptance is not final acceptance of this selection; all original feature requirements remain. Current report access selection retains narrow joined-table READ #493 and High #454\u2013458; source-policy #448, core/private-filter #494, hidden-header #495, personalized-preflight #496 and direct-response-completion #497 assertions are archived. Historical claims about those policies are superseded; original supported-feature requirements and ordinary controls remain.",
+      "gap": "Current source maps thirty-nine upload/download/saved-report methods, preserving the prior twenty-nine bindings (historical text counted thirty-one). Reused native HTTP fixtures now use QApplicationJavalinServer without demo priming or broker startup, a unique private H2 backend and owned filesystem roots; direct JDBC marker changes prove actual request data identity. Added evidence covers V1 init/step archive/process/download exact bytes, missing/malformed input without archive writes, saved-report archive/API stream bytes and history, per-session/reference grants, and documented retention plus application-owned cleanup after later storage/process failures. The #876 follow-up verifies malformed multipart returns 400 on legacy run and V1 init/step before archive writes or execution; a valid retry of the rejected V1 step still consumes and archives exact bytes. The correction is limited to wrapped Jetty 400 failures while reading multipart form parameters; generic exception handling is unchanged. Reviewed source evidence includes the #876 correction and preserves the existing archive/download boundaries. Ordinary export-window, internal-format, header-free map and pipe-result/termination changes are deferred under #488-492; title/header capacity remains #465. Mixed tests retain file-format, invalid-name, direct/buffered query and ordinary native-pipe controls. All original feature requirements remain; these source checks do not certify browser or published-artifact acceptance. Current report access selection retains narrow joined-table READ #493 and High #454\u2013458; source-policy #448, core/private-filter #494, hidden-header #495, personalized-preflight #496 and direct-response-completion #497 assertions are archived. Historical claims about those policies are superseded; original supported-feature requirements and ordinary controls remain.",
       "verified_tests": [
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testClientSuppliedServerPathIsDenied",
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testFailedReportRemovesTemporaryOutput",
@@ -4512,9 +4956,19 @@
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiDefaultedNamedReportPermissionIsRequired",
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiCustomizedNamedReportPermissionIsRequired",
         "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiNamedReportUsesItsOwnPermission",
-        "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiStandardProcessDenialPrecedesCustomizer"
+        "com.kingsrook.sampleapp.SampleDownloadContractTest#testApiStandardProcessDenialPrecedesCustomizer",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testVersionedUploadsPreserveBytesAndDownloadGrants",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testMissingUploadLeavesNoArchive",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testMalformedMultipartDoesNotArchiveOrExecute",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testProcessFailureRetainsArchiveWithoutDownloadGrant",
+        "com.kingsrook.sampleapp.SampleUploadContractTest#testLaterStorageFailureRetainsEarlierArchiveForCleanup",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testSavedReportArchiveAndStreamUseOwnedJdbcRows",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testSavedReportProcessArchivesAndDownloadsBytes",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testApplicationApiOwnerReceivesArchivedReport",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testFailedSavedReportLeavesNoArchive",
+        "com.kingsrook.sampleapp.SampleSavedReportContractTest#testFailedSavedReportPreservesExistingArchive"
       ],
-      "acceptance_status": "pending",
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "deferred_issues": [
         {
@@ -4543,7 +4997,21 @@
         }
       ],
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/594",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/594",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Owned archive/process/download bytes, malformed multipart #876, storage/session/reference denials and documented application-owned cleanup; existing policy deferrals retained. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "application-api.versioning",
@@ -4560,12 +5028,35 @@
       "negative_cases": [
         "Unexposed table/field/version stays unavailable, invalid mapping and denied data"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Eight runnable source scenarios cover explicit table/field/process exposure, version boundaries, renamed/custom-mapped fields, nested sample records, duplicate mappings and denied data. The invalid replacement-target gap is corrected under #868: instance validation rejects targets absent from current table metadata before API reads; valid historical targets need not be exposed in the requested API version. Unconfigured fields inherit the exposed table version normally; explicit exclusions and that default are tested separately. HTTP and OpenAPI evidence is separately mapped under #596 and #597; these versioning checks do not certify live authentication, every HTTP filter type or published artifacts. Defect: https://github.com/QRun-IO/qqq/issues/868.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testVersionedFieldsAndNestedRecords",
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testUnconfiguredFieldInheritsTableVersion",
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testMappedWritesPersistThroughBothVersions",
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testUnexposedTablesFieldsAndVersionsStayUnavailable",
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testOptInProcessAndVersionBoundaries",
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testDeniedDataCannotBeReadOrChanged",
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testDuplicateFieldMappingIsRejectedBeforeWrite",
+        "com.kingsrook.sampleapp.SampleApplicationApiVersioningAcceptanceTest#testMissingReplacementTargetRejectedDuringMetadataValidation"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/595",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/595",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Exposure/version boundaries, renamed/replacement/custom mappings, nested records, invalid mapping and denied-data controls. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "application-api.http",
@@ -4582,12 +5073,36 @@
         "Invalid JSON/type/filter, missing/unknown record, unauthenticated/forbidden request and server error mapping",
         "Wrong HTTP method returns configured 405; no assumed standalone count route unless registered by the application"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Owned-loopback sample scenarios cover configured data/bulk routes, five custom process methods and their explicit 405s, async status, response/status/Content-Type transformation, native authentication/permissions, bad requests and server-error mapping. #872 rejects invalid directly mapped field types before persistence while retaining native coercions and custom mapping. #877 supplies reviewed current/historical DATE query conversion and invalid-date 400 evidence, mapped under application-api.openapi. Native parser leniency, custom-mapper responsibility and DATE LIKE/NOT_LIKE behavior are unchanged; exhaustive filter-type coverage is not claimed. Malformed bulk field values reject the request before persistence, while action-level failures retain per-record 207 outcomes. Query counts do not imply a standalone count route. Evidence is local source acceptance, not browser, live-provider or published-artifact acceptance.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testGetAndQuery",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testInsertPatchAndDelete",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testBulkInsertUpdateDelete",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testBadRequestsAndUnknownRecords",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testInvalidFieldTypes",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testAuthenticationPermissionsAndServerError",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testConfiguredProcessMethodsAnd405",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testResponseStatusAndHeaderTransformation",
+        "com.kingsrook.sampleapp.SampleApplicationApiHttpAcceptanceTest#testAsyncStatus"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/596",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/596",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Native HTTP CRUD/bulk/process methods, async status, response transformations and error/auth boundaries; #872 input and #877 DATE corrections retained. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "application-api.openapi",
@@ -4608,12 +5123,44 @@
       "negative_cases": [
         "Missing required metadata, excluded endpoints must remain absent and dangling schema references"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "First-party served JSON/YAML evidence covers configured versions, field/schema/route comparisons with real records, executable query examples, security declarations, required generator metadata, excluded endpoints and local reference resolution. #869 preserves empty HTTP/API-key security scopes and OAuth permission scopes; #873 corrects malformed example pointers; #874 corrects directly mapped query aliases, with current/historical/version/API-scope positive and negative HTTP checks. #877 covers native DATE criterion conversion with real HTTP current/historical equality, invalid-date 400 responses and custom-mapper controls. DATE conversion retains the existing parser and custom-mapper precedence; DATE LIKE/NOT_LIKE and SQL runtime compatibility are not newly certified. No full OpenAPI validation, exhaustive filter-type coverage, live OAuth enforcement or published-artifact claim.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedVersionsFieldsRoutesAndSecurityMatchRecords",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedQueryExamplesSelectTheDocumentedRecords",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testExcludedEndpointsAreNotDocumentedOrServed",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testMissingRequiredMetadataRejectsGeneration",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testServedReferencesResolveAndDanglingSchemaIsDetected",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testRenamedQueryFieldMatchesDocumentedAlias",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testBearerSpecRetainsEmptyScopeRequirement",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testApiKeySpecRetainsEmptyScopeRequirement",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testOAuthSpecRetainsPermissionScopes",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testAnonymousSpecRetainsEmptyRequirements",
+        "com.kingsrook.sampleapp.SampleOpenApiSecurityAcceptanceTest#testUnsupportedVersionDoesNotReturnSpec",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testHistoricalQueryReplacementAndVersionBoundaries",
+        "com.kingsrook.sampleapp.SampleOpenApiAcceptanceTest#testQueryAliasScopeAndInvalidCriteria",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testCurrentAndHistoricalDateEquality",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testBlankStringAndVersionControls",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testInvalidDateValuesReturnBadRequest",
+        "com.kingsrook.sampleapp.SampleApiDateQueryAcceptanceTest#testCustomMapperRetainsRawInput"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/597",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/597",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Served JSON/YAML, executable examples, version/alias/security/reference boundaries and #877 DATE HTTP controls; no full validator or live OAuth proof. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "openapi.models",
@@ -4631,12 +5178,33 @@
       "negative_cases": [
         "Invalid/missing required shape; removed String overloads must not be used"
       ],
-      "gap": "Add sample consumer serialization/compatibility scenario. README claim that only Server remains is inaccurate; correction handed to parent.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Focused sample evidence covers legacy document serialization, exact enum wire values and compiler rejection of all four removed String overloads. Missing/invalid shape fixtures characterize the existing permissive DTO boundary; no new validator or owner rejection-policy decision is required by #598. Default NON_EMPTY serialization drops empty security scope arrays; the positive consumer uses existing NON_NULL customization. The separate generator security-description defect #869 is corrected and covered under application-api.openapi; the legacy DTO default serializer behavior characterized here is unchanged. Evidence is consumer source compatibility, not a new DTO validator, runtime authentication or published-artifact acceptance.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testDocumentSerialization",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testDefaultSerializerDropsEmptySecurityScopes",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testExactEnumWireValues",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testMissingAndInvalidShapesAreNotValidated",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testNullEnumBoundaries",
+        "com.kingsrook.sampleapp.SampleOpenApiModelsAcceptanceTest#testRemovedStringOverloadsDoNotCompile"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/598",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/598",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Legacy DTO serialization, literal enum contracts, permissive invalid/null shapes and compiler rejection of removed String overloads; no new validator. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "health.endpoint",
@@ -4651,12 +5219,21 @@
       "negative_cases": [
         "Disabled route, failing/throwing/timed-out indicator and no thread leak"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "All listed source requirements pass through local HTTP, including the retained within-request concurrency regression, failures/timeouts, and worker/request-context cleanup. Full sample acceptance-profile verification passes; published-stage acceptance remains a separate gate.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAutoloadedDefaultEndpoint",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testConfiguredEndpointPath",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testDisabledEndpointIsAbsent",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAggregateStatusCustomDetailsAndDuration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testThrowingIndicatorAndDownAggregationReleaseWorkers",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testIndicatorsWithinOneRequestRunConcurrently",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testConcurrentHttpRequestsReleaseTheirWorkers",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testTimeoutCancelsIndicatorAndCleansUpRequest"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/599",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "All endpoint requirements have mapped passing source evidence after the bounded concurrent executor fix; no requirement is deferred. This does not certify unrelated release requirements or published artifacts."
     },
     {
       "id": "health.indicators",
@@ -4674,12 +5251,19 @@
       "negative_cases": [
         "Unreachable database, exceeded thresholds, invalid path/configuration and timeout"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Listed source scenarios pass using owned H2 TCP, disk, heap-threshold and custom-indicator fixtures. The separate health.endpoint concurrency requirement now has passing source evidence.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testOwnedDatabaseConnectivityAndUnavailableService",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testMemoryThresholdsAndInvalidConfiguration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testDiskThresholdsAndInvalidPaths",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testInvalidDatabaseConfiguration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testAggregateStatusCustomDetailsAndDuration",
+        "com.kingsrook.sampleapp.SampleHealthAcceptanceTest#testTimeoutCancelsIndicatorAndCleansUpRequest"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/600",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Listed indicator source requirements have mapped sample evidence; endpoint concurrency is tracked separately under #599."
     },
     {
       "id": "cli.help-errors",
@@ -4771,12 +5355,36 @@
         "Malformed request, unknown path, missing/invalid session, process exception and clean context after request",
         "Standard metadata/query/count/export/get/update/delete/widget branches are TODO stubs; verify/document unavailable routes rather than treating them as supported CRUD"
       ],
-      "gap": "Add first-party stream/process/custom-handler acceptance and explicit support boundary. QStandardLambdaHandler.setupSession is empty; application must supply valid context/session. README standard-dispatch wording needs qualification; handed to parent.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Nine local stream/custom/process-init checks cover owned application-configured context/session, caller isolation, malformed/unknown requests, missing/invalid sessions, process failure/recovery and unavailable standard routes. The application adapter owns request cleanup; QStandardLambdaHandler.setupSession remains empty. Tests live in the Lambda module and its fresh report is explicitly imported for the sample ledger. Owned process/job state is removed after bounded fixture work completes while unrelated state and caller context are preserved. No AWS/deployment, long-running async, browser or published-artifact acceptance. No standard CRUD support is claimed.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testCustomStreamRequestResponse",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testMalformedCustomRequestsNeverDispatch",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testCustomExceptionsPreserveRequestIdentity",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testConfiguredProcessInitAndRequestIsolation",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testMissingAndInvalidSessionCannotRunProcess",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnconfiguredStandardHandlerDoesNotSupplyContext",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testProcessFailuresAndRecoveryCleanContext",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnknownPathAndProcessDoNotExecute",
+        "com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest#testUnimplementedStandardRoutesStayUnavailable"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/601",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/601",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Nine local stream/custom/process-init bindings with application-owned context/session and owned-state cleanup; unsupported standard routes remain unavailable. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "slack.routes",
@@ -4792,12 +5400,33 @@
       "negative_cases": [
         "Missing/invalid identity/token, denied operation and malformed command; no live outreach"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Owned loopback Slack form routes use canonical sample records in a UUID H2 database and native table-based QQQ session cookies. Evidence covers query/get payloads and storage linkage, metadata/process listing, missing/unknown native sessions, form identity/token not being credentials, denied READ and malformed commands. #880 fixes request-context ordering; #881 skips untyped widgets in metadata; #883 applies existing USER/READ checks. Errors retain HTTP200 Slack Error blocks. Process execution and real Slack identity/token/signature verification are not implemented or claimed. Native export/upload transport, widget-command dispatch and browser cookie attributes are not exercised; these are limits outside the bounded #602 scenarios, not additional requirements. No live Slack, browser or published-artifact acceptance.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testNativeQueryAndGetResponses",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMetadataListsProcessesAndRejectsProcessCommand",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMissingAndInvalidSession",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testSlackFormIdentityAndTokenDoNotAuthenticate",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testDeniedReadWithAllowedControl",
+        "com.kingsrook.sampleapp.SampleSlackRoutesAcceptanceTest#testMalformedAndUnknownCommands"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/602",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/602",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Native QQQ-cookie identity, supported query/get and process-list responses, denial and malformed controls; no process execution or live Slack authentication claim. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "slack.messages",
@@ -4813,12 +5442,33 @@
       "negative_cases": [
         "Unsupported/empty widget, service rejection and absent configuration; no real recipient required"
       ],
-      "gap": "Add a first-party sample scenario and assertions for the listed cases.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Owned-loopback evidence converts statistics/chart/line widget data and captures the normal SDK chat.postMessage payload, with local SDK auth.test lookup, synthetic configuration and no real recipient. Empty/unsupported widgets, service/HTTP rejection and missing-token/channel controls are retained. #882 prevents dispatch with absent required configuration. Service rejection remains logged by the void adapter, not returned as delivery confirmation. Test-only endpoint redirection is isolated in child JVMs because production uses the immutable SDK singleton; this is not production endpoint configurability or live-provider proof. Evidence is local source acceptance; no live delivery, natural SDK JVM termination or published-artifact acceptance.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testStatisticsConversionAndOutboundPayload",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testChartAndLineConversion",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testEmptyAndUnsupportedWidgets",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testServiceRejectionIsObservedLocally",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testHttpRejectionIsObservedLocally",
+        "com.kingsrook.sampleapp.SampleSlackMessagesAcceptanceTest#testAbsentConfigurationDoesNotTransmit"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/603",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/603",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Supported widget conversion and owned-loopback SDK payload/configuration/rejection controls; logged rejection is not delivery confirmation. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "utility-lambda.sqs",
@@ -4834,12 +5484,35 @@
       "negative_cases": [
         "Missing QUEUE_URL, service/credential error, empty/malformed input and sensitive-payload logging policy"
       ],
-      "gap": "Handler currently uses default AWS credentials and logs incoming body; add first-party capture/fixture and failure assertions without unrelated accounts or data.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Eight local native-SDK/stream checks cover exact owned queue/body, raw malformed text, empty/service/credential failures, absent/blank QUEUE_URL, and no incoming body in captured Lambda logs after #878/#879. Tests run in the utility module; fresh XML is explicitly imported for the sample ledger. No live AWS/IAM/deployment, arbitrary provider-error sanitization, or published-artifact claim.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testExactQueueAndBody",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testMalformedJsonIsForwardedAsRawText",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testEmptyBodyServiceRejection",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testServiceRefusal",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testMissingCredentialsCannotSend",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testMissingQueueUrlFailsBeforeCredentials",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testBlankQueueUrlFailsBeforeCredentials",
+        "com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest#testPayloadIsNotLogged"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/604",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-29T02:22:30.846Z",
+        "issue": "https://github.com/QRun-IO/qqq/issues/604",
+        "source_sha": "afa4a5842d5a31ad41cb30ed245a9db88f9ed33e",
+        "reconciled_head": "c030028b546cc2f79809c714ac3a35299242835e",
+        "evidence": "../qqq-integration-review-evidence/recovery-2026-09-28/source-promotion-proposal-11/final-ci-4397/verification-summary.json",
+        "ci": {
+          "job": 4397,
+          "url": "https://circleci.com/gh/QRun-IO/qqq/4397",
+          "status": "success",
+          "completed_at": "2026-09-29T02:08:52.091Z"
+        },
+        "scope": "Eight native-SDK handler bindings for exact queue/body, raw input, modeled failures, absent configuration/credentials and bounded payload-log controls; no live AWS/IAM claim. Source-scoped acceptance; limits in gap remain. CI tested afa4a5842; later c030028b Mongo lifecycle integration is separate and these row/source inputs are unchanged."
+      }
     },
     {
       "id": "sample.bootstrap",
@@ -4855,12 +5528,39 @@
       "negative_cases": [
         "Missing dependency/configuration, fixture collision, stale artifact resolution and persistent writes outside owned fixtures"
       ],
-      "gap": "Add candidate-resolved acceptance profile covering all 16 published libraries; keep source/reactor tests distinct from published-artifact consumption.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Source-installed candidate bootstrap is verified by a fresh-cache runner and packaged sample tests. Public release-candidate consumption remains a separate pending row.",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleBootstrapTest#testResetRefusesAnotherDatabaseWithTheSameBackendName",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testBundledApplicationAndJsonAdditions",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testRepeatStartupReseedsInSeparateOwnedFixtures",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testInvalidConfigurationHasNonzeroExit",
+        "com.kingsrook.sampleapp.SamplePackagedConfigurationIT#testDuplicateMetadataHasNonzeroExit"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
+      "acceptance_note": "The dedicated source bootstrap CI job runs bootstrap_acceptance.py against a new empty Maven cache and maps its SHA-bound acceptance.json plus the listed unskipped Java reports. It resolves all 17 current BOM libraries, rejects missing BOM and wrong candidate models, and exercises packaged seed, restart, write, invalid configuration, duplicate metadata and fixture ownership controls. This is local source-install evidence only.",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/605",
       "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+    },
+    {
+      "id": "sample.bootstrap.published",
+      "feature": "Published candidate sample bootstrap and artifact provenance",
+      "source_paths": [
+        "qqq-sample-project/bootstrap_acceptance.py",
+        "qqq-sample-project/README.md"
+      ],
+      "owning_module": "qqq-sample-project",
+      "acceptance_cases": [
+        "Resolve all reviewed QQQ libraries and the packaged sample from an exact public RC or release with empty Maven settings/cache"
+      ],
+      "negative_cases": [
+        "Missing BOM, wrong candidate version, stale artifact and incomplete packaged sample reports must fail"
+      ],
+      "gap": "Run the published stage against the exact public 4.1 RC when available; do not infer publication from the source-installed cache.",
+      "verified_tests": [],
+      "acceptance_status": "pending",
+      "acceptance_stage": "published",
+      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/605"
     },
     {
       "id": "dashboard.acceptance",
@@ -4920,12 +5620,16 @@
       "negative_cases": [
         "Database unavailable/missing schema, missing environment variables and denied operation"
       ],
-      "gap": "Run starter acceptance with QRun-owned disposable fixtures and exact candidate dependency evidence; do not count its tests as sample coverage.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Published-artifact consumption remains separate from this source-generated starter acceptance.",
+      "verified_tests": [
+        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes",
+        "com.kingsrook.qqq.starterapp.StarterApplicationLivePermissionTest#deniedInsertHasAllowedControlAndNoDatabaseWrite",
+        "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#configuredMockAuthenticationDeniesUnpermittedInsert"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/607",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source-generated starter acceptance is required in sample_acceptance before publication; published BOM consumption remains a separate check."
     },
     {
       "id": "train.application",
@@ -4944,17 +5648,24 @@
       "negative_cases": [
         "Duplicate metadata names, missing host dependency and invalid configuration"
       ],
-      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "Published-artifact consumption remains separate from this source-generated application acceptance.",
+      "verified_tests": [
+        "qqq.acceptance.StarterApplicationSourceAcceptance#sourceGeneratedMySqlCrudAndNegativeProbes",
+        "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#generatedQBitIsRegisteredInRealStarterHost",
+        "com.kingsrook.qqq.starterapp.StarterApplicationAcceptanceTest#invalidConfigurationAndDuplicateRegistrationFail",
+        "com.qrunio.acceptance.orderdesk.OrderDeskAppQBitProducerTest#orderDeskProcessTransformsPendingRecord"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/608",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Source-generated application acceptance is required in sample_acceptance before publication; published BOM consumption remains a separate check."
     },
     {
       "id": "train.data",
       "feature": "Generated reference-data QBit",
       "source_paths": [
+        "qqq-sample-data-qbit/README.md",
+        "qqq-sample-data-qbit/src/main/java/com/kingsrook/qbits/reference/ReferenceDataQBit.java",
         "../qbit-template-data/README.md",
         "../qbit-template-data/docs/00-getting-started.md",
         "../qbit-template-data/docs/01-data-qbit-architecture.md",
@@ -4968,12 +5679,18 @@
       "negative_cases": [
         "Duplicate/bad source key, failed sync, invalid prefix and repeat-run idempotence"
       ],
-      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testHostMetadataAndPrefixIsolation",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testNaturalKeySyncLifecycle",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testBadSourceRejectedBeforeWrites",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testLiquibaseGenerationAndFailedSyncBoundary",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testBundledSyncProcess",
+        "com.kingsrook.sampleapp.SampleReferenceDataQBitTest#testLiquibaseMigrationOnRealHost"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
-      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/609",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/609"
     },
     {
       "id": "train.extension",
@@ -4990,12 +5707,21 @@
       "negative_cases": [
         "Missing host prerequisite, disabled configuration and unrelated metadata must stay unchanged"
       ],
-      "gap": "Generate a distinct first-party consumer and integrate it with a sample host; verify behavior and metadata rather than dependency presence alone.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.qrunio.acceptance.extension.ExtensionHostAcceptanceTest#generatedExtensionChangesOnlyConfiguredHostTable",
+        "com.qrunio.acceptance.extension.ExtensionHostAcceptanceTest#disabledConfigurationLeavesHostBehaviorUnchanged",
+        "com.qrunio.acceptance.extension.ExtensionHostAcceptanceTest#missingTargetAndMissingRequiredFieldFailBeforeRegistration"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/610",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain.",
+      "acceptance_review": {
+        "at": "2026-09-26",
+        "issue": "https://github.com/QRun-IO/qqq/issues/610",
+        "scope": "Disposable rename of first-party extension template main into a distinct QBit, with consumer-owned implementation in its documented customization hook. A separately built host resolves that artifact and proves PRE_INSERT_RECORD changes persisted memory-backend data only on the configured table. Disabled configuration leaves inserts unchanged; missing table/name-field prerequisites fail before QBit registration; unrelated table metadata and inserts remain unchanged. Removing the generated dependency makes the host fail compilation. This verifies source integration, not template example behavior without implementation or registry publication."
+      }
     },
     {
       "id": "train.migration",
@@ -5007,17 +5733,32 @@
       "owning_module": "qqq-sample-project",
       "acceptance_cases": [
         "Java21, renamed Javalin/PicoCLI imports, QContext-based inputs and replacement APIs; compile documented examples",
-        "Javalin 7 provider/config-customizer examples, preserved service observer and String process-input method; aligned Jetty core/EE10 candidate dependencies"
+        "Javalin 7 provider/config-customizer examples, preserved service observer and String process-input method; aligned Jetty core/EE10 candidate dependencies",
+        "Compile every concrete BREAK-03/04 Java replacement example against resolved source candidate modules; verify BOM/toolchain entries and run an external consumer against the packaged source candidate"
       ],
       "negative_cases": [
-        "Removed APIs must not remain in sample/generated source; mismatched module versions"
+        "Removed APIs must not remain in sample/generated source; mismatched module versions",
+        "Legacy variant, JSON and process methods must fail compilation; external consumer must fail without the packaged candidate"
       ],
-      "gap": "Keep compile checks for migration examples and exact candidate sample; compilation alone does not satisfy behavioral coverage.",
-      "verified_tests": [],
-      "acceptance_status": "pending",
+      "gap": "",
+      "verified_tests": [
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testDocumentedAfterExamplesCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testRemovedMigrationApisDoNotCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testSampleSourceHasNoSelectedRemovedApis",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testResolvedCandidateRuntimeVersions",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testBreak03And04ReplacementExamplesCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testSubclassReplacementContractsCompile",
+        "com.kingsrook.sampleapp.SampleMigration40ContractTest#testBuildMigrationEntriesMatchCandidate",
+        "com.kingsrook.sampleapp.SampleMigrationPackagedConsumerIT#testPackagedCandidateCompilesAndRunsExternalConsumer",
+        "com.kingsrook.sampleapp.SampleMigrationPackagedConsumerIT#testOwnedCommandDrainsLargeOutput",
+        "com.kingsrook.sampleapp.SampleHttpLifecycleTest#testProviderConfigurationAndServiceObservationOrder",
+        "com.kingsrook.sampleapp.SampleCustomRouteTest#testMethodsAndDecodedRequestData"
+      ],
+      "acceptance_status": "verified",
       "acceptance_stage": "source",
+      "acceptance_note": "The guide's concrete BREAK-03/04 Java replacements compile against resolved source-candidate modules, including subclass-only APIs; non-Java BOM, Java 21 and Qodana entries are checked against source configuration. Negative compiler fixtures reject selected legacy APIs and mismatched candidate dependencies. Existing HTTP tests verify Javalin provider/configuration ordering, service observation and String method values; resolved Jetty core/EE10 versions align. A separate process compiles and runs against the packaged source-candidate bundle, confirms embedded module versions against Maven's effective project version, and fails compilation without the bundle. Its process output is captured without a pipe deadlock. This row records source acceptance only. Public candidate consumption belongs to the separate #800 train.bom and #605 sample.bootstrap.published gates before GA.",
       "follow_up_issue": "https://github.com/QRun-IO/qqq/issues/611",
-      "release_disposition": "Comprehensive coverage deferred beyond4.0 by maintainer on2026-09-24; required release/main-workflow checks remain."
+      "release_disposition": "For 4.1, strict source acceptance precedes RC publication. Public candidate BOM and sample-bootstrap gates run after RC publication and before GA; neither is certified by this row."
     },
     {
       "id": "core.widget.no-code",

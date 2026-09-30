@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.api.actions;
@@ -77,7 +76,9 @@ import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.entity.StringEntity;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -591,16 +592,17 @@ class BaseAPIActionUtilTest extends BaseTest
       // specifically, that after too many 429's we get an error                                //
       ////////////////////////////////////////////////////////////////////////////////////////////
       mockApiUtilsHelper.setUseMock(false);
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
-      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("Try again"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
+      mockApiUtilsHelper.enqueueMockResponse(new QHttpResponse().withStatusCode(429).withContent("secret-echo-59381"));
 
       GetInput getInput = new GetInput();
       getInput.setTableName(TestUtils.MOCK_TABLE_NAME);
       getInput.setPrimaryKey(3);
 
-      assertThatThrownBy(() -> new GetAction().execute(getInput)).hasRootCauseInstanceOf(RateLimitException.class);
+      assertThatThrownBy(() -> new GetAction().execute(getInput)).hasRootCauseInstanceOf(RateLimitException.class)
+         .rootCause().hasMessageNotContaining("secret-echo-59381");
    }
 
 
@@ -931,11 +933,33 @@ class BaseAPIActionUtilTest extends BaseTest
 
       MockApiActionUtils mockApiActionUtils = new MockApiActionUtils();
       mockApiActionUtils.setBackendMetaData(backend);
-      OutboundAPILog outboundAPILog = mockApiActionUtils.generateOutboundApiLogRecord(new HttpGet("...?apikey=9876-WXYZ"), new QHttpResponse());
+      HttpPost request = new HttpPost("...?apikey=9876-WXYZ");
+      request.setEntity(new StringEntity("echo 9876-WXYZ", StandardCharsets.UTF_8));
+      QHttpResponse response = new QHttpResponse();
+      response.setContent("rejected 9876-WXYZ");
+      OutboundAPILog outboundAPILog = mockApiActionUtils.generateOutboundApiLogRecord(request, response);
 
       assertThat(outboundAPILog.getUrl())
          .doesNotContain("9876-WXYZ")
          .contains("?apikey=*****");
+      assertThat(outboundAPILog.getRequestBody()).doesNotContain("9876-WXYZ");
+      assertThat(outboundAPILog.getResponseBody()).doesNotContain("9876-WXYZ");
+
+      backend.setAuthorizationType(AuthorizationType.OAUTH2);
+      HttpGet bearerRequest = new HttpGet("http://localhost/records");
+      bearerRequest.setHeader("Authorization", "Bearer variant-token");
+      response.setContent("rejected variant-token");
+      OutboundAPILog bearerLog = mockApiActionUtils.generateOutboundApiLogRecord(bearerRequest, response);
+      assertThat(bearerLog.getResponseBody()).doesNotContain("variant-token");
+
+      backend.setAuthorizationType(AuthorizationType.CUSTOM);
+      HttpPost customRequest = new HttpPost("http://localhost/records");
+      customRequest.setHeader("X-Credential", "custom-header-secret");
+      customRequest.setEntity(new StringEntity("sent custom-header-secret", StandardCharsets.UTF_8));
+      response.setContent("echo custom-header-secret");
+      OutboundAPILog customLog = mockApiActionUtils.generateOutboundApiLogRecord(customRequest, response);
+      assertThat(customLog.getRequestBody()).doesNotContain("custom-header-secret");
+      assertThat(customLog.getResponseBody()).doesNotContain("custom-header-secret");
    }
 
 

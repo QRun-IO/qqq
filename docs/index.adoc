@@ -34,6 +34,8 @@ include::metaData/PermissionRules.adoc[leveloffset=+1]
 include::misc/Javalin.adoc[leveloffset=+1]
 include::misc/ScheduledJobs.adoc[leveloffset=+1]
 
+include::esb/index.adoc[leveloffset=+1]
+
 === API server (OpenAPI)
 
 See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/middleware/javalin/specs[endpoint specification API] and the https://www.qrun.io/docs[hosted framework documentation]. Endpoint tags are optional.
@@ -80,3 +82,7 @@ include::utilities/RecordLookupHelper.adoc[leveloffset=+1]
 == Migration Guides
 
 * xref:migration/4.0.adoc[Migrating to QQQ 4.0] — step-by-step guide for consumers upgrading from 0.x to 4.0
+
+== Release Operations
+
+* xref:release/4.1.adoc[QQQ 4.1 release, rollback and hotfix procedure]

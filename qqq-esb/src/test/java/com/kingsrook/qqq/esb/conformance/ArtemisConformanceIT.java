@@ -1,0 +1,177 @@
+/*
+ * QQQ - Low-code Application Framework for Engineers.
+ * Copyright (C) 2021-2026.  Kingsrook, LLC
+ * 651 N Broad St Ste 205 # 6917 | Middletown DE 19709 | United States
+ * contact@kingsrook.com
+ * https://github.com/Kingsrook/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.kingsrook.qqq.esb.conformance;
+
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.esb.management.EsbBrokerAdapter;
+import com.kingsrook.qqq.esb.management.EsbBrokerAdapters;
+import com.kingsrook.qqq.esb.management.EsbMessageBrowser;
+import com.kingsrook.qqq.esb.model.EsbProviderType;
+import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.FixedHostPortGenericContainer;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
+import static org.assertj.core.api.Assertions.assertThat;
+
+
+/*******************************************************************************
+ * Artemis JMS and Jolokia conformance against the official broker image.
+ ******************************************************************************/
+class ArtemisConformanceIT extends AbstractEsbConformanceTest
+{
+   private static final String USERNAME = "esbtest";
+   private static final String PASSWORD = "esbtest";
+
+   private static final int[] HOST_PORTS = BrokerContainerPorts.availablePair();
+   private static final GenericContainer<?> BROKER = new FixedHostPortGenericContainer<>("apache/artemis:2.57.0")
+      .withEnv("ARTEMIS_USER", USERNAME)
+      .withEnv("ARTEMIS_PASSWORD", PASSWORD)
+      .withFixedExposedPort(HOST_PORTS[0], 61616)
+      .withFixedExposedPort(HOST_PORTS[1], 8161)
+      .waitingFor(Wait.forLogMessage(".*AMQ221007: Server is now active.*\\n", 1)
+         .withStartupTimeout(Duration.ofMinutes(2)));
+
+
+
+   /** Start the broker container once for the conformance class. */
+   @BeforeAll
+   static void startContainer() throws Exception
+   {
+      BROKER.start();
+      BrokerContainerPorts.assertReachable(BROKER, 61616, 8161);
+      try(ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(
+         "tcp://" + BROKER.getHost() + ":" + BROKER.getMappedPort(61616), USERNAME, PASSWORD))
+      {
+         BrokerContainerPorts.awaitJmsReady(factory, "Artemis");
+      }
+   }
+
+
+
+   /** Stop the broker container after all conformance cases. */
+   @AfterAll
+   static void stopContainer()
+   {
+      BROKER.stop();
+   }
+
+
+
+   /** The running Testcontainers broker. */
+   @Override
+   protected GenericContainer<?> broker()
+   {
+      return (BROKER);
+   }
+
+
+
+   /** The provider type for this broker. */
+   @Override
+   protected EsbProviderType providerType()
+   {
+      return (EsbProviderType.ACTIVEMQ_ARTEMIS);
+   }
+
+
+
+   /** The mapped JMS or AMQP connection URL. */
+   @Override
+   protected String brokerUrl()
+   {
+      return ("tcp://" + BROKER.getHost() + ":" + BROKER.getMappedPort(61616));
+   }
+
+
+
+   /** The mapped broker management URL. */
+   @Override
+   protected String managementUrl()
+   {
+      return ("http://" + BROKER.getHost() + ":" + BROKER.getMappedPort(8161));
+   }
+
+
+
+   /** The broker test username. */
+   @Override
+   protected String brokerUsername()
+   {
+      return (USERNAME);
+   }
+
+
+
+   /** The broker test password. */
+   @Override
+   protected String brokerPassword()
+   {
+      return (PASSWORD);
+   }
+
+
+
+   /** All Artemis-only management actions change real queue state. */
+   @Test
+   void pauseResumeSelectedDeleteOldDeleteAndMoveWorkThroughJolokia() throws Exception
+   {
+      QContext.init(defineInstanceWithDestinations(PROVIDER_NAME), new QSession());
+      EsbBrokerAdapter adapter = EsbBrokerAdapters.forProvider(PROVIDER_NAME).orElseThrow();
+      String source = getBrokerQueueName();
+      String target = source + ".moved";
+      sendEvent(QUEUE_NAME, Map.of("n", 1));
+      sendEvent(QUEUE_NAME, Map.of("n", 2));
+      List<String> ids = EsbMessageBrowser.browse(PROVIDER_NAME, source, 0, 10).stream()
+         .map(message -> message.getMessageId()).toList();
+      assertThat(ids).hasSize(2);
+
+      adapter.pauseQueue(source);
+      assertThat(adapter.getQueueInfo(source).orElseThrow().paused()).isTrue();
+      adapter.resumeQueue(source);
+      assertThat(adapter.getQueueInfo(source).orElseThrow().paused()).isFalse();
+
+      assertThat(adapter.deleteMessages(source, List.of(ids.get(0)))).isEqualTo(1);
+      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, source, 0, 10)).hasSize(1);
+      assertThat(adapter.deleteMessagesOlderThan(source, Instant.now().plusSeconds(60))).isEqualTo(1);
+      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, source, 0, 10)).isEmpty();
+
+      sendEvent(QUEUE_NAME, Map.of("n", 3));
+      String moveId = EsbMessageBrowser.browse(PROVIDER_NAME, source, 0, 1).get(0).getMessageId();
+      try(var session = com.kingsrook.qqq.esb.connection.EsbConnectionManager.getInstance().openSession(PROVIDER_NAME, false))
+      {
+         session.createProducer(com.kingsrook.qqq.esb.connection.EsbConnectionManager.getInstance()
+            .resolveQueue(session, PROVIDER_NAME, target)).send(session.createTextMessage("target exists"));
+      }
+      assertThat(adapter.moveMessages(source, List.of(moveId), target)).isEqualTo(1);
+      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, source, 0, 10)).isEmpty();
+      assertThat(EsbMessageBrowser.browse(PROVIDER_NAME, target, 0, 10)).hasSize(2);
+   }
+
+}

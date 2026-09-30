@@ -5,27 +5,33 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
 
 
+import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
+import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
+import io.javalin.config.JavalinConfig;
+import org.apache.activemq.artemis.core.config.Configuration;
+import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
+import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
 import static com.kingsrook.sampleapp.metadata.SampleMetaDataProvider.primeTestDatabase;
 
 
@@ -34,6 +40,8 @@ import static com.kingsrook.sampleapp.metadata.SampleMetaDataProvider.primeTestD
  *******************************************************************************/
 public class SampleJavalinServer extends QApplicationJavalinServer
 {
+   private EmbeddedActiveMQ embeddedBroker;
+
    /*******************************************************************************
     **
     *******************************************************************************/
@@ -84,6 +92,83 @@ public class SampleJavalinServer extends QApplicationJavalinServer
          throw new QException("Failed to initialize the sample database.", e);
       }
 
-      super.start();
+      try
+      {
+         int port = Integer.getInteger("qqq.sample.esb.port", 61616);
+         String dataDirectory = "target/embedded-artemis-sample";
+         Configuration configuration = new ConfigurationImpl()
+            .setPersistenceEnabled(false)
+            .setSecurityEnabled(false)
+            .setJMXManagementEnabled(false)
+            .setBindingsDirectory(dataDirectory + "/bindings")
+            .setJournalDirectory(dataDirectory + "/journal")
+            .setPagingDirectory(dataDirectory + "/paging")
+            .setLargeMessagesDirectory(dataDirectory + "/largemessages")
+            .addAcceptorConfiguration("tcp", "tcp://127.0.0.1:" + port);
+         embeddedBroker = new EmbeddedActiveMQ().setConfiguration(configuration);
+         embeddedBroker.start();
+         Consumer<JavalinConfig> customizer = getJavalinConfigCustomizer();
+         if(Integer.valueOf(0).equals(getPort()))
+         {
+            setJavalinConfigCustomizer(config ->
+            {
+               //////////////////////////////////////////////////////////////////////////////
+               // A wildcard ephemeral bind can overlap the broker's loopback port on macOS. //
+               //////////////////////////////////////////////////////////////////////////////
+               config.jetty.host = "127.0.0.1";
+               if(customizer != null)
+               {
+                  customizer.accept(config);
+               }
+            });
+         }
+         try
+         {
+            super.start();
+         }
+         finally
+         {
+            setJavalinConfigCustomizer(customizer);
+         }
+         QEsbRuntime.getInstance().start(getQInstance());
+      }
+      catch(RuntimeException e)
+      {
+         stop();
+         throw e;
+      }
+      catch(Exception e)
+      {
+         stop();
+         throw new QException("Failed to start the sample server with embedded Artemis.", e);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Stop consumers before the server and broker they use.
+    *******************************************************************************/
+   @Override
+   public void stop()
+   {
+      QEsbRuntime.getInstance().stop();
+      EsbConnectionManager.getInstance().closeAll();
+      super.stop();
+      if(embeddedBroker != null)
+      {
+         try
+         {
+            embeddedBroker.stop();
+         }
+         catch(Exception e)
+         {
+            throw new IllegalStateException("Failed to stop the sample Artemis broker.", e);
+         }
+         finally
+         {
+            embeddedBroker = null;
+         }
+      }
    }
 }

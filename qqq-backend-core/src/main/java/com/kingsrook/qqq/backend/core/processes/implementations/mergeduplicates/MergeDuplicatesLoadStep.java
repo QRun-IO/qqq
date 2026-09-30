@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.processes.implementations.mergeduplicates;
@@ -42,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.LoadViaInsertOrUpdateStep;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 
 
@@ -64,6 +64,7 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
    public void runOnePage(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput) throws QException
    {
       super.runOnePage(runBackendStepInput, runBackendStepOutput);
+      assertSuccessfulRecords(runBackendStepOutput.getRecords(), "survivor write");
 
       @SuppressWarnings("unchecked")
       ListingHash<String, Serializable> otherTableIdsToDelete = (ListingHash<String, Serializable>) runBackendStepInput.getValue("otherTableIdsToDelete");
@@ -74,6 +75,11 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
       @SuppressWarnings("unchecked")
       ListingHash<String, QRecord> otherTableRecordsToStore = (ListingHash<String, QRecord>) runBackendStepInput.getValue("otherTableRecordsToStore");
 
+      //////////////////////////////////////////////////////////////////////////
+      // Preserve delete-before-replacement for application-selected children. //
+      // Only defer duplicate parents: their cascade must follow reassignment. //
+      //////////////////////////////////////////////////////////////////////////
+      DeleteInput duplicateDeleteInput = null;
       if(otherTableIdsToDelete != null)
       {
          for(String tableName : otherTableIdsToDelete.keySet())
@@ -82,7 +88,14 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
             deleteInput.setTableName(tableName);
             deleteInput.setPrimaryKeys(new ArrayList<>(otherTableIdsToDelete.get(tableName)));
             getTransaction().ifPresent(deleteInput::setTransaction);
-            new DeleteAction().execute(deleteInput);
+            if(tableName.equals(runBackendStepInput.getValueString(FIELD_DESTINATION_TABLE)))
+            {
+               duplicateDeleteInput = deleteInput;
+            }
+            else
+            {
+               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
+            }
          }
       }
 
@@ -96,7 +109,7 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
                deleteInput.setTableName(tableName);
                deleteInput.setQueryFilter(filter);
                getTransaction().ifPresent(deleteInput::setTransaction);
-               new DeleteAction().execute(deleteInput);
+               assertSuccessfulRecords(new DeleteAction().execute(deleteInput).getRecordsWithErrors(), "record deletion");
             }
          }
       }
@@ -116,14 +129,19 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
             insertInput.setTableName(tableName);
             insertInput.setRecords(recordsToInsert);
             getTransaction().ifPresent(insertInput::setTransaction);
-            new InsertAction().execute(insertInput);
+            assertSuccessfulRecords(new InsertAction().execute(insertInput).getRecords(), "related record insert");
 
             UpdateInput updateInput = new UpdateInput();
             updateInput.setTableName(tableName);
             updateInput.setRecords(recordsToUpdate);
             getTransaction().ifPresent(updateInput::setTransaction);
-            new UpdateAction().execute(updateInput);
+            assertSuccessfulRecords(new UpdateAction().execute(updateInput).getRecords(), "related record update");
          }
+      }
+
+      if(duplicateDeleteInput != null)
+      {
+         assertSuccessfulRecords(new DeleteAction().execute(duplicateDeleteInput).getRecordsWithErrors(), "record deletion");
       }
 
       AuditInput auditInput = (AuditInput) runBackendStepInput.getValue("auditInput");
@@ -132,6 +150,26 @@ public class MergeDuplicatesLoadStep extends LoadViaInsertOrUpdateStep
          // todo exec async?
          new AuditAction().execute(auditInput);
          runBackendStepInput.addValue("auditInput", null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Merge writes depend on each other. Surface record-level errors as load
+    ** failures so the configured transaction owner can roll back the merge.
+    *******************************************************************************/
+   private void assertSuccessfulRecords(List<QRecord> records, String operation) throws QException
+   {
+      if(records != null)
+      {
+         for(QRecord record : records)
+         {
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+            {
+               throw new QException("Merge failed during " + operation);
+            }
+         }
       }
    }
 

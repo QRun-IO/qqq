@@ -5,33 +5,36 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.core.actions.tables.helpers;
 
 
+import java.io.Serializable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
@@ -73,9 +76,12 @@ public class QueryStatManager
 
    private static QueryStatManager queryStatManager = null;
 
-   // todo - support multiple qInstances?
    private QInstance          qInstance;
    private Supplier<QSession> sessionSupplier;
+
+   private final ThreadLocal<Boolean> storingStats = new ThreadLocal<>();
+   private final ReentrantLock        flushLock    = new ReentrantLock();
+   private long                       generation;
 
    private boolean         active     = false;
    private List<QueryStat> queryStats = new ArrayList<>();
@@ -104,7 +110,7 @@ public class QueryStatManager
    /*******************************************************************************
     ** Singleton accessor
     *******************************************************************************/
-   public static QueryStatManager getInstance()
+   public static synchronized QueryStatManager getInstance()
    {
       if(queryStatManager == null)
       {
@@ -162,22 +168,30 @@ public class QueryStatManager
     *******************************************************************************/
    public void start(QInstance qInstance, Supplier<QSession> sessionSupplier)
    {
-      if(!isEnabled())
+      flushLock.lock();
+      try
       {
-         LOG.info("Not starting QueryStatManager per settings.");
-         return;
+         stop();
+         if(!isEnabled())
+         {
+            LOG.info("Not starting QueryStatManager per settings.");
+            return;
+         }
+
+         LOG.info("Starting QueryStatManager");
+         synchronized(this)
+         {
+            this.qInstance = qInstance;
+            this.sessionSupplier = sessionSupplier;
+            active = true;
+         }
+         executorService = Executors.newSingleThreadScheduledExecutor(new PrefixedDefaultThreadFactory(this));
+         executorService.scheduleAtFixedRate(new QueryStatManagerInsertJob(), jobInitialDelay, jobPeriodSeconds, TimeUnit.SECONDS);
       }
-
-      LOG.info("Starting QueryStatManager");
-
-      this.qInstance = qInstance;
-      this.sessionSupplier = sessionSupplier;
-
-      active = true;
-      queryStats = new ArrayList<>();
-
-      executorService = Executors.newSingleThreadScheduledExecutor(new PrefixedDefaultThreadFactory(this));
-      executorService.scheduleAtFixedRate(new QueryStatManagerInsertJob(), jobInitialDelay, jobPeriodSeconds, TimeUnit.SECONDS);
+      finally
+      {
+         flushLock.unlock();
+      }
    }
 
 
@@ -197,13 +211,24 @@ public class QueryStatManager
     *******************************************************************************/
    public void stop()
    {
-      active = false;
-      queryStats.clear();
-
-      if(executorService != null)
+      flushLock.lock();
+      try
       {
-         executorService.shutdown();
-         executorService = null;
+         synchronized(this)
+         {
+            active = false;
+            generation++;
+            queryStats.clear();
+         }
+         if(executorService != null)
+         {
+            executorService.shutdownNow();
+            executorService = null;
+         }
+      }
+      finally
+      {
+         flushLock.unlock();
       }
    }
 
@@ -216,80 +241,85 @@ public class QueryStatManager
    {
       try
       {
-         if(queryStat == null)
+         long collectedGeneration;
+         synchronized(this)
          {
-            return;
+            if(queryStat == null || !active || QContext.getQInstance() != qInstance || Boolean.TRUE.equals(storingStats.get()))
+            {
+               return;
+            }
+            collectedGeneration = generation;
          }
 
-         if(active)
+         ////////////////////////////////////////////////////////////////////////////////////////
+         // set fields that we need to capture now (rather than when the thread to store runs) //
+         ////////////////////////////////////////////////////////////////////////////////////////
+         if(queryStat.getFirstResultTimestamp() == null)
          {
-            ////////////////////////////////////////////////////////////////////////////////////////
-            // set fields that we need to capture now (rather than when the thread to store runs) //
-            ////////////////////////////////////////////////////////////////////////////////////////
-            if(queryStat.getFirstResultTimestamp() == null)
-            {
-               queryStat.setFirstResultTimestamp(Instant.now());
-            }
+            queryStat.setFirstResultTimestamp(Instant.now());
+         }
 
-            if(queryStat.getStartTimestamp() != null && queryStat.getFirstResultTimestamp() != null && queryStat.getFirstResultMillis() == null)
-            {
-               long millis = queryStat.getFirstResultTimestamp().toEpochMilli() - queryStat.getStartTimestamp().toEpochMilli();
-               queryStat.setFirstResultMillis((int) millis);
-            }
+         if(queryStat.getStartTimestamp() != null && queryStat.getFirstResultTimestamp() != null && queryStat.getFirstResultMillis() == null)
+         {
+            long millis = queryStat.getFirstResultTimestamp().toEpochMilli() - queryStat.getStartTimestamp().toEpochMilli();
+            queryStat.setFirstResultMillis((int) millis);
+         }
 
-            if(queryStat.getSessionId() == null && QContext.getQSession() != null)
-            {
-               queryStat.setSessionId(QContext.getQSession().getUuid());
-            }
+         if(queryStat.getSessionId() == null && QContext.getQSession() != null)
+         {
+            queryStat.setSessionId(QContext.getQSession().getUuid());
+         }
 
-            if(queryStat.getAction() == null)
+         if(queryStat.getAction() == null)
+         {
+            if(QContext.getActionStack() != null && !QContext.getActionStack().isEmpty())
             {
-               if(QContext.getActionStack() != null && !QContext.getActionStack().isEmpty())
+               queryStat.setAction(QContext.getActionStack().peek().getActionIdentity());
+            }
+            else
+            {
+               if(!Objects.equals(emptyActionStackLogLevel, Level.OFF))
                {
-                  queryStat.setAction(QContext.getActionStack().peek().getActionIdentity());
-               }
-               else
-               {
-                  if(!Objects.equals(emptyActionStackLogLevel, Level.OFF))
+                  boolean   expected = false;
+                  Exception e        = new Exception("Unexpected empty action stack");
+                  for(StackTraceElement stackTraceElement : e.getStackTrace())
                   {
-                     boolean   expected = false;
-                     Exception e        = new Exception("Unexpected empty action stack");
-                     for(StackTraceElement stackTraceElement : e.getStackTrace())
+                     String className = stackTraceElement.getClassName();
+                     if(className.contains(QueryStatManagerInsertJob.class.getName()))
                      {
-                        String className = stackTraceElement.getClassName();
-                        if(className.contains(QueryStatManagerInsertJob.class.getName()))
-                        {
-                           expected = true;
-                           break;
-                        }
+                        expected = true;
+                        break;
                      }
+                  }
 
-                     if(!expected)
-                     {
-                        LOG.log(emptyActionStackLogLevel, e);
-                     }
+                  if(!expected)
+                  {
+                     LOG.log(emptyActionStackLogLevel, e);
                   }
                }
             }
+         }
 
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // send the query stat through any consumers that exist                                                                       //
-            // note we do that regardless of the minMillisToStore - which only applies to this class's own storage of query stat records. //
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            if(CollectionUtils.nullSafeHasContents(queryStatConsumers))
-            {
-               processConsumers(queryStat);
-            }
+         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         // send the query stat through any consumers that exist                                                                       //
+         // note we do that regardless of the minMillisToStore - which only applies to this class's own storage of query stat records. //
+         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+         if(CollectionUtils.nullSafeHasContents(queryStatConsumers))
+         {
+            processConsumers(queryStat);
+         }
 
-            if(queryStat.getFirstResultMillis() != null && queryStat.getFirstResultMillis() < minMillisToStore)
-            {
-               //////////////////////////////////////////////////////////////
-               // discard this record if it's under the min millis setting //
-               //////////////////////////////////////////////////////////////
-               return;
-            }
+         if(queryStat.getFirstResultMillis() != null && queryStat.getFirstResultMillis() < minMillisToStore)
+         {
+            //////////////////////////////////////////////////////////////
+            // discard this record if it's under the min millis setting //
+            //////////////////////////////////////////////////////////////
+            return;
+         }
 
-            synchronized(this)
+         synchronized(this)
+         {
+            if(active && generation == collectedGeneration)
             {
                queryStats.add(queryStat);
             }
@@ -326,19 +356,16 @@ public class QueryStatManager
    /*******************************************************************************
     **
     *******************************************************************************/
-   private List<QueryStat> getListAndReset()
+   private synchronized List<QueryStat> getListAndReset()
    {
       if(queryStats.isEmpty())
       {
          return Collections.emptyList();
       }
 
-      synchronized(this)
-      {
-         List<QueryStat> returnList = queryStats;
-         queryStats = new ArrayList<>();
-         return (returnList);
-      }
+      List<QueryStat> returnList = queryStats;
+      queryStats = new ArrayList<>();
+      return (returnList);
    }
 
 
@@ -348,7 +375,17 @@ public class QueryStatManager
     *******************************************************************************/
    public void storeStatsNow()
    {
-      new QueryStatManagerInsertJob().run();
+      QueryStatManagerInsertJob job;
+      flushLock.lock();
+      try
+      {
+         job = new QueryStatManagerInsertJob();
+      }
+      finally
+      {
+         flushLock.unlock();
+      }
+      job.run();
    }
 
 
@@ -356,9 +393,13 @@ public class QueryStatManager
    /*******************************************************************************
     ** Runnable that gets scheduled to periodically reset and store the list of collected stats
     *******************************************************************************/
-   private static class QueryStatManagerInsertJob implements Runnable
+   private class QueryStatManagerInsertJob implements Runnable
    {
       private static final QLogger LOG = QLogger.getLogger(QueryStatManagerInsertJob.class);
+
+      private final long               jobGeneration      = generation;
+      private final QInstance          jobInstance        = qInstance;
+      private final Supplier<QSession> jobSessionSupplier = sessionSupplier;
 
 
 
@@ -368,9 +409,44 @@ public class QueryStatManager
       @Override
       public void run()
       {
+         if(Boolean.TRUE.equals(storingStats.get()))
+         {
+            return;
+         }
          try
          {
-            QContext.init(getInstance().qInstance, getInstance().sessionSupplier.get());
+            flushLock.lockInterruptibly();
+            try
+            {
+               if(active && jobGeneration == generation)
+               {
+                  store();
+               }
+            }
+            finally
+            {
+               flushLock.unlock();
+            }
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Keep both caller context and collection suppression scoped to this flush.
+       *******************************************************************************/
+      private void store()
+      {
+         CapturedContext           callerContext = QContext.capture();
+         Map<String, Serializable> callerObjects = QContext.getObjects();
+         storingStats.set(true);
+         try
+         {
+            QContext.setObjects(null);
 
             /////////////////////////////////////////////////////////////////////////////////////
             // every time we re-run, check if we've been turned off - if so, stop the service. //
@@ -378,11 +454,17 @@ public class QueryStatManager
             if(!isEnabled())
             {
                LOG.info("Stopping QueryStatManager.");
-               getInstance().stop();
+               stop();
                return;
             }
 
-            List<QueryStat> list = getInstance().getListAndReset();
+            QContext.init(jobInstance, jobSessionSupplier.get());
+            if(!active || jobGeneration != generation)
+            {
+               return;
+            }
+
+            List<QueryStat> list = getListAndReset();
 
             LOG.info(logPair("queryStatListSize", list.size()));
 
@@ -402,7 +484,7 @@ public class QueryStatManager
                   //////////////////////
                   // set the table id //
                   //////////////////////
-                  Integer qqqTableId = QQQTableTableManager.getQQQTableId(getInstance().qInstance, queryStat.getTableName());
+                  Integer qqqTableId = QQQTableTableManager.getQQQTableId(jobInstance, queryStat.getTableName());
                   queryStat.setQqqTableId(qqqTableId);
 
                   //////////////////////////////
@@ -413,7 +495,7 @@ public class QueryStatManager
                      List<QueryStatJoinTable> queryStatJoinTableList = new ArrayList<>();
                      for(String joinTableName : queryStat.getJoinTableNames())
                      {
-                        queryStatJoinTableList.add(new QueryStatJoinTable().withQqqTableId(QQQTableTableManager.getQQQTableId(getInstance().qInstance, joinTableName)));
+                        queryStatJoinTableList.add(new QueryStatJoinTable().withQqqTableId(QQQTableTableManager.getQQQTableId(jobInstance, joinTableName)));
                      }
                      queryStat.setQueryStatJoinTableList(queryStatJoinTableList);
                   }
@@ -448,6 +530,10 @@ public class QueryStatManager
 
             try
             {
+               if(!active || jobGeneration != generation)
+               {
+                  return;
+               }
                InsertInput insertInput = new InsertInput();
                insertInput.setTableName(QueryStat.TABLE_NAME);
                insertInput.setRecords(queryStatQRecordsToInsert);
@@ -464,7 +550,16 @@ public class QueryStatManager
          }
          finally
          {
+            storingStats.remove();
             QContext.clear();
+            if(callerObjects != null)
+            {
+               QContext.setObjects(callerObjects);
+            }
+            if(callerContext.qInstance() != null || callerContext.qSession() != null || callerContext.qBackendTransaction() != null || callerContext.actionStack() != null)
+            {
+               QContext.init(callerContext);
+            }
          }
       }
 
@@ -473,7 +568,7 @@ public class QueryStatManager
       /*******************************************************************************
        **
        *******************************************************************************/
-      private static void processCriteriaFromFilter(Integer qqqTableId, List<QueryStatCriteriaField> queryStatCriteriaFieldList, QQueryFilter queryFilter) throws QException
+      private void processCriteriaFromFilter(Integer qqqTableId, List<QueryStatCriteriaField> queryStatCriteriaFieldList, QQueryFilter queryFilter) throws QException
       {
          for(QFilterCriteria criteria : CollectionUtils.nonNullList(queryFilter.getCriteria()))
          {
@@ -491,7 +586,7 @@ public class QueryStatManager
                String[] parts = fieldName.split("\\.");
                if(parts.length > 1)
                {
-                  queryStatCriteriaField.setQqqTableId(QQQTableTableManager.getQQQTableId(getInstance().qInstance, parts[0]));
+                  queryStatCriteriaField.setQqqTableId(QQQTableTableManager.getQQQTableId(jobInstance, parts[0]));
                   queryStatCriteriaField.setName(parts[1]);
                }
             }
@@ -515,7 +610,7 @@ public class QueryStatManager
       /*******************************************************************************
        **
        *******************************************************************************/
-      private static void processOrderByFromFilter(Integer qqqTableId, List<QueryStatOrderByField> queryStatOrderByFieldList, QQueryFilter queryFilter) throws QException
+      private void processOrderByFromFilter(Integer qqqTableId, List<QueryStatOrderByField> queryStatOrderByFieldList, QQueryFilter queryFilter) throws QException
       {
          for(QFilterOrderBy orderBy : CollectionUtils.nonNullList(queryFilter.getOrderBys()))
          {
@@ -529,7 +624,7 @@ public class QueryStatManager
                   String[] parts = fieldName.split("\\.");
                   if(parts.length > 1)
                   {
-                     queryStatOrderByField.setQqqTableId(QQQTableTableManager.getQQQTableId(getInstance().qInstance, parts[0]));
+                     queryStatOrderByField.setQqqTableId(QQQTableTableManager.getQQQTableId(jobInstance, parts[0]));
                      queryStatOrderByField.setName(parts[1]);
                   }
                }

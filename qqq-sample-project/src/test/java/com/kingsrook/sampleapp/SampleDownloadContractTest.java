@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
@@ -86,7 +85,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.reports.BasicRunReportProcess;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemBackendMetaData;
-import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import io.javalin.Javalin;
@@ -109,7 +108,8 @@ class SampleDownloadContractTest
    @TempDir
    Path directory;
 
-   private SampleJavalinServer server;
+   private QApplicationJavalinServer server;
+   private SampleUploadTestFixture fixture;
    private ApiProcessMetaData reportApi;
    private final AtomicReference<Javalin> service = new AtomicReference<>();
    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
@@ -121,20 +121,18 @@ class SampleDownloadContractTest
     **
     *******************************************************************************/
    @AfterEach
-   void cleanUp()
+   void cleanUp() throws Exception
    {
       try
       {
-         if(server != null)
+         if(fixture != null)
          {
-            server.stop();
+            fixture.close();
          }
       }
       finally
       {
          client.close();
-         QContext.clear();
-         ConnectionManager.resetConnectionProviders();
       }
    }
 
@@ -658,17 +656,8 @@ class SampleDownloadContractTest
          instance.getAuthentication().setCustomizer(new QCodeReference(NoTablePermissions.class));
          instance.getTable(SampleMetaDataProvider.TABLE_NAME_CITY).setPermissionRules(QPermissionRules.defaultInstance().withLevel(PermissionLevel.READ_WRITE_PERMISSIONS));
       }
-      server = new SampleJavalinServer(new SampleMetaDataProvider()
-      {
-         /*******************************************************************************
-          **
-          *******************************************************************************/
-         @Override
-         public QInstance defineQInstance()
-         {
-            return instance;
-         }
-      });
+      fixture = new SampleUploadTestFixture(instance);
+      server = fixture.server();
       server.setPort(0);
       server.withJavalinConfigurationCustomizer(service::set);
       server.start();

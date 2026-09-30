@@ -2,10 +2,66 @@
 
 version: 2.1
 
+parameters:
+  mongo_bind_diagnostics:
+    type: boolean
+    default: false
+  next_acceptance_bundle_url:
+    type: string
+    default: ""
+  next_acceptance_bundle_sha256:
+    type: string
+    default: ""
+  next_acceptance_receipt_sha256:
+    type: string
+    default: ""
+
 orbs:
-  qqq-orb: kingsrook/qqq-orb@0.6.0
+  qqq-orb: kingsrook/qqq-orb@0.6.8
 
 commands:
+  start-mongo-bind-trace:
+    steps:
+      - checkout
+      - run:
+          name: Prepare owned Mongo socket diagnostics
+          command: |
+            if sudo apt-get update -qq && sudo apt-get install -y -qq strace &&
+               command -v nsenter ss && sudo install -d -m 755 /tmp/qqq-mongo-bind-diagnostics &&
+               sudo strace -e trace=bind -o /tmp/qqq-mongo-bind-diagnostics/preflight.log true; then
+              printf 'export QQQ_MONGO_TRACE_RUN=%q\n' "$CIRCLE_WORKFLOW_JOB_ID" >> "$BASH_ENV"
+            else
+              echo 'Mongo tracing preflight unavailable; continue original Maven checks.'
+            fi
+      - run:
+          name: Observe only this job's labelled Mongo fixtures
+          background: true
+          command: |
+            test -n "${QQQ_MONGO_TRACE_RUN:-}" || exit 0
+            sudo --preserve-env=CIRCLECI,CIRCLE_WORKFLOW_JOB_ID,QQQ_MONGO_TRACE_RUN python3 .circleci/trace-mongo-bind.py
+
+  stop-mongo-bind-trace:
+    steps:
+      - run:
+          name: Finish owned Mongo socket diagnostics
+          when: always
+          command: |
+            test -n "${QQQ_MONGO_TRACE_RUN:-}" || exit 0
+            sudo touch /tmp/qqq-mongo-bind-diagnostics/stop || echo 'Could not signal Mongo collector.'
+            for attempt in $(seq 1 20); do
+              test ! -f /tmp/qqq-mongo-bind-diagnostics/result.json || break
+              sleep 1
+            done
+            sudo chmod -R a+rX /tmp/qqq-mongo-bind-diagnostics || echo 'Could not make all diagnostic artifacts readable.'
+            if test -f /tmp/qqq-mongo-bind-diagnostics/result.json; then
+              cat /tmp/qqq-mongo-bind-diagnostics/result.json
+            else
+              echo 'Mongo diagnostic receipt missing; socket ownership remains unproven.'
+            fi
+      - store_artifacts:
+          path: /tmp/qqq-mongo-bind-diagnostics
+          destination: mongo-bind-diagnostics
+
   configure-package-install:
     steps:
       - run:
@@ -18,9 +74,91 @@ commands:
             printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-qqq-ci.conf >/dev/null
 
 jobs:
+  esb_broker_conformance:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large
+    steps:
+      - configure-package-install
+      - qqq-orb/install_java
+      - checkout
+      - qqq-orb/mvn_build
+      - run:
+          name: Verify Docker is available for broker conformance
+          command: docker info
+      - run:
+          name: Run Artemis and RabbitMQ broker conformance
+          command: mvn -B -s /tmp/circleci/mvn-settings.xml -pl qqq-esb -am -Desb.conformance.skip=false clean verify
+      - run:
+          name: Require broker restart conformance on Linux
+          command: |
+            python3 - \<<'PY'
+            from pathlib import Path
+            from xml.etree import ElementTree
+
+            reports = Path("qqq-esb/target/failsafe-reports")
+            for broker in ("Artemis", "RabbitMQ"):
+                path = reports / f"TEST-com.kingsrook.qqq.esb.conformance.{broker}ConformanceIT.xml"
+                suite = ElementTree.parse(path).getroot()
+                matches = [case for case in suite.findall("testcase") if case.get("name") == "reconnectsAfterBrokerRestart"]
+                assert len(matches) == 1, f"{broker}: broker restart test missing"
+                assert matches[0].find("skipped") is None, f"{broker}: broker restart test was skipped"
+            PY
+      - store_test_results:
+          path: qqq-esb/target/failsafe-reports
+
+  sample_bootstrap_source:
+    executor: qqq-orb/java
+    steps:
+      - configure-package-install
+      - qqq-orb/install_java
+      - checkout
+      - run:
+          name: Check bootstrap runner and ledger regressions
+          command: |
+            python3 qqq-sample-project/test_bootstrap_acceptance.py
+            python3 qqq-sample-project/test_feature_coverage.py
+      - run:
+          name: Prove source bootstrap from an empty Maven cache
+          command: python3 qqq-sample-project/bootstrap_acceptance.py --stage source --workdir /tmp/qqq-bootstrap-source
+      - run:
+          name: Require current source bootstrap evidence
+          when: always
+          command: |
+            mkdir -p qqq-sample-project/target/bootstrap-evidence qqq-sample-project/target/junit-results
+            if [ -f /tmp/qqq-bootstrap-source/acceptance.json ]; then
+              cp /tmp/qqq-bootstrap-source/acceptance.json qqq-sample-project/target/bootstrap-acceptance.json
+              cp /tmp/qqq-bootstrap-source/acceptance.json qqq-sample-project/target/bootstrap-evidence/
+            fi
+            for log in /tmp/qqq-bootstrap-source/*.log; do
+              if [ -f "$log" ]; then cp "$log" qqq-sample-project/target/bootstrap-evidence/; fi
+            done
+            for report in qqq-sample-project/target/surefire-reports/TEST-*.xml qqq-sample-project/target/failsafe-reports/TEST-*.xml; do
+              if [ -f "$report" ]; then cp "$report" qqq-sample-project/target/junit-results/; fi
+            done
+            python3 qqq-sample-project/verify-feature-coverage.py --stage source --require-feature sample.bootstrap
+      - persist_to_workspace:
+          root: qqq-sample-project/target
+          paths:
+            - bootstrap-acceptance.json
+      - store_test_results:
+          path: qqq-sample-project/target/junit-results
+      - store_artifacts:
+          path: qqq-sample-project/target/bootstrap-evidence
+      - store_artifacts:
+          path: qqq-sample-project/target/feature-coverage-result.json
+
   sample_acceptance:
     executor: qqq-orb/java
+    environment:
+      QQQ_ACCEPTED_NEXT_CANDIDATE: << parameters.accepted_next_candidate >>
+      QQQ_NEXT_CI_BUNDLE_URL: << pipeline.parameters.next_acceptance_bundle_url >>
+      QQQ_NEXT_BUNDLE_SHA256: << pipeline.parameters.next_acceptance_bundle_sha256 >>
+      QQQ_NEXT_RECEIPT_SHA256: << pipeline.parameters.next_acceptance_receipt_sha256 >>
     parameters:
+      accepted_next_candidate:
+        type: string
+        default: ""
       require_complete_coverage:
         type: boolean
         default: false
@@ -38,13 +176,13 @@ jobs:
           command: |
             git clone https://github.com/QRun-IO/qqq-frontend-material-dashboard.git /tmp/sample-material-dashboard
             cd /tmp/sample-material-dashboard
-            git checkout --detach 8ec1be7ad0e1836801e33c503f4417e47f332066
+            git checkout --detach f9124fb7d26ff07aa11cce38924ca3dee9430f2a
             # Consumers read this installed POM without the build's command-line properties.
             python3 -c '
             from pathlib import Path
             pom = Path("pom.xml")
             text = pom.read_text()
-            old = "<qqq.version>4.0.0-RC.3</qqq.version>"
+            old = "<qqq.version>4.0.0</qqq.version>"
             assert text.count(old) == 1, "Pinned dashboard QQQ version changed"
             pom.write_text(text.replace(old, "<qqq.version>0.0.0-sample-acceptance</qqq.version>"))
             '
@@ -59,18 +197,76 @@ jobs:
       - run:
           name: Run sample data, HTTP and browser acceptance
           command: |
-            python3 qqq-sample-project/test_feature_coverage.py
-            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests clean verify
+            python3 -B -m unittest discover -s qqq-sample-project -p 'test_*.py'
+            # This QBit is a source-only fixture, installed into this job's local cache.
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -DskipTests -f qqq-sample-data-qbit/pom.xml clean install
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -Dqqq.version=0.0.0-sample-acceptance -Dqqq.frontend.material-dashboard.version=0.0.0-sample-acceptance -f qqq-sample-project/pom.xml -Pacceptance-tests,data-qbit-acceptance clean verify
+      - run:
+          name: Run Lambda source acceptance
+          command: |
+            set -euo pipefail
+            mvn -B -s /tmp/circleci/mvn-settings.xml -Drevision=0.0.0-sample-acceptance -pl qqq-middleware-lambda,qqq-utility-lambdas clean verify
+            mkdir -p qqq-sample-project/target/surefire-reports
+            cp qqq-middleware-lambda/target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleLambdaDispatchAcceptanceTest.xml qqq-sample-project/target/surefire-reports/
+            cp qqq-utility-lambdas/target/surefire-reports/TEST-com.kingsrook.sampleapp.SampleSqsUtilityAcceptanceTest.xml qqq-sample-project/target/surefire-reports/
+      - when:
+          condition: << parameters.require_complete_coverage >>
+          steps:
+            - attach_workspace:
+                at: qqq-sample-project/target
+      - run:
+          name: Require source-generated starter and application acceptance with live MySQL
+          no_output_timeout: 30m
+          command: |
+            set -euo pipefail
+            consumer_root=$(mktemp -d /tmp/qqq-starter-acceptance-XXXXXX)
+            trap 'rm -rf "$consumer_root"' EXIT
+            git clone https://github.com/QRun-IO/qqq-app-starter.git "$consumer_root/starter"
+            git -C "$consumer_root/starter" checkout --detach 2fb62378fa76da1950dc9e67984c18fd0491ae3f
+            test "$(git -C "$consumer_root/starter" rev-parse HEAD)" = 2fb62378fa76da1950dc9e67984c18fd0491ae3f
+            git clone https://github.com/QRun-IO/qbit-template-application.git "$consumer_root/template"
+            git -C "$consumer_root/template" fetch origin refs/pull/5/head
+            git -C "$consumer_root/template" checkout --detach FETCH_HEAD
+            test "$(git -C "$consumer_root/template" rev-parse HEAD)" = 70a72a54f4a3024e39d07a7d86c5acf738283286
+            docker pull mysql:8.4
+            QQQ_STARTER_SOURCE="$consumer_root/starter" QQQ_TEMPLATE_SOURCE="$consumer_root/template" \
+              python3 -m unittest discover -s qqq-sample-project/acceptance -p test_starter_application.py -v
+            python3 qqq-sample-project/acceptance/run_starter_application.py \
+              --qqq-source . --starter-source "$consumer_root/starter" \
+              --template-source "$consumer_root/template" \
+              --candidate-version 0.0.0-sample-acceptance \
+              --maven-repo "$consumer_root/m2" --online \
+              --maven-settings /tmp/circleci/mvn-settings.xml --live-mysql \
+              --junit-dir qqq-sample-project/target/starter-application-junit
+            python3 qqq-sample-project/verify-feature-coverage.py --stage source \
+              --require-feature train.starter --require-feature train.application
+      - run:
+          name: Verify generated infrastructure extension in a separate host
+          command: |
+            git clone https://github.com/QRun-IO/qbit-template-extension.git /tmp/sample-extension-template
+            git -C /tmp/sample-extension-template checkout --detach a3c5b6afddacb9a98a46ffbb9f3e93924c26480a
+            python3 qqq-sample-project/acceptance/extension/run_extension.py \
+              --qqq-source . \
+              --template-source /tmp/sample-extension-template \
+              --candidate-version 0.0.0-sample-acceptance \
+              --maven-settings /tmp/circleci/mvn-settings.xml \
+              --report-dir qqq-sample-project/target/surefire-reports
+      - run:
+          name: Stage independently reviewed Next evidence after clean builds
+          when: always
+          command: python3 -B qqq-sample-project/next_acceptance_ci.py stage
       - run:
           name: Report sample feature coverage
           when: always
-          command: python3 qqq-sample-project/verify-feature-coverage.py --stage source --report-only
+          command: python3 -B qqq-sample-project/next_acceptance_ci.py report
       - when:
           condition: << parameters.require_complete_coverage >>
           steps:
             - run:
-                name: Require complete supported-feature coverage before publication
-                command: python3 qqq-sample-project/verify-feature-coverage.py --stage source
+                name: Require reviewed source-stage coverage before publication
+                command: python3 -B qqq-sample-project/next_acceptance_ci.py strict
+      - store_artifacts:
+          path: qqq-sample-project/target/next-acceptance-stage.json
       - run:
           name: Collect JUnit test reports
           when: always
@@ -83,6 +279,8 @@ jobs:
             done
       - store_test_results:
           path: qqq-sample-project/target/junit-results
+      - store_test_results:
+          path: qqq-sample-project/target/starter-application-junit
       - store_artifacts:
           path: qqq-sample-project/target/browser-acceptance
       - store_artifacts:
@@ -96,6 +294,19 @@ workflows:
 
   test_only:
     jobs:
+      - esb_broker_conformance:
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              ignore: /(develop|release/.*|hotfix/.*|integration.*)/
+            tags:
+              only: []
       - sample_acceptance:
           name: sample_acceptance
           require_complete_coverage: false
@@ -107,6 +318,15 @@ workflows:
       - qqq-orb/mvn_test_only:
           pre-steps:
             - configure-package-install
+            - when:
+                condition: << pipeline.parameters.mongo_bind_diagnostics >>
+                steps:
+                  - start-mongo-bind-trace
+          post-steps:
+            - when:
+                condition: << pipeline.parameters.mongo_bind_diagnostics >>
+                steps:
+                  - stop-mongo-bind-trace
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           filters:
             branches:
@@ -126,6 +346,18 @@ workflows:
 
   publish_snapshot:
     jobs:
+      - esb_broker_conformance:
+          name: snapshot_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - develop
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - develop
       - sample_acceptance:
           name: snapshot_sample_acceptance
           require_complete_coverage: false
@@ -134,7 +366,7 @@ workflows:
               only:
                 - develop
       - qqq-orb/mvn_publish:
-          requires: [snapshot_sample_acceptance]
+          requires: [snapshot_sample_acceptance, sample_bootstrap_source, snapshot_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
@@ -154,6 +386,22 @@ workflows:
 
   publish_feature:
     jobs:
+      - esb_broker_conformance:
+          name: feature_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - feature/.*
+            tags:
+              only: [/publish.*/]
       - sample_acceptance:
           name: feature_sample_acceptance
           require_complete_coverage: false
@@ -164,7 +412,7 @@ workflows:
             tags:
               only: [/publish.*/]
       - qqq-orb/mvn_publish:
-          requires: [feature_sample_acceptance]
+          requires: [feature_sample_acceptance, sample_bootstrap_source, feature_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials]
@@ -178,9 +426,23 @@ workflows:
 
   publish_release_candidate:
     jobs:
+      - esb_broker_conformance:
+          name: candidate_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - /release\/.*/
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - /release\/.*/
       - sample_acceptance:
           name: candidate_sample_acceptance
-          require_complete_coverage: false
+          accepted_next_candidate: "4.1.0-RC.1"
+          require_complete_coverage: true
+          requires: [sample_bootstrap_source]
           filters:
             branches:
               only:
@@ -199,7 +461,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release_candidate
-          requires: [candidate_static_analysis, candidate_sample_acceptance]
+          requires: [candidate_static_analysis, candidate_sample_acceptance, sample_bootstrap_source, candidate_esb_broker_conformance]
           filters:
             branches:
               only:
@@ -207,9 +469,24 @@ workflows:
 
   publish_release:
     jobs:
+      - esb_broker_conformance:
+          name: release_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
       - sample_acceptance:
           name: release_sample_acceptance
-          require_complete_coverage: false
+          require_complete_coverage: true
+          requires: [sample_bootstrap_source]
           filters:
             branches:
               ignore: /.*/
@@ -230,7 +507,7 @@ workflows:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           branch_type: release
-          requires: [release_static_analysis, release_sample_acceptance]
+          requires: [release_static_analysis, release_sample_acceptance, sample_bootstrap_source, release_esb_broker_conformance]
           filters:
             branches:
               ignore: /.*/
@@ -239,15 +516,28 @@ workflows:
 
   publish_hotfix_release:
     jobs:
+      - esb_broker_conformance:
+          name: hotfix_esb_broker_conformance
+          context: [qqq-maven-registry-credentials]
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
+      - sample_bootstrap_source:
+          filters:
+            branches:
+              only:
+                - /hotfix\/.*/
       - sample_acceptance:
           name: hotfix_sample_acceptance
-          require_complete_coverage: false
+          require_complete_coverage: true
+          requires: [sample_bootstrap_source]
           filters:
             branches:
               only:
                 - /hotfix\/.*/
       - qqq-orb/mvn_publish:
-          requires: [hotfix_sample_acceptance]
+          requires: [hotfix_sample_acceptance, sample_bootstrap_source, hotfix_esb_broker_conformance]
           pre-steps:
             - configure-package-install
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]

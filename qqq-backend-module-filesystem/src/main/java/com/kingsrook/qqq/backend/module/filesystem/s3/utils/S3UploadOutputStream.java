@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.filesystem.s3.utils;
@@ -27,7 +26,10 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.AbortMultipartUploadRequest;
 import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
 import com.amazonaws.services.s3.model.CompleteMultipartUploadResult;
 import com.amazonaws.services.s3.model.InitiateMultipartUploadRequest;
@@ -85,6 +87,7 @@ public class S3UploadOutputStream extends OutputStream
    @Override
    public void write(int b) throws IOException
    {
+      ensureOpen();
       buffer[offset] = (byte) b;
       offset++;
 
@@ -98,42 +101,50 @@ public class S3UploadOutputStream extends OutputStream
     *******************************************************************************/
    private void uploadIfNeeded()
    {
-      ObjectMetadata objectMetadata = null;
-      if(this.contentType != null)
+      try
       {
-         objectMetadata = new ObjectMetadata();
-         objectMetadata.setContentType(this.contentType);
-      }
-
-      if(offset == buffer.length)
-      {
-         //////////////////////////////////////////
-         // start or continue a multipart upload //
-         //////////////////////////////////////////
-         if(initiateMultipartUploadResult == null)
+         ObjectMetadata objectMetadata = null;
+         if(this.contentType != null)
          {
-            LOG.info("Initiating a multipart upload", logPair("key", key));
-            initiateMultipartUploadResult = amazonS3.initiateMultipartUpload(new InitiateMultipartUploadRequest(bucketName, key, objectMetadata));
-
-            uploadPartResultList = new ArrayList<>();
+            objectMetadata = new ObjectMetadata();
+            objectMetadata.setContentType(this.contentType);
          }
 
-         LOG.info("Uploading a part", logPair("key", key), logPair("partNumber", uploadPartResultList.size() + 1));
-         UploadPartRequest uploadPartRequest = new UploadPartRequest()
-            .withUploadId(initiateMultipartUploadResult.getUploadId())
-            .withPartNumber(uploadPartResultList.size() + 1)
-            .withInputStream(new ByteArrayInputStream(buffer))
-            .withBucketName(bucketName)
-            .withKey(key)
-            .withPartSize(buffer.length)
-            .withObjectMetadata(objectMetadata);
+         if(offset == buffer.length)
+         {
+            //////////////////////////////////////////
+            // start or continue a multipart upload //
+            //////////////////////////////////////////
+            if(initiateMultipartUploadResult == null)
+            {
+               LOG.info("Initiating a multipart upload", logPair("key", key));
+               initiateMultipartUploadResult = amazonS3.initiateMultipartUpload(new InitiateMultipartUploadRequest(bucketName, key, objectMetadata));
 
-         uploadPartResultList.add(amazonS3.uploadPart(uploadPartRequest));
+               uploadPartResultList = new ArrayList<>();
+            }
 
-         //////////////////
-         // reset buffer //
-         //////////////////
-         offset = 0;
+            LOG.info("Uploading a part", logPair("key", key), logPair("partNumber", uploadPartResultList.size() + 1));
+            UploadPartRequest uploadPartRequest = new UploadPartRequest()
+               .withUploadId(initiateMultipartUploadResult.getUploadId())
+               .withPartNumber(uploadPartResultList.size() + 1)
+               .withInputStream(new ByteArrayInputStream(buffer))
+               .withBucketName(bucketName)
+               .withKey(key)
+               .withPartSize(buffer.length)
+               .withObjectMetadata(objectMetadata);
+
+            uploadPartResultList.add(amazonS3.uploadPart(uploadPartRequest));
+
+            //////////////////
+            // reset buffer //
+            //////////////////
+            offset = 0;
+         }
+      }
+      catch(AmazonClientException failure)
+      {
+         abortAfterFailure(failure);
+         throw failure;
       }
    }
 
@@ -145,6 +156,8 @@ public class S3UploadOutputStream extends OutputStream
    @Override
    public void write(byte[] b, int off, int len) throws IOException
    {
+      Objects.checkFromIndexSize(off, len, b.length);
+      ensureOpen();
       int bytesToWrite = len;
 
       while(bytesToWrite > buffer.length - offset)
@@ -157,7 +170,7 @@ public class S3UploadOutputStream extends OutputStream
          bytesToWrite -= size;
       }
 
-      int size = len - off;
+      int size = bytesToWrite;
       System.arraycopy(b, off, buffer, offset, size);
       offset += size;
       uploadIfNeeded();
@@ -177,52 +190,97 @@ public class S3UploadOutputStream extends OutputStream
          return;
       }
 
-      ObjectMetadata objectMetadata = null;
-      if(this.contentType != null)
+      isClosed = true;
+      try
       {
-         objectMetadata = new ObjectMetadata();
-         objectMetadata.setContentType(this.contentType);
-      }
-
-      if(initiateMultipartUploadResult != null)
-      {
-         if(offset > 0)
-         {
-            //////////////////////////////////////////////////
-            // if there's a final part to upload, do it now //
-            //////////////////////////////////////////////////
-            LOG.info("Uploading a part", logPair("key", key), logPair("isFinalPart", true), logPair("partNumber", uploadPartResultList.size() + 1));
-            UploadPartRequest uploadPartRequest = new UploadPartRequest()
-               .withUploadId(initiateMultipartUploadResult.getUploadId())
-               .withPartNumber(uploadPartResultList.size() + 1)
-               .withInputStream(new ByteArrayInputStream(buffer, 0, offset))
-               .withBucketName(bucketName)
-               .withKey(key)
-               .withPartSize(offset)
-               .withObjectMetadata(objectMetadata);
-            uploadPartResultList.add(amazonS3.uploadPart(uploadPartRequest));
-         }
-
-         CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest()
-            .withUploadId(initiateMultipartUploadResult.getUploadId())
-            .withPartETags(uploadPartResultList)
-            .withBucketName(bucketName)
-            .withKey(key);
-         CompleteMultipartUploadResult completeMultipartUploadResult = amazonS3.completeMultipartUpload(completeMultipartUploadRequest);
-      }
-      else
-      {
-         if(objectMetadata == null)
+         ObjectMetadata objectMetadata = null;
+         if(this.contentType != null)
          {
             objectMetadata = new ObjectMetadata();
+            objectMetadata.setContentType(this.contentType);
          }
 
-         LOG.info("Putting object (non-multipart)", logPair("key", key), logPair("length", offset));
-         objectMetadata.setContentLength(offset);
-         PutObjectResult putObjectResult = amazonS3.putObject(bucketName, key, new ByteArrayInputStream(buffer, 0, offset), objectMetadata);
-      }
+         if(initiateMultipartUploadResult != null)
+         {
+            if(offset > 0)
+            {
+               //////////////////////////////////////////////////
+               // if there's a final part to upload, do it now //
+               //////////////////////////////////////////////////
+               LOG.info("Uploading a part", logPair("key", key), logPair("isFinalPart", true), logPair("partNumber", uploadPartResultList.size() + 1));
+               UploadPartRequest uploadPartRequest = new UploadPartRequest()
+                  .withUploadId(initiateMultipartUploadResult.getUploadId())
+                  .withPartNumber(uploadPartResultList.size() + 1)
+                  .withInputStream(new ByteArrayInputStream(buffer, 0, offset))
+                  .withBucketName(bucketName)
+                  .withKey(key)
+                  .withPartSize(offset)
+                  .withObjectMetadata(objectMetadata);
+               uploadPartResultList.add(amazonS3.uploadPart(uploadPartRequest));
+            }
 
+            CompleteMultipartUploadRequest completeMultipartUploadRequest = new CompleteMultipartUploadRequest()
+               .withUploadId(initiateMultipartUploadResult.getUploadId())
+               .withPartETags(uploadPartResultList)
+               .withBucketName(bucketName)
+               .withKey(key);
+            CompleteMultipartUploadResult completeMultipartUploadResult = amazonS3.completeMultipartUpload(completeMultipartUploadRequest);
+         }
+         else
+         {
+            if(objectMetadata == null)
+            {
+               objectMetadata = new ObjectMetadata();
+            }
+
+            LOG.info("Putting object (non-multipart)", logPair("key", key), logPair("length", offset));
+            objectMetadata.setContentLength(offset);
+            PutObjectResult putObjectResult = amazonS3.putObject(bucketName, key, new ByteArrayInputStream(buffer, 0, offset), objectMetadata);
+         }
+      }
+      catch(AmazonClientException failure)
+      {
+         abortAfterFailure(failure);
+         throw failure;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A closed or failed upload must not buffer or publish any more data.
+    ******************************************************************************/
+   private void ensureOpen() throws IOException
+   {
+      if(isClosed)
+      {
+         throw new IOException("Cannot write to a closed S3 upload stream.");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Abort only this stream's initiated upload, preserving the original failure
+    ** if cleanup also fails. Closing again must not retry either operation.
+    ******************************************************************************/
+   private void abortAfterFailure(AmazonClientException failure)
+   {
       isClosed = true;
+      if(initiateMultipartUploadResult != null)
+      {
+         try
+         {
+            amazonS3.abortMultipartUpload(new AbortMultipartUploadRequest(bucketName, key, initiateMultipartUploadResult.getUploadId()));
+         }
+         catch(RuntimeException abortFailure)
+         {
+            if(abortFailure != failure)
+            {
+               failure.addSuppressed(abortFailure);
+            }
+         }
+      }
    }
 
 }

@@ -5,24 +5,22 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
-import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -36,13 +34,16 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.RedirectStateMetaDataProducer;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionMetaDataProducer;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
+import com.kingsrook.qqq.middleware.javalin.LogoutTestProvider;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -52,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *******************************************************************************/
 class BackChannelLogoutSpecV1Test extends SpecTestBase
 {
+   private LogoutTestProvider provider;
 
    /***************************************************************************
     **
@@ -81,16 +83,19 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
    @Override
    protected QInstance defineQInstance() throws QException
    {
+      provider = new LogoutTestProvider();
       QInstance qInstance = TestUtils.defineInstance();
+      qInstance.withInstanceDefaultAuthentication(provider.authentication());
       qInstance.addTable(new UserSessionMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
+      qInstance.addTable(new RedirectStateMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
       return qInstance;
    }
 
 
 
    /*******************************************************************************
-    ** Test that endpoint returns 200 when no logout_token is provided.
-    ** Per OIDC spec, back-channel logout should return 200 even on "errors".
+    ** Test that endpoint returns 400 when no logout_token is provided.
+    ** Invalid logout tokens must not be accepted as successful notifications.
     *******************************************************************************/
    @Test
    void testMissingLogoutToken()
@@ -99,13 +104,13 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
          .header("Content-Type", "application/x-www-form-urlencoded")
          .asString();
 
-      assertEquals(200, response.getStatus());
+      assertEquals(400, response.getStatus());
    }
 
 
 
    /*******************************************************************************
-    ** Test that endpoint returns 200 when an empty logout_token is provided.
+    ** Test that endpoint returns 400 when an empty logout_token is provided.
     *******************************************************************************/
    @Test
    void testEmptyLogoutToken()
@@ -115,7 +120,7 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
          .field("logout_token", "")
          .asString();
 
-      assertEquals(200, response.getStatus());
+      assertEquals(400, response.getStatus());
    }
 
 
@@ -128,6 +133,7 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
    {
       String userId = "user-123";
       String sessionUuid = UUID.randomUUID().toString();
+      String accessToken = provider.accessToken(userId, null);
 
       /////////////////////////////
       // Insert a session record //
@@ -139,7 +145,7 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
          insertInput.setRecords(List.of(new QRecord()
             .withValue("uuid", sessionUuid)
             .withValue("userId", userId)
-            .withValue("accessToken", "some-token")));
+            .withValue("accessToken", accessToken)));
          new InsertAction().execute(insertInput);
       });
 
@@ -238,6 +244,8 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
    {
       String sessionUuid1 = UUID.randomUUID().toString();
       String sessionUuid2 = UUID.randomUUID().toString();
+      String accessToken1 = provider.accessToken("user-to-logout", null);
+      String accessToken2 = provider.accessToken("user-to-keep", null);
 
       /////////////////////////////
       // Insert two sessions      //
@@ -250,11 +258,11 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
             new QRecord()
                .withValue("uuid", sessionUuid1)
                .withValue("userId", "user-to-logout")
-               .withValue("accessToken", "token1"),
+               .withValue("accessToken", accessToken1),
             new QRecord()
                .withValue("uuid", sessionUuid2)
                .withValue("userId", "user-to-keep")
-               .withValue("accessToken", "token2")
+               .withValue("accessToken", accessToken2)
          ));
          new InsertAction().execute(insertInput);
       });
@@ -291,45 +299,75 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
-    ** Helper to create a minimal logout_token JWT.
-    ** Format: header.payload.signature (signature is empty for testing)
+    ** The actual unsecured HTTP endpoint rejects invalid token identities and claims.
     *******************************************************************************/
-   private String createLogoutToken(String sub, String sid)
+   @Test
+   void testInvalidTokensCannotDeleteSessions() throws Exception
    {
-      String header = Base64.getUrlEncoder().withoutPadding().encodeToString("{\"alg\":\"none\"}".getBytes());
-
-      StringBuilder payloadBuilder = new StringBuilder("{");
-      boolean hasField = false;
-      if(sub != null)
+      String accessToken = provider.accessToken("protected-user", "protected-sid");
+      QContext.withTemporaryContext(new CapturedContext(serverQInstance, new QSystemUserSession()), () ->
+         new InsertAction().execute(new InsertInput().withTableName(UserSession.TABLE_NAME)
+            .withRecords(List.of(new QRecord().withValue("uuid", "protected-session").withValue("userId", "protected-user")
+               .withValue("accessToken", accessToken)))));
+      for(var entry : provider.invalidTokens("protected-user", "protected-sid").entrySet())
       {
-         payloadBuilder.append("\"sub\":\"").append(sub).append("\"");
-         hasField = true;
+         HttpResponse<String> response = Unirest.post(getBaseUrlAndPath() + "/oidc/backchannel-logout")
+            .field("logout_token", entry.getValue()).asString();
+         assertEquals(400, response.getStatus(), entry.getKey());
+         QContext.withTemporaryContext(new CapturedContext(serverQInstance, new QSystemUserSession()), () ->
+            assertEquals(1, new QueryAction().execute(new QueryInput(UserSession.TABLE_NAME)).getRecords().size(), entry.getKey()));
       }
-      if(sid != null)
-      {
-         if(hasField)
-         {
-            payloadBuilder.append(",");
-         }
-         payloadBuilder.append("\"sid\":\"").append(sid).append("\"");
-      }
-      payloadBuilder.append("}");
-
-      String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(payloadBuilder.toString().getBytes());
-
-      return header + "." + payload + ".";
    }
 
 
 
    /*******************************************************************************
-    ** Helper to create an access token JWT with an embedded 'sid' claim.
+    ** A valid HTTP event succeeds once; replay cannot log out a later session.
     *******************************************************************************/
-   private String createAccessTokenWithSid(String sid)
+   @Test
+   void testReplayCannotDeleteNewSession() throws Exception
    {
-      String header = Base64.getUrlEncoder().withoutPadding().encodeToString("{\"alg\":\"none\"}".getBytes());
-      String payload = Base64.getUrlEncoder().withoutPadding().encodeToString(("{\"sid\":\"" + sid + "\"}").getBytes());
-      return header + "." + payload + ".";
+      String token = provider.logoutToken("replay-user", null);
+      assertEquals(200, Unirest.post(getBaseUrlAndPath() + "/oidc/backchannel-logout").field("logout_token", token).asString().getStatus());
+      String accessToken = provider.accessToken("replay-user", "new-sid");
+      QContext.withTemporaryContext(new CapturedContext(serverQInstance, new QSystemUserSession()), () ->
+         new InsertAction().execute(new InsertInput().withTableName(UserSession.TABLE_NAME)
+            .withRecords(List.of(new QRecord().withValue("uuid", "new-session").withValue("userId", "replay-user").withValue("accessToken", accessToken)))));
+      assertEquals(400, Unirest.post(getBaseUrlAndPath() + "/oidc/backchannel-logout").field("logout_token", token).asString().getStatus());
+      QContext.withTemporaryContext(new CapturedContext(serverQInstance, new QSystemUserSession()), () ->
+         assertEquals(1, new QueryAction().execute(new QueryInput(UserSession.TABLE_NAME)).getRecords().size()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Helper to create a minimal logout_token JWT.
+    ** Signed by the owned HTTP provider fixture.
+    *******************************************************************************/
+   private String createLogoutToken(String sub, String sid) throws Exception
+   {
+      return (provider.logoutToken(sub, sid));
+   }
+
+
+
+   /*******************************************************************************
+    ** Session access token with the configured issuer and a session identifier.
+    *******************************************************************************/
+   private String createAccessTokenWithSid(String sid) throws Exception
+   {
+      return (provider.accessToken("some-user", sid));
+   }
+
+
+
+   /*******************************************************************************
+    ** Release only this test's provider; SpecTestBase owns the application server.
+    *******************************************************************************/
+   @AfterEach
+   void closeProvider()
+   {
+      provider.close();
    }
 
 }

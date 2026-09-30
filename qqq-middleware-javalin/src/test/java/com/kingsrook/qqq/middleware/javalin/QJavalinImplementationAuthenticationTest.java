@@ -5,27 +5,24 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
 
 
-import java.time.ZonedDateTime;
 import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -35,7 +32,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAu
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.TableBasedAuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
-import com.kingsrook.qqq.backend.core.utils.SleepUtils;
 import kong.unirest.Cookie;
 import kong.unirest.Cookies;
 import kong.unirest.HttpResponse;
@@ -46,7 +42,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -154,19 +149,17 @@ public class QJavalinImplementationAuthenticationTest extends QJavalinTestBase
          .asString();
       assertEquals(200, response.getStatus());
 
-      Cookies       cookies            = response.getCookies();
-      String        sessionId          = cookies.getNamed("sessionId").getValue();
-      ZonedDateTime originalExpiration = cookies.getNamed("sessionId").getExpiration();
+      Cookies cookies   = response.getCookies();
+      String  sessionId = cookies.getNamed("sessionId").getValue();
       assertNotNull(sessionId);
-
-      SleepUtils.sleep(1, TimeUnit.SECONDS);
+      assertEquals(QJavalinImplementation.SESSION_COOKIE_AGE, cookies.getNamed("sessionId").getMaxAge());
 
       response = Unirest.get(BASE_URL + "/metaData")
          .cookie(new Cookie("sessionId", sessionId))
          .asString();
       assertEquals(200, response.getStatus());
       assertEquals(sessionId, response.getCookies().getNamed("sessionId").getValue());
-      assertNotEquals(originalExpiration, response.getCookies().getNamed("sessionId").getExpiration());
+      assertEquals(QJavalinImplementation.SESSION_COOKIE_AGE, response.getCookies().getNamed("sessionId").getMaxAge());
    }
 
 

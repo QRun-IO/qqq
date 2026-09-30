@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
@@ -77,6 +76,40 @@ class SamplePackagedConfigurationIT
             assertEquals(5, records.getJSONArray("records").length());
             assertEquals("Sample", records.getJSONArray("records").getJSONObject(0).getJSONObject("values").getString("lastName"));
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A second packaged process starts from the original seed after a real write.
+    *******************************************************************************/
+   @Test
+   void testRepeatStartupReseedsInSeparateOwnedFixtures() throws Exception
+   {
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         try(PackagedSampleServer first = PackagedSampleServer.start(SampleJavalinServer.class, directory, List.of()))
+         {
+            URI base = first.awaitReady();
+            assertEquals(5, getJson(client, base.resolve("/data/person/count")).getInt("count"));
+            HttpResponse<String> added = client.send(HttpRequest.newBuilder(base.resolve("/data/person"))
+               .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json")
+               .POST(HttpRequest.BodyPublishers.ofString("""
+                  {"firstName":"Bootstrap","lastName":"Disposable","email":"bootstrap@example.invalid"}
+                  """)).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, added.statusCode(), added.body());
+            assertEquals(6, getJson(client, base.resolve("/data/person/count")).getInt("count"));
+         }
+         try(PackagedSampleServer second = PackagedSampleServer.start(SampleJavalinServer.class, directory, List.of()))
+         {
+            URI base = second.awaitReady();
+            assertEquals(5, getJson(client, base.resolve("/data/person/count")).getInt("count"));
+         }
+      }
+      try(var fixtures = Files.list(directory))
+      {
+         assertEquals(2, fixtures.filter(path -> path.getFileName().toString().startsWith("packaged-")).count());
       }
    }
 

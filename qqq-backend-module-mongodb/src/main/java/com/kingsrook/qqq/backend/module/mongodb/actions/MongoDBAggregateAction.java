@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.mongodb.actions;
@@ -75,6 +74,11 @@ public class MongoDBAggregateAction extends AbstractMongoDBAction implements Agg
     *******************************************************************************/
    public AggregateOutput execute(AggregateInput aggregateInput) throws QException
    {
+      if(aggregateInput.getQueryJoins() != null && !aggregateInput.getQueryJoins().isEmpty())
+      {
+         throw new QException("MongoDB explicit query joins are not supported");
+      }
+
       MongoClientContainer mongoClientContainer = null;
 
       Long       queryStartTime = System.currentTimeMillis();
@@ -102,7 +106,7 @@ public class MongoDBAggregateAction extends AbstractMongoDBAction implements Agg
          ////////////////////////////////////////////////////////////////////////
          // Filter original documents before adding the group and sort stages. //
          ////////////////////////////////////////////////////////////////////////
-         List<Bson> bsonList = makeFilterPipeline(table, backend, filter);
+         List<Bson> bsonList = makeFilterPipeline(table, backend, filter, mongoClientContainer);
          setQueryInQueryStat(new Document("pipeline", bsonList));
          queryToLog = bsonList;
 

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.middleware.javalin;
@@ -72,15 +71,16 @@ public class QApplicationLauncher
    private QApplicationJavalinServer server;
    private QInstance                 qInstance;
    private Thread                    shutdownHook;
+   private boolean                   stopping;
 
    private final List<StartedService> startedServices = new ArrayList<>();
 
 
 
    /***************************************************************************
-    ** something the launcher started, and how to stop it.
+    ** Something the launcher started, how to stop it, and optional final cleanup.
     ***************************************************************************/
-   private record StartedService(String name, Runnable stopper)
+   private record StartedService(String name, Runnable stopper, Runnable afterApplicationStop)
    {
    }
 
@@ -132,7 +132,7 @@ public class QApplicationLauncher
          // track the server (and the schedule manager, below) before starting it, //
          // so a failed start still stops whatever it got running.                 //
          ////////////////////////////////////////////////////////////////////////////
-         startedServices.add(new StartedService(JAVALIN_SERVER_SERVICE_NAME, server::stop));
+         startedServices.add(new StartedService(JAVALIN_SERVER_SERVICE_NAME, server::stop, null));
          server.start();
          qInstance = server.getQInstance();
 
@@ -144,7 +144,7 @@ public class QApplicationLauncher
             {
                scheduleManager.stop();
                scheduleManager.unInit();
-            }));
+            }, null));
             scheduleManager.start();
          }
          else
@@ -164,7 +164,7 @@ public class QApplicationLauncher
             serviceName = runtimeService.getName();
             LOG.info("Starting runtime service", logPair("service", serviceName));
             runtimeService.start(qInstance);
-            startedServices.add(new StartedService(serviceName, runtimeService::stop));
+            startedServices.add(new StartedService(serviceName, runtimeService::stop, runtimeService::afterApplicationStop));
          }
       }
       catch(Exception | LinkageError e)
@@ -225,40 +225,72 @@ public class QApplicationLauncher
 
    /*******************************************************************************
     ** Stop everything the launcher started, in reverse order.  An error stopping
-    ** one is logged, and the rest are still stopped.  Calling it again does
-    ** nothing.
+    ** one is logged, and the rest are still stopped. Then run runtime services'
+    ** final application cleanup in reverse order, isolating failures there too.
+    ** Reentrant calls on the stopping thread do nothing; concurrent callers wait.
+    ** Calling it again after completion does nothing.
     *******************************************************************************/
    public synchronized void stop()
    {
-      for(int i = startedServices.size() - 1; i >= 0; i--)
+      if(stopping)
       {
-         StartedService startedService = startedServices.get(i);
-         try
+         return;
+      }
+
+      stopping = true;
+      try
+      {
+         for(int i = startedServices.size() - 1; i >= 0; i--)
          {
-            LOG.info("Stopping application service", logPair("service", startedService.name()));
-            startedService.stopper().run();
+            StartedService startedService = startedServices.get(i);
+            try
+            {
+               LOG.info("Stopping application service", logPair("service", startedService.name()));
+               startedService.stopper().run();
+            }
+            catch(Exception | LinkageError e)
+            {
+               LOG.warn("Error stopping application service", e, logPair("service", startedService.name()));
+            }
          }
-         catch(Exception | LinkageError e)
+         for(int i = startedServices.size() - 1; i >= 0; i--)
          {
-            LOG.warn("Error stopping application service", e, logPair("service", startedService.name()));
+            StartedService startedService = startedServices.get(i);
+            if(startedService.afterApplicationStop() == null)
+            {
+               continue;
+            }
+
+            try
+            {
+               startedService.afterApplicationStop().run();
+            }
+            catch(Exception | LinkageError e)
+            {
+               LOG.warn("Error in final application service cleanup", e, logPair("service", startedService.name()));
+            }
+         }
+         startedServices.clear();
+
+         if(shutdownHook != null)
+         {
+            try
+            {
+               Runtime.getRuntime().removeShutdownHook(shutdownHook);
+            }
+            catch(IllegalStateException e)
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // the jvm is already shutting down (e.g., this is running in the hook), //
+               // so the hook can't be - and needn't be - removed.                      //
+               ///////////////////////////////////////////////////////////////////////////
+            }
+            shutdownHook = null;
          }
       }
-      startedServices.clear();
-
-      if(shutdownHook != null)
+      finally
       {
-         try
-         {
-            Runtime.getRuntime().removeShutdownHook(shutdownHook);
-         }
-         catch(IllegalStateException e)
-         {
-            ///////////////////////////////////////////////////////////////////////////
-            // the jvm is already shutting down (e.g., this is running in the hook), //
-            // so the hook can't be - and needn't be - removed.                      //
-            ///////////////////////////////////////////////////////////////////////////
-         }
-         shutdownHook = null;
+         stopping = false;
       }
    }
 

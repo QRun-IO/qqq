@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.backend.module.mongodb.actions;
@@ -28,9 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
-import com.kingsrook.qqq.backend.core.actions.tables.helpers.ActionTimeoutHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -68,8 +65,6 @@ import org.bson.types.ObjectId;
 public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryInterface
 {
    private static final QLogger LOG = QLogger.getLogger(MongoDBQueryAction.class);
-
-   private ActionTimeoutHelper actionTimeoutHelper;
 
 
 
@@ -151,7 +146,13 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
     *******************************************************************************/
    private QueryOutput execute(QueryInput queryInput, Boolean requireWriteIdentity) throws QException
    {
+      if(queryInput.getQueryJoins() != null && !queryInput.getQueryJoins().isEmpty())
+      {
+         throw new QException("MongoDB explicit query joins are not supported");
+      }
+
       MongoClientContainer mongoClientContainer = null;
+      MongoDBQueryTimeout queryTimeout = null;
 
       Long       queryStartTime = System.currentTimeMillis();
       List<Bson> queryToLog     = new ArrayList<>();
@@ -167,11 +168,8 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
          MongoDatabase             database   = mongoClientContainer.getMongoClient().getDatabase(backend.getDatabaseName());
          MongoCollection<Document> collection = database.getCollection(backendTableName);
 
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // set up & start an actionTimeoutHelper (note, internally it'll deal with the time being null or negative as meaning not to timeout) //
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         actionTimeoutHelper = new ActionTimeoutHelper(queryInput.getTimeoutSeconds(), TimeUnit.SECONDS, new TimeoutCanceller(mongoClientContainer));
-         actionTimeoutHelper.start();
+         queryTimeout = new MongoDBQueryTimeout(queryInput.getTimeoutSeconds(), mongoClientContainer, () -> openClient(backend, null));
+         queryTimeout.start();
 
          /////////////////////////
          // set up filter/query //
@@ -181,7 +179,7 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
          /////////////////////////////////////
          // build the aggregation pipeline  //
          /////////////////////////////////////
-         List<Bson> pipeline = makeFilterPipeline(table, backend, filter);
+         List<Bson> pipeline = makeFilterPipeline(table, backend, filter, mongoClientContainer);
 
          ///////////////////////////////////////////////////////////////////////
          // Preserve named virtual projection after filtering original values. //
@@ -314,6 +312,7 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
          ////////////////////////////////////////////
          // iterate over results, building records //
          ////////////////////////////////////////////
+         queryTimeout.throwIfTimedOut();
          try(MongoCursor<Document> cursor = collection.aggregate(mongoClientContainer.getMongoSession(), pipeline).iterator())
          {
             while(cursor.hasNext())
@@ -322,7 +321,8 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
                /////////////////////////////////////////////////////////////////////////
                // once we've started getting results, go ahead and cancel the timeout //
                /////////////////////////////////////////////////////////////////////////
-               actionTimeoutHelper.cancel();
+               queryTimeout.close();
+               queryTimeout.throwIfTimedOut();
                setQueryStatFirstResultTime();
 
                String nativePrimaryKey = null;
@@ -353,14 +353,20 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
             }
          }
 
+         queryTimeout.close();
+         queryTimeout.throwIfTimedOut();
          return (queryOutput);
       }
       catch(Exception e)
       {
-         if(actionTimeoutHelper != null && actionTimeoutHelper.getDidTimeout())
+         if(queryTimeout != null)
          {
-            setQueryStatFirstResultTime();
-            throw (new QUserFacingException("Query timed out."));
+            queryTimeout.close();
+            if(queryTimeout.hasTimedOut())
+            {
+               setQueryStatFirstResultTime();
+               throw new QUserFacingException("Query timed out.");
+            }
          }
 
          LOG.warn("Error executing query", e);
@@ -368,9 +374,9 @@ public class MongoDBQueryAction extends AbstractMongoDBAction implements QueryIn
       }
       finally
       {
-         if(actionTimeoutHelper != null)
+         if(queryTimeout != null)
          {
-            actionTimeoutHelper.cancel();
+            queryTimeout.close();
          }
 
          logQuery(getBackendTableName(queryInput.getTable()), "query", queryToLog, queryStartTime);

@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.esb.model;
@@ -35,7 +34,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.esb.publish.EsbProcessLifecycleListener;
 import com.kingsrook.qqq.esb.publish.EsbRecordChangeListener;
+import com.kingsrook.qqq.esb.runtime.EsbRuntimeService;
 
 
 /*******************************************************************************
@@ -102,8 +103,8 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
 
    /*******************************************************************************
     ** Interpret ${env.*} (etc.) variables in each provider's connection fields,
-    ** and register the record change listener that publishes table events (once,
-    ** however many times the instance is enriched).
+    ** and register the table and process publishing listeners and trigger
+    ** runtime service once, however many times the instance is enriched.
     *******************************************************************************/
    @Override
    public void enrich(QInstance qInstance)
@@ -114,12 +115,31 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
          provider.interpretVariables(interpreter);
       }
 
-      boolean listenerRegistered = CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream()
-         .anyMatch(codeReference -> codeReference != null && EsbRecordChangeListener.class.getName().equals(codeReference.getName()));
-      if(!listenerRegistered)
+      if(!isRegistered(qInstance.getRecordChangeListeners(), EsbRecordChangeListener.class))
       {
          qInstance.withRecordChangeListener(new QCodeReference(EsbRecordChangeListener.class));
       }
+
+      if(!isRegistered(qInstance.getProcessLifecycleListeners(), EsbProcessLifecycleListener.class))
+      {
+         qInstance.withProcessLifecycleListener(new QCodeReference(EsbProcessLifecycleListener.class));
+      }
+
+      if(!isRegistered(qInstance.getRuntimeServices(), EsbRuntimeService.class))
+      {
+         qInstance.withRuntimeService(new QCodeReference(EsbRuntimeService.class));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a list of code references includes the given class.
+    *******************************************************************************/
+   private static boolean isRegistered(List<QCodeReference> codeReferences, Class<?> referenceClass)
+   {
+      return (CollectionUtils.nonNullList(codeReferences).stream()
+         .anyMatch(codeReference -> codeReference != null && referenceClass.getName().equals(codeReference.getName())));
    }
 
 

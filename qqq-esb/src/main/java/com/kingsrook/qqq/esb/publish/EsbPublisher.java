@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.esb.publish;
@@ -47,7 +46,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  * Sends ESB events to a destination (spec section 5): one PERSISTENT JMS
  * TextMessage per event, all on one session.
  *
- * Each publish call opens one transacted session on the destination's provider
+ * Each publish call leases one transacted session on the destination's provider
  * (whose connection EsbConnectionManager keeps open), sends every event, and
  * commits once.  So a call sends all of its events or none of them, and a bulk
  * write's thousands of messages wait on the broker once, at the commit, rather
@@ -163,26 +162,24 @@ public final class EsbPublisher
 
 
    /*******************************************************************************
-    ** Send the events on one transacted session, committed once.  Closing the
-    ** session without a commit (after a failed send) rolls back what was sent.
+    ** Send on an exclusive pooled session. Close the producer before committing;
+    ** any send, producer cleanup, or commit failure discards the whole lease.
     *******************************************************************************/
    private static void send(QEsbDestinationMetaData destination, List<EsbEvent> events) throws QException, JMSException
    {
       EsbConnectionManager connectionManager = EsbConnectionManager.getInstance();
-      Session              session           = connectionManager.openSession(destination.getProviderName(), true);
-      try
+      try(EsbConnectionManager.PublishingSessionLease lease = connectionManager.borrowPublishingSession(destination.getProviderName()))
       {
-         MessageProducer producer = session.createProducer(connectionManager.resolve(session, destination));
-         producer.setDeliveryMode(DeliveryMode.PERSISTENT);
-         for(EsbEvent event : events)
+         Session session = lease.getSession();
+         try(MessageProducer producer = session.createProducer(connectionManager.resolve(session, destination)))
          {
-            producer.send(EsbEventCodec.toMessage(session, event));
+            producer.setDeliveryMode(DeliveryMode.PERSISTENT);
+            for(EsbEvent event : events)
+            {
+               producer.send(EsbEventCodec.toMessage(session, event));
+            }
          }
-         session.commit();
-      }
-      finally
-      {
-         closeQuietly(session);
+         lease.commit();
       }
    }
 
@@ -212,27 +209,9 @@ public final class EsbPublisher
 
 
    /*******************************************************************************
-    ** Close a session, after it has committed (or failed) - logging, rather than
-    ** throwing, if closing fails, since by then the outcome is decided.
-    *******************************************************************************/
-   private static void closeQuietly(Session session)
-   {
-      try
-      {
-         session.close();
-      }
-      catch(Exception e)
-      {
-         LOG.debug("Error closing an ESB publishing session", e);
-      }
-   }
-
-
-
-   /*******************************************************************************
     ** The failure's message, or its class name if it has none.
     *******************************************************************************/
-   private static String getErrorText(Throwable throwable)
+   static String getErrorText(Throwable throwable)
    {
       return (StringUtils.hasContent(throwable.getMessage()) ? throwable.getMessage() : throwable.getClass().getSimpleName());
    }

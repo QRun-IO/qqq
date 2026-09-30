@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.esb.runtime;
@@ -25,7 +24,10 @@ package com.kingsrook.qqq.esb.runtime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
@@ -39,6 +41,7 @@ import jakarta.jms.Message;
 import jakarta.jms.MessageConsumer;
 import jakarta.jms.Session;
 import jakarta.jms.Topic;
+import org.apache.logging.log4j.Level;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -144,6 +147,41 @@ class EsbTopicTriggerTest extends EsbRuntimeTestBase
          Message         message  = consumer.receive(WAIT_TIMEOUT.toMillis());
          assertThat(message).isNotNull();
          assertThat(EsbEventCodec.fromMessage(message).getId()).isEqualTo(sent.getId());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A consumer that can't be set up while the provider is connected won't be
+    ** fixed by reconnecting - here, the subscription already has an active
+    ** consumer with a different selector, which JMS refuses: the runner logs a
+    ** warning, with the exception, and stays CONNECTING (retrying).
+    *******************************************************************************/
+   @Test
+   void consumerSetupFailureWhileConnectedLogsAWarningWithTheException() throws Exception
+   {
+      String            subscriptionName = "esb.test.clash." + UUID.randomUUID().toString().substring(0, 8);
+      QCollectingLogger collectingLogger = QLogger.activateCollectingLoggerForClass(EsbTriggerRunner.class);
+      try
+      {
+         defineInstanceWithTrigger(new EsbTrigger().withDestinationName(TOPIC_NAME).withSubscriptionName(subscriptionName));
+         EsbConnectionManager manager = EsbConnectionManager.getInstance();
+         try(Session session = manager.openSession(PROVIDER_NAME, false))
+         {
+            QEsbDestinationMetaData topic         = EsbInstanceMetaData.of(QContext.getQInstance()).getDestination(TOPIC_NAME);
+            MessageConsumer         otherConsumer = session.createSharedDurableConsumer((Topic) manager.resolve(session, topic), subscriptionName, "clash = true");
+            assertThat(otherConsumer).isNotNull();
+
+            QEsbRuntime runtime = startRuntime(QContext.getQInstance());
+            waitFor("a warning with the exception", () -> collectingLogger.getCollectedMessages().stream()
+               .anyMatch(message -> Level.WARN.equals(message.getLevel()) && message.getMessage().contains("\"stackTrace\"")));
+            assertThat(runtime.getRunner(TOPIC_TRIGGER_NAME).getState()).isEqualTo(EsbTriggerState.CONNECTING);
+         }
+      }
+      finally
+      {
+         QLogger.deactivateCollectingLoggerForClass(EsbTriggerRunner.class);
       }
    }
 

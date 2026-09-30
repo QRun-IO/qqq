@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.sampleapp;
@@ -83,6 +82,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSTransaction;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.BaseC3P0ConnectionCustomizer;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.C3P0PooledConnectionProvider;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.SimpleConnectionProvider;
@@ -117,6 +117,8 @@ class SampleSQLiteTest
    private static final String TABLE = "fieldLab";
    private static final List<Connection> OPENED = new CopyOnWriteArrayList<>();
    private static ComboPooledDataSource ownedPool;
+   private static volatile CountDownLatch checkInStarted;
+   private static volatile CountDownLatch releaseCheckIn;
 
    @TempDir
    Path directory;
@@ -174,6 +176,12 @@ class SampleSQLiteTest
    @AfterEach
    void tearDown() throws Exception
    {
+      if(releaseCheckIn != null)
+      {
+         releaseCheckIn.countDown();
+      }
+      checkInStarted = null;
+      releaseCheckIn = null;
       List<Connection> leaked = new ArrayList<>();
       for(Connection connection : OPENED)
       {
@@ -510,10 +518,58 @@ class SampleSQLiteTest
       }
       assertEquals("Pooled", GetAction.execute(TABLE, 1).getValueString("name"));
       ((SQLiteTableBackendDetails) instance.getTable(TABLE).getBackendDetails()).setTableName("does_not_exist");
+      int openedBeforeFailure = OPENED.size();
       assertThrows(QException.class, () -> new QueryAction().execute(new QueryInput(TABLE)));
-      assertEquals(0, ownedPool.getNumBusyConnectionsDefaultUser());
+      assertEquals(openedBeforeFailure + 1, OPENED.size());
+      assertTrue(OPENED.get(openedBeforeFailure).isClosed());
+      try(Connection recovered = ConnectionManager.getConnection(backend))
+      {
+         assertEquals(1, ownedPool.getNumBusyConnectionsDefaultUser());
+         assertEquals(1, ownedPool.getNumConnectionsDefaultUser());
+         assertEquals(List.of("Pooled"), rows(recovered, "SELECT name FROM field_lab"));
+         assertEquals(List.of("1"), rows(recovered, "PRAGMA foreign_keys"));
+      }
       ownedPool.close();
       assertThrows(SQLException.class, () -> ownedPool.getConnection());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   @Timeout(10)
+   void testLogicalClosePrecedesAsynchronousPoolCheckIn() throws Exception
+   {
+      insert(record("Asynchronous", 1L));
+      ConnectionManager.resetConnectionProviders();
+      backend.setConnectionProvider(new QCodeReference(ObservedPool.class));
+      backend.setConnectionPoolSettings(new ConnectionPoolSettings().withInitialPoolSize(1).withMinPoolSize(1)
+         .withMaxPoolSize(1).withCheckoutTimeoutSeconds(1));
+      checkInStarted = new CountDownLatch(1);
+      releaseCheckIn = new CountDownLatch(1);
+      try
+      {
+         Connection returned = ConnectionManager.getConnection(backend);
+         assertFalse(ownedPool.isForceSynchronousCheckins());
+         returned.close();
+         assertTrue(checkInStarted.await(5, TimeUnit.SECONDS));
+         assertTrue(returned.isClosed());
+         assertEquals(1, ownedPool.getNumBusyConnectionsDefaultUser());
+      }
+      finally
+      {
+         releaseCheckIn.countDown();
+         checkInStarted = null;
+         releaseCheckIn = null;
+      }
+      try(Connection reused = ConnectionManager.getConnection(backend))
+      {
+         assertEquals(1, ownedPool.getNumConnectionsDefaultUser());
+         assertEquals(List.of("Asynchronous"), rows(reused, "SELECT name FROM field_lab"));
+         assertEquals(List.of("1"), rows(reused, "PRAGMA foreign_keys"));
+      }
    }
 
 
@@ -602,6 +658,7 @@ class SampleSQLiteTest
       protected void customizePool(ComboPooledDataSource pool)
       {
          ownedPool = pool;
+         pool.setConnectionCustomizerClassName(ControlledCheckIn.class.getName());
       }
 
 
@@ -615,6 +672,32 @@ class SampleSQLiteTest
          Connection connection = super.getConnection();
          OPENED.add(connection);
          return connection;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Retain normal connection initialization while controlling async check-in.
+    *******************************************************************************/
+   public static class ControlledCheckIn extends BaseC3P0ConnectionCustomizer
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void onCheckIn(Connection connection, String dataSourceIdentityToken) throws Exception
+      {
+         CountDownLatch started = checkInStarted;
+         CountDownLatch release = releaseCheckIn;
+         if(started != null && release != null)
+         {
+            started.countDown();
+            if(!release.await(5, TimeUnit.SECONDS))
+            {
+               throw new SQLException("Fixture check-in was not released");
+            }
+         }
       }
    }
 }

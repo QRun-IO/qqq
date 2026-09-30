@@ -22,18 +22,20 @@ Write Java for custom behavior while sharing metadata across the configured back
 - **Multiple interfaces** - REST API, CLI, Lambda handlers from same codebase
 - **Extensible** - Custom actions, widgets, and integrations when needed
 
-## Quick Start
+## Quick Start — 4.1 RC1
+
+This branch targets QQQ **4.1.0-RC.1** with Next **1.0.0-RC.1**. Confirm availability in the [RC1 release](https://github.com/QRun-IO/qqq/releases/tag/v4.1.0-RC.1) before installing. This is a prerelease with [known Next limitations](https://github.com/QRun-IO/qqq-frontend-next/releases/tag/v1.0.0-RC.1), including browser and feature parity gaps. For the stable release, use the [4.0.0 instructions](https://github.com/QRun-IO/qqq/blob/v4.0.0/README.md).
 
 **Prerequisites:** JDK 21+, Git, curl and unzip; Bash on macOS, Linux, or Windows WSL. Maven is downloaded automatically by the checked-in Maven Wrapper. No Node.js or Docker is needed.
 
 ```bash
-curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.1.0/quickstart.sh
+curl -fsSLo quickstart.sh https://raw.githubusercontent.com/QRun-IO/qqq/quickstart-4.1.0-RC.1/quickstart.sh
 bash quickstart.sh
 ```
 
-The script checks prerequisites, clones editable sample source into `qqq-sample`, compiles it against published QQQ 4.1.0, and opens the Next dashboard at <http://localhost:8000/app/person>. One Java process serves both the API and the dashboard; port 8000 must be free. Seeded H2 data needs no external database or account. Press Ctrl+C to stop; edit the Java source and run `./quickstart.sh` inside the checkout to rebuild and restart. Data resets on restart. Run `QQQ_FRONTEND=material bash quickstart.sh` to open the Material Dashboard instead. See the [sample instructions](qqq-sample-project/README.md) for the walkthrough and logs.
+The script checks prerequisites, clones editable sample source into `qqq-sample`, compiles it against published QQQ 4.1.0-RC.1, and opens the Next dashboard at <http://localhost:8000/app/person>. One Java process serves both the API and the dashboard; port 8000 must be free. Seeded H2 data needs no external database or account. Press Ctrl+C to stop; edit the Java source and run `./quickstart.sh` inside the checkout to rebuild and restart. Data resets on restart. Run `QQQ_FRONTEND=material bash quickstart.sh` to open the Material Dashboard instead. See the [sample instructions](qqq-sample-project/README.md) for the walkthrough and logs.
 
-Use the 4.1.0 BOM below to align modules, including the default dashboard, in your own application. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
+Use the 4.1.0-RC.1 BOM below to align modules, including the default dashboard, in your own application. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
 
 ```xml
 <dependencyManagement>
@@ -41,7 +43,7 @@ Use the 4.1.0 BOM below to align modules, including the default dashboard, in yo
         <dependency>
             <groupId>com.kingsrook.qqq</groupId>
             <artifactId>qqq-bom-pom</artifactId>
-            <version>4.1.0</version>
+            <version>4.1.0-RC.1</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -118,7 +120,7 @@ The [Material Dashboard](https://github.com/QRun-IO/qqq-frontend-material-dashbo
 
 ## Project Status
 
-QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). QQQ 4.1 makes the [Next dashboard](https://github.com/QRun-IO/qqq-frontend-next) the default; the Material Dashboard (0.41.0) remains supported as an explicit option. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).
+QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). QQQ 4.1 makes the [Next dashboard](https://github.com/QRun-IO/qqq-frontend-next) the default; the Material Dashboard (0.42.0-RC.1) remains supported as an explicit option. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).
 
 ## Contributing
 

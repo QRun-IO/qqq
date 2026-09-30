@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.esb.runtime;
@@ -209,6 +208,33 @@ class EsbBatchTriggerTest extends EsbRuntimeTestBase
       QFilterCriteria criteria = run.getCallbackFilter().getCriteria().get(0);
       assertThat(criteria.getValues()).containsExactly(inserted.get(0).getValueInteger("id"), inserted.get(2).getValueInteger("id"));
       assertThat(run.getRecords().stream().map(record -> record.getValueString("orderNo")).toList()).containsExactlyInAnyOrder("B-1", "B-3");
+   }
+
+
+
+   /*******************************************************************************
+    ** Pausing while a batch is being collected ends the collecting: the batch so
+    ** far runs right away, not after batchWaitMs, and the trigger then pauses.
+    *******************************************************************************/
+   @Test
+   void pauseEndsTheBatchBeingCollected() throws Exception
+   {
+      defineInstanceWithTrigger(new EsbTrigger().withDestinationName(QUEUE_NAME).withMode(EsbTriggerMode.BATCH).withBatchSize(10).withBatchWaitMs(30_000));
+      QEsbRuntime runtime = startRuntime(QContext.getQInstance());
+      waitForState(runtime, QUEUE_TRIGGER_NAME, EsbTriggerState.RUNNING);
+
+      sendEvent(QUEUE_NAME, Map.of("n", 1));
+      sendEvent(QUEUE_NAME, Map.of("n", 2));
+      pause(1500);
+      assertThat(RecordingStep.getRuns()).isEmpty();
+
+      Instant pausedAt = Instant.now();
+      runtime.getRunner(QUEUE_TRIGGER_NAME).pauseLocal();
+      waitFor("the batch run", () -> RecordingStep.getCompletedRuns().size() == 1);
+
+      assertThat(Duration.between(pausedAt, RecordingStep.getRuns().get(0).getStartedAt())).isLessThan(Duration.ofSeconds(5));
+      assertThat(RecordingStep.getRuns().get(0).getEvents()).hasSize(2);
+      assertThat(runtime.getRunner(QUEUE_TRIGGER_NAME).getState()).isEqualTo(EsbTriggerState.PAUSED);
    }
 
 

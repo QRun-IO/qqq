@@ -5,18 +5,17 @@
  * contact@kingsrook.com
  * https://github.com/Kingsrook/
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.kingsrook.qqq.esb.runtime;
@@ -128,6 +127,27 @@ class EsbRetryAndDeadLetterTest extends EsbRuntimeTestBase
       assertThat(counters.failed()).isEqualTo(3);
       assertThat(counters.retried()).isEqualTo(2);
       assertThat(counters.lastError()).contains("boom");
+   }
+
+
+
+   /*******************************************************************************
+    ** A run that throws an Error (not an Exception) fails like any other, and its
+    ** dead letter's qqqError names the Error.
+    *******************************************************************************/
+   @Test
+   void errorThrownByARunIsDeadLetteredWithItsMessage() throws Exception
+   {
+      EsbTrigger trigger = new EsbTrigger().withDestinationName(QUEUE_NAME).withMaxAttempts(1);
+      defineInstanceWithTrigger(trigger);
+      RecordingStep.throwErrorAlways();
+
+      sendEvent(QUEUE_NAME, Map.of("orderNo", "E-1"));
+      startRuntime(QContext.getQInstance());
+
+      List<Message> deadLetters = receiveAll(getDeadLetterQueueName(trigger), WAIT_TIMEOUT);
+      assertThat(deadLetters).hasSize(1);
+      assertThat(deadLetters.get(0).getStringProperty("qqqError")).contains("AssertionError").contains("error on run 1");
    }
 
 

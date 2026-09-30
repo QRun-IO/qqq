@@ -89,7 +89,7 @@ public class BaseTest
     *******************************************************************************/
    protected GenericContainer<?> createMongoContainer()
    {
-      return new MongoFixtureContainer()
+      GenericContainer<?> container = new MongoFixtureContainer()
          .withEnv("MONGO_INITDB_ROOT_USERNAME", TestUtils.MONGO_USERNAME)
          .withEnv("MONGO_INITDB_ROOT_PASSWORD", TestUtils.MONGO_PASSWORD)
          .withEnv("MONGO_INITDB_DATABASE", TestUtils.MONGO_DATABASE)
@@ -107,6 +107,13 @@ public class BaseTest
                '
                """))
             .withStartupTimeout(Duration.ofSeconds(60)));
+
+      String diagnosticRun = System.getenv("QQQ_MONGO_TRACE_RUN");
+      if(diagnosticRun != null && !diagnosticRun.isBlank())
+      {
+         container.withLabel("io.qrun.mongo-bind-trace", diagnosticRun);
+      }
+      return (container);
    }
 
 

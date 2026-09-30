@@ -1,0 +1,82 @@
+name: Public quickstart lifecycle
+
+on:
+  push:
+    tags:
+      - quickstart-4.1.0-RC.1
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact public candidate to verify
+        required: true
+        type: choice
+        options:
+          - 4.1.0-RC.1
+      source_sha:
+        description: Full reviewed commit of the immutable quickstart tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+        browser: [chromium, firefox, webkit]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: QRun-IO/qqq-frontend-next
+          ref: e901df91017204add7ebffa81765a02094e581b0
+          path: acceptance-tools
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install acceptance tools only
+        working-directory: acceptance-tools
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps "$BROWSER"
+        env:
+          BROWSER: ${{ matrix.browser }}
+      - name: Run the public launcher lifecycle
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            CANDIDATE_VERSION="${GITHUB_REF_NAME#quickstart-}"
+            EXPECTED_SHA="$(git rev-parse HEAD)"
+          fi
+          node qqq-sample-project/acceptance/quickstart/run-public.mjs \
+            --playwright-project acceptance-tools \
+            --output "$RUNNER_TEMP/qqq-public-lifecycle" \
+            --version "$CANDIDATE_VERSION" --expected-sha "$EXPECTED_SHA" \
+            --browser "$BROWSER"
+      - name: Retain lifecycle results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickstart-${{ matrix.os }}-${{ matrix.browser }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/qqq-public-lifecycle/*.json
+            ${{ runner.temp }}/qqq-public-lifecycle/*.log
+            ${{ runner.temp }}/qqq-public-lifecycle/*.png

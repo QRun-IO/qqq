@@ -23,8 +23,10 @@ package com.kingsrook.qqq.middleware.javalin.routeproviders;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -192,7 +194,14 @@ public class SimpleFileSystemDirectoryRouter implements QJavalinRouteProviderInt
          }
 
          boolean packagedResource = "jar".equals(resource.getProtocol());
-         staticFileConfig.directory = packagedResource ? fileSystemPath : resource.getFile();
+         try
+         {
+            staticFileConfig.directory = packagedResource ? fileSystemPath : Path.of(resource.toURI()).toString();
+         }
+         catch(URISyntaxException e)
+         {
+            throw new RuntimeException("Invalid file system resource: " + fileSystemPath, e);
+         }
          staticFileConfig.hostedPath = hostedPath;
          staticFileConfig.location = packagedResource ? Location.CLASSPATH : Location.EXTERNAL;
          LOG.info("Static File Config : hostedPath [" + hostedPath + "] : directory [" + staticFileConfig.directory + "] : location [" + staticFileConfig.location + "]");

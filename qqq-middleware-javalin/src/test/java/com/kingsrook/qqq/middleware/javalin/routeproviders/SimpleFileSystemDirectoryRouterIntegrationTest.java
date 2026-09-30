@@ -55,6 +55,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SimpleFileSystemDirectoryRouterIntegrationTest
 {
    /*******************************************************************************
+    ** Decoded filesystem paths preserve spaces, literal plus and percent characters.
+    *******************************************************************************/
+   @Test
+   void testStaticResourceDirectoryWithEncodedCharacters() throws Exception
+   {
+      Boolean originalLoadFromJar = SimpleFileSystemDirectoryRouter.loadStaticFilesFromJar;
+      SimpleFileSystemDirectoryRouter.loadStaticFilesFromJar = false;
+      Javalin service = null;
+      try(HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build())
+      {
+         SimpleFileSystemDirectoryRouter router = new SimpleFileSystemDirectoryRouter("/encoded", "static files + percent%");
+         router.setQInstance(TestUtils.defineInstance());
+         service = Javalin.create(router::acceptJavalinConfig).start(0);
+         HttpResponse<String> response = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + service.port() + "/encoded/index.html"))
+            .timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString());
+         assertEquals(200, response.statusCode());
+         assertEquals("encoded path fixture\n", response.body());
+      }
+      finally
+      {
+         if(service != null)
+         {
+            service.stop();
+         }
+         SimpleFileSystemDirectoryRouter.loadStaticFilesFromJar = originalLoadFromJar;
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Static content and deep links work; missing assets remain missing.
     *******************************************************************************/
    @Test

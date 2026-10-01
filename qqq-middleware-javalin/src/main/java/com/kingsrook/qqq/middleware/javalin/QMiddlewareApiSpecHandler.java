@@ -99,16 +99,19 @@ public class QMiddlewareApiSpecHandler
          ////////////////////////////////////////////
          for(AbstractMiddlewareVersion middlewareVersion : middlewareVersionList)
          {
-            String version     = middlewareVersion.getVersion();
-            String versionPath = "/" + basePath + middlewareVersion.getVersionBasePath();
-            ApiBuilder.get(versionPath + "/", context -> doSpecHtml(middlewareVersion, context, version));
+            String version = middlewareVersion.getVersion();
+            for(String documentationBasePath : middlewareVersion.getDocumentationBasePaths())
+            {
+               String versionPath = "/" + basePath + documentationBasePath;
+               ApiBuilder.get(versionPath + "/", context -> doSpecHtml(middlewareVersion, context, version));
 
-            ///////////////////////////////////////////
-            // add known paths for specs & docs page //
-            ///////////////////////////////////////////
-            ApiBuilder.get(versionPath + "/openapi.yaml", context -> doSpecYaml(middlewareVersion, context, version));
-            ApiBuilder.get(versionPath + "/openapi.json", context -> doSpecJson(middlewareVersion, context, version));
-            ApiBuilder.get(versionPath + "/openapi.html", context -> doSpecHtml(middlewareVersion, context, version));
+               ///////////////////////////////////////////
+               // add known paths for specs & docs page //
+               ///////////////////////////////////////////
+               ApiBuilder.get(versionPath + "/openapi.yaml", context -> doSpecYaml(middlewareVersion, context, version));
+               ApiBuilder.get(versionPath + "/openapi.json", context -> doSpecJson(middlewareVersion, context, version));
+               ApiBuilder.get(versionPath + "/openapi.html", context -> doSpecHtml(middlewareVersion, context, version));
+            }
          }
       });
    }

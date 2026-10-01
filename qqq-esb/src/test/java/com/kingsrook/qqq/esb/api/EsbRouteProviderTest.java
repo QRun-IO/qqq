@@ -138,14 +138,16 @@ class EsbRouteProviderTest extends EsbApiTestBase
       assertEquals(40, syncOrder.getJSONObject("counters").getInt("avgMs"));
 
       JSONObject deadLetter = syncOrder.getJSONObject("deadLetter");
-      assertThat(deadLetter.keySet()).containsExactlyInAnyOrder("brokerName", "messageCount");
+      assertThat(deadLetter.keySet()).containsExactlyInAnyOrder("brokerName", "messageCount", "paused");
       assertEquals(DEAD_LETTERS_SYNC_ORDER, deadLetter.getString("brokerName"));
       assertTrue(deadLetter.isNull("messageCount"));
+      assertTrue(deadLetter.isNull("paused"));
 
       JSONObject subscription = syncOrder.getJSONObject("subscription");
-      assertThat(subscription.keySet()).containsExactlyInAnyOrder("brokerName", "messageCount");
+      assertThat(subscription.keySet()).containsExactlyInAnyOrder("brokerName", "messageCount", "paused");
       assertEquals("orderEvents::syncOrder\\.orderEvents", subscription.getString("brokerName"));
       assertTrue(subscription.isNull("messageCount"));
+      assertTrue(subscription.isNull("paused"));
 
       JSONObject fulfillOrder = subscribers.getJSONObject(1);
       assertEquals(TRIGGER_FULFILL_ORDER, fulfillOrder.getString("name"));
@@ -327,8 +329,43 @@ class EsbRouteProviderTest extends EsbApiTestBase
          assertEquals(7, trigger.getJSONObject("destination").getJSONObject("queueInfo").getInt("messageCount"));
          assertEquals("rabbitQueue.dlq", trigger.getJSONObject("deadLetter").getString("brokerName"));
          assertEquals(3, trigger.getJSONObject("deadLetter").getInt("messageCount"));
+         assertFalse(trigger.getJSONObject("deadLetter").getBoolean("paused"));
 
          assertEquals(2, server.getRequests().size());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Subscription and dead-letter queue controls need the broker's paused state,
+    ** with counts and state taken from one queue-info lookup per queue.
+    *******************************************************************************/
+   @Test
+   void testSubscriptionAndDeadLetterPausedState() throws Exception
+   {
+      for(Boolean paused : List.of(true, false))
+      {
+         try(MockManagementServer server = new MockManagementServer())
+         {
+            for(Integer messageCount : List.of(7, 3))
+            {
+               server.withResponse(200, "{\"status\":200,\"value\":[\"queue-mbean\"]}")
+                  .withResponse(200, new JSONObject().put("status", 200).put("value", new JSONObject()
+                     .put("MessageCount", messageCount).put("ConsumerCount", 1).put("Paused", paused)).toString());
+            }
+            EsbInstanceMetaData.of(qInstance).getProviders().get(PROVIDER_NAME).setManagementUrl(server.getBaseUrl());
+
+            JSONObject trigger      = getJson("/qqq/v1/esb/process/" + PROCESS_NAME_SYNC_ORDER).getJSONArray("triggers").getJSONObject(0);
+            JSONObject subscription = trigger.getJSONObject("subscription");
+            JSONObject deadLetter   = trigger.getJSONObject("deadLetter");
+            assertEquals(7, subscription.getInt("messageCount"));
+            assertEquals(3, deadLetter.getInt("messageCount"));
+            assertEquals(paused, subscription.getBoolean("paused"));
+            assertEquals(paused, deadLetter.getBoolean("paused"));
+            assertTrue(trigger.getJSONObject("destination").getJSONObject("capabilities").getBoolean("pauseQueue"));
+            assertEquals(4, server.getRequests().size());
+         }
       }
    }
 

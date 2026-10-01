@@ -148,6 +148,26 @@ public class ApiAwareMiddlewareVersionV1 extends MiddlewareVersionV1
 
 
    /***************************************************************************
+    ** Documentation belongs only to registered API paths and versions. The
+    ** generic execution path would otherwise capture routes such as esb/overview.
+    ***************************************************************************/
+   @Override
+   public List<String> getDocumentationBasePaths()
+   {
+      List<String> paths = new ArrayList<>();
+      for(Map.Entry<String, ApiNameAndVersions> entry : apiNameAndVersionsByPath.entrySet())
+      {
+         for(String apiVersion : entry.getValue().apiVersions())
+         {
+            paths.add("/" + getVersion() + "/" + entry.getKey() + "/" + apiVersion + "/");
+         }
+      }
+      return (paths.stream().sorted().toList());
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    public void preExecute(Context context) throws QException

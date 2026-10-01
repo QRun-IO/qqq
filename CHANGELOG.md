@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Enterprise Service Bus ([#739](https://github.com/QRun-IO/qqq/issues/739))** — `qqq-esb` publishes
+  committed table changes and process lifecycle events as CloudEvents directly to ActiveMQ Artemis or
+  RabbitMQ. Queue and shared durable topic triggers run QQQ processes with concurrency, retries and
+  dead-letter handling. Consumers use at-least-once delivery; no new production tables or database outbox are added.
+- **ESB administration in Next ([PR #19](https://github.com/QRun-IO/qqq-frontend-next/pull/19),
+  [#986](https://github.com/QRun-IO/qqq/issues/986), originally Next #10)** — permission-scoped Developer
+  views, status, subscription browsing, trigger controls and confirmed dead-letter replay; queue actions
+  respect broker capabilities. Frontend and framework versions remain independent.
 - **Next dashboard by default ([#649](https://github.com/QRun-IO/qqq/issues/649))** — `QApplicationJavalinServer`
   serves the `com.kingsrook.qqq:qqq-frontend-next` dashboard at `/` when its jar is on the classpath
   (`NextDashboardRouteProvider`; API routes and their own 404 responses are never shadowed). `qqq-bom-pom`
@@ -35,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The sample application and quickstart serve the Next dashboard from the sample itself on port 8000;
   the quickstart no longer needs Docker. `QQQ_FRONTEND=material bash quickstart.sh` opens the Material
   Dashboard. The sample's branding icon now lives in its overlay folder.
+
+### Fixed
+- **ESB sample/API integration ([#980](https://github.com/QRun-IO/qqq/pull/980))** — register the stock
+  sample's ESB app, widget, management processes and routes ([#976](https://github.com/QRun-IO/qqq/issues/976));
+  prevent application API documentation routes from intercepting ESB endpoints
+  ([#977](https://github.com/QRun-IO/qqq/issues/977)); expose nullable subscription and dead-letter queue
+  paused state so Next can show supported pause/resume controls ([#975](https://github.com/QRun-IO/qqq/issues/975)).
 
 ### Compatibility
 - Applications that depend only on `qqq-frontend-material-dashboard` keep serving it at its configured

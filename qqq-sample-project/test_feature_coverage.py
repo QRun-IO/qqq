@@ -84,13 +84,13 @@ class FeatureCoverageGateTest(unittest.TestCase):
     def configure_accepted_next(self):
         shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
         (self.sample / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
-            '<qqq.frontend.next.version>1.0.0-RC.1</qqq.frontend.next.version></properties></project>')
+            '<qqq.frontend.next.version>1.0.0-RC.8</qqq.frontend.next.version></properties></project>')
         (self.sample.parent / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
             '<revision>4.1.0-SNAPSHOT</revision></properties></project>')
         bom = self.sample.parent / 'qqq-bom'
         bom.mkdir(exist_ok=True)
         (bom / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies>'
-            '<dependency><artifactId>qqq-frontend-next</artifactId><version>1.0.0-RC.1</version></dependency>'
+            '<dependency><artifactId>qqq-frontend-next</artifactId><version>1.0.0-RC.8</version></dependency>'
             '</dependencies></dependencyManagement></project>')
 
     def test_accepted_next_is_explicit_and_does_not_certify_missing_native_evidence(self):
@@ -122,7 +122,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.configure_accepted_next()
         path = self.sample / 'release-deferrals.json'
         original = json.loads(path.read_text())
-        for field, value in (('next_version', '1.0.0-RC.2'), ('next_sha', '0' * 40),
+        for field, value in (('next_version', '1.0.0-RC.1'), ('next_version', '1.0.0-RC.9'),
+                             ('next_sha', '0' * 40),
                              ('jar_sha256', '0' * 64), ('owner_approval', 'unapproved'),
                              ('features', ['core.security.authentication']), ('target_release', '')):
             with self.subTest(field=field):
@@ -139,7 +140,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         root_pom.write_text(root_content)
         for pom in (self.sample / 'pom.xml', self.sample.parent / 'qqq-bom/pom.xml'):
             content = pom.read_text()
-            pom.write_text(content.replace('1.0.0-RC.1', '1.0.0-RC.2'))
+            pom.write_text(content.replace('1.0.0-RC.8', '1.0.0-RC.2'))
             self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.1')[0])
             pom.write_text(content)
 

@@ -132,6 +132,37 @@ mvn clean install
 
 See [Developer Onboarding](https://github.com/QRun-IO/qqq/wiki/Developer-Onboarding) and [Contribution Guidelines](https://github.com/QRun-IO/qqq/wiki/Contribution-Guidelines).
 
+### Verify packaged notices
+
+From the reactor root, package the release-profile archives and check their
+LICENSE/NOTICE entries before publication:
+
+```bash
+mvn -Prelease -DskipTests -Dgpg.skip=true clean package
+python3 scripts/check-packaged-notices.py
+```
+
+The guard checks main, source and Javadoc JARs for every JAR-producing reactor
+module, plus declared test JARs. Each must contain exactly one `META-INF/LICENSE`
+and `META-INF/NOTICE`, byte-identical to the root files. Explicit archive paths
+can also be supplied to check downloaded distributions. Missing archives,
+missing or duplicate entries, and altered notice text fail the check.
+
+Maven shared archive resources preserve the existing main/test resources. Shade
+adds the exact root notices after its existing filters, without merging them
+with dependency notices; inherited transformer lists append to child manifest
+and service transformers. Missing root notice files fail `generate-resources`
+before copying, even when stale generated files exist. Maven locates the root
+through the checked-in `.mvn` directory, including root `-pl`, module `-f` and
+module-directory invocations. The optional `buildShadedJar` profile uses the same
+mapping. This explicit post-package guard does not run automatically in the
+publishing workflow. These commands skip runtime tests and neither sign nor
+publish; existing release checks still apply.
+
+Run the lifecycle from the reactor root (`-pl` or `-f` may select a module).
+The existing relative Checkstyle header path requires that working directory;
+isolated resource-only probes from a module directory need `-Dcheckstyle.skip=true`.
+
 ## Documentation
 
 Start with the [sample application](qqq-sample-project/README.md), [4.0 migration guide](docs/migration/4.0.adoc), [framework documentation](https://www.qrun.io/docs), and [QQQ Wiki](https://github.com/QRun-IO/qqq/wiki).

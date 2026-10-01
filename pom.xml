@@ -297,12 +297,99 @@
         <directory>src/main/resources</directory>
         <filtering>false</filtering>
       </resource>
+      <resource>
+        <directory>${project.build.directory}/maven-shared-archive-resources</directory>
+        <filtering>false</filtering>
+      </resource>
     </resources>
+    <testResources>
+      <testResource>
+        <directory>src/test/resources</directory>
+        <filtering>false</filtering>
+      </testResource>
+      <testResource>
+        <directory>${project.build.directory}/maven-shared-archive-resources</directory>
+        <filtering>false</filtering>
+      </testResource>
+    </testResources>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <configuration>
+            <!-- Add our exact notices after the existing META-INF filters, without merging dependency text. -->
+            <transformers combine.children="append">
+              <transformer implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
+                <resource>META-INF/LICENSE</resource>
+                <file>${project.build.directory}/maven-shared-archive-resources/META-INF/LICENSE</file>
+              </transformer>
+              <transformer implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
+                <resource>META-INF/NOTICE</resource>
+                <file>${project.build.directory}/maven-shared-archive-resources/META-INF/NOTICE</file>
+              </transformer>
+            </transformers>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
     <plugins>
       <!-- plugins specifically for this module -->
       <!-- none at this time -->
 
       <!-- Common plugins for all qqq modules -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>3.6.3</version>
+        <executions>
+          <execution>
+            <id>require-root-notices</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireFilesExist>
+                  <files>
+                    <file>${maven.multiModuleProjectDirectory}/LICENSE</file>
+                    <file>${maven.multiModuleProjectDirectory}/NOTICE</file>
+                  </files>
+                </requireFilesExist>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Source and Javadoc JARs also include Maven's shared archive resources. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.4.0</version>
+        <executions>
+          <execution>
+            <id>package-root-notices</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/maven-shared-archive-resources/META-INF</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${maven.multiModuleProjectDirectory}</directory>
+                  <filtering>false</filtering>
+                  <includes>
+                    <include>LICENSE</include>
+                    <include>NOTICE</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>

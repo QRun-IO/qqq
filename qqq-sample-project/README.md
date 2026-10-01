@@ -1,6 +1,6 @@
 # QQQ Sample Project
 
-QRun-owned reference application for QQQ 4.1: tables, related records, processes, widgets, the default Next dashboard, the optional Material Dashboard 0.42.0-RC.1, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
+QRun-owned reference application for QQQ 4.1: tables, related records, processes, widgets, the default Next dashboard, the optional Material Dashboard 0.42.0-RC.2, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
 
 ## Quickstart with Next — 4.1 RC1
 
@@ -203,10 +203,10 @@ After committing the sample and publishing the release, validate those public ar
 For a published BOM candidate or GA release, first merge the **Published BOM consumer** workflow into default `develop` and carry it into `release/4.1` and the GA tag. After Central sync, dispatch it on `release/4.1` with the exact `4.1.0-RC.N` version. For GA, dispatch the workflow through GitHub CLI or API with tag ref `v4.1.0` and version input `4.1.0`; the web selector only lists branches. Require a successful RC run and retain its attached evidence before GA promotion; verify the GA artifact after it is public. The workflow checks that the selected source revision matches the requested version and runs `python3 qqq-sample-project/verify-published-bom.py 4.1.0-RC.1` (substitute the literal published version). The checker imports the public BOM through Maven Central with empty settings and a fresh cache, compares every normalized managed coordinate, and resolves every managed QQQ jar plus the pinned Next dashboard. It checks direct dependency scopes and compares each cached BOM/jar byte-for-byte with a separate HTTPS fetch from Central. It fails on absent, wrong-version, or snapshot dependencies and keeps `pom.xml`, `settings.xml`, `maven.log`, `dependency-tree.json`, the isolated cache, and `evidence.json` under `qqq-sample-project/target/published-bom-*`. Local runs can archive that directory; the workflow attaches the report, consumer POM, Maven log, and dependency tree. This checks the published BOM consumer contract, while the sample acceptance command below checks runtime behavior.
 
 ```bash
-python3 qqq-sample-project/verify-published.py 4.1.0-RC.1 --material-version 0.42.0-RC.1 --next-version 1.0.0-RC.8
+python3 qqq-sample-project/verify-published.py 4.1.0-RC.1 --material-version 0.42.0-RC.2 --next-version 1.0.0-RC.8
 ```
 
-Supply the core and dashboard versions actually published; the command above selects core 4.1.0-RC.1, Next dashboard 1.0.0-RC.8 and Material Dashboard 0.42.0-RC.1. This exports committed `HEAD`, resolves the literal parent and dashboard from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and reports the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`, including separate test-acceptance and feature-coverage results. Add `--require-complete-coverage` when the deferred comprehensive feature gate is required; without it, a successful run does not certify the deferred scenarios.
+Supply the core and dashboard versions actually published; the command above selects core 4.1.0-RC.1, Next dashboard 1.0.0-RC.8 and Material Dashboard 0.42.0-RC.2. This exports committed `HEAD`, resolves the literal parent and dashboard from Central with empty user/global settings and a new cache, runs the complete sample acceptance profile, and reports the feature ledger. It does not install local framework artifacts. It retains `maven.log` and `acceptance.json` under `target/published-*`, including separate test-acceptance and feature-coverage results. Add `--require-complete-coverage` when the deferred comprehensive feature gate is required; without it, a successful run does not certify the deferred scenarios.
 
 ## Source entry points
 

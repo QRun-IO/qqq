@@ -95,6 +95,8 @@ import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
+import com.kingsrook.qqq.esb.api.EsbJavalinMetaDataProducer;
+import com.kingsrook.qqq.esb.metadata.EsbAppMetaDataProducer;
 import com.kingsrook.qqq.esb.model.EsbDestinationType;
 import com.kingsrook.qqq.esb.model.EsbInstanceMetaData;
 import com.kingsrook.qqq.esb.model.EsbProcessMetaData;
@@ -105,6 +107,7 @@ import com.kingsrook.qqq.esb.model.EsbTablePublication;
 import com.kingsrook.qqq.esb.model.EsbTrigger;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
 import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
+import com.kingsrook.qqq.esb.processes.EsbPauseQueueMetaDataProducer;
 import com.kingsrook.sampleapp.dashboard.widgets.PersonsByCreateDateBarChart;
 import com.kingsrook.sampleapp.processes.clonepeople.ClonePeopleTransformStep;
 import com.kingsrook.sampleapp.processes.syncperson.SyncPersonStep;
@@ -252,6 +255,9 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       defineWidgets(qInstance);
       defineBranding(qInstance);
       defineApps(qInstance);
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbAppMetaDataProducer.class.getPackageName());
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbPauseQueueMetaDataProducer.class.getPackageName());
+      MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, EsbJavalinMetaDataProducer.class.getPackageName());
 
       return (qInstance);
    }

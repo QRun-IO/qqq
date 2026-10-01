@@ -596,13 +596,15 @@ public class EsbStatusBuilder
 
    /*******************************************************************************
     ** A trigger's dead-letter queue or subscription queue: { brokerName,
-    ** messageCount (null without broker data) }.
+    ** messageCount, paused (both null without broker data) }.
     *******************************************************************************/
    private Map<String, Object> buildBrokerQueue(String providerName, String brokerQueueName)
    {
-      Map<String, Object> result = new LinkedHashMap<>();
+      Optional<EsbQueueInfo> queueInfo = getQueueInfo(providerName, brokerQueueName);
+      Map<String, Object>   result    = new LinkedHashMap<>();
       result.put("brokerName", brokerQueueName);
-      result.put("messageCount", getQueueInfo(providerName, brokerQueueName).map(EsbQueueInfo::messageCount).orElse(null));
+      result.put("messageCount", queueInfo.map(EsbQueueInfo::messageCount).orElse(null));
+      result.put("paused", queueInfo.map(EsbQueueInfo::paused).orElse(null));
       return (result);
    }
 

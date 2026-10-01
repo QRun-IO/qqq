@@ -99,6 +99,17 @@ public abstract class AbstractMiddlewareVersion
 
 
    /***************************************************************************
+    ** Paths that serve documentation. Versions with parameterized execution
+    ** routes can provide concrete paths to avoid shadowing other providers.
+    ***************************************************************************/
+   public List<String> getDocumentationBasePaths()
+   {
+      return (List.of(getVersionBasePath()));
+   }
+
+
+
+   /***************************************************************************
     ** For initial setup when server boots, set the qInstance - but also,
     ** e.g., for development, to do a hot-swap.
     ***************************************************************************/

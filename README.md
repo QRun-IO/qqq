@@ -120,7 +120,7 @@ The [Material Dashboard](https://github.com/QRun-IO/qqq-frontend-material-dashbo
 
 ## Project Status
 
-QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). QQQ 4.1 makes the [Next dashboard](https://github.com/QRun-IO/qqq-frontend-next) the default; the Material Dashboard (0.42.0-RC.1) remains supported as an explicit option. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).
+QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). QQQ 4.1 makes the [Next dashboard](https://github.com/QRun-IO/qqq-frontend-next) the default; the Material Dashboard (0.42.0-RC.2) remains supported as an explicit option. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).
 
 ## Contributing
 

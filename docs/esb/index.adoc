@@ -31,6 +31,10 @@ ActiveMQ Artemis and RabbitMQ 4.x are supported through JMS 3.x. ActiveMQ Classi
 
 Table events publish after a successful transaction commits. A failed publish is logged and counted but does not undo the table write. Trigger success commits the JMS session; failure rolls it back for broker redelivery until `maxAttempts`, when the event is dead-lettered or discarded. Keep `maxAttempts` below the broker's own redelivery limit (Artemis defaults to 10; RabbitMQ quorum queues default to 20). Broker high availability must be configured on the broker itself.
 
+Stopping the runtime interrupts active process runs. A run that completes successfully during the interrupt grace period is committed; otherwise, a stopped run's messages roll back for redelivery after restart. This stopped-run rollback does not increment QQQ's failure counter, but broker redelivery advances `JMSXDeliveryCount`, which QQQ uses for `maxAttempts`. Repeated shutdowns can therefore consume delivery attempts.
+
+In batch mode, a retry rolls back the whole JMS transaction, including any dead-letter sends for unparseable messages. Those messages are redelivered with the batch and are dead-lettered or discarded, according to `onDeadLetter`, when a later transaction commits.
+
 Delivery is at least once. Write triggered processes so a repeat delivery is safe. There is no ordering guarantee unless concurrency is 1, no duplicate filtering, and no XA transaction across the broker and table backend. Avoid publishing an event that triggers the same process indefinitely. A rollback on a non-transactional table backend drops pending events even if its write persisted. If fetching the old record for DELETE fails, QQQ publishes no delete event.
 
 === Visibility, management, and permissions

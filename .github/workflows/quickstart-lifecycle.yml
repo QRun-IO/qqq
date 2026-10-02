@@ -89,10 +89,19 @@ jobs:
           }
           if [[ "$QQQ_QUICKSTART_BOUNDARY_CAPTURE" == "1" ]]; then
             set -o pipefail
-            DEBUG=pw:browser run_lifecycle 2>&1 | tee "$RUNNER_TEMP/qqq-quickstart-diagnostic/native.log"
+            mkdir -m 700 -p "$RUNNER_TEMP/qqq-quickstart-private-protocol"
+            DEBUG=pw:browser,pw:protocol DEBUG_FILE="$RUNNER_TEMP/qqq-quickstart-private-protocol/protocol.raw" run_lifecycle 2>&1 | tee "$RUNNER_TEMP/qqq-quickstart-diagnostic/native.log"
           else
             run_lifecycle
           fi
+      - name: Summarize private first-page protocol
+        if: ${{ always() && inputs.boundary_capture }}
+        run: |
+          umask 077
+          node qqq-sample-project/acceptance/quickstart/protocol-files.mjs \
+            "$RUNNER_TEMP/qqq-quickstart-private-protocol/protocol.raw" \
+            "$RUNNER_TEMP/qqq-public-lifecycle/phase-journal.json" \
+            "$RUNNER_TEMP/qqq-quickstart-diagnostic/first-page-protocol.json"
       - name: Retain lifecycle results
         if: always()
         uses: actions/upload-artifact@v4

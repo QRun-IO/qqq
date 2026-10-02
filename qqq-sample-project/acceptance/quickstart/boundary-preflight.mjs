@@ -18,7 +18,7 @@ export function validateEnvironment(value) {
   assert.match(value.osVersion, /^14\./)
   assert.equal(value.nodeMajor, 22)
   assert.equal(value.playwrightVersion, '1.64.0-alpha-2026-10-01')
-  assert.equal(value.installedDirectory, 'webkit-2251')
+  assert.equal(value.installedDirectory, 'webkit_mac14_arm64_special-2251')
   assert.equal(value.toolsCommit, toolsCommit)
   assert.equal(value.publicSource, publicSource)
 }

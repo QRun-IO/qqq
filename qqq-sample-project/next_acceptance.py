@@ -45,11 +45,11 @@ def accepted_release(sample, candidate_version, before_publish=False):
     policy = read_json(sample / 'release-deferrals.json').get('accepted_next_release')
     require(isinstance(policy, dict), 'candidate has no approved Next release exception')
     require(candidate_version == policy['qqq_version'] == '4.1.0-RC.1', 'Next exception is only approved for QQQ4.1.0-RC.1')
-    require(policy['next_version'] == '1.0.0-RC.8'
-            and policy['next_sha'] == 'cd3d4731d1910e68e994da9c74a8c28a2f1b7c1c'
-            and policy['jar_sha256'] == '238c9ae80beea336717be759219f0d65a1d614e8e7d6a145a16374cc392a73a1',
-            'Next exception must identify the accepted immutable public Next RC8')
-    require(policy['owner_approval'] == 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-5930629521',
+    require(policy['next_version'] == '1.0.0-RC.11'
+            and policy['next_sha'] == '2853b9b148282ae0e6d454adab6d0f534ba48280'
+            and policy['jar_sha256'] == '0c89bc0a104131010e5607e8a3669f8579048fab43170d05344dd47721188d99',
+            'Next exception must identify the accepted immutable public Next RC11')
+    require(policy['owner_approval'] == 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-5944789583',
             'Next exception lacks the reviewed maintainer decision')
     require(len(policy['features']) == len(FEATURE_IDS) and set(policy['features']) == set(FEATURE_IDS),
             'Next exception must preserve the seven successor coverage contracts')

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-RC.1] — candidate
+
+Pairs QQQ 4.1 with Next `1.0.0-RC.11`. Publication and verification are tracked in
+[#798](https://github.com/QRun-IO/qqq/issues/798) and
+[#921](https://github.com/QRun-IO/qqq/issues/921); this source entry is not a claim of public availability.
+The candidate retains the approved browser/tablet, report/query and input parity, sub-path hosting,
+real-provider and visual limitations documented in the [release procedure](docs/release/4.1.adoc).
+The seven affected Next contracts remain pending. Stable `4.0.0` remains available.
+
 ### Added
 - **Enterprise Service Bus ([#739](https://github.com/QRun-IO/qqq/issues/739))** — `qqq-esb` publishes
   committed table changes and process lifecycle events as CloudEvents directly to ActiveMQ Artemis or

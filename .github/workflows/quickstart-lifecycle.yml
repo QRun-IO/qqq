@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: QRun-IO/qqq-frontend-next
-          ref: cd3d4731d1910e68e994da9c74a8c28a2f1b7c1c
+          ref: 2853b9b148282ae0e6d454adab6d0f534ba48280
           path: acceptance-tools
           persist-credentials: false
       - uses: actions/setup-java@v4

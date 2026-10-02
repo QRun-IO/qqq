@@ -24,7 +24,7 @@ Write Java for custom behavior while sharing metadata across the configured back
 
 ## Quick Start — 4.1 RC1
 
-This branch targets QQQ **4.1.0-RC.1** with Next **1.0.0-RC.10**. Confirm availability in the [RC1 release](https://github.com/QRun-IO/qqq/releases/tag/v4.1.0-RC.1) before installing. This is a prerelease with [known Next limitations](https://github.com/QRun-IO/qqq-frontend-next/releases/tag/v1.0.0-RC.10), including browser and feature parity gaps. For the stable release, use the [4.0.0 instructions](https://github.com/QRun-IO/qqq/blob/v4.0.0/README.md).
+This branch targets QQQ **4.1.0-RC.1** with Next **1.0.0-RC.11**. Confirm availability in the [RC1 release](https://github.com/QRun-IO/qqq/releases/tag/v4.1.0-RC.1) before installing. This is a prerelease with [known Next limitations](https://github.com/QRun-IO/qqq-frontend-next/releases/tag/v1.0.0-RC.11), including browser and feature parity gaps. For the stable release, use the [4.0.0 instructions](https://github.com/QRun-IO/qqq/blob/v4.0.0/README.md).
 
 **Prerequisites:** JDK 21+, Git, curl and unzip; Bash on macOS, Linux, or Windows WSL. Maven is downloaded automatically by the checked-in Maven Wrapper. No Node.js or Docker is needed.
 

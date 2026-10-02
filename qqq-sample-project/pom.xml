@@ -33,7 +33,7 @@
    </parent>
 
    <properties>
-      <qqq.frontend.next.version>1.0.0-RC.10</qqq.frontend.next.version>
+      <qqq.frontend.next.version>1.0.0-RC.11</qqq.frontend.next.version>
       <qqq.frontend.material-dashboard.version>0.42.0-RC.2</qqq.frontend.material-dashboard.version>
       <!-- Skip deployment to Maven Central - this is a sample project, not a library -->
       <maven.deploy.skip>true</maven.deploy.skip>

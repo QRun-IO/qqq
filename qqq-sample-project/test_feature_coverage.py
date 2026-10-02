@@ -84,13 +84,13 @@ class FeatureCoverageGateTest(unittest.TestCase):
     def configure_accepted_next(self):
         shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
         (self.sample / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
-            '<qqq.frontend.next.version>1.0.0-RC.10</qqq.frontend.next.version></properties></project>')
+            '<qqq.frontend.next.version>1.0.0-RC.11</qqq.frontend.next.version></properties></project>')
         (self.sample.parent / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
             '<revision>4.1.0-SNAPSHOT</revision></properties></project>')
         bom = self.sample.parent / 'qqq-bom'
         bom.mkdir(exist_ok=True)
         (bom / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies>'
-            '<dependency><artifactId>qqq-frontend-next</artifactId><version>1.0.0-RC.10</version></dependency>'
+            '<dependency><artifactId>qqq-frontend-next</artifactId><version>1.0.0-RC.11</version></dependency>'
             '</dependencies></dependencyManagement></project>')
 
     def test_accepted_next_is_explicit_and_does_not_certify_missing_native_evidence(self):
@@ -140,7 +140,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         root_pom.write_text(root_content)
         for pom in (self.sample / 'pom.xml', self.sample.parent / 'qqq-bom/pom.xml'):
             content = pom.read_text()
-            pom.write_text(content.replace('1.0.0-RC.10', '1.0.0-RC.2'))
+            pom.write_text(content.replace('1.0.0-RC.11', '1.0.0-RC.2'))
             self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.1')[0])
             pom.write_text(content)
 

@@ -183,7 +183,7 @@ try {
     assert.equal(report.source, args['expected-sha'])
     assert.equal(readFileSync(path.join(project, 'quickstart.sh'), 'utf8'), readFileSync(path.join(output, 'quickstart.sh'), 'utf8'))
     phase.totalDownloadToUsableSeconds = (usableAt - coldStarted) / 1000
-    if (args.cold) assert(phase.totalDownloadToUsableSeconds <= 90, 'Cold public quickstart exceeds 90 seconds')
+    if (args.cold) assert(phase.totalDownloadToUsableSeconds <= 90, `Cold public quickstart took ${phase.totalDownloadToUsableSeconds.toFixed(3)} seconds; limit is 90`)
   }
   await page.goto(base + '/app/person/create')
   for (const [field, value] of Object.entries({ firstName: 'Lifecycle', lastName: 'Verification', email: 'lifecycle@example.invalid' })) await page.locator(`#field-${field}`).fill(value)

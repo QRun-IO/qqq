@@ -1,9 +1,15 @@
 """Fail-closed checks for candidate-resolved sample bootstrap acceptance."""
 
+import argparse
+import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 import zipfile
+from unittest.mock import patch
+
+import bootstrap_acceptance
 
 from bootstrap_acceptance import (expected_libraries, make_consumer, require_artifacts,
                                   require_new_workdir, require_reports, validate_version)
@@ -13,6 +19,58 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class BootstrapAcceptanceTest(unittest.TestCase):
+    def published_fixture(self, root, include_notice=True):
+        for name in ("pom.xml", "qqq-bom/pom.xml", "qqq-sample-project/pom.xml"):
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((ROOT / name).read_bytes())
+        for name in ("checkstyle", "pmd", "spotbugs"):
+            (root / name).mkdir()
+            (root / name / "fixture.xml").write_text("fixture")
+        (root / "LICENSE").write_bytes(b"Committed license\r\n")
+        if include_notice:
+            (root / "NOTICE").write_bytes("Committed notice \u00a9\r\n".encode())
+        (root / "qqq-sample-project/LICENSE").write_text("stale sample license")
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        subprocess.run(["git", "-C", str(root), "-c", "core.autocrlf=false", "add", "."], check=True)
+        subprocess.run(["git", "-C", str(root), "-c", "user.name=Fixture",
+                        "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
+                        "-c", "core.hooksPath=/dev/null", "commit", "-qm", "fixture"], check=True)
+
+    def test_published_fixture_carries_exact_committed_root_notices(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "source"
+            root.mkdir()
+            self.published_fixture(root)
+            work = Path(directory) / "output"
+            args = argparse.Namespace(stage="published", version="4.1.0-RC.1", workdir=work)
+            def stop_before_maven(*unused, **kwargs):
+                sample = work / "qqq-sample-project"
+                for name in ("LICENSE", "NOTICE"):
+                    self.assertEqual((root / name).read_bytes(), (sample / name).read_bytes())
+                raise OSError("fixture preparation verified; Maven intentionally not run")
+            with patch.object(bootstrap_acceptance, "__file__", str(root / "qqq-sample-project/bootstrap_acceptance.py")), \
+                    patch.object(bootstrap_acceptance, "maven", side_effect=stop_before_maven):
+                self.assertEqual(1, bootstrap_acceptance.run_acceptance(args))
+            report = json.loads((work / "acceptance.json").read_text())
+            self.assertEqual("fixture preparation verified; Maven intentionally not run", report["error"])
+            self.assertFalse(report["complete"])
+
+    def test_published_fixture_missing_root_notice_stops_before_maven(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "source"
+            root.mkdir()
+            self.published_fixture(root, include_notice=False)
+            work = Path(directory) / "output"
+            args = argparse.Namespace(stage="published", version="4.1.0-RC.1", workdir=work)
+            with patch.object(bootstrap_acceptance, "__file__", str(root / "qqq-sample-project/bootstrap_acceptance.py")), \
+                    patch.object(bootstrap_acceptance, "maven", side_effect=OSError("unexpected Maven boundary")) as maven:
+                self.assertEqual(1, bootstrap_acceptance.run_acceptance(args))
+            maven.assert_not_called()
+            report = json.loads((work / "acceptance.json").read_text())
+            self.assertFalse(report["complete"])
+            self.assertIn("NOTICE", report["error"])
+
     def test_bom_covers_prior_sixteen_libraries_and_new_esb(self):
         libraries = expected_libraries(ROOT / "qqq-bom/pom.xml")
         self.assertEqual(17, len(libraries))

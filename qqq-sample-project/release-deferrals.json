@@ -4,10 +4,10 @@
   "deferrals": [],
   "accepted_next_release": {
     "qqq_version": "4.1.0-RC.1",
-    "next_version": "1.0.0-RC.8",
-    "next_sha": "cd3d4731d1910e68e994da9c74a8c28a2f1b7c1c",
-    "jar_sha256": "238c9ae80beea336717be759219f0d65a1d614e8e7d6a145a16374cc392a73a1",
-    "owner_approval": "https://github.com/QRun-IO/qqq/issues/798#issuecomment-5930629521",
+    "next_version": "1.0.0-RC.10",
+    "next_sha": "12cf7745f6f7d193afcdd0c6b3e4dbda6cfc0ffa",
+    "jar_sha256": "ff32f50786f3c442dff8b89633adc0f2f23c43a85812fb9dc13cc49f411853f2",
+    "owner_approval": "https://github.com/QRun-IO/qqq/issues/798#issuecomment-5943457468",
     "features": [
       "core.widget.data_bag_viewer",
       "core.widget.pivot_table_setup",
@@ -17,7 +17,7 @@
       "core.widget.blocks",
       "dashboard.acceptance"
     ],
-    "rationale": "Maintainer accepts the published NextRC8 browser/parity/visual limitations for coordinated RC1. Full successor certification remains pending; source and public compatibility checks remain required. This does not certify any missing or failed test.",
+    "rationale": "Maintainer accepts the published NextRC10 browser/parity/visual limitations for coordinated RC1. Full successor certification remains pending; source and public compatibility checks remain required. This does not certify any missing or failed test.",
     "target_release": "Next 1.0 final; intermediate Next RCs pair with new QQQ4.1 RCs and explicit updated acceptance decisions."
   }
 }

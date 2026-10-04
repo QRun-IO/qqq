@@ -2,10 +2,57 @@
 
 version: 2.1
 
+parameters:
+  mongo_bind_diagnostics:
+    type: boolean
+    default: false
+
 orbs:
   qqq-orb: kingsrook/qqq-orb@0.6.0
 
 commands:
+  start-mongo-bind-trace:
+    steps:
+      - checkout
+      - run:
+          name: Prepare owned Mongo socket diagnostics
+          command: |
+            if sudo apt-get update -qq && sudo apt-get install -y -qq strace &&
+               command -v nsenter ss && sudo install -d -m 755 /tmp/qqq-mongo-bind-diagnostics &&
+               sudo strace -e trace=bind -o /tmp/qqq-mongo-bind-diagnostics/preflight.log true; then
+              printf 'export QQQ_MONGO_TRACE_RUN=%q\n' "$CIRCLE_WORKFLOW_JOB_ID" >> "$BASH_ENV"
+            else
+              echo 'Mongo tracing preflight unavailable; continue original Maven checks.'
+            fi
+      - run:
+          name: Observe only this job's labelled Mongo fixtures
+          background: true
+          command: |
+            test -n "${QQQ_MONGO_TRACE_RUN:-}" || exit 0
+            sudo --preserve-env=CIRCLECI,CIRCLE_WORKFLOW_JOB_ID,QQQ_MONGO_TRACE_RUN python3 .circleci/trace-mongo-bind.py
+
+  stop-mongo-bind-trace:
+    steps:
+      - run:
+          name: Finish owned Mongo socket diagnostics
+          when: always
+          command: |
+            test -n "${QQQ_MONGO_TRACE_RUN:-}" || exit 0
+            sudo touch /tmp/qqq-mongo-bind-diagnostics/stop || echo 'Could not signal Mongo collector.'
+            for attempt in $(seq 1 20); do
+              test ! -f /tmp/qqq-mongo-bind-diagnostics/result.json || break
+              sleep 1
+            done
+            sudo chmod -R a+rX /tmp/qqq-mongo-bind-diagnostics || echo 'Could not make all diagnostic artifacts readable.'
+            if test -f /tmp/qqq-mongo-bind-diagnostics/result.json; then
+              cat /tmp/qqq-mongo-bind-diagnostics/result.json
+            else
+              echo 'Mongo diagnostic receipt missing; socket ownership remains unproven.'
+            fi
+      - store_artifacts:
+          path: /tmp/qqq-mongo-bind-diagnostics
+          destination: mongo-bind-diagnostics
+
   configure-package-install:
     steps:
       - run:
@@ -105,6 +152,21 @@ workflows:
       - qqq-orb/mvn_test_only:
           pre-steps:
             - configure-package-install
+            - when:
+                condition:
+                  or:
+                    - << pipeline.parameters.mongo_bind_diagnostics >>
+                    - equal: [feature/GH-1019-stable-mongo-fixture, << pipeline.git.branch >>]
+                steps:
+                  - start-mongo-bind-trace
+          post-steps:
+            - when:
+                condition:
+                  or:
+                    - << pipeline.parameters.mongo_bind_diagnostics >>
+                    - equal: [feature/GH-1019-stable-mongo-fixture, << pipeline.git.branch >>]
+                steps:
+                  - stop-mongo-bind-trace
           context: [qqq-maven-registry-credentials, build-qqq-sample-app]
           filters:
             branches:

@@ -22,10 +22,8 @@
 package com.kingsrook.qqq.middleware.javalin;
 
 
-import java.time.ZonedDateTime;
 import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -35,7 +33,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.TableBasedAu
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.TableBasedAuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
-import com.kingsrook.qqq.backend.core.utils.SleepUtils;
 import kong.unirest.Cookie;
 import kong.unirest.Cookies;
 import kong.unirest.HttpResponse;
@@ -45,7 +42,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -153,19 +149,17 @@ public class QJavalinImplementationAuthenticationTest extends QJavalinTestBase
          .asString();
       assertEquals(200, response.getStatus());
 
-      Cookies       cookies            = response.getCookies();
-      String        sessionId          = cookies.getNamed("sessionId").getValue();
-      ZonedDateTime originalExpiration = cookies.getNamed("sessionId").getExpiration();
+      Cookies cookies   = response.getCookies();
+      String  sessionId = cookies.getNamed("sessionId").getValue();
       assertNotNull(sessionId);
-
-      SleepUtils.sleep(1, TimeUnit.SECONDS);
+      assertEquals(QJavalinImplementation.SESSION_COOKIE_AGE, cookies.getNamed("sessionId").getMaxAge());
 
       response = Unirest.get(BASE_URL + "/metaData")
          .cookie(new Cookie("sessionId", sessionId))
          .asString();
       assertEquals(200, response.getStatus());
       assertEquals(sessionId, response.getCookies().getNamed("sessionId").getValue());
-      assertNotEquals(originalExpiration, response.getCookies().getNamed("sessionId").getExpiration());
+      assertEquals(QJavalinImplementation.SESSION_COOKIE_AGE, response.getCookies().getNamed("sessionId").getMaxAge());
    }
 
 

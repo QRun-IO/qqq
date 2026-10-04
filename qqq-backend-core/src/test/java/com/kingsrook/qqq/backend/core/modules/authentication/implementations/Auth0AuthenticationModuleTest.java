@@ -88,15 +88,14 @@ public class Auth0AuthenticationModuleTest extends BaseTest
 
 
    /*******************************************************************************
-    ** Test a token where last-checked is set to a time that would not require it to be
-    ** re-checked, so it'll show as valid no matter what the token is.
+    ** A recent cache timestamp cannot make an invalid credential valid.
     **
     *******************************************************************************/
    @Test
-   public void testLastTimeCheckedJustUnderThreshold()
+   public void testLastTimeCheckedUnderThresholdWithInvalidToken()
    {
       Instant underThreshold = Instant.now().minus(Auth0AuthenticationModule.ID_TOKEN_VALIDATION_INTERVAL_SECONDS - 60, ChronoUnit.SECONDS);
-      assertTrue(testLastTimeChecked(underThreshold, INVALID_TOKEN), "A session checked under threshold should be valid");
+      assertFalse(testLastTimeChecked(underThreshold, INVALID_TOKEN), "A recent cache timestamp must not accept an invalid credential");
    }
 
 
@@ -137,7 +136,8 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       /////////////////////////////////////////////////////////////
       // put the input last-time-checked into the state provider //
       /////////////////////////////////////////////////////////////
-      SimpleStateKey<String> key = new SimpleStateKey<>(token);
+      QInstance instance = getQInstance(false);
+      SimpleStateKey<?> key = Auth0AuthenticationModule.tokenValidationKey(instance, token);
       InMemoryStateProvider.getInstance().put(key, lastTimeChecked);
 
       //////////////////////
@@ -147,7 +147,14 @@ public class Auth0AuthenticationModuleTest extends BaseTest
       session.setIdReference(token);
 
       Auth0AuthenticationModule auth0AuthenticationModule = new Auth0AuthenticationModule();
-      return (auth0AuthenticationModule.isSessionValid(getQInstance(false), session));
+      try
+      {
+         return (auth0AuthenticationModule.isSessionValid(instance, session));
+      }
+      finally
+      {
+         InMemoryStateProvider.getInstance().remove(key);
+      }
    }
 
 

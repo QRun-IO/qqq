@@ -82,3 +82,77 @@ test('private native stream retains only fixed PID and exit metadata',()=>{
 })
 test('journal success without any protocol creation remains incomplete',()=>{const result=summarizeProtocol([],{pageCreateEnd:{at:1790941032000,state:'success'}});assert.equal(result.pageCreation,'not-observed');assert.equal(result.incomplete,true)})
 test('another page navigation cannot truncate the selected page handshake',()=>{const result=summarizeProtocol([...setup(),line('send',{id:99,method:'Playwright.navigate',params:{pageProxyId:'other-proxy',url:'SECRET'}}),nested('send',8,'t',{id:7,method:'Page.enable'})]);assert.equal(result.scopeEnd,'input-ended');assert.equal(result.pending.some(e=>e.method==='Page.enable'),true)})
+
+
+test('closePage pairs at root scope and preserves absence of a page-destroy event', () => {
+  const input = [...setup(),
+    line('send', {id: 30, method: 'Playwright.closePage', params: {pageProxyId: 'secret-proxy', reason: 'SECRET'}}),
+    line('receive', {id: 30, result: {private: 'SECRET'}}),
+  ]
+  const result = summarizeProtocol(input)
+  assert.deepEqual(result.events.filter(e => e.method === 'Playwright.closePage').map(e => [e.scope,e.id,e.kind]),
+    [['root',30,'request'],['root',30,'response']])
+  assert.equal(result.counts.unrecognizedCommands, 0)
+  assert.equal(result.counts.unmatched, 0)
+  assert.equal(result.pageCreation, 'pending')
+  assert.equal(result.incomplete, true)
+  assert.equal(result.events.some(e => e.method === 'Playwright.pageProxyDestroyed'), false)
+  const destroyed = summarizeProtocol([...input, line('receive', {method: 'Playwright.pageProxyDestroyed', params: {pageProxyId: 'secret-proxy'}})])
+  assert.equal(destroyed.events.at(-1).method, 'Playwright.pageProxyDestroyed')
+  assert.equal(destroyed.pageCreation, 'pending')
+  assert.equal(JSON.stringify(destroyed).includes('SECRET'), false)
+})
+
+test('foreign closePage is excluded and cannot settle the selected page close', () => {
+  const result = summarizeProtocol([...setup(),
+    line('send', {id: 30, method: 'Playwright.closePage', params: {pageProxyId: 'secret-proxy'}}),
+    line('send', {id: 31, method: 'Playwright.closePage', params: {pageProxyId: 'other-proxy'}}),
+    line('receive', {id: 31, result: {}}),
+  ])
+  assert.deepEqual(result.pending.filter(e => e.method === 'Playwright.closePage').map(e => e.id), [30])
+  assert.equal(result.events.some(e => e.id === 31), false)
+})
+
+test('setting names are retained only from the fixed pinned SDK enum', () => {
+  const names = ['FullScreenEnabled','NotificationsEnabled','PointerLockEnabled','InputTypeMonthEnabled',
+    'InputTypeWeekEnabled','FixedBackgroundsPaintRelativeToDocument','PushAPIEnabled']
+  const result = summarizeProtocol([...setup(), ...names.map((setting, i) => nested('send', 100 + i, 't',
+    {id: 200 + i, method: 'Page.overrideSetting', params: {setting, value: 'SECRET'}}))])
+  assert.deepEqual(result.events.filter(e => e.method === 'Page.overrideSetting').map(e => e.setting), names)
+  assert.equal(JSON.stringify(result).includes('SECRET'), false)
+  for (const setting of ['SECRET', null, {secret: 'SECRET'}, 1]) {
+    const invalid = summarizeProtocol([...setup(),nested('send', 8, 't', {id: 7, method: 'Page.overrideSetting', params: {setting}})])
+    assert.equal(invalid.events.at(-1).setting, 'unknown')
+    assert.equal(invalid.incomplete, true)
+    assert.equal(JSON.stringify(invalid).includes('SECRET'), false)
+  }
+})
+
+test('response error presence does not conflate null or false with an SDK rejection', () => {
+  const cases = [
+    [{}, false, false, 'absent'], [{error: null}, true, false, 'null'],
+    [{error: false}, true, false, 'boolean'], [{error: 0}, true, false, 'number'],
+    [{error: ''}, true, false, 'string'], [{error: 'SECRET'}, true, true, 'string'],
+    [{error: {message: 'SECRET', code: -1}}, true, true, 'object'],
+    [{error: ['SECRET']}, true, true, 'array'],
+  ]
+  for (const [payload, present, truthy, type] of cases) {
+    const result = summarizeProtocol([...setup(),nested('send', 8, 't', {id: 7, method: 'Page.overrideSetting', params: {setting: 'PushAPIEnabled'}}),
+      nested('receive', undefined, 't', {id: 7, ...payload})])
+    const response = result.events.at(-1)
+    assert.equal(response.error, present)
+    assert.equal(response.errorTruthy, truthy)
+    assert.equal(response.errorType, type)
+    assert.equal(JSON.stringify(result).includes('SECRET'), false)
+  }
+})
+
+test('added close and setting metadata obey the original event cap', () => {
+  const input = [...setup(), ...Array.from({length: 2100}, (_, i) =>
+    line('send', {id: i + 100, method: 'Playwright.closePage', params: {pageProxyId: 'secret-proxy', secret: 'SECRET'}}))]
+  const result = summarizeProtocol(input)
+  assert.ok(result.events.length <= 2048)
+  assert.equal(result.incomplete, true)
+  assert.ok(result.counts.dropped > 0)
+  assert.equal(JSON.stringify(result).includes('SECRET'), false)
+})

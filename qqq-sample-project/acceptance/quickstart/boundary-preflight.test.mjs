@@ -1,10 +1,12 @@
 /* Copyright 2026 QRun.IO, Inc. Licensed under the Apache License, Version 2.0. */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { hashNativeTree, validateEnvironment } from './boundary-preflight.mjs'
+import { hashNativeTree, validateEnvironment, hashLoadedPlaywrightCore } from './boundary-preflight.mjs'
 
 const expected = { platform: 'darwin', architecture: 'arm64', osVersion: '14.8.9', nodeMajor: 22,
   playwrightVersion: '1.64.0-alpha-2026-10-01', installedDirectory: 'webkit_mac14_arm64_special-2251',
@@ -38,4 +40,58 @@ test('native tree hash covers file bytes and relative names without following sy
     assert.deepEqual(Object.keys(linked), ['sha256', 'files', 'symlinks', 'bytes'])
     assert(!JSON.stringify(linked).includes('private-target'))
   } finally { rmSync(root, { recursive: true, force: true }) }
+})
+
+
+function fakeSdk(root) {
+  function file(name, text) {
+    const target = path.join(root, name)
+    mkdirSync(path.dirname(target), {recursive: true})
+    writeFileSync(target, text)
+  }
+  file('package.json', '{}')
+  file('node_modules/@playwright/test/package.json', JSON.stringify({name:'@playwright/test', main:'index.cjs'}))
+  file('node_modules/@playwright/test/index.cjs', "module.exports = require('playwright/test')")
+  file('node_modules/playwright/package.json', JSON.stringify({name:'playwright', main:'test.js'}))
+  file('node_modules/playwright/test.js', "module.exports = require('playwright-core')")
+  file('node_modules/playwright-core/package.json', JSON.stringify({name:'playwright-core', version:'1.64.0-alpha-2026-10-01', main:'index.js'}))
+  file('node_modules/playwright-core/index.js', "module.exports = require('./lib/coreBundle.js')")
+  file('node_modules/playwright-core/lib/coreBundle.js', 'module.exports = {safeFixture: true}\n')
+  return createRequire(path.join(root, 'package.json'))
+}
+
+test('SDK receipt binds actual loaded dependency graph and bundle bytes without absolute paths', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'qqq-loaded-sdk-'))
+  const foreign = mkdtempSync(path.join(tmpdir(), 'qqq-unrelated-sdk-'))
+  try {
+    const other = fakeSdk(foreign); other('@playwright/test')
+    const require = fakeSdk(root)
+    assert.throws(() => hashLoadedPlaywrightCore(require))
+    assert.equal(require('@playwright/test').safeFixture, true)
+    const receipt = hashLoadedPlaywrightCore(require)
+    assert.equal(receipt.package, 'playwright-core')
+    assert.equal(receipt.version, '1.64.0-alpha-2026-10-01')
+    assert.equal(receipt.entry, 'lib/coreBundle.js')
+    assert.equal(receipt.sha256, createHash('sha256').update('module.exports = {safeFixture: true}\n').digest('hex'))
+    assert.match(receipt.resolvedPathSHA256, /^[a-f0-9]{64}$/)
+    assert.equal(JSON.stringify(receipt).includes(root), false)
+    assert.equal(JSON.stringify(receipt).includes(foreign), false)
+  } finally { rmSync(root, {recursive:true,force:true}); rmSync(foreign, {recursive:true,force:true}) }
+})
+
+test('SDK provenance fails closed for missing or ambiguous loaded bundles', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'qqq-ambiguous-sdk-'))
+  const otherRoot = mkdtempSync(path.join(tmpdir(), 'qqq-second-sdk-'))
+  try {
+    const require = fakeSdk(root); require('@playwright/test')
+    const entry = require.cache[require.resolve('@playwright/test')]
+    const saved = entry.children
+    entry.children = []
+    assert.throws(() => hashLoadedPlaywrightCore(require))
+    entry.children = saved
+    const other = fakeSdk(otherRoot); other('@playwright/test')
+    entry.children = [...saved, other.cache[other.resolve('@playwright/test')]]
+    assert.throws(() => hashLoadedPlaywrightCore(require))
+    entry.children = saved
+  } finally { rmSync(root, {recursive:true,force:true}); rmSync(otherRoot, {recursive:true,force:true}) }
 })

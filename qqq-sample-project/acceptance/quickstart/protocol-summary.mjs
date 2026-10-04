@@ -1,6 +1,6 @@
 /* Copyright 2026 QRun.IO, Inc. Licensed under the Apache License, Version 2.0. */
 const methods = new Set([
-  'Playwright.enable', 'Playwright.createContext', 'Playwright.setDownloadBehavior', 'Playwright.createPage',
+  'Playwright.enable', 'Playwright.createContext', 'Playwright.setDownloadBehavior', 'Playwright.createPage', 'Playwright.closePage',
   'Playwright.pageProxyCreated', 'Playwright.pageProxyDestroyed', 'Playwright.provisionalLoadFailed',
   'Target.targetCreated', 'Target.targetDestroyed', 'Target.sendMessageToTarget', 'Target.dispatchMessageFromTarget', 'Target.resume',
   'Dialog.enable', 'Emulation.setActiveAndFocused', 'Emulation.setDeviceMetricsOverride', 'Emulation.setAuthCredentials',
@@ -9,6 +9,8 @@ const methods = new Set([
   'Page.overrideSetting', 'Page.frameNavigated', 'Runtime.enable', 'Network.enable', 'Network.setExtraHTTPHeaders',
   'Worker.enable', 'Console.enable',
 ])
+const settings = new Set(['FullScreenEnabled', 'NotificationsEnabled', 'PointerLockEnabled', 'InputTypeMonthEnabled',
+  'InputTypeWeekEnabled', 'FixedBackgroundsPaintRelativeToDocument', 'PushAPIEnabled'])
 const idOK = value => Number.isSafeInteger(value) && value >= 0
 const opaqueOK = value => typeof value === 'string' && value.length > 0 && value.length <= 256
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -21,7 +23,7 @@ export function summarizeProtocol(lines, { pageCreateEnd, limit = 2048, lineLimi
   byteLimit = Number.isInteger(byteLimit) && byteLimit > 0 ? Math.min(byteLimit, 67_108_864) : 67_108_864
   const events = [], pending = new Map(), aliases = new Map()
   const native = { launchedPids: [], exits: [] }
-  const counts = { malformed: 0, truncated: 0, oversize: 0, dropped: 0, ignored: 0, unmatched: 0, ambiguous: 0, unrecognizedCommands: 0 }
+  const counts = { malformed: 0, truncated: 0, oversize: 0, dropped: 0, ignored: 0, unmatched: 0, ambiguous: 0, unrecognizedCommands: 0, unrecognizedSettings: 0 }
   let context, proxy, pageRequested = false, bytes = 0, scopeEnd = 'input-ended'
   const end = record(pageCreateEnd) && Number.isSafeInteger(pageCreateEnd.at) && ['success','error'].includes(pageCreateEnd.state) ? pageCreateEnd : undefined
   function alias(value, kind) {
@@ -64,6 +66,7 @@ export function summarizeProtocol(lines, { pageCreateEnd, limit = 2048, lineLimi
       if (proxy && proxy !== candidate) { counts.ambiguous++; return }
       proxy = candidate
     }
+    if (method === 'Playwright.closePage' && !isResponse && (!proxy || params.pageProxyId !== proxy)) { counts.ignored++; return }
     if (method === 'Playwright.pageProxyDestroyed' && params.pageProxyId !== proxy) { counts.ignored++; return }
     if (method.startsWith('Target.') && !proxy) { counts.ignored++; return }
     const event = { seq: events.length + 1, at, direction, scope, method, kind: isResponse ? 'response' : idOK(message.id) ? 'request' : 'event' }
@@ -71,7 +74,16 @@ export function summarizeProtocol(lines, { pageCreateEnd, limit = 2048, lineLimi
     if (context) event.context = alias(context, 'context')
     if (proxy) event.proxy = alias(proxy, 'proxy')
     if (target) event.target = alias(target, 'target')
-    if (isResponse) event.error = Object.hasOwn(message, 'error')
+    if (isResponse) {
+      event.error = Object.hasOwn(message, 'error')
+      event.errorTruthy = Boolean(message.error)
+      event.errorType = !event.error ? 'absent' : message.error === null ? 'null'
+        : Array.isArray(message.error) ? 'array' : typeof message.error
+    }
+    if (method === 'Page.overrideSetting' && !isResponse) {
+      event.setting = settings.has(params.setting) ? params.setting : 'unknown'
+      if (event.setting === 'unknown') counts.unrecognizedSettings++
+    }
     const info = method === 'Target.targetCreated' ? params.targetInfo : params
     if (record(info) && method.startsWith('Target.')) {
       if (opaqueOK(info.targetId)) event.target = alias(info.targetId, 'target')

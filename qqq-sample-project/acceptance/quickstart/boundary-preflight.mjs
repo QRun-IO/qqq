@@ -12,6 +12,34 @@ const toolsCommit = '2853b9b148282ae0e6d454adab6d0f534ba48280'
 const publicSource = '7be255479bc39a3538a9597d1671c529b417bf18'
 const sha256 = value => createHash('sha256').update(value).digest('hex')
 
+/** Bind the bundle actually loaded through the same @playwright/test entry as the runner. */
+export function hashLoadedPlaywrightCore(require) {
+  const root = require.cache[require.resolve('@playwright/test')]
+  assert(root, 'playwright-test-not-loaded')
+  const visited = new Set(); const bundles = new Set()
+  function visit(module) {
+    if (visited.has(module)) return
+    assert(visited.size < 2048, 'sdk-module-graph-limit')
+    visited.add(module)
+    if (typeof module.filename === 'string' && path.basename(module.filename) === 'coreBundle.js'
+      && path.basename(path.dirname(module.filename)) === 'lib'
+      && path.basename(path.dirname(path.dirname(module.filename))) === 'playwright-core') {
+      bundles.add(realpathSync(module.filename))
+    }
+    for (const child of module.children) visit(child)
+  }
+  visit(root)
+  assert.equal(bundles.size, 1, 'sdk-bundle-missing-or-ambiguous')
+  const [bundle] = bundles
+  const packageFile = path.join(path.dirname(path.dirname(bundle)), 'package.json')
+  const metadata = JSON.parse(readFileSync(packageFile, 'utf8'))
+  assert.equal(metadata.name, 'playwright-core', 'sdk-package-mismatch')
+  assert.equal(metadata.version, '1.64.0-alpha-2026-10-01', 'sdk-version-mismatch')
+  assert(lstatSync(bundle).isFile(), 'sdk-bundle-not-file')
+  return { package: 'playwright-core', version: metadata.version, entry: 'lib/coreBundle.js',
+    resolution: 'loaded-test-dependency-graph', resolvedPathSHA256: sha256(bundle), sha256: sha256(readFileSync(bundle)) }
+}
+
 export function validateEnvironment(value) {
   assert.equal(value.platform, 'darwin')
   assert.equal(value.architecture, 'arm64')
@@ -74,6 +102,8 @@ function main() {
       playwrightVersion: require('@playwright/test/package.json').version,
       installedDirectory: path.basename(nativeRoot) })
     validateEnvironment(receipt)
+    stage = 'sdk'
+    receipt.loadedCore = hashLoadedPlaywrightCore(require)
     stage = 'hashes'
     receipt.launcherSHA256 = sha256(readFileSync(launcher))
     receipt.nativeTree = hashNativeTree(nativeRoot)

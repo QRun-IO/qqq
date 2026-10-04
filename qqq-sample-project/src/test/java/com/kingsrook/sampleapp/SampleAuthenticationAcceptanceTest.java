@@ -395,6 +395,7 @@ class SampleAuthenticationAcceptanceTest
    void testAuth0SignedTokenAndRejectedTokens() throws Exception
    {
       provider = new SampleAuthenticationProvider();
+      String auth0Issuer = provider.issuer() + "/";
       Auth0AuthenticationMetaData auth = new Auth0AuthenticationMetaData();
       auth.setName("owned-auth0");
       auth.setBaseUrl(provider.issuer());
@@ -403,11 +404,14 @@ class SampleAuthenticationAcceptanceTest
       auth.setAudience(SampleAuthenticationProvider.CLIENT);
       instance.registerAuthenticationProvider(AuthScope.instanceDefault(), auth);
       start();
-      for(String token : List.of("bad-token", provider.accessToken(username, Instant.now().plusSeconds(300), true), provider.accessToken(username, Instant.now().minusSeconds(300), false)))
+      for(String token : List.of("bad-token",
+         provider.accessToken(username, Instant.now().plusSeconds(300), true, auth0Issuer),
+         provider.accessToken(username, Instant.now().minusSeconds(300), false, auth0Issuer),
+         provider.accessToken(username, Instant.now().plusSeconds(300), false)))
       {
          assertEquals(401, request("POST", "/manageSession", new JSONObject().put("accessToken", token).toString(), null).statusCode());
       }
-      String uuid = sessionCookie(request("POST", "/manageSession", new JSONObject().put("accessToken", provider.accessToken(username, Instant.now().plusSeconds(300), false)).toString(), null));
+      String uuid = sessionCookie(request("POST", "/manageSession", new JSONObject().put("accessToken", provider.accessToken(username, Instant.now().plusSeconds(300), false, auth0Issuer)).toString(), null));
       assertEquals(200, request("GET", "/metaData/table/person", null, uuid).statusCode());
       success(request("POST", "/logout", "{}", uuid));
       assertEquals(401, request("GET", "/metaData/table/person", null, uuid).statusCode());

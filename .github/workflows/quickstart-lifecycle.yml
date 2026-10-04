@@ -16,6 +16,11 @@ on:
         description: Full reviewed commit of the immutable quickstart tag
         required: true
         type: string
+      boundary_capture:
+        description: Diagnose one macOS15 WebKit lifecycle with private boundary evidence
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,9 +29,7 @@ jobs:
   lifecycle:
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-        browser: [chromium, firefox, webkit]
+      matrix: ${{ fromJSON(inputs.boundary_capture && '{"os":["macos-15"],"browser":["webkit"]}' || '{"os":["ubuntu-24.04","macos-14"],"browser":["chromium","firefox","webkit"],"exclude":[{"os":"macos-14","browser":"webkit"}],"include":[{"os":"macos-15","browser":"webkit"}]}') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -55,21 +58,50 @@ jobs:
           pnpm exec playwright install --with-deps "$BROWSER"
         env:
           BROWSER: ${{ matrix.browser }}
+      - name: Diagnostic boundary preflight
+        if: ${{ inputs.boundary_capture }}
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha }}
+          QQQ_QUICKSTART_PREFLIGHT_OUTPUT: ${{ runner.temp }}/qqq-quickstart-diagnostic
+        run: |
+          umask 077
+          mkdir -p "$QQQ_QUICKSTART_PREFLIGHT_OUTPUT"
+          node --test qqq-sample-project/acceptance/quickstart/*.test.mjs > "$QQQ_QUICKSTART_PREFLIGHT_OUTPUT/pure-tests.log" 2>&1
+          node qqq-sample-project/acceptance/quickstart/boundary-preflight.mjs
       - name: Run the public launcher lifecycle
         env:
+          QQQ_QUICKSTART_BOUNDARY_CAPTURE: ${{ inputs.boundary_capture && '1' || '0' }}
           CANDIDATE_VERSION: ${{ inputs.version }}
           EXPECTED_SHA: ${{ inputs.source_sha }}
           BROWSER: ${{ matrix.browser }}
         run: |
+          umask 077
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             CANDIDATE_VERSION="${GITHUB_REF_NAME#quickstart-}"
             EXPECTED_SHA="$(git rev-parse HEAD)"
           fi
-          node qqq-sample-project/acceptance/quickstart/run-public.mjs \
-            --playwright-project acceptance-tools \
-            --output "$RUNNER_TEMP/qqq-public-lifecycle" \
-            --version "$CANDIDATE_VERSION" --expected-sha "$EXPECTED_SHA" \
-            --browser "$BROWSER"
+          run_lifecycle() {
+            node qqq-sample-project/acceptance/quickstart/run-public.mjs \
+              --playwright-project acceptance-tools \
+              --output "$RUNNER_TEMP/qqq-public-lifecycle" \
+              --version "$CANDIDATE_VERSION" --expected-sha "$EXPECTED_SHA" \
+              --browser "$BROWSER"
+          }
+          if [[ "$QQQ_QUICKSTART_BOUNDARY_CAPTURE" == "1" ]]; then
+            set -o pipefail
+            mkdir -m 700 -p "$RUNNER_TEMP/qqq-quickstart-private-protocol"
+            DEBUG=pw:browser,pw:protocol DEBUG_FILE="$RUNNER_TEMP/qqq-quickstart-private-protocol/protocol.raw" run_lifecycle 2>&1 | tee "$RUNNER_TEMP/qqq-quickstart-diagnostic/native.log"
+          else
+            run_lifecycle
+          fi
+      - name: Summarize private first-page protocol
+        if: ${{ always() && inputs.boundary_capture }}
+        run: |
+          umask 077
+          node qqq-sample-project/acceptance/quickstart/protocol-files.mjs \
+            "$RUNNER_TEMP/qqq-quickstart-private-protocol/protocol.raw" \
+            "$RUNNER_TEMP/qqq-public-lifecycle/phase-journal.json" \
+            "$RUNNER_TEMP/qqq-quickstart-diagnostic/first-page-protocol.json"
       - name: Retain lifecycle results
         if: always()
         uses: actions/upload-artifact@v4
@@ -80,3 +112,5 @@ jobs:
             ${{ runner.temp }}/qqq-public-lifecycle/*.json
             ${{ runner.temp }}/qqq-public-lifecycle/*.log
             ${{ runner.temp }}/qqq-public-lifecycle/*.png
+            ${{ runner.temp }}/qqq-quickstart-diagnostic/*.json
+            ${{ runner.temp }}/qqq-quickstart-diagnostic/*.log

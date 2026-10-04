@@ -69,8 +69,11 @@ public class BackChannelLogoutSpecV1 extends AbstractEndpointSpec<BackChannelLog
             logs out from the IdP or another application in the SSO ecosystem.
 
             The IdP sends a POST request with a 'logout_token' JWT parameter containing
-            either a 'sub' (subject) or 'sid' (session ID) claim. QQQ finds and deletes
-            all matching sessions.
+            either a 'sub' (subject) or 'sid' (session ID) claim. QQQ validates the RS256
+            signature against the configured OAuth2 provider's discovered JWKS, issuer,
+            client audience, logout event and timestamps before deleting matching sessions
+            from the configured session table. Both subject and session ID must match when
+            both are present. Invalid tokens or unsupported configuration return HTTP 400.
 
             This endpoint should be registered with your IdP as the back-channel logout URI.""");
    }

@@ -17,7 +17,7 @@ on:
         required: true
         type: string
       boundary_capture:
-        description: Diagnose one macOS14 WebKit lifecycle with private boundary evidence
+        description: Diagnose one macOS15 WebKit lifecycle with private boundary evidence
         required: false
         type: boolean
         default: false
@@ -29,7 +29,7 @@ jobs:
   lifecycle:
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.boundary_capture && '{"os":["macos-14"],"browser":["webkit"]}' || '{"os":["ubuntu-24.04","macos-14"],"browser":["chromium","firefox","webkit"]}') }}
+      matrix: ${{ fromJSON(inputs.boundary_capture && '{"os":["macos-15"],"browser":["webkit"]}' || '{"os":["ubuntu-24.04","macos-14"],"browser":["chromium","firefox","webkit"],"exclude":[{"os":"macos-14","browser":"webkit"}],"include":[{"os":"macos-15","browser":"webkit"}]}') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:

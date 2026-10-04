@@ -43,10 +43,10 @@ export function hashLoadedPlaywrightCore(require) {
 export function validateEnvironment(value) {
   assert.equal(value.platform, 'darwin')
   assert.equal(value.architecture, 'arm64')
-  assert.match(value.osVersion, /^14\./)
+  assert.match(value.osVersion, /^15\./)
   assert.equal(value.nodeMajor, 22)
   assert.equal(value.playwrightVersion, '1.64.0-alpha-2026-10-01')
-  assert.equal(value.installedDirectory, 'webkit_mac14_arm64_special-2251')
+  assert.equal(value.installedDirectory, 'webkit-2369')
   assert.equal(value.toolsCommit, toolsCommit)
   assert.equal(value.publicSource, publicSource)
 }

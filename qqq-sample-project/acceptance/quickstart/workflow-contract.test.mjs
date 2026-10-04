@@ -10,9 +10,17 @@ test('diagnostic dispatch defaults off and selects one cell while normal matrix 
   assert.match(workflow, /boundary_capture:\n\s+description:[^\n]+\n\s+required: false\n\s+type: boolean\n\s+default: false/)
   const expression = workflow.match(/matrix: \$\{\{ fromJSON\(inputs\.boundary_capture && '(.*?)' \|\| '(.*?)'\) \}\}/)
   assert(expression)
-  const cells = value => JSON.parse(value).os.flatMap(os => JSON.parse(value).browser.map(browser => [os, browser]))
-  assert.deepEqual(cells(expression[1]), [['macos-14', 'webkit']])
-  assert.deepEqual(cells(expression[2]), ['ubuntu-24.04', 'macos-14'].flatMap(os => ['chromium', 'firefox', 'webkit'].map(browser => [os, browser])))
+  const cells = value => {
+    const matrix = JSON.parse(value)
+    const expanded = matrix.os.flatMap(os => matrix.browser.map(browser => [os, browser]))
+      .filter(([os, browser]) => !(matrix.exclude ?? []).some(cell => cell.os === os && cell.browser === browser))
+    return [...expanded, ...(matrix.include ?? []).map(({ os, browser }) => [os, browser])]
+  }
+  assert.deepEqual(cells(expression[1]), [['macos-15', 'webkit']])
+  assert.deepEqual(cells(expression[2]), [
+    ['ubuntu-24.04', 'chromium'], ['ubuntu-24.04', 'firefox'], ['ubuntu-24.04', 'webkit'],
+    ['macos-14', 'chromium'], ['macos-14', 'firefox'], ['macos-15', 'webkit'],
+  ])
 })
 
 test('preflight and pure tests run only on diagnostic dispatch with fixed tools and unchanged runtime budgets', () => {

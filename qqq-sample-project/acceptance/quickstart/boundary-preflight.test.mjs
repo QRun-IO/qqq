@@ -8,16 +8,20 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { hashNativeTree, validateEnvironment, hashLoadedPlaywrightCore } from './boundary-preflight.mjs'
 
-const expected = { platform: 'darwin', architecture: 'arm64', osVersion: '14.8.9', nodeMajor: 22,
-  playwrightVersion: '1.64.0-alpha-2026-10-01', installedDirectory: 'webkit_mac14_arm64_special-2251',
+const expected = { platform: 'darwin', architecture: 'arm64', osVersion: '15.7.9', nodeMajor: 22,
+  playwrightVersion: '1.64.0-alpha-2026-10-01', installedDirectory: 'webkit-2369',
   toolsCommit: '2853b9b148282ae0e6d454adab6d0f534ba48280', publicSource: '7be255479bc39a3538a9597d1671c529b417bf18' }
 
-test('preflight accepts only the source-bound macOS14 arm64 frozen WebKit environment', () => {
+test('preflight accepts only the source-bound macOS15 arm64 maintained WebKit environment', () => {
   assert.doesNotThrow(() => validateEnvironment(expected))
   assert.throws(() => validateEnvironment({ ...expected, installedDirectory: 'webkit-2251' }))
   for (const field of Object.keys(expected)) {
     assert.throws(() => validateEnvironment({ ...expected, [field]: field === 'nodeMajor' ? 24 : 'different' }))
   }
+})
+
+test('preflight rejects the retained macOS14 frozen-browser pairing for this qualification', () => {
+  assert.throws(() => validateEnvironment({ ...expected, osVersion: '14.8.9', installedDirectory: 'webkit_mac14_arm64_special-2251' }))
 })
 
 test('native tree hash covers file bytes and relative names without following symlinks', () => {

@@ -279,7 +279,8 @@ class Auth0TokenVerifierTest extends BaseTest
    void rejectsExpiredToken()
    {
       token = validClaims().withExpiresAt(Instant.now().minusSeconds(300)).sign(algorithm(signingKey));
-      assertThrows(QAuthenticationException.class, this::createSession);
+      QAuthenticationException error = assertThrows(QAuthenticationException.class, this::createSession);
+      assertEquals(Auth0AuthenticationModule.EXPIRED_TOKEN_ERROR, error.getMessage());
    }
 
 

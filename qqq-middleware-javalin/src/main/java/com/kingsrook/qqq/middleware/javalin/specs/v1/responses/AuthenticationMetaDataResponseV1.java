@@ -27,6 +27,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticat
 import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardCspSources;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
@@ -62,6 +63,9 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       The application's branding that is safe to show before sign-in (names, logo, icon and accent colors; never
       banners), so a login page can look like the application.  Absent when the instance defines no branding.""")
    private PublicBranding branding;
+
+   @OpenAPIDescription("Optional public CSP source additions for standalone dashboards, derived from configured application features; never a full policy or inline script hashes.")
+   private NextDashboardCspSources dashboardCspSources;
 
 
 
@@ -482,4 +486,23 @@ public class AuthenticationMetaDataResponseV1 implements AuthenticationMetaDataO
       return (this);
    }
 
+
+   /*******************************************************************************
+    ** Public policy inputs, independent of any individual HTML document.
+    *******************************************************************************/
+   public NextDashboardCspSources getDashboardCspSources()
+   {
+      return (dashboardCspSources);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public void setDashboardCspSources(NextDashboardCspSources sources)
+   {
+      dashboardCspSources = sources;
+   }
 }

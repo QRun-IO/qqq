@@ -25,6 +25,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.AuthenticationMetaDataOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardCspSources;
 
 
 /*******************************************************************************
@@ -41,6 +42,7 @@ public class AuthenticationMetaDataExecutor extends AbstractMiddlewareExecutor<A
    {
       output.setAuthenticationMetaData(QContext.getQInstance().getAuthentication());
       output.setBranding(QContext.getQInstance().getBranding());
+      output.setDashboardCspSources(NextDashboardCspSources.fromInstance(QContext.getQInstance()));
    }
 
 }

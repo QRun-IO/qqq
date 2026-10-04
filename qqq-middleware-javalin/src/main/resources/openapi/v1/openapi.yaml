@@ -158,6 +158,34 @@ components:
               description: "Path or URL of the application's logo image."
               type: "string"
           type: "object"
+        dashboardCspSources:
+          description: "Optional public CSP source additions for standalone dashboards,\
+            \ derived from configured application features; never a full policy or\
+            \ inline script hashes."
+          properties:
+            connectSrc:
+              description: "HTTP(S) connection sources required by configured features;\
+                \ no default policy sources."
+              items:
+                type: "string"
+              type: "array"
+            frameSrc:
+              description: "Frame sources required by configured features."
+              items:
+                type: "string"
+              type: "array"
+            scriptSrc:
+              description: "Script sources required by configured features; no inline\
+                \ hashes, nonces or unsafe keywords."
+              items:
+                type: "string"
+              type: "array"
+            styleSrc:
+              description: "Style sources required by configured features."
+              items:
+                type: "string"
+              type: "array"
+          type: "object"
         name:
           description: "Unique name for the authentication metaData object within\
             \ the QInstance.\n"

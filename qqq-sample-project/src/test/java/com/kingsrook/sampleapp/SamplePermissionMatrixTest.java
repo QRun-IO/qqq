@@ -254,8 +254,8 @@ class SamplePermissionMatrixTest
 
 
    /*******************************************************************************
-    ** Without capabilities, count and export are refused over every route even on
-    ** an unprotected table; get, query and mutations still follow permissions.
+    ** Without capabilities, count, export and mutations are refused over every
+    ** route even on an unprotected table; get and query still follow permissions.
     *******************************************************************************/
    @Test
    void testDisabledCapabilityRuntimeBoundary() throws Exception
@@ -263,7 +263,7 @@ class SamplePermissionMatrixTest
       tableRules(rules(PermissionLevel.NOT_PROTECTED));
       instance.getTable("fieldLab").withoutCapabilities(EnumSet.allOf(Capability.class));
       assertEquals(0, metadata().getJSONObject("tables").getJSONObject("fieldLab").getJSONArray("capabilities").length());
-      assertAccess(true, false, true, true, true);
+      assertAccess(true, false, false, false, false);
       tableRules(rules(PermissionLevel.READ_WRITE_PERMISSIONS));
       assertAccess(false, false, false, false, false);
    }

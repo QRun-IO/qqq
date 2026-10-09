@@ -710,6 +710,7 @@ public class QJavalinImplementation
          deleteInput.setPrimaryKeys(primaryKeys);
 
          PermissionsHelper.checkTablePermissionThrowing(deleteInput, TablePermissionSubType.DELETE);
+         TableCapabilities.checkCapabilityThrowing(table, Capability.TABLE_DELETE);
          AssociatedWritePermissions.check(deleteInput);
 
          DeleteAction deleteAction = new DeleteAction();
@@ -743,6 +744,7 @@ public class QJavalinImplementation
          updateInput.setTableName(tableName);
 
          PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
+         TableCapabilities.checkCapabilityThrowing(tableName, Capability.TABLE_UPDATE);
          QTableMetaData tableMetaData = qInstance.getTable(tableName);
 
          QJavalinAccessLogger.logStart("update", logPair("table", tableName), logPair("primaryKey", primaryKey));
@@ -975,6 +977,7 @@ public class QJavalinImplementation
          QJavalinAccessLogger.logStart("insert", logPair("table", tableName));
 
          PermissionsHelper.checkTablePermissionThrowing(insertInput, TablePermissionSubType.INSERT);
+         TableCapabilities.checkCapabilityThrowing(tableName, Capability.TABLE_INSERT);
          QTableMetaData tableMetaData = qInstance.getTable(tableName);
 
          List<QRecord> recordList = new ArrayList<>();

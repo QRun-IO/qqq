@@ -37,6 +37,8 @@ These are the methods that one is most likely to use when setting up (defining) 
 to an instance, such as `QBackendMetaData`, `QTableMetaData`, `QProcessMetaData`, etc.
 There are also type-specific methods (e.g., `addTable`, `addProcess`, etc), which one can call instead - this would just
 be a matter of personal preference.
+* `withRecordSearchProvider(QCodeReference codeReference)` - Optional `RecordSearchProviderInterface` implementation that record search (the v1 `POST /search` endpoint) uses for the tables it claims, such as a search-index module.
+See `searchFields` in <<Tables>> for details.
 
 *QInstance Usage:*
 

@@ -33,6 +33,7 @@ include::metaData/PermissionRules.adoc[leveloffset=+1]
 
 include::misc/Javalin.adoc[leveloffset=+1]
 include::misc/ScheduledJobs.adoc[leveloffset=+1]
+include::misc/OAuth2RefreshTokens.adoc[leveloffset=+1]
 
 include::esb/index.adoc[leveloffset=+1]
 

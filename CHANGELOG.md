@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
 
 ### Added
+- **`FILE_PREVIEW` field adornment** — `AdornmentType.FILE_PREVIEW`, with value keys in
+  `AdornmentType.FilePreviewValues`, asks frontends to show a field as a thumbnail (images) or a file-type icon (other
+  files) that opens a preview: the full-size image with zoom, a PDF, a video or audio player, or open/download links,
+  with the file's name, type, size and dimensions and arrow-key navigation across the values on screen. Optional values
+  name fields of the same record holding the thumbnail URL (`thumbnailUrlField`), the full-size URL
+  (`fullSizeUrlField`), the file name, MIME type, alt text, caption, width, height and size, plus `defaultMimeType`,
+  `thumbnailMaxSize` (16-512 px, default 40) and `previewable` (default `true`). `QInstanceValidator` checks the field
+  names and values; the adornment is included in v1 table meta-data and the v1 OpenAPI `FieldAdornment.type` enum.
+  Existing adornments are unchanged. See [Field Adornments](docs/metaData/Fields.adoc).
 - **Instance home app ([#1059](https://github.com/QRun-IO/qqq/issues/1059))** — `QInstance.withHomeAppName("home")`
   designates the app whose dashboard a frontend shows as the instance's home page (Next UI renders it at `/app/` and
   links its logo and breadcrumb root there). Validation requires the name to be an app in the instance. Metadata

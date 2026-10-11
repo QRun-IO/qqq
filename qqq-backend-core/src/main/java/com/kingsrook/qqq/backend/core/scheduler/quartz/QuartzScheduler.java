@@ -54,6 +54,7 @@ import org.quartz.Job;
 import org.quartz.JobBuilder;
 import org.quartz.JobDetail;
 import org.quartz.JobKey;
+import org.quartz.ObjectAlreadyExistsException;
 import org.quartz.ScheduleBuilder;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
@@ -257,12 +258,14 @@ public class QuartzScheduler implements QSchedulerInterface
       {
          try
          {
-            ///////////////////////////////////////////////////////////////////////////////
-            // Persistent stores retain their schedules across application restarts.    //
-            // Only bootstrap missing volatile jobs; never reconcile existing jobs here. //
-            ///////////////////////////////////////////////////////////////////////////////
-            if(scheduler.getMetaData().isJobStoreSupportsPersistence()
-               || scheduler.checkExists(new JobKey(schedulableIdentity.getIdentity(), schedulableType.getName())))
+            ///////////////////////////////////////////////////////////////////////////////////
+            // During startup, only bootstrap jobs that are missing from the job store, for  //
+            // both volatile (RAM) and persistent (JDBC) stores - never reconcile or replace //
+            // existing jobs here.  A persistent store keeps its jobs across restarts, so a  //
+            // restart (or another clustered node booting) finds them and leaves them alone  //
+            // but a fresh persistent store must still get its jobs (see QRun-IO/qqq#1044).  //
+            ///////////////////////////////////////////////////////////////////////////////////
+            if(scheduler.checkExists(new JobKey(schedulableIdentity.getIdentity(), schedulableType.getName())))
             {
                return;
             }
@@ -444,7 +447,19 @@ public class QuartzScheduler implements QSchedulerInterface
             // Use the non-replacing operation in case another caller added this job //
             // after the startup existence check.                                    //
             ///////////////////////////////////////////////////////////////////////////
-            scheduler.scheduleJob(jobDetail, trigger);
+            try
+            {
+               scheduler.scheduleJob(jobDetail, trigger);
+               LOG.info("Scheduled new job during startup", logPair("jobKey", jobKey));
+            }
+            catch(ObjectAlreadyExistsException e)
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // e.g., another node sharing a clustered persistent store added it      //
+               // between our existence check and this call - keep theirs; not an error //
+               ///////////////////////////////////////////////////////////////////////////
+               LOG.info("Job was already scheduled during startup - leaving existing job in place", logPair("jobKey", jobKey));
+            }
          }
 
          ///////////////////////////////////////////////////////////////////////////

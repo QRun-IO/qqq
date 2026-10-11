@@ -563,11 +563,12 @@ class SampleSchedulingAcceptanceTest
 
 
    /*******************************************************************************
-    ** A real JDBC Quartz store retains the historical startup no-reconcile guard.
-    ** Its preexisting paused row survives while a missing configured job stays absent.
+    ** A real JDBC Quartz store keeps the startup no-reconcile guard for existing
+    ** jobs: its preexisting paused row survives unchanged, while a missing
+    ** configured job is registered (#1044).
     *******************************************************************************/
    @Test
-   void persistentQuartzStartupRetainsGuard() throws Exception
+   void persistentQuartzStartupRegistersOnlyMissingJobs() throws Exception
    {
       manager.stop();
       manager.unInit();
@@ -634,11 +635,11 @@ class SampleSchedulingAcceptanceTest
             assertEquals(TimeUnit.HOURS.toMillis(1), ((SimpleTrigger) quartz.getTrigger(key)).getRepeatInterval());
             assertEquals("native-marker", quartz.getJobDetail(new JobKey("process:" + PROCESS, "PROCESS")).getDescription());
             assertEquals(Trigger.TriggerState.PAUSED, quartz.getTriggerState(key));
-            assertFalse(quartz.checkExists(new JobKey("process:missingPersistentJob", "PROCESS")));
+            assertTrue(quartz.checkExists(new JobKey("process:missingPersistentJob", "PROCESS")));
             try(Statement statement = database.createStatement(); ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM QRTZ_JOB_DETAILS"))
             {
                assertTrue(result.next());
-               assertEquals(1, result.getInt(1));
+               assertEquals(2, result.getInt(1));
             }
             assertEquals(0, observation.writes.get());
          }

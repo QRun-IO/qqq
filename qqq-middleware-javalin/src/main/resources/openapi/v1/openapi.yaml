@@ -340,6 +340,7 @@ components:
           - "FILE_DOWNLOAD"
           - "WIDGET"
           - "ERROR"
+          - "FILE_PREVIEW"
           type: "string"
         values:
           description: "Values associated with this adornment.  Keys and the meanings\

@@ -21,11 +21,15 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -36,16 +40,22 @@ import java.util.concurrent.TimeUnit;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.CollectedLogMessage;
 import com.kingsrook.qqq.backend.core.logging.QCollectingLogger;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -57,6 +67,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
@@ -97,6 +108,12 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
    private static final String TOKEN_PATH           = "/oauth/token";
    private static final String REVOKE_PATH          = "/oauth/revoke";
    private static final String USER_ID              = "refresh-user@example.com";
+
+   //////////////////////////////////////////////////////////////////
+   // fixed test keys (base64 of 32 bytes) - for tests only        //
+   //////////////////////////////////////////////////////////////////
+   private static final String TEST_KEY  = Base64.getEncoder().encodeToString("test-key-0123456789-0123456789-0".getBytes(StandardCharsets.UTF_8));
+   private static final String OTHER_KEY = Base64.getEncoder().encodeToString("other-key-012345678-0123456789-0".getBytes(StandardCharsets.UTF_8));
 
    private WireMockServer wireMockServer;
    private QInstance      qInstance;
@@ -151,7 +168,13 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 
       QRecord stored = getRefreshTokenRecord(session.getUuid());
       assertNotNull(stored);
-      assertEquals(refreshToken, stored.getValueString("refreshToken"));
+
+      ////////////////////////////////////////////////////////////////////
+      // stored encrypted (#1048) - not the token, but decrypts to it   //
+      ////////////////////////////////////////////////////////////////////
+      String storedValue = stored.getValueString("refreshToken");
+      assertThat(storedValue).startsWith("v1:" + RefreshTokenCipher.DEFAULT_KEY_ID + ":").doesNotContain(refreshToken);
+      assertEquals(refreshToken, getDecryptedRefreshToken(session.getUuid()));
       assertNotNull(stored.getValueInstant("sessionStartedAt"));
       assertNotNull(stored.getValueInstant("refreshTokenExpiresAt"));
 
@@ -222,7 +245,7 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
       assertEquals(sessionUuid, session.getUuid());
 
       assertEquals(newAccess, getUserSessionRecord(sessionUuid).getValueString("accessToken"));
-      assertEquals(newRefresh, getRefreshTokenRecord(sessionUuid).getValueString("refreshToken"));
+      assertEquals(newRefresh, getDecryptedRefreshToken(sessionUuid));
       assertTrue(new OAuth2AuthenticationModule().isSessionValid(qInstance, session));
 
       wireMockServer.verify(1, postRequestedFor(urlEqualTo(TOKEN_PATH))
@@ -251,7 +274,7 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 
       assertTrue(new OAuth2AuthenticationModule().isSessionValid(qInstance, sessionWithUuid(sessionUuid)));
       assertEquals(newAccess, getUserSessionRecord(sessionUuid).getValueString("accessToken"));
-      assertEquals(refresh, getRefreshTokenRecord(sessionUuid).getValueString("refreshToken"));
+      assertEquals(refresh, getDecryptedRefreshToken(sessionUuid));
    }
 
 
@@ -289,7 +312,7 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 
       assertFalse(new OAuth2AuthenticationModule().isSessionValid(qInstance, sessionWithUuid(sessionUuid)));
       assertNotNull(getUserSessionRecord(sessionUuid));
-      assertEquals("keep-me", getRefreshTokenRecord(sessionUuid).getValueString("refreshToken"));
+      assertEquals("keep-me", getDecryptedRefreshToken(sessionUuid));
    }
 
 
@@ -345,7 +368,7 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 
       wireMockServer.verify(1, postRequestedFor(urlEqualTo(TOKEN_PATH)));
       assertEquals(newAccess, getUserSessionRecord(sessionUuid).getValueString("accessToken"));
-      assertEquals("rotated-concurrent", getRefreshTokenRecord(sessionUuid).getValueString("refreshToken"));
+      assertEquals("rotated-concurrent", getDecryptedRefreshToken(sessionUuid));
    }
 
 
@@ -366,7 +389,7 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
       assertTrue(module.isSessionValid(qInstance, sessionWithUuid(sessionUuid)));
       QSession session = module.createSession(qInstance, Map.of("sessionUUID", sessionUuid));
       assertEquals("true", session.getValue("fromSubclass"));
-      assertEquals("subclass-rotated", getRefreshTokenRecord(sessionUuid).getValueString("refreshToken"));
+      assertEquals("subclass-rotated", getDecryptedRefreshToken(sessionUuid));
    }
 
 
@@ -516,6 +539,347 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A stored value encrypted under a different key (with the same key id)
+    ** does not decrypt: the session ends cleanly, without calling the provider,
+    ** and the log says why - without any token material.
+    *******************************************************************************/
+   @Test
+   void testDecryptFailure_wrongKey_endsSession() throws Exception
+   {
+      QCollectingLogger collectingLogger = QLogger.activateCollectingLoggerForClass(OAuth2AuthenticationModule.class);
+
+      String sessionUuid = UUID.randomUUID().toString();
+      String refresh     = "wrong-key-refresh-" + UUID.randomUUID();
+      String storedValue = encryptForSession(new OAuth2AuthenticationMetaData().withRefreshTokenEncryptionKey(OTHER_KEY), refresh, sessionUuid);
+      insertUserSessionRow(sessionUuid, createJwt(-60));
+      insertRefreshTokenRow(sessionUuid, storedValue, Instant.now());
+      stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), null));
+
+      assertSessionEndedWithoutRefresh(sessionUuid);
+      assertThat(collectingLogger.getCollectedMessages()).anyMatch(m -> m.getMessage().contains("could not be decrypted") && m.getMessage().contains("authenticationFailed") && m.getMessage().contains(sessionUuid));
+      assertNoLogContains(collectingLogger, refresh);
+      assertNoLogContains(collectingLogger, storedValue);
+   }
+
+
+
+   /*******************************************************************************
+    ** A ciphertext copied from another session's row fails to decrypt (the AAD
+    ** binds it to its session), ending the session it was copied to - while the
+    ** original session still refreshes normally.
+    *******************************************************************************/
+   @Test
+   void testDecryptFailure_ciphertextFromAnotherSession_endsSession() throws Exception
+   {
+      String victimUuid   = UUID.randomUUID().toString();
+      String attackerUuid = UUID.randomUUID().toString();
+      insertSession(victimUuid, createJwt(-60), "victim-refresh", Instant.now());
+      insertUserSessionRow(attackerUuid, createJwt(-60));
+      insertRefreshTokenRow(attackerUuid, getRefreshTokenRecord(victimUuid).getValueString("refreshToken"), Instant.now());
+      stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), null));
+
+      assertSessionEndedWithoutRefresh(attackerUuid);
+
+      assertTrue(new OAuth2AuthenticationModule().isSessionValid(qInstance, sessionWithUuid(victimUuid)));
+      wireMockServer.verify(1, postRequestedFor(urlEqualTo(TOKEN_PATH)).withRequestBody(containing("refresh_token=victim-refresh")));
+   }
+
+
+
+   /*******************************************************************************
+    ** A stored value whose userId binding doesn't match the userSession row
+    ** (e.g., the row's userId was changed) does not decrypt.
+    *******************************************************************************/
+   @Test
+   void testDecryptFailure_otherUserId_endsSession() throws Exception
+   {
+      String sessionUuid = UUID.randomUUID().toString();
+      String storedValue = RefreshTokenCipher.fromMetaData(getOAuth2MetaData()).encrypt("other-user-refresh", RefreshTokenCipher.buildAssociatedData(sessionUuid, "someone-else@example.com"));
+      insertUserSessionRow(sessionUuid, createJwt(-60));
+      insertRefreshTokenRow(sessionUuid, storedValue, Instant.now());
+
+      assertSessionEndedWithoutRefresh(sessionUuid);
+   }
+
+
+
+   /*******************************************************************************
+    ** A tampered ciphertext, an unknown key id, and a legacy plaintext value all
+    ** fail to decrypt, and end the session cleanly.
+    *******************************************************************************/
+   @Test
+   void testDecryptFailure_tamperedOrUnrecognized_endsSession() throws Exception
+   {
+      String   validUuid = UUID.randomUUID().toString();
+      insertSession(validUuid, createJwt(3600), "tamper-me", Instant.now());
+      String[] parts     = getRefreshTokenRecord(validUuid).getValueString("refreshToken").split(":", 3);
+      byte[]   payload   = Base64.getDecoder().decode(parts[2]);
+      payload[payload.length - 1] ^= 0x01;
+      String tampered = parts[0] + ":" + parts[1] + ":" + Base64.getEncoder().encodeToString(payload);
+
+      for(String storedValue : List.of(tampered, "v1:unknownKeyId:" + parts[2], "legacy-plaintext-refresh-token", "v1:" + RefreshTokenCipher.DEFAULT_KEY_ID + ":not*base64", "v1:" + RefreshTokenCipher.DEFAULT_KEY_ID + ":AAAA"))
+      {
+         String sessionUuid = UUID.randomUUID().toString();
+         insertUserSessionRow(sessionUuid, createJwt(-60));
+         insertRefreshTokenRow(sessionUuid, storedValue, Instant.now());
+         assertSessionEndedWithoutRefresh(sessionUuid);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Key rotation: with a new current key and the old one listed as previous,
+    ** values stored under the old key still work, and are re-encrypted under the
+    ** new key on their next write (even when the provider doesn't rotate).
+    *******************************************************************************/
+   @Test
+   void testKeyRotation_oldKeyReadableAndReEncrypted() throws Exception
+   {
+      String sessionUuid = UUID.randomUUID().toString();
+      String refresh     = "pre-rotation-refresh-" + UUID.randomUUID();
+      String oldValue    = encryptForSession(new OAuth2AuthenticationMetaData().withRefreshTokenEncryptionKey(OTHER_KEY).withRefreshTokenEncryptionKeyId("2025"), refresh, sessionUuid);
+      insertUserSessionRow(sessionUuid, createJwt(-60));
+      insertRefreshTokenRow(sessionUuid, oldValue, Instant.now());
+
+      getOAuth2MetaData()
+         .withRefreshTokenEncryptionKey(TEST_KEY)
+         .withRefreshTokenEncryptionKeyId("2026")
+         .withPreviousRefreshTokenEncryptionKeys(Map.of("2025", OTHER_KEY));
+      stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), null));
+
+      assertTrue(new OAuth2AuthenticationModule().isSessionValid(qInstance, sessionWithUuid(sessionUuid)));
+      wireMockServer.verify(1, postRequestedFor(urlEqualTo(TOKEN_PATH)).withRequestBody(containing("refresh_token=" + refresh)));
+
+      String newValue = getRefreshTokenRecord(sessionUuid).getValueString("refreshToken");
+      assertThat(newValue).startsWith("v1:2026:");
+      assertEquals(refresh, getDecryptedRefreshToken(sessionUuid));
+
+      ///////////////////////////////////////////////////////////////////
+      // once the old key is dropped, the re-encrypted value still works //
+      ///////////////////////////////////////////////////////////////////
+      getOAuth2MetaData().setPreviousRefreshTokenEncryptionKeys(null);
+      assertEquals(refresh, getDecryptedRefreshToken(sessionUuid));
+   }
+
+
+
+   /*******************************************************************************
+    ** Instance validation requires a valid key whenever refresh tokens will be
+    ** stored, unless plaintext was explicitly allowed; key variables resolve.
+    *******************************************************************************/
+   @Test
+   void testValidation_encryptionKey() throws Exception
+   {
+      ////////////////////////////////////////////
+      // the standard test setup (key set) passes //
+      ////////////////////////////////////////////
+      assertNoKeyErrors(getOAuth2MetaData());
+
+      //////////////////////////////////////////////////////////////////
+      // no key, with the table defined & refresh enabled: fails fast //
+      //////////////////////////////////////////////////////////////////
+      assertKeyError(getOAuth2MetaData().withRefreshTokenEncryptionKey(null), "refreshTokenEncryptionKey must be set");
+
+      //////////////////////////////////////////////////////////////////
+      // no key is fine when nothing would be stored (refresh off, or //
+      // no table), or plaintext is explicitly allowed (dev only).    //
+      //////////////////////////////////////////////////////////////////
+      assertNoKeyErrors(getOAuth2MetaData().withRefreshTokensEnabled(false));
+      getOAuth2MetaData().setRefreshTokensEnabled(true);
+      assertNoKeyErrors(getOAuth2MetaData().withAllowPlaintextRefreshTokens(true));
+      getOAuth2MetaData().setAllowPlaintextRefreshTokens(false);
+
+      QInstance noTableInstance = buildQInstance(false);
+      OAuth2AuthenticationMetaData noTableMetaData = ((OAuth2AuthenticationMetaData) noTableInstance.getAuthentication()).withRefreshTokenEncryptionKey(null);
+      QInstanceValidator noTableValidator = new QInstanceValidator();
+      noTableMetaData.validate(noTableInstance, noTableValidator);
+      assertThat(noTableValidator.getErrors()).noneMatch(e -> e.contains("refreshTokenEncryptionKey") || e.contains("encryption"));
+
+      //////////////////////////////////////////////////
+      // invalid keys and key ids fail (even if unused) //
+      //////////////////////////////////////////////////
+      assertKeyError(getOAuth2MetaData().withRefreshTokenEncryptionKey("not base64 !"), "not valid base64");
+      assertKeyError(getOAuth2MetaData().withRefreshTokenEncryptionKey(Base64.getEncoder().encodeToString(new byte[16])), "must decode to 32 bytes");
+      assertKeyError(getOAuth2MetaData().withRefreshTokenEncryptionKey("${env.QQQ_UNSET_VARIABLE_FOR_TEST_1048}"), "did not resolve");
+      assertKeyError(getOAuth2MetaData().withRefreshTokenEncryptionKey(TEST_KEY).withRefreshTokenEncryptionKeyId("has:colon"), "refreshTokenEncryptionKeyId must be");
+      getOAuth2MetaData().setRefreshTokenEncryptionKeyId(null);
+      assertKeyError(getOAuth2MetaData().withPreviousRefreshTokenEncryptionKeys(Map.of(RefreshTokenCipher.DEFAULT_KEY_ID, OTHER_KEY)), "may not reuse the current key id");
+      assertKeyError(getOAuth2MetaData().withPreviousRefreshTokenEncryptionKeys(Map.of("old", "short")), "previousRefreshTokenEncryptionKeys[old]");
+      assertKeyError(getOAuth2MetaData().withRefreshTokenEncryptionKey(null).withRefreshTokensEnabled(false), "previousRefreshTokenEncryptionKeys is set, but refreshTokenEncryptionKey is not");
+      getOAuth2MetaData().withRefreshTokensEnabled(true).withPreviousRefreshTokenEncryptionKeys(null);
+
+      ///////////////////////////////////////////////////
+      // ${prop.X} / ${env.X} references are resolved  //
+      ///////////////////////////////////////////////////
+      String propertyName = "qqq.test.oauth2.refreshTokenKey.1048";
+      System.setProperty(propertyName, TEST_KEY);
+      try
+      {
+         assertNoKeyErrors(getOAuth2MetaData().withRefreshTokenEncryptionKey("${prop." + propertyName + "}"));
+
+         String sessionUuid = UUID.randomUUID().toString();
+         insertSession(sessionUuid, createJwt(3600), "via-property-key", Instant.now());
+         assertEquals("via-property-key", getDecryptedRefreshToken(sessionUuid));
+      }
+      finally
+      {
+         System.clearProperty(propertyName);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** With allowPlaintextRefreshTokens (dev only) and no key, tokens are stored
+    ** as-is, and refresh still works.
+    *******************************************************************************/
+   @Test
+   void testAllowPlaintext_storesAsIsAndRefreshes() throws Exception
+   {
+      getOAuth2MetaData().withRefreshTokenEncryptionKey(null).withAllowPlaintextRefreshTokens(true);
+      stubTokenEndpoint("authorization_code", 200, tokenResponse(createJwt(30), "plaintext-refresh"));
+      QSession session = new OAuth2AuthenticationModule().createSession(qInstance, pkceContext());
+      assertEquals("plaintext-refresh", getRefreshTokenRecord(session.getUuid()).getValueString("refreshToken"));
+
+      stubTokenEndpoint("refresh_token", 200, tokenResponse(createJwt(3600), "plaintext-rotated"));
+      assertTrue(new OAuth2AuthenticationModule().isSessionValid(qInstance, sessionWithUuid(session.getUuid())));
+      assertEquals("plaintext-rotated", getRefreshTokenRecord(session.getUuid()).getValueString("refreshToken"));
+   }
+
+
+
+   /*******************************************************************************
+    ** If (validation having been skipped) there is no key and plaintext isn't
+    ** allowed, the refresh token is not stored - but login still works - and a
+    ** stored value can't be used (the session ends cleanly).
+    *******************************************************************************/
+   @Test
+   void testNoKey_notStoredAndNotUsed() throws Exception
+   {
+      String sessionUuid = UUID.randomUUID().toString();
+      insertSession(sessionUuid, createJwt(-60), "stored-before-key-removed", Instant.now());
+      getOAuth2MetaData().setRefreshTokenEncryptionKey(null);
+
+      stubTokenEndpoint("authorization_code", 200, tokenResponse(createJwt(3600), "unencryptable-refresh"));
+      QSession session = new OAuth2AuthenticationModule().createSession(qInstance, pkceContext());
+      assertEquals(USER_ID, session.getUser().getIdReference());
+      assertNull(getRefreshTokenRecord(session.getUuid()));
+
+      assertSessionEndedWithoutRefresh(sessionUuid);
+   }
+
+
+
+   /*******************************************************************************
+    ** Logout with a stored value that won't decrypt still deletes it (and can't
+    ** revoke it, as it can't be read).
+    *******************************************************************************/
+   @Test
+   void testLogout_undecryptableToken_deletedWithoutRevocation() throws Exception
+   {
+      stubRevocationEndpoint();
+      String sessionUuid = UUID.randomUUID().toString();
+      insertUserSessionRow(sessionUuid, createJwt(3600));
+      insertRefreshTokenRow(sessionUuid, encryptForSession(new OAuth2AuthenticationMetaData().withRefreshTokenEncryptionKey(OTHER_KEY), "unreadable", sessionUuid), Instant.now());
+
+      new OAuth2AuthenticationModule().logout(qInstance, sessionUuid);
+      wireMockServer.verify(0, postRequestedFor(urlEqualTo(REVOKE_PATH)));
+      assertNull(getRefreshTokenRecord(sessionUuid));
+      assertNull(getUserSessionRecord(sessionUuid));
+   }
+
+
+
+   /*******************************************************************************
+    ** The refresh-token table is locked down: a session holding every available
+    ** permission, plus every conventional permission name for the table, still
+    ** can't read (query/get/count/export) or write it; it isn't offered as an
+    ** available permission; its token field is hidden.  The system session (as
+    ** used by the module itself) is allowed.
+    *******************************************************************************/
+   @Test
+   void testRefreshTokenTable_lockedDown() throws Exception
+   {
+      String         tableName = UserSessionRefreshToken.TABLE_NAME;
+      QTableMetaData table     = qInstance.getTable(tableName);
+      assertTrue(table.getIsHidden());
+      assertTrue(table.getField("refreshToken").getIsHidden());
+      assertEquals(PermissionLevel.HAS_ACCESS_PERMISSION, table.getPermissionRules().getLevel());
+      assertEquals(UserSessionRefreshTokenMetaDataProducer.NO_ACCESS_PERMISSION_BASE_NAME, table.getPermissionRules().getPermissionBaseName());
+
+      Collection<String> availablePermissions = PermissionsHelper.getAllAvailablePermissionNames(qInstance);
+      assertThat(availablePermissions).noneMatch(p -> p.startsWith(UserSessionRefreshTokenMetaDataProducer.NO_ACCESS_PERMISSION_BASE_NAME) || p.startsWith(tableName));
+
+      Set<String> adminPermissions = new HashSet<>(availablePermissions);
+      for(String suffix : List.of("read", "insert", "edit", "delete", "write", "hasAccess"))
+      {
+         adminPermissions.add(tableName + "." + suffix);
+      }
+
+      ExportInput exportInput = new ExportInput();
+      exportInput.setTableName(tableName);
+
+      QSession adminSession = new QSession();
+      adminSession.setPermissions(adminPermissions);
+      QContext.init(qInstance, adminSession);
+      assertThrows(QPermissionDeniedException.class, () -> PermissionsHelper.checkTablePermissionThrowing(new QueryInput(tableName), TablePermissionSubType.READ));
+      assertThrows(QPermissionDeniedException.class, () -> PermissionsHelper.checkTablePermissionThrowing(new GetInput(tableName), TablePermissionSubType.READ));
+      assertThrows(QPermissionDeniedException.class, () -> PermissionsHelper.checkTablePermissionThrowing(new CountInput(tableName), TablePermissionSubType.READ));
+      assertThrows(QPermissionDeniedException.class, () -> PermissionsHelper.checkTablePermissionThrowing(exportInput, TablePermissionSubType.READ));
+      assertThrows(QPermissionDeniedException.class, () -> PermissionsHelper.checkTablePermissionThrowing(new InsertInput(tableName), TablePermissionSubType.INSERT));
+      assertThrows(QPermissionDeniedException.class, () -> PermissionsHelper.checkTablePermissionThrowing(new UpdateInput(tableName), TablePermissionSubType.EDIT));
+      assertThrows(QPermissionDeniedException.class, () -> PermissionsHelper.checkTablePermissionThrowing(new DeleteInput(tableName), TablePermissionSubType.DELETE));
+      assertFalse(PermissionsHelper.hasTablePermission(new QueryInput(tableName), tableName, TablePermissionSubType.READ));
+
+      QContext.init(qInstance, new QSystemUserSession());
+      PermissionsHelper.checkTablePermissionThrowing(new QueryInput(tableName), TablePermissionSubType.READ);
+   }
+
+
+
+   /*******************************************************************************
+    ** Assert that resuming / validating the session fails without a provider
+    ** call, and that its rows are gone.
+    *******************************************************************************/
+   private void assertSessionEndedWithoutRefresh(String sessionUuid) throws Exception
+   {
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      assertFalse(module.isSessionValid(qInstance, sessionWithUuid(sessionUuid)));
+      assertNull(getRefreshTokenRecord(sessionUuid));
+      assertNull(getUserSessionRecord(sessionUuid));
+      assertThrows(QAuthenticationException.class, () -> module.createSession(qInstance, Map.of("sessionUUID", sessionUuid)));
+      wireMockServer.verify(0, postRequestedFor(urlEqualTo(TOKEN_PATH)).withRequestBody(containing("grant_type=refresh_token")));
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate the OAuth2 meta-data, expecting an error containing the text.
+    *******************************************************************************/
+   private void assertKeyError(OAuth2AuthenticationMetaData metaData, String expectedText)
+   {
+      QInstanceValidator validator = new QInstanceValidator();
+      metaData.validate(qInstance, validator);
+      assertThat(validator.getErrors()).anyMatch(e -> e.contains(expectedText));
+      assertThat(validator.getErrors()).noneMatch(e -> e.contains(TEST_KEY) || e.contains(OTHER_KEY));
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate the OAuth2 meta-data, expecting no key-related errors.
+    *******************************************************************************/
+   private void assertNoKeyErrors(OAuth2AuthenticationMetaData metaData)
+   {
+      QInstanceValidator validator = new QInstanceValidator();
+      metaData.validate(qInstance, validator);
+      assertThat(validator.getErrors()).noneMatch(e -> e.contains("refreshTokenEncryptionKey") || e.contains("encryption"));
+   }
+
+
+
+   /*******************************************************************************
     ** Fail if any collected log message (or exception) contains the secret.
     *******************************************************************************/
    private void assertNoLogContains(QCollectingLogger collectingLogger, String secret)
@@ -593,7 +957,8 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
          .withClientSecret("test-client-secret")
          .withScopes("openid profile email offline_access")
          .withUserSessionTableName(UserSession.TABLE_NAME)
-         .withRedirectStateTableName(REDIRECT_STATE_TABLE);
+         .withRedirectStateTableName(REDIRECT_STATE_TABLE)
+         .withRefreshTokenEncryptionKey(TEST_KEY);
       authMetaData.setName("oauth2");
       instance.registerAuthenticationProvider(AuthScope.instanceDefault(), authMetaData);
       return (instance);
@@ -606,15 +971,56 @@ class OAuth2AuthenticationModuleRefreshTokenTest extends BaseTest
     *******************************************************************************/
    private void insertSession(String sessionUuid, String accessToken, String refreshToken, Instant sessionStartedAt) throws Exception
    {
+      insertUserSessionRow(sessionUuid, accessToken);
+      insertRefreshTokenRow(sessionUuid, encryptForSession(getOAuth2MetaData(), refreshToken, sessionUuid), sessionStartedAt);
+   }
+
+
+
+   /*******************************************************************************
+    ** Insert a userSession row for USER_ID
+    *******************************************************************************/
+   private void insertUserSessionRow(String sessionUuid, String accessToken) throws Exception
+   {
       new InsertAction().execute(new InsertInput(UserSession.TABLE_NAME).withRecordEntity(new UserSession()
          .withUuid(sessionUuid)
          .withUserId(USER_ID)
          .withAccessToken(accessToken)));
+   }
 
+
+
+   /*******************************************************************************
+    ** Insert a refresh token row with exactly the given stored value
+    *******************************************************************************/
+   private void insertRefreshTokenRow(String sessionUuid, String storedValue, Instant sessionStartedAt) throws Exception
+   {
       new InsertAction().execute(new InsertInput(UserSessionRefreshToken.TABLE_NAME).withRecordEntity(new UserSessionRefreshToken()
          .withSessionUuid(sessionUuid)
-         .withRefreshToken(refreshToken)
+         .withRefreshToken(storedValue)
          .withSessionStartedAt(sessionStartedAt)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Encrypt a refresh token as the module would for the given session (whose
+    ** userSession row has USER_ID), under the given meta-data's current key.
+    *******************************************************************************/
+   private String encryptForSession(OAuth2AuthenticationMetaData metaData, String refreshToken, String sessionUuid) throws Exception
+   {
+      return (RefreshTokenCipher.fromMetaData(metaData).encrypt(refreshToken, RefreshTokenCipher.buildAssociatedData(sessionUuid, USER_ID)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Read and decrypt (with the instance's keys) a session's stored refresh token
+    *******************************************************************************/
+   private String getDecryptedRefreshToken(String sessionUuid) throws Exception
+   {
+      String storedValue = getRefreshTokenRecord(sessionUuid).getValueString("refreshToken");
+      return (RefreshTokenCipher.fromMetaData(getOAuth2MetaData()).decrypt(storedValue, RefreshTokenCipher.buildAssociatedData(sessionUuid, USER_ID)));
    }
 
 

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **OAuth2 refresh tokens encrypted at rest ([#1048](https://github.com/QRun-IO/qqq/issues/1048))** — refresh tokens
+  in the `userSessionRefreshToken` table (#1041) are now encrypted with AES-256-GCM, using a random nonce per value
+  and the session's uuid and `userId` as associated data, so a copied database, replica or backup no longer holds
+  usable tokens. The key comes from the new `OAuth2AuthenticationMetaData.refreshTokenEncryptionKey`, a base64
+  32-byte key from `openssl rand -base64 32` (`${env.X}` references are resolved). `refreshTokenEncryptionKeyId` and
+  `previousRefreshTokenEncryptionKeys` support rotation: values under a previous key are re-encrypted on their next
+  write. Instance validation fails when the table is defined and refresh is enabled but no valid key is set;
+  `allowPlaintextRefreshTokens` (default `false`) is a local-development escape hatch and logs a warning. A value
+  that can't be decrypted ends its session with the usual 401. The table now requires a dedicated permission that no
+  role is granted, so the v1 table API, export, reports and the UI deny it to every user. **Upgrade:** apps that
+  enabled the table from `develop` must set a key, and their existing plaintext rows end at the next refresh. See
+  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+
 ### Added
 - **OAuth2 refresh tokens ([#1041](https://github.com/QRun-IO/qqq/issues/1041))** — `OAuth2AuthenticationModule`
   stores the refresh token from the code exchange (e.g., with the `offline_access` scope) server-side, in the new

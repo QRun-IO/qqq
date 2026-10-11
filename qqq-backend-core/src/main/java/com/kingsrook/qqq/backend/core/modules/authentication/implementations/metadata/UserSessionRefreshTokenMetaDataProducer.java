@@ -26,6 +26,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSessionRefreshToken;
@@ -35,10 +38,20 @@ import com.kingsrook.qqq.backend.core.modules.authentication.implementations.mod
  ** Meta Data Producer for UserSessionRefreshToken.  Adding this table to an
  ** instance that uses OAuth2 authentication opts the app in to server-side
  ** refresh-token storage (#1041).  The table is hidden and not audited, as its
- ** contents are credentials.
+ ** contents are credentials (encrypted at rest - #1048).
+ **
+ ** It is also locked down (#1048): its permission rules require a dedicated
+ ** permission (NO_ACCESS_PERMISSION_BASE_NAME + ".hasAccess") that no role
+ ** should ever be granted - and, as the table is hidden, that permission is not
+ ** offered among the instance's available permissions - so the table API,
+ ** query, export, reports and UI all deny it, even to admins.  The
+ ** authentication module's own reads and writes run as the system user, which
+ ** isn't subject to this.
  *******************************************************************************/
 public class UserSessionRefreshTokenMetaDataProducer extends MetaDataProducer<QTableMetaData>
 {
+   public static final String NO_ACCESS_PERMISSION_BASE_NAME = "qqq.internal.userSessionRefreshToken.noAccess";
+
    private final String backendName;
 
 
@@ -69,7 +82,11 @@ public class UserSessionRefreshTokenMetaDataProducer extends MetaDataProducer<QT
          .withPrimaryKeyField("id")
          .withUniqueKey(new UniqueKey("sessionUuid"))
          .withFieldsFromEntity(UserSessionRefreshToken.class)
-         .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.NONE));
+         .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.NONE))
+         .withPermissionRules(new QPermissionRules()
+            .withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)
+            .withPermissionBaseName(NO_ACCESS_PERMISSION_BASE_NAME)
+            .withDenyBehavior(DenyBehavior.HIDDEN));
       return tableMetaData;
    }
 

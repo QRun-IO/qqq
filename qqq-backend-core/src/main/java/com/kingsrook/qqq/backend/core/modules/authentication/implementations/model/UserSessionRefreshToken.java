@@ -35,8 +35,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior
  ** Kept in its own table (rather than as columns on userSession) so that apps
  ** opt in by defining this table (see UserSessionRefreshTokenMetaDataProducer)
  ** - existing userSession schemas need no migration.  Rows from this table must
- ** never be exposed to users: the table is hidden, and the refreshToken field
- ** is hidden (so it is omitted from standard query/get results).
+ ** never be exposed to users: the table is hidden and permission-locked, and
+ ** the refreshToken field is hidden (so it is omitted from standard query/get
+ ** results).  The refreshToken value is stored encrypted (see
+ ** RefreshTokenCipher) - only OAuth2AuthenticationModule decrypts it.
  *******************************************************************************/
 public class UserSessionRefreshToken extends QRecordEntity
 {

@@ -21,13 +21,20 @@
 package com.kingsrook.qqq.backend.core.model.metadata.authentication;
 
 
+import java.util.Map;
+import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.RefreshTokenCipher;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSessionRefreshToken;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -45,6 +52,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
 {
+   private static final QLogger LOG = QLogger.getLogger(OAuth2AuthenticationMetaData.class);
+
    public static final int DEFAULT_REFRESH_TOKEN_SKEW_SECONDS = 60;
 
    ///////////////////////////////////////////////////////////////////////////////
@@ -80,6 +89,20 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
    private Integer refreshTokenSkewSeconds   = DEFAULT_REFRESH_TOKEN_SKEW_SECONDS;
    private Integer maxSessionLifetimeSeconds;
    private String  refreshTokenTableName;
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // encryption of stored refresh tokens (#1048).  the key is a base64 32-byte //
+   // AES key (e.g., "${env.QQQ_OAUTH2_REFRESH_TOKEN_KEY}"), required whenever  //
+   // refresh tokens are stored.  previous keys (by key id) stay readable, for  //
+   // rotation.  allowPlaintextRefreshTokens is a local-development escape      //
+   // hatch only.  keys stay on the server - they are never serialized.         //
+   ///////////////////////////////////////////////////////////////////////////////
+   @JsonIgnore
+   private String              refreshTokenEncryptionKey;
+   private String              refreshTokenEncryptionKeyId;
+   @JsonIgnore
+   private Map<String, String> previousRefreshTokenEncryptionKeys;
+   private Boolean             allowPlaintextRefreshTokens = false;
 
    ////////////////////////////////////////////////////////////////////////////////////////
    // keep this secret, on the server - don't let it be serialized and sent to a client! //
@@ -137,6 +160,49 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
 
       qInstanceValidator.assertCondition(refreshTokenSkewSeconds == null || refreshTokenSkewSeconds >= 0, prefix + "refreshTokenSkewSeconds may not be negative");
       qInstanceValidator.assertCondition(maxSessionLifetimeSeconds == null || maxSessionLifetimeSeconds > 0, prefix + "maxSessionLifetimeSeconds must be positive when set");
+
+      validateRefreshTokenEncryption(qInstance, qInstanceValidator, prefix);
+   }
+
+
+
+   /*******************************************************************************
+    ** When refresh tokens will be stored (enabled, and the refresh-token table is
+    ** in the instance), require a valid encryption key - unless plaintext storage
+    ** was explicitly allowed (local development only), which is loudly logged.
+    ** Any key settings that are given must be valid either way.
+    *******************************************************************************/
+   private void validateRefreshTokenEncryption(QInstance qInstance, QInstanceValidator qInstanceValidator, String prefix)
+   {
+      RefreshTokenCipher cipher;
+      try
+      {
+         cipher = RefreshTokenCipher.fromMetaData(this);
+      }
+      catch(QException e)
+      {
+         qInstanceValidator.assertCondition(false, prefix + "invalid refresh-token encryption settings: " + e.getMessage());
+         return;
+      }
+
+      String  effectiveTableName  = Objects.requireNonNullElse(refreshTokenTableName, UserSessionRefreshToken.TABLE_NAME);
+      boolean storesRefreshTokens = !Boolean.FALSE.equals(refreshTokensEnabled) && qInstance.getTable(effectiveTableName) != null;
+      if(!storesRefreshTokens || cipher != null)
+      {
+         return;
+      }
+
+      if(Boolean.TRUE.equals(allowPlaintextRefreshTokens))
+      {
+         LOG.warn("SECURITY WARNING: OAuth2 refresh tokens will be stored UNENCRYPTED, because allowPlaintextRefreshTokens is true.  "
+               + "Anyone who can read the refresh-token table, or a backup of it, can impersonate users.  "
+               + "Use this for local development only, and set refreshTokenEncryptionKey everywhere else.",
+            logPair("authenticationName", getName()), logPair("refreshTokenTableName", effectiveTableName));
+         return;
+      }
+
+      qInstanceValidator.assertCondition(false, prefix + "refreshTokenEncryptionKey must be set (a base64 32-byte key, e.g., from: openssl rand -base64 32), "
+         + "because refresh tokens are enabled and the refresh-token table ('" + effectiveTableName + "') is defined");
    }
 
 
@@ -517,6 +583,134 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
    public OAuth2AuthenticationMetaData withRefreshTokenTableName(String refreshTokenTableName)
    {
       this.refreshTokenTableName = refreshTokenTableName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for refreshTokenEncryptionKey - the base64 32-byte AES key (or a
+    ** ${env.X} / ${prop.X} reference to one) that encrypts stored refresh tokens.
+    *******************************************************************************/
+   public String getRefreshTokenEncryptionKey()
+   {
+      return (this.refreshTokenEncryptionKey);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for refreshTokenEncryptionKey
+    *******************************************************************************/
+   public void setRefreshTokenEncryptionKey(String refreshTokenEncryptionKey)
+   {
+      this.refreshTokenEncryptionKey = refreshTokenEncryptionKey;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for refreshTokenEncryptionKey
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withRefreshTokenEncryptionKey(String refreshTokenEncryptionKey)
+   {
+      this.refreshTokenEncryptionKey = refreshTokenEncryptionKey;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for refreshTokenEncryptionKeyId - the id of the current key, stored
+    ** with each encrypted value (default: RefreshTokenCipher.DEFAULT_KEY_ID).
+    *******************************************************************************/
+   public String getRefreshTokenEncryptionKeyId()
+   {
+      return (this.refreshTokenEncryptionKeyId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for refreshTokenEncryptionKeyId
+    *******************************************************************************/
+   public void setRefreshTokenEncryptionKeyId(String refreshTokenEncryptionKeyId)
+   {
+      this.refreshTokenEncryptionKeyId = refreshTokenEncryptionKeyId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for refreshTokenEncryptionKeyId
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withRefreshTokenEncryptionKeyId(String refreshTokenEncryptionKeyId)
+   {
+      this.refreshTokenEncryptionKeyId = refreshTokenEncryptionKeyId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for previousRefreshTokenEncryptionKeys - map of key id to key (or a
+    ** variable reference to one) for retired keys, which are only used to decrypt.
+    *******************************************************************************/
+   public Map<String, String> getPreviousRefreshTokenEncryptionKeys()
+   {
+      return (this.previousRefreshTokenEncryptionKeys);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for previousRefreshTokenEncryptionKeys
+    *******************************************************************************/
+   public void setPreviousRefreshTokenEncryptionKeys(Map<String, String> previousRefreshTokenEncryptionKeys)
+   {
+      this.previousRefreshTokenEncryptionKeys = previousRefreshTokenEncryptionKeys;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for previousRefreshTokenEncryptionKeys
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withPreviousRefreshTokenEncryptionKeys(Map<String, String> previousRefreshTokenEncryptionKeys)
+   {
+      this.previousRefreshTokenEncryptionKeys = previousRefreshTokenEncryptionKeys;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowPlaintextRefreshTokens - a local-development escape hatch:
+    ** when true and no key is set, refresh tokens are stored unencrypted.
+    *******************************************************************************/
+   public Boolean getAllowPlaintextRefreshTokens()
+   {
+      return (this.allowPlaintextRefreshTokens);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowPlaintextRefreshTokens
+    *******************************************************************************/
+   public void setAllowPlaintextRefreshTokens(Boolean allowPlaintextRefreshTokens)
+   {
+      this.allowPlaintextRefreshTokens = allowPlaintextRefreshTokens;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowPlaintextRefreshTokens
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withAllowPlaintextRefreshTokens(Boolean allowPlaintextRefreshTokens)
+   {
+      this.allowPlaintextRefreshTokens = allowPlaintextRefreshTokens;
       return (this);
    }
 

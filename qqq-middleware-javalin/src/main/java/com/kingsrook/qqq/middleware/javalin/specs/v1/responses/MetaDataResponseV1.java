@@ -110,6 +110,9 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    @OpenAPIMapValueType(String.class)
    private Map<String, String> environmentValues;
 
+   @OpenAPIDescription("Name of the app whose dashboard a frontend shows as the instance's home page (for example at /app/), when the instance designates one and the user may access that app.  Omitted otherwise, in which case the frontend uses its own default home page.")
+   private String homeAppName;
+
 
 
    /*******************************************************************************
@@ -180,6 +183,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 
       helpContents = CollectionUtils.nullSafeHasContents(metaDataOutput.getHelpContents()) ? metaDataOutput.getHelpContents() : null;
       environmentValues = publishedEnvironmentValues(metaDataOutput.getEnvironmentValues());
+      homeAppName = metaDataOutput.getHomeAppName();
    }
 
 
@@ -302,6 +306,17 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    public Map<String, String> getEnvironmentValues()
    {
       return environmentValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for homeAppName
+    **
+    *******************************************************************************/
+   public String getHomeAppName()
+   {
+      return homeAppName;
    }
 
 }

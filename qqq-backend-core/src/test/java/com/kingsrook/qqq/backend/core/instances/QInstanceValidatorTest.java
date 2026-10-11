@@ -182,6 +182,20 @@ public class QInstanceValidatorTest extends BaseTest
 
 
    /*******************************************************************************
+    ** The instance's home app, when set, must be one of its apps.
+    *******************************************************************************/
+   @Test
+   void testHomeAppName()
+   {
+      assertValidationSuccess((qInstance) -> qInstance.setHomeAppName(TestUtils.APP_NAME_GREETINGS));
+      assertValidationSuccess((qInstance) -> qInstance.setHomeAppName(null));
+      assertValidationFailureReasons((qInstance) -> qInstance.setHomeAppName("notAnApp"),
+         "Instance homeAppName [notAnApp] is not the name of an app in the instance");
+   }
+
+
+
+   /*******************************************************************************
     ** Record change listener code references are validated like other instance
     ** code references: each must load as a RecordChangeListenerInterface.
     *******************************************************************************/

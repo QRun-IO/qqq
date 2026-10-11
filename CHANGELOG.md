@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
 
 ### Added
+- **Instance home app ([#1059](https://github.com/QRun-IO/qqq/issues/1059))** — `QInstance.withHomeAppName("home")`
+  designates the app whose dashboard a frontend shows as the instance's home page (Next UI renders it at `/app/` and
+  links its logo and breadcrumb root there). Validation requires the name to be an app in the instance. Metadata
+  (`MetaDataOutput.homeAppName`, v1 `metaData` response `homeAppName`) publishes it only to users who may access that
+  app; otherwise it is omitted and frontends keep their default home page.
 - **OAuth2 refresh tokens ([#1041](https://github.com/QRun-IO/qqq/issues/1041))** — `OAuth2AuthenticationModule`
   stores the refresh token from the code exchange (e.g., with the `offline_access` scope) server-side, in the new
   opt-in `userSessionRefreshToken` table (`UserSessionRefreshToken`, `UserSessionRefreshTokenMetaDataProducer`).

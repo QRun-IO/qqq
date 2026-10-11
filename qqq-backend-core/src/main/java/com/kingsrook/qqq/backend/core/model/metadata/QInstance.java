@@ -135,6 +135,12 @@ public class QInstance
 
    private String              deploymentMode;
    private Map<String, String> environmentValues = new LinkedHashMap<>();
+
+   //////////////////////////////////////////////////////////////////////////
+   // the app whose dashboard a frontend shows as the instance's home page //
+   // (e.g., at /app/).  null means the frontend's own default home.       //
+   //////////////////////////////////////////////////////////////////////////
+   private String homeAppName;
    private String              defaultTimeZoneId = "UTC";
 
    private QPermissionRules defaultPermissionRules = QPermissionRules.defaultInstance();
@@ -1375,6 +1381,38 @@ public class QInstance
    public void setEnvironmentValues(Map<String, String> environmentValues)
    {
       this.environmentValues = environmentValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for homeAppName - the app whose dashboard a frontend shows as the
+    ** instance's home page (e.g., at /app/); null for the frontend's own default.
+    *******************************************************************************/
+   public String getHomeAppName()
+   {
+      return (this.homeAppName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for homeAppName
+    *******************************************************************************/
+   public void setHomeAppName(String homeAppName)
+   {
+      this.homeAppName = homeAppName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for homeAppName
+    *******************************************************************************/
+   public QInstance withHomeAppName(String homeAppName)
+   {
+      this.homeAppName = homeAppName;
+      return (this);
    }
 
 

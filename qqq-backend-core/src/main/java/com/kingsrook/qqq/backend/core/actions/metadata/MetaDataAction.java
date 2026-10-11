@@ -270,6 +270,16 @@ public class MetaDataAction
       metaDataOutput.setHelpContents(Objects.requireNonNullElse(QContext.getQInstance().getHelpContent(), Collections.emptyMap()));
       metaDataOutput.setSupplementalInstanceMetaData(QContext.getQInstance().getSupplementalMetaData());
 
+      //////////////////////////////////////////////////////////////////////
+      // publish the home app only to users who may open it - otherwise a //
+      // frontend falls back to its own default home page                 //
+      //////////////////////////////////////////////////////////////////////
+      String homeAppName = QContext.getQInstance().getHomeAppName();
+      if(homeAppName != null && apps.containsKey(homeAppName))
+      {
+         metaDataOutput.setHomeAppName(homeAppName);
+      }
+
       Map<String, String> redirects = buildRedirectsForMultiAppTablesWithLimitedUserAccess(metaDataInput, sortedApps, apps.keySet());
       metaDataOutput.setRedirects(redirects);
 

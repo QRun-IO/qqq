@@ -35,6 +35,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchIn
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchResult;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeType;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
@@ -81,6 +83,18 @@ class RecordSearchActionTest extends BaseTest
             new QRecord().withValue("id", 1).withValue("orderNo", "KEL-1").withValue("storeId", 1),
             new QRecord().withValue("id", 2).withValue("orderNo", "KEL-2").withValue("storeId", 2))));
       });
+
+      TestRecordSearchProvider.reset();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static void useTestProvider()
+   {
+      QContext.getQInstance().withRecordSearchProvider(new QCodeReference(TestRecordSearchProvider.class));
    }
 
 
@@ -259,6 +273,135 @@ class RecordSearchActionTest extends BaseTest
       assertThatThrownBy(() -> search((String) null)).isInstanceOf(QBadRequestException.class).hasMessageContaining("A search term is required");
       assertThatThrownBy(() -> search("   ")).isInstanceOf(QBadRequestException.class).hasMessageContaining("A search term is required");
       assertThatThrownBy(() -> search("x".repeat(RecordSearchAction.MAX_SEARCH_TERM_LENGTH + 1))).isInstanceOf(QBadRequestException.class).hasMessageContaining("may not be longer than");
+   }
+
+
+
+   /*******************************************************************************
+    ** A provider searches the tables it claims (its order, core's labels); other
+    ** tables keep the default search; the output keeps instance table order.
+    *******************************************************************************/
+   @Test
+   void testProviderSearchesClaimedTablesAndDefaultSearchesTheRest() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE, 1);
+      useTestProvider();
+      TestRecordSearchProvider.claim(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_PERSON_MEMORY, 3, 1);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_ORDER, 2);
+
+      List<RecordSearchResult> results = search("  kel ");
+      assertThat(labels(results)).containsExactly(
+         "personMemory:3:Tim Chamberlain",
+         "personMemory:1:Darin Kelkhoff",
+         "order:1:Order KEL-1");
+      assertThat(results.get(0).getTableLabel()).isEqualTo("Person");
+
+      assertThat(TestRecordSearchProvider.getInputs()).hasSize(1);
+      RecordSearchInput providerInput = TestRecordSearchProvider.getInputs().get(0);
+      assertThat(providerInput.getSearchTerm()).isEqualTo("kel");
+      assertThat(providerInput.getTableNames()).containsExactly(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      assertThat(providerInput.getLimitPerTable()).isEqualTo(RecordSearchAction.DEFAULT_LIMIT_PER_TABLE);
+      assertThat(providerInput.getInputSource()).isEqualTo(QInputSource.USER);
+   }
+
+
+
+   /*******************************************************************************
+    ** The provider is only asked about tables that are being searched - not ones
+    ** outside the requested table names, nor ones without search fields.
+    *******************************************************************************/
+   @Test
+   void testProviderNotCalledWhenItClaimsNoSearchedTable() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE, 1);
+      useTestProvider();
+      TestRecordSearchProvider.claim(TestUtils.TABLE_NAME_PERSON_MEMORY, TestUtils.TABLE_NAME_PERSON);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_PERSON, 1);
+
+      assertThat(labels(search(new RecordSearchInput().withSearchTerm("kel").withTableNames(List.of(TestUtils.TABLE_NAME_ORDER, TestUtils.TABLE_NAME_PERSON)))))
+         .containsExactly("order:1:Order KEL-1");
+      assertThat(TestRecordSearchProvider.getInputs()).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider hits are re-read through QueryAction: record security locks
+    ** apply, ids that no longer exist (or do not convert) drop out, duplicates
+    ** are removed, and the per-table limit applies after that.
+    *******************************************************************************/
+   @Test
+   void testProviderResultsAreReadThroughQueryAction() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE, 2);
+      useTestProvider();
+      TestRecordSearchProvider.claim(TestUtils.TABLE_NAME_PERSON_MEMORY, TestUtils.TABLE_NAME_ORDER);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_PERSON_MEMORY, "2", 2, 99, "notAnId", null, 1);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_ORDER, 1, 2);
+
+      assertThat(labels(search("anything"))).containsExactly(
+         "personMemory:2:Linda KELKHOFF",
+         "personMemory:1:Darin Kelkhoff",
+         "order:2:Order KEL-2");
+
+      assertThat(labels(search(new RecordSearchInput().withSearchTerm("anything").withLimitPerTable(1)))).containsExactly(
+         "personMemory:2:Linda KELKHOFF",
+         "order:2:Order KEL-2");
+      assertThat(TestRecordSearchProvider.getInputs().get(1).getLimitPerTable()).isEqualTo(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** The provider is only offered tables the session may read, and results it
+    ** returns for any other table are ignored.
+    *******************************************************************************/
+   @Test
+   void testProviderRespectsTablePermissions() throws QException
+   {
+      for(String tableName : List.of(TestUtils.TABLE_NAME_PERSON_MEMORY, TestUtils.TABLE_NAME_ORDER))
+      {
+         QContext.getQInstance().getTable(tableName).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      }
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE, 1);
+      QContext.getQSession().withPermission(TestUtils.TABLE_NAME_ORDER + ".read");
+
+      useTestProvider();
+      TestRecordSearchProvider.claim(TestUtils.TABLE_NAME_PERSON_MEMORY, TestUtils.TABLE_NAME_ORDER);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_PERSON_MEMORY, 1, 2);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_ORDER, 1);
+
+      assertThat(labels(search("kel"))).containsExactly("order:1:Order KEL-1");
+      assertThat(TestRecordSearchProvider.getInputs().get(0).getTableNames()).containsExactly(TestUtils.TABLE_NAME_ORDER);
+   }
+
+
+
+   /*******************************************************************************
+    ** If the provider fails (in search or claimsTable), or cannot be loaded, its
+    ** tables are searched with the default search - search does not fail.
+    *******************************************************************************/
+   @Test
+   void testProviderFailureFallsBackToDefaultSearch() throws QException
+   {
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE, 1);
+      List<String> defaultResults = labels(search("kel"));
+      assertThat(defaultResults).containsExactly("personMemory:1:Darin Kelkhoff", "personMemory:2:Linda KELKHOFF", "order:1:Order KEL-1");
+
+      useTestProvider();
+      TestRecordSearchProvider.claim(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_PERSON_MEMORY, 3);
+
+      TestRecordSearchProvider.fail(true, false);
+      assertThat(labels(search("kel"))).isEqualTo(defaultResults);
+      assertThat(TestRecordSearchProvider.getInputs()).hasSize(1);
+
+      TestRecordSearchProvider.fail(false, true);
+      assertThat(labels(search("kel"))).isEqualTo(defaultResults);
+
+      QContext.getQInstance().withRecordSearchProvider(new QCodeReference("com.kingsrook.qqq.NoSuchProvider", QCodeType.JAVA));
+      assertThat(labels(search("kel"))).isEqualTo(defaultResults);
    }
 
 }

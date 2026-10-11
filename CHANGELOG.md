@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `true`), `refreshTokenSkewSeconds` (default 60), `maxSessionLifetimeSeconds` and `refreshTokenTableName`. Refresh
   tokens are never sent to clients or logged. Apps without the table are unchanged; see
   [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+- **Record search providers** — `QInstance.withRecordSearchProvider(QCodeReference)` registers a
+  `RecordSearchProviderInterface` (`claimsTable(QTableMetaData)`, `search(RecordSearchInput)`) that
+  `RecordSearchAction`, and so `POST /qqq/v1/search`, uses for the tables it claims, such as a
+  search-index module ([qbit-quick-search](https://github.com/QRun-IO/qbit-quick-search)). Unclaimed
+  tables keep the default search over `searchFields`; results are merged in the existing response shape.
+  Provider hits are read again through `QueryAction`, so table permissions and record security locks
+  still apply; if the provider fails, its tables fall back to the default search with a warning.
+  `QInstanceValidator` checks the code reference. Without a provider, search is unchanged.
 
 ## [4.1.0-RC.1] — candidate
 

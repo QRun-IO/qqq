@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -87,7 +89,8 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
    {
       provider = new LogoutTestProvider();
       QInstance qInstance = TestUtils.defineInstance();
-      qInstance.withInstanceDefaultAuthentication(provider.authentication());
+      qInstance.withInstanceDefaultAuthentication(provider.authentication()
+         .withRefreshTokenEncryptionKey(Base64.getEncoder().encodeToString("backchannel-test-key-0123456789x".getBytes(StandardCharsets.UTF_8))));
       qInstance.addTable(new UserSessionMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
       qInstance.addTable(new UserSessionRefreshTokenMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
       qInstance.addTable(new RedirectStateMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));

@@ -46,6 +46,8 @@ APPROVED_NEXT_CANDIDATES = {
                    'before_publish': ('4.1.0-SNAPSHOT',), 'after_publish': ('4.1.0-SNAPSHOT', '4.1.0-RC.1')},
     '4.1.0-RC.2': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6109806327',
                    'before_publish': ('4.1.0-RC.1',), 'after_publish': ('4.1.0-RC.1', '4.1.0-RC.2')},
+    '4.1.0-RC.3': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6115006801',
+                   'before_publish': ('4.1.0-RC.2',), 'after_publish': ('4.1.0-RC.2', '4.1.0-RC.3')},
 }
 
 
@@ -61,7 +63,7 @@ def accepted_release(sample, candidate_version, before_publish=False):
             'Next exception lists a duplicate or unapproved QQQ candidate')
     binding = APPROVED_NEXT_CANDIDATES.get(candidate_version)
     require(binding is not None and candidate_version in versions,
-            'Next exception is only approved for QQQ ' + ' and '.join(APPROVED_NEXT_CANDIDATES))
+            'Next exception is only approved for QQQ ' + ', '.join(APPROVED_NEXT_CANDIDATES))
     policy = policies[versions.index(candidate_version)]
     require(policy['next_version'] == '1.0.0-RC.11'
             and policy['next_sha'] == '2853b9b148282ae0e6d454adab6d0f534ba48280'

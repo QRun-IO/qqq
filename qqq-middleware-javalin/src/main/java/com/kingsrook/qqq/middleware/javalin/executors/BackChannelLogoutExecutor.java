@@ -193,6 +193,12 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
             }
             try
             {
+               ///////////////////////////////////////////////////////////////////
+               // drop stored refresh tokens first, so a session whose row       //
+               // deletion fails can't be renewed; the provider already ended it //
+               ///////////////////////////////////////////////////////////////////
+               OAuth2AuthenticationModule.deleteStoredRefreshTokens(QContext.getQInstance(), sessionUuids);
+
                var deleted = new DeleteAction().execute(new DeleteInput().withTableName(tableName)
                   .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.IN, sessionUuids))));
                if(deleted.getRecordsWithErrors() != null && !deleted.getRecordsWithErrors().isEmpty())

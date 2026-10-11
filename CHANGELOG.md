@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **OAuth2 refresh tokens ([#1041](https://github.com/QRun-IO/qqq/issues/1041))** — `OAuth2AuthenticationModule`
+  stores the refresh token from the code exchange (e.g., with the `offline_access` scope) server-side, in the new
+  opt-in `userSessionRefreshToken` table (`UserSessionRefreshToken`, `UserSessionRefreshTokenMetaDataProducer`).
+  Session resume and `isSessionValid` then renew an expired or nearly expired access token with
+  `grant_type=refresh_token` and save rotated tokens. Concurrent requests for one session cause a single refresh.
+  `invalid_grant` ends the session; logout revokes (when a `revocation_endpoint` is advertised) and deletes the token,
+  and back-channel logout deletes it. New `OAuth2AuthenticationMetaData` options: `refreshTokensEnabled` (default
+  `true`), `refreshTokenSkewSeconds` (default 60), `maxSessionLifetimeSeconds` and `refreshTokenTableName`. Refresh
+  tokens are never sent to clients or logged. Apps without the table are unchanged; see
+  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+
 ## [4.1.0-RC.1] — candidate
 
 Pairs QQQ 4.1 with Next `1.0.0-RC.11`. Publication and verification are tracked in

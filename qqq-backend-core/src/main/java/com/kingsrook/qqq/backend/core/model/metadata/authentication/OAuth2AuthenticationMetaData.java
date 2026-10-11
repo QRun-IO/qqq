@@ -45,6 +45,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
 {
+   public static final int DEFAULT_REFRESH_TOKEN_SKEW_SECONDS = 60;
+
    ///////////////////////////////////////////////////////////////////////////////
    // URL used by the backend for OIDC discovery and token exchange.            //
    // In split-URL deployments, this should be the internal/cluster-reachable   //
@@ -66,6 +68,18 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
 
    private String userSessionTableName;
    private String redirectStateTableName;
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // refresh-token support (#1041).  when the provider returns a refresh token //
+   // (e.g., the offline_access scope was granted) and the refresh-token table  //
+   // is defined in the instance, the token is stored server-side and used to  //
+   // renew the access token as it expires.  refreshTokenTableName defaults to //
+   // UserSessionRefreshToken.TABLE_NAME when not set.                          //
+   ///////////////////////////////////////////////////////////////////////////////
+   private Boolean refreshTokensEnabled      = true;
+   private Integer refreshTokenSkewSeconds   = DEFAULT_REFRESH_TOKEN_SKEW_SECONDS;
+   private Integer maxSessionLifetimeSeconds;
+   private String  refreshTokenTableName;
 
    ////////////////////////////////////////////////////////////////////////////////////////
    // keep this secret, on the server - don't let it be serialized and sent to a client! //
@@ -115,6 +129,14 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
       {
          qInstanceValidator.assertCondition(qInstance.getTable(redirectStateTableName) != null, prefix + "redirectStateTableName ('" + redirectStateTableName + "') was not found in the instance");
       }
+
+      if(StringUtils.hasContent(refreshTokenTableName))
+      {
+         qInstanceValidator.assertCondition(qInstance.getTable(refreshTokenTableName) != null, prefix + "refreshTokenTableName ('" + refreshTokenTableName + "') was not found in the instance");
+      }
+
+      qInstanceValidator.assertCondition(refreshTokenSkewSeconds == null || refreshTokenSkewSeconds >= 0, prefix + "refreshTokenSkewSeconds may not be negative");
+      qInstanceValidator.assertCondition(maxSessionLifetimeSeconds == null || maxSessionLifetimeSeconds > 0, prefix + "maxSessionLifetimeSeconds must be positive when set");
    }
 
 
@@ -370,5 +392,132 @@ public class OAuth2AuthenticationMetaData extends QAuthenticationMetaData
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for refreshTokensEnabled - whether refresh tokens returned by the
+    ** provider are stored server-side and used to renew expiring access tokens.
+    *******************************************************************************/
+   public Boolean getRefreshTokensEnabled()
+   {
+      return (this.refreshTokensEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for refreshTokensEnabled
+    *******************************************************************************/
+   public void setRefreshTokensEnabled(Boolean refreshTokensEnabled)
+   {
+      this.refreshTokensEnabled = refreshTokensEnabled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for refreshTokensEnabled
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withRefreshTokensEnabled(Boolean refreshTokensEnabled)
+   {
+      this.refreshTokensEnabled = refreshTokensEnabled;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for refreshTokenSkewSeconds - how many seconds before an access
+    ** token's expiry it is proactively refreshed.
+    *******************************************************************************/
+   public Integer getRefreshTokenSkewSeconds()
+   {
+      return (this.refreshTokenSkewSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for refreshTokenSkewSeconds
+    *******************************************************************************/
+   public void setRefreshTokenSkewSeconds(Integer refreshTokenSkewSeconds)
+   {
+      this.refreshTokenSkewSeconds = refreshTokenSkewSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for refreshTokenSkewSeconds
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withRefreshTokenSkewSeconds(Integer refreshTokenSkewSeconds)
+   {
+      this.refreshTokenSkewSeconds = refreshTokenSkewSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for maxSessionLifetimeSeconds - optional cap on how long (from the
+    ** initial login) a session may be extended by refreshing.  null = no cap.
+    *******************************************************************************/
+   public Integer getMaxSessionLifetimeSeconds()
+   {
+      return (this.maxSessionLifetimeSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for maxSessionLifetimeSeconds
+    *******************************************************************************/
+   public void setMaxSessionLifetimeSeconds(Integer maxSessionLifetimeSeconds)
+   {
+      this.maxSessionLifetimeSeconds = maxSessionLifetimeSeconds;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maxSessionLifetimeSeconds
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withMaxSessionLifetimeSeconds(Integer maxSessionLifetimeSeconds)
+   {
+      this.maxSessionLifetimeSeconds = maxSessionLifetimeSeconds;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for refreshTokenTableName - the table where refresh tokens are kept
+    ** (server-side only).  When null, UserSessionRefreshToken.TABLE_NAME is used.
+    *******************************************************************************/
+   public String getRefreshTokenTableName()
+   {
+      return (this.refreshTokenTableName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for refreshTokenTableName
+    *******************************************************************************/
+   public void setRefreshTokenTableName(String refreshTokenTableName)
+   {
+      this.refreshTokenTableName = refreshTokenTableName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for refreshTokenTableName
+    *******************************************************************************/
+   public OAuth2AuthenticationMetaData withRefreshTokenTableName(String refreshTokenTableName)
+   {
+      this.refreshTokenTableName = refreshTokenTableName;
+      return (this);
+   }
 
 }

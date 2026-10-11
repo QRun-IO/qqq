@@ -30,17 +30,21 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
@@ -52,6 +56,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
@@ -62,26 +67,36 @@ import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreHelper;
+import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSessionRefreshToken;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
+import com.nimbusds.oauth2.sdk.AccessTokenResponse;
 import com.nimbusds.oauth2.sdk.AuthorizationCode;
 import com.nimbusds.oauth2.sdk.AuthorizationCodeGrant;
 import com.nimbusds.oauth2.sdk.AuthorizationGrant;
 import com.nimbusds.oauth2.sdk.ErrorObject;
 import com.nimbusds.oauth2.sdk.GeneralException;
+import com.nimbusds.oauth2.sdk.OAuth2Error;
 import com.nimbusds.oauth2.sdk.ParseException;
+import com.nimbusds.oauth2.sdk.RefreshTokenGrant;
 import com.nimbusds.oauth2.sdk.Scope;
 import com.nimbusds.oauth2.sdk.TokenRequest;
 import com.nimbusds.oauth2.sdk.TokenResponse;
+import com.nimbusds.oauth2.sdk.TokenRevocationRequest;
 import com.nimbusds.oauth2.sdk.auth.ClientAuthentication;
 import com.nimbusds.oauth2.sdk.auth.ClientSecretBasic;
 import com.nimbusds.oauth2.sdk.auth.Secret;
+import com.nimbusds.oauth2.sdk.http.HTTPRequest;
+import com.nimbusds.oauth2.sdk.http.HTTPResponse;
 import com.nimbusds.oauth2.sdk.id.ClientID;
 import com.nimbusds.oauth2.sdk.id.Issuer;
 import com.nimbusds.oauth2.sdk.id.State;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
 import com.nimbusds.oauth2.sdk.token.AccessToken;
+import com.nimbusds.oauth2.sdk.token.RefreshToken;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.nimbusds.openid.connect.sdk.token.OIDCTokens;
 import org.json.JSONObject;
@@ -90,6 +105,14 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 /*******************************************************************************
  ** Implementation of OAuth2 authentication.
+ **
+ ** Sessions are stored in the userSession table (keyed by a uuid, which is what
+ ** the client holds, in a cookie).  If the provider issues a refresh token (e.g.,
+ ** the offline_access scope was granted) and the instance defines the refresh-
+ ** token table (see UserSessionRefreshTokenMetaDataProducer), the refresh token
+ ** is stored server-side and used to renew the access token when it expires (or
+ ** is within refreshTokenSkewSeconds of expiring), so the session survives.
+ ** Refresh tokens are never sent to clients, put on the QSession, or logged.
  *******************************************************************************/
 public class OAuth2AuthenticationModule implements QAuthenticationModuleInterface
 {
@@ -103,6 +126,24 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
    private static final Memoization<String, OIDCProviderMetadata> oidcProviderMetadataMemoization = new Memoization<String, OIDCProviderMetadata>()
       .withMayStoreNullValues(false);
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // striped locks, so that concurrent requests for the same session perform  //
+   // at most one refresh (the others wait, then find the rotated token).      //
+   // striping keeps memory bounded, versus a lock-per-session map.            //
+   ///////////////////////////////////////////////////////////////////////////////
+   private static final int             REFRESH_LOCK_STRIPES = 64;
+   private static final ReentrantLock[] REFRESH_LOCKS        = new ReentrantLock[REFRESH_LOCK_STRIPES];
+
+   private static final int TOKEN_ENDPOINT_TIMEOUT_MILLIS = 10_000;
+
+   static
+   {
+      for(int i = 0; i < REFRESH_LOCK_STRIPES; i++)
+      {
+         REFRESH_LOCKS[i] = new ReentrantLock();
+      }
+   }
 
    //////////////////////////////////////////////////////////////////////////////////
    // do not use this var directly - rather - always call the getCustomizer method //
@@ -267,12 +308,8 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       {
          LOG.debug("Token request succeeded", logPair("tokenEndpoint", tokenRequest.getEndpointURI()));
 
-         AccessToken accessToken = tokenResponse.toSuccessResponse().getTokens().getAccessToken();
-
-         ////////////////////////////////////////////////////////////////////
-         // todo - do we want to try to do anything with a refresh token?? //
-         ////////////////////////////////////////////////////////////////////
-         // RefreshToken refreshToken = tokenResponse.toSuccessResponse().getTokens().getRefreshToken();
+         AccessToken  accessToken  = tokenResponse.toSuccessResponse().getTokens().getAccessToken();
+         RefreshToken refreshToken = tokenResponse.toSuccessResponse().getTokens().getRefreshToken();
 
          ///////////////////////////////////////////////////////////////////////
          // extract id token claims if available (for OIDC flows)             //
@@ -298,6 +335,16 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
          QSession session = createSessionFromToken(accessToken.getValue(), accessToken.getValue(), idTokenPayload);
          insertUserSession(accessToken.getValue(), session);
+
+         /////////////////////////////////////////////////////////////////////////
+         // if the provider issued a refresh token (e.g., offline_access), keep //
+         // it server-side, so the session can outlive the access token.  it    //
+         // is never put on the session, so it never reaches a client.          //
+         /////////////////////////////////////////////////////////////////////////
+         if(refreshToken != null)
+         {
+            storeRefreshToken(session.getUuid(), refreshToken, tokenResponse.toSuccessResponse());
+         }
 
          //////////////////////////////////////////////////////////////
          // allow customizer to do custom things here, if so desired //
@@ -344,6 +391,11 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
 
       try
       {
+         ///////////////////////////////////////////////////////////////////////////
+         // note - looking up the access token refreshes it (if it is expired or  //
+         // near expiry, and a refresh token is stored), so a refreshable session //
+         // stays valid here.                                                     //
+         ///////////////////////////////////////////////////////////////////////////
          String     accessToken = getAccessTokenFromSessionUUID(session.getUuid());
          DecodedJWT jwt         = JWT.decode(accessToken);
          if(jwt.getExpiresAtAsInstant().isBefore(Instant.now()))
@@ -550,9 +602,27 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
    {
       if(mayMemoize)
       {
-         return getAccessTokenFromSessionUUIDMemoization.getResultThrowing(sessionUUID, (String x) ->
+         String accessToken = getAccessTokenFromSessionUUIDMemoization.getResultThrowing(sessionUUID, (String x) ->
             doGetAccessTokenFromSessionUUID(sessionUUID)
          ).orElse(null);
+
+         //////////////////////////////////////////////////////////////////////////
+         // a memoized token may have reached its refresh window since it was    //
+         // cached - if so, forget it and go back to the store (which refreshes  //
+         // when possible), rather than letting the session lapse.               //
+         //////////////////////////////////////////////////////////////////////////
+         if(accessToken == null || !isTokenExpiredOrNearExpiry(accessToken, getRefreshSkewSeconds()))
+         {
+            return (accessToken);
+         }
+
+         getAccessTokenFromSessionUUIDMemoization.clearKey(sessionUUID);
+         accessToken = doGetAccessTokenFromSessionUUID(sessionUUID);
+         if(accessToken != null)
+         {
+            getAccessTokenFromSessionUUIDMemoization.storeResult(sessionUUID, accessToken);
+         }
+         return (accessToken);
       }
       else
       {
@@ -586,6 +656,20 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          {
             accessToken = userSessionRecord.getValueString("accessToken");
             String storedUserId = userSessionRecord.getValueString("userId");
+
+            /////////////////////////////////////////////////////////////////////
+            // if the access token is expired (or about to be), try to refresh //
+            // it using a stored refresh token; if that isn't possible and the //
+            // token is expired, the session is over (below).                  //
+            /////////////////////////////////////////////////////////////////////
+            if(accessToken != null && isTokenExpiredOrNearExpiry(accessToken, getRefreshSkewSeconds()))
+            {
+               String refreshedAccessToken = refreshAccessToken(sessionUUID);
+               if(refreshedAccessToken != null)
+               {
+                  accessToken = refreshedAccessToken;
+               }
+            }
 
             ////////////////////////////////////////////////////////////
             // decode the accessToken and make sure it is not expired //
@@ -726,6 +810,12 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       {
          QContext.setQSession(new QSystemUserSession());
 
+         /////////////////////////////////////////////////////////////////////
+         // revoke (when the provider advertises a revocation endpoint) and //
+         // delete any stored refresh token, before the session itself      //
+         /////////////////////////////////////////////////////////////////////
+         removeStoredRefreshToken(qInstance, sessionUUID, true);
+
          /////////////////////////////////////////////
          // delete the session record from database //
          /////////////////////////////////////////////
@@ -747,6 +837,427 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       {
          QContext.setQSession(beforeSession);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Get the OAuth2 meta-data from the current QInstance, or null if the instance's
+    ** authentication isn't OAuth2.
+    *******************************************************************************/
+   private static OAuth2AuthenticationMetaData getOAuth2MetaData(QInstance qInstance)
+   {
+      if(qInstance != null && qInstance.getAuthentication() instanceof OAuth2AuthenticationMetaData oauth2MetaData)
+      {
+         return (oauth2MetaData);
+      }
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get the name of the table used to store refresh tokens - but only if that
+    ** table is defined in the instance (defining it is how an app opts in to
+    ** refresh-token storage) - else null.
+    *******************************************************************************/
+   private static String getRefreshTokenTableName(QInstance qInstance)
+   {
+      OAuth2AuthenticationMetaData oauth2MetaData = getOAuth2MetaData(qInstance);
+      if(oauth2MetaData == null)
+      {
+         return (null);
+      }
+
+      String tableName = Objects.requireNonNullElse(oauth2MetaData.getRefreshTokenTableName(), UserSessionRefreshToken.TABLE_NAME);
+      return (qInstance.getTable(tableName) == null ? null : tableName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get the configured refresh skew (seconds before expiry at which an access
+    ** token is refreshed), or 0 if refreshing is disabled.
+    *******************************************************************************/
+   private static int getRefreshSkewSeconds()
+   {
+      OAuth2AuthenticationMetaData oauth2MetaData = getOAuth2MetaData(QContext.getQInstance());
+      if(oauth2MetaData == null || Boolean.FALSE.equals(oauth2MetaData.getRefreshTokensEnabled()))
+      {
+         return (0);
+      }
+      return (Objects.requireNonNullElse(oauth2MetaData.getRefreshTokenSkewSeconds(), OAuth2AuthenticationMetaData.DEFAULT_REFRESH_TOKEN_SKEW_SECONDS));
+   }
+
+
+
+   /*******************************************************************************
+    ** Check if a JWT access token is expired, or will expire within skewSeconds.
+    ** Tokens without an exp claim are treated as not expiring.
+    *******************************************************************************/
+   private static boolean isTokenExpiredOrNearExpiry(String accessToken, int skewSeconds)
+   {
+      Instant expiresAt = JWT.decode(accessToken).getExpiresAtAsInstant();
+      return (expiresAt != null && expiresAt.isBefore(Instant.now().plusSeconds(skewSeconds)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Store a newly issued refresh token for a session, if refresh tokens are
+    ** enabled and the refresh-token table is defined.  The token itself is never
+    ** logged nor placed on the QSession.
+    *******************************************************************************/
+   private void storeRefreshToken(String sessionUuid, RefreshToken refreshToken, AccessTokenResponse tokenResponse) throws QException
+   {
+      QInstance                    qInstance      = QContext.getQInstance();
+      OAuth2AuthenticationMetaData oauth2MetaData = getOAuth2MetaData(qInstance);
+      if(oauth2MetaData == null || Boolean.FALSE.equals(oauth2MetaData.getRefreshTokensEnabled()))
+      {
+         return;
+      }
+
+      String tableName = getRefreshTokenTableName(qInstance);
+      if(tableName == null)
+      {
+         LOG.debug("Provider issued a refresh token, but no refresh-token table is defined, so it is not being stored",
+            logPair("refreshTokenTableName", Objects.requireNonNullElse(oauth2MetaData.getRefreshTokenTableName(), UserSessionRefreshToken.TABLE_NAME)));
+         return;
+      }
+
+      UserSessionRefreshToken userSessionRefreshToken = new UserSessionRefreshToken()
+         .withSessionUuid(sessionUuid)
+         .withRefreshToken(refreshToken.getValue())
+         .withRefreshTokenExpiresAt(getRefreshTokenExpiresAt(tokenResponse))
+         .withSessionStartedAt(Instant.now());
+
+      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession()), () ->
+      {
+         QRecord inserted = new InsertAction().execute(new InsertInput(tableName).withRecordEntity(userSessionRefreshToken)).getRecords().get(0);
+         if(CollectionUtils.nullSafeHasContents(inserted.getErrors()))
+         {
+            ////////////////////////////////////////////////////////////////////
+            // not fatal for the login - the session just won't be refreshable //
+            ////////////////////////////////////////////////////////////////////
+            LOG.warn("Error storing refresh token for session", logPair("sessionUUID", sessionUuid), logPair("errors", inserted.getErrorsAsString()));
+         }
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** If the provider told us when the refresh token expires (non-standard, but
+    ** e.g., Keycloak's refresh_expires_in), compute that instant; else null.
+    *******************************************************************************/
+   private static Instant getRefreshTokenExpiresAt(AccessTokenResponse tokenResponse)
+   {
+      Object refreshExpiresIn = tokenResponse.getCustomParameters().get("refresh_expires_in");
+      try
+      {
+         if(refreshExpiresIn != null)
+         {
+            long seconds = Long.parseLong(String.valueOf(refreshExpiresIn));
+            if(seconds > 0)
+            {
+               return (Instant.now().plusSeconds(seconds));
+            }
+         }
+      }
+      catch(NumberFormatException e)
+      {
+         LOG.debug("Unparseable refresh_expires_in in token response - ignoring it");
+      }
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Try to get a fresh access token for a session, using its stored refresh
+    ** token.  Returns the new (or already-refreshed) access token, or null if the
+    ** session cannot be refreshed (no refresh token, refresh disabled, lifetime
+    ** exceeded, or a transient provider failure).  If the provider rejects the
+    ** refresh token (invalid_grant), the session is ended and this throws.
+    **
+    ** Must be called with a system session in context.  Concurrent calls for the
+    ** same session (in this JVM) are serialized, and only the first one calls the
+    ** provider - later ones find the already-rotated token.
+    *******************************************************************************/
+   private String refreshAccessToken(String sessionUUID) throws QAuthenticationException
+   {
+      QInstance                    qInstance      = QContext.getQInstance();
+      OAuth2AuthenticationMetaData oauth2MetaData = getOAuth2MetaData(qInstance);
+      String                       tableName      = getRefreshTokenTableName(qInstance);
+      if(oauth2MetaData == null || tableName == null || Boolean.FALSE.equals(oauth2MetaData.getRefreshTokensEnabled()))
+      {
+         return (null);
+      }
+
+      ReentrantLock lock = REFRESH_LOCKS[Math.floorMod(sessionUUID.hashCode(), REFRESH_LOCK_STRIPES)];
+      lock.lock();
+      try
+      {
+         //////////////////////////////////////////////////////////////////////
+         // re-read the session, as another thread may have refreshed it     //
+         // while we waited for the lock - in which case, use its new token. //
+         //////////////////////////////////////////////////////////////////////
+         QRecord userSessionRecord = getRecordByUniqueKey(UserSession.TABLE_NAME, "uuid", sessionUUID);
+         if(userSessionRecord == null)
+         {
+            return (null);
+         }
+
+         String currentAccessToken = userSessionRecord.getValueString("accessToken");
+         if(currentAccessToken != null && !isTokenExpiredOrNearExpiry(currentAccessToken, getRefreshSkewSeconds()))
+         {
+            return (currentAccessToken);
+         }
+
+         QRecord refreshTokenRecord = getRecordByUniqueKey(tableName, "sessionUuid", sessionUUID);
+         if(refreshTokenRecord == null || !StringUtils.hasContent(refreshTokenRecord.getValueString("refreshToken")))
+         {
+            return (null);
+         }
+
+         UserSessionRefreshToken storedRefreshToken = new UserSessionRefreshToken(refreshTokenRecord);
+
+         ////////////////////////////////////////////////////////////////////////////
+         // don't extend the session past its max lifetime, nor try a refresh      //
+         // token that we know is expired - drop it (revoking, if it may still be  //
+         // live at the provider), and let the session end with its access token. //
+         ////////////////////////////////////////////////////////////////////////////
+         Instant now               = Instant.now();
+         Integer maxLifetime       = oauth2MetaData.getMaxSessionLifetimeSeconds();
+         boolean lifetimeExceeded  = maxLifetime != null && storedRefreshToken.getSessionStartedAt() != null && storedRefreshToken.getSessionStartedAt().plusSeconds(maxLifetime).isBefore(now);
+         boolean refreshExpired    = storedRefreshToken.getRefreshTokenExpiresAt() != null && storedRefreshToken.getRefreshTokenExpiresAt().isBefore(now);
+         if(lifetimeExceeded || refreshExpired)
+         {
+            LOG.info("Not refreshing OAuth2 session", logPair("sessionUUID", sessionUUID), logPair("reason", lifetimeExceeded ? "maxSessionLifetimeExceeded" : "refreshTokenExpired"));
+            removeStoredRefreshToken(qInstance, sessionUUID, lifetimeExceeded);
+            return (null);
+         }
+
+         return (doRefreshAccessToken(oauth2MetaData, tableName, sessionUUID, userSessionRecord, storedRefreshToken));
+      }
+      catch(QAuthenticationException qae)
+      {
+         throw (qae);
+      }
+      catch(Exception e)
+      {
+         LOG.warn("Error refreshing OAuth2 session", logPair("sessionUUID", sessionUUID), logPair("exceptionType", e.getClass().getSimpleName()));
+         return (null);
+      }
+      finally
+      {
+         lock.unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Call the provider's token endpoint with grant_type=refresh_token, and
+    ** persist the resulting (possibly rotated) tokens.
+    *******************************************************************************/
+   private String doRefreshAccessToken(OAuth2AuthenticationMetaData oauth2MetaData, String tableName, String sessionUUID, QRecord userSessionRecord, UserSessionRefreshToken storedRefreshToken) throws Exception
+   {
+      ClientAuthentication clientAuth    = new ClientSecretBasic(new ClientID(oauth2MetaData.getClientId()), new Secret(oauth2MetaData.getClientSecret()));
+      URI                  tokenEndpoint = getOIDCProviderMetadata(oauth2MetaData).getTokenEndpointURI();
+      TokenRequest         tokenRequest  = new TokenRequest(tokenEndpoint, clientAuth, new RefreshTokenGrant(new RefreshToken(storedRefreshToken.getRefreshToken())));
+
+      HTTPRequest httpRequest = tokenRequest.toHTTPRequest();
+      httpRequest.setConnectTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
+      httpRequest.setReadTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
+
+      LOG.debug("Sending refresh token request", logPair("tokenEndpoint", tokenEndpoint), logPair("sessionUUID", sessionUUID));
+      TokenResponse tokenResponse = TokenResponse.parse(httpRequest.send());
+
+      if(tokenResponse.indicatesSuccess())
+      {
+         AccessTokenResponse successResponse = tokenResponse.toSuccessResponse();
+         String              newAccessToken  = successResponse.getTokens().getAccessToken().getValue();
+         RefreshToken        rotatedToken    = successResponse.getTokens().getRefreshToken();
+
+         //////////////////////////////////////////////////////////////////////////
+         // persist the refresh token first: if the provider rotated it, the old //
+         // one is now dead, so losing the new one would end the session.        //
+         //////////////////////////////////////////////////////////////////////////
+         QRecord refreshTokenUpdate = new QRecord().withValue("id", storedRefreshToken.getId());
+         if(rotatedToken != null)
+         {
+            refreshTokenUpdate.setValue("refreshToken", rotatedToken.getValue());
+            refreshTokenUpdate.setValue("refreshTokenExpiresAt", getRefreshTokenExpiresAt(successResponse));
+         }
+         refreshTokenUpdate.setValue("modifyDate", Instant.now());
+         new UpdateAction().execute(new UpdateInput(tableName).withRecord(refreshTokenUpdate));
+
+         new UpdateAction().execute(new UpdateInput(UserSession.TABLE_NAME).withRecord(new QRecord()
+            .withValue("id", userSessionRecord.getValue("id"))
+            .withValue("accessToken", newAccessToken)));
+
+         clearAccessTokenCache(sessionUUID);
+         LOG.info("Refreshed OAuth2 session access token", logPair("sessionUUID", sessionUUID), logPair("rotatedRefreshToken", rotatedToken != null));
+         return (newAccessToken);
+      }
+
+      ErrorObject errorObject = tokenResponse.toErrorResponse().getErrorObject();
+      if(OAuth2Error.INVALID_GRANT.getCode().equals(errorObject.getCode()))
+      {
+         ////////////////////////////////////////////////////////////////////////
+         // if a different server (sharing this session) rotated the token     //
+         // since we read it, our copy is stale - use what that server stored. //
+         ////////////////////////////////////////////////////////////////////////
+         QRecord currentRefreshTokenRecord = getRecordByUniqueKey(tableName, "sessionUuid", sessionUUID);
+         if(currentRefreshTokenRecord != null && !Objects.equals(currentRefreshTokenRecord.getValueString("refreshToken"), storedRefreshToken.getRefreshToken()))
+         {
+            QRecord currentUserSessionRecord = getRecordByUniqueKey(UserSession.TABLE_NAME, "uuid", sessionUUID);
+            String  currentAccessToken       = currentUserSessionRecord == null ? null : currentUserSessionRecord.getValueString("accessToken");
+            if(currentAccessToken != null && !isTokenExpiredOrNearExpiry(currentAccessToken, 0))
+            {
+               return (currentAccessToken);
+            }
+         }
+
+         LOG.info("Refresh token was rejected by the provider - ending session", logPair("sessionUUID", sessionUUID), logPair("code", errorObject.getCode()));
+         endSession(tableName, sessionUUID);
+         throw (new QAuthenticationException("Session has ended (refresh token was rejected)"));
+      }
+
+      ////////////////////////////////////////////////////////////////////////////
+      // other errors (e.g., provider down, invalid_client) may be transient -  //
+      // keep the stored token, so a later request can try again.               //
+      ////////////////////////////////////////////////////////////////////////////
+      LOG.warn("Refresh token request failed",
+         logPair("code", errorObject.getCode()),
+         logPair("httpStatus", errorObject.getHTTPStatusCode()),
+         logPair("tokenEndpoint", tokenEndpoint),
+         logPair("sessionUUID", sessionUUID));
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fully end a session whose refresh token was rejected: delete its refresh
+    ** token and userSession rows, and forget any cached copies.
+    *******************************************************************************/
+   private void endSession(String tableName, String sessionUUID) throws QException
+   {
+      new DeleteAction().execute(new DeleteInput(tableName)
+         .withQueryFilter(new QQueryFilter(new QFilterCriteria("sessionUuid", QCriteriaOperator.EQUALS, sessionUUID))));
+      new DeleteAction().execute(new DeleteInput(UserSession.TABLE_NAME)
+         .withQueryFilter(new QQueryFilter(new QFilterCriteria("uuid", QCriteriaOperator.EQUALS, sessionUUID))));
+      clearAccessTokenCache(sessionUUID);
+
+      OAuth2AuthenticationMetaData oauth2MetaData = getOAuth2MetaData(QContext.getQInstance());
+      if(oauth2MetaData != null && Boolean.TRUE.equals(oauth2MetaData.getSessionStoreEnabled()))
+      {
+         QSessionStoreRegistry.getInstance().getProvider().ifPresent(provider -> provider.remove(sessionUUID));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Look up a single record by a unique-key field, as needed for the system's
+    ** own session bookkeeping (i.e., including hidden fields, unmasked).
+    *******************************************************************************/
+   private static QRecord getRecordByUniqueKey(String tableName, String fieldName, String value) throws QException
+   {
+      return (new GetAction().executeForRecord(new GetInput(tableName)
+         .withUniqueKey(Map.of(fieldName, value))
+         .withShouldMaskPasswords(false)
+         .withShouldOmitHiddenFields(false)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove the stored refresh token for a session (if any), optionally first
+    ** revoking it at the provider (when it advertises a revocation endpoint).
+    ** Revocation is best-effort; deletion is not.  Must be called with a system
+    ** session in context.
+    *******************************************************************************/
+   private void removeStoredRefreshToken(QInstance qInstance, String sessionUUID, boolean revoke) throws QException
+   {
+      String tableName = getRefreshTokenTableName(qInstance);
+      if(tableName == null)
+      {
+         return;
+      }
+
+      if(revoke)
+      {
+         QRecord refreshTokenRecord = getRecordByUniqueKey(tableName, "sessionUuid", sessionUUID);
+         if(refreshTokenRecord != null && StringUtils.hasContent(refreshTokenRecord.getValueString("refreshToken")))
+         {
+            revokeRefreshToken(getOAuth2MetaData(qInstance), sessionUUID, refreshTokenRecord.getValueString("refreshToken"));
+         }
+      }
+
+      deleteStoredRefreshTokens(qInstance, List.of(sessionUUID));
+   }
+
+
+
+   /*******************************************************************************
+    ** Best-effort revocation of a refresh token (RFC 7009), if the provider's
+    ** discovery document includes a revocation_endpoint.
+    *******************************************************************************/
+   private void revokeRefreshToken(OAuth2AuthenticationMetaData oauth2MetaData, String sessionUUID, String refreshToken)
+   {
+      try
+      {
+         URI revocationEndpoint = getOIDCProviderMetadata(oauth2MetaData).getRevocationEndpointURI();
+         if(revocationEndpoint == null)
+         {
+            return;
+         }
+
+         ClientAuthentication clientAuth  = new ClientSecretBasic(new ClientID(oauth2MetaData.getClientId()), new Secret(oauth2MetaData.getClientSecret()));
+         HTTPRequest          httpRequest = new TokenRevocationRequest(revocationEndpoint, clientAuth, new RefreshToken(refreshToken)).toHTTPRequest();
+         httpRequest.setConnectTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
+         httpRequest.setReadTimeout(TOKEN_ENDPOINT_TIMEOUT_MILLIS);
+
+         HTTPResponse httpResponse = httpRequest.send();
+         if(!httpResponse.indicatesSuccess())
+         {
+            LOG.info("Refresh token revocation was not successful", logPair("sessionUUID", sessionUUID), logPair("httpStatus", httpResponse.getStatusCode()));
+         }
+      }
+      catch(Exception e)
+      {
+         LOG.info("Error revoking refresh token", logPair("sessionUUID", sessionUUID), logPair("exceptionType", e.getClass().getSimpleName()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete stored refresh tokens for the given sessions (no-op if the instance
+    ** has no refresh-token table).  Used at logout and by OIDC back-channel
+    ** logout - in the latter case, the provider has already ended the session,
+    ** so there is no revocation call.  Runs with a system session.
+    *******************************************************************************/
+   public static void deleteStoredRefreshTokens(QInstance qInstance, Collection<String> sessionUuids) throws QException
+   {
+      String tableName = getRefreshTokenTableName(qInstance);
+      if(tableName == null || CollectionUtils.nullSafeIsEmpty(sessionUuids))
+      {
+         return;
+      }
+
+      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession()), () ->
+      {
+         var deleteOutput = new DeleteAction().execute(new DeleteInput(tableName)
+            .withQueryFilter(new QQueryFilter(new QFilterCriteria("sessionUuid", QCriteriaOperator.IN, sessionUuids))));
+         if(CollectionUtils.nullSafeHasContents(deleteOutput.getRecordsWithErrors()))
+         {
+            throw (new QException("Could not delete all stored refresh tokens"));
+         }
+      });
    }
 
 

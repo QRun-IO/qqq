@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still apply; if the provider fails, its tables fall back to the default search with a warning.
   `QInstanceValidator` checks the code reference. Without a provider, search is unchanged.
 
+### Fixed
+- **Quartz schedules on a fresh persistent job store ([#1044](https://github.com/QRun-IO/qqq/issues/1044))** —
+  `QScheduleManager.start()` now creates the jobs for every schedulable (processes, queues, table automations,
+  scheduled-job records) when Quartz uses a persistent store such as a clustered `JobStoreTX` on PostgreSQL.
+  Before, `QuartzScheduler` skipped startup setup for persistent stores, so a fresh `qrtz_*` schema stayed empty
+  until someone ran **Reschedule All Jobs**. Startup still only adds jobs that are missing and never replaces
+  existing ones, so restarts and other cluster nodes booting leave stored jobs and triggers unchanged; a node
+  that loses the race to add a job keeps the other node's copy. RAM job stores and `SimpleScheduler` are
+  unchanged. Apps that called `setupAllSchedules()` again after `start()` as a workaround no longer need to.
+
 ## [4.1.0-RC.1] — candidate
 
 Pairs QQQ 4.1 with Next `1.0.0-RC.11`. Publication and verification are tracked in

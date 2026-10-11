@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **OAuth2 refresh tokens encrypted at rest ([#1048](https://github.com/QRun-IO/qqq/issues/1048))** — refresh tokens
+  in the `userSessionRefreshToken` table (#1041) are now encrypted with AES-256-GCM, using a random nonce per value
+  and the session's uuid and `userId` as associated data, so a copied database, replica or backup no longer holds
+  usable tokens. The key comes from the new `OAuth2AuthenticationMetaData.refreshTokenEncryptionKey`, a base64
+  32-byte key from `openssl rand -base64 32` (`${env.X}` references are resolved). `refreshTokenEncryptionKeyId` and
+  `previousRefreshTokenEncryptionKeys` support rotation: values under a previous key are re-encrypted on their next
+  write. Instance validation fails when the table is defined and refresh is enabled but no valid key is set;
+  `allowPlaintextRefreshTokens` (default `false`) is a local-development escape hatch and logs a warning. A value
+  that can't be decrypted ends its session with the usual 401. The table now requires a dedicated permission that no
+  role is granted, so the v1 table API, export, reports and the UI deny it to every user. **Upgrade:** apps that
+  enabled the table from `develop` must set a key, and their existing plaintext rows end at the next refresh. See
+  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+
+### Added
+- **OAuth2 refresh tokens ([#1041](https://github.com/QRun-IO/qqq/issues/1041))** — `OAuth2AuthenticationModule`
+  stores the refresh token from the code exchange (e.g., with the `offline_access` scope) server-side, in the new
+  opt-in `userSessionRefreshToken` table (`UserSessionRefreshToken`, `UserSessionRefreshTokenMetaDataProducer`).
+  Session resume and `isSessionValid` then renew an expired or nearly expired access token with
+  `grant_type=refresh_token` and save rotated tokens. Concurrent requests for one session cause a single refresh.
+  `invalid_grant` ends the session; logout revokes (when a `revocation_endpoint` is advertised) and deletes the token,
+  and back-channel logout deletes it. New `OAuth2AuthenticationMetaData` options: `refreshTokensEnabled` (default
+  `true`), `refreshTokenSkewSeconds` (default 60), `maxSessionLifetimeSeconds` and `refreshTokenTableName`. Refresh
+  tokens are never sent to clients or logged. Apps without the table are unchanged; see
+  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+- **Record search providers** — `QInstance.withRecordSearchProvider(QCodeReference)` registers a
+  `RecordSearchProviderInterface` (`claimsTable(QTableMetaData)`, `search(RecordSearchInput)`) that
+  `RecordSearchAction`, and so `POST /qqq/v1/search`, uses for the tables it claims, such as a
+  search-index module ([qbit-quick-search](https://github.com/QRun-IO/qbit-quick-search)). Unclaimed
+  tables keep the default search over `searchFields`; results are merged in the existing response shape.
+  Provider hits are read again through `QueryAction`, so table permissions and record security locks
+  still apply; if the provider fails, its tables fall back to the default search with a warning.
+  `QInstanceValidator` checks the code reference. Without a provider, search is unchanged.
+
+### Fixed
+- **Quartz schedules on a fresh persistent job store ([#1044](https://github.com/QRun-IO/qqq/issues/1044))** —
+  `QScheduleManager.start()` now creates the jobs for every schedulable (processes, queues, table automations,
+  scheduled-job records) when Quartz uses a persistent store such as a clustered `JobStoreTX` on PostgreSQL.
+  Before, `QuartzScheduler` skipped startup setup for persistent stores, so a fresh `qrtz_*` schema stayed empty
+  until someone ran **Reschedule All Jobs**. Startup still only adds jobs that are missing and never replaces
+  existing ones, so restarts and other cluster nodes booting leave stored jobs and triggers unchanged; a node
+  that loses the race to add a job keeps the other node's copy. RAM job stores and `SimpleScheduler` are
+  unchanged. Apps that called `setupAllSchedules()` again after `start()` as a workaround no longer need to.
+
 ## [4.1.0-RC.1] — candidate
 
 Pairs QQQ 4.1 with Next `1.0.0-RC.11`. Publication and verification are tracked in

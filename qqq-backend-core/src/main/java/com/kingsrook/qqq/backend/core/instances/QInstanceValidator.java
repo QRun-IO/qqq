@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
 import com.kingsrook.qqq.backend.core.actions.scripts.TestScriptActionInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchProviderInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
@@ -286,6 +287,11 @@ public class QInstanceValidator
          {
             validateSimpleCodeReference("Instance runtimeService ", codeReference, QRuntimeServiceInterface.class);
          }
+      }
+
+      if(qInstance.getRecordSearchProvider() != null)
+      {
+         validateSimpleCodeReference("Instance recordSearchProvider ", qInstance.getRecordSearchProvider(), RecordSearchProviderInterface.class);
       }
 
       if(qInstance.getTableCustomizers() != null)

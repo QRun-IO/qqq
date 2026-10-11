@@ -70,6 +70,39 @@ class QApplicationJavalinServerTest
 
 
    /***************************************************************************
+    ** Standalone branding remains available without enabling either Java UI.
+    ***************************************************************************/
+   @Test
+   void testDeclaredBrandingAssetsWithoutDashboard() throws Exception
+   {
+      QInstance instance = createMinimalApplication().defineQInstance();
+      instance.setBranding(new com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData()
+         .withLogo("/branding1009/logo.png?version=1")
+         .withIcon("/branding1009/icon.svg"));
+      javalinServer = new QApplicationJavalinServer(new AbstractQQQApplication()
+      {
+         @Override
+         public QInstance defineQInstance()
+         {
+            return instance;
+         }
+      }).withPort(PORT).withServeFrontendNext(false).withServeFrontendMaterialDashboard(false);
+      javalinServer.start();
+      HttpResponse<byte[]> logo = Unirest.get("http://localhost:" + PORT + "/qqq/branding/logo").asBytes();
+      assertEquals(200, logo.getStatus());
+      assertArrayEquals(getClass().getResourceAsStream("/material-dashboard-overlay/branding1009/logo.png").readAllBytes(), logo.getBody());
+      assertEquals("image/png", logo.getHeaders().getFirst("Content-Type").split(";")[0]);
+      assertEquals("nosniff", logo.getHeaders().getFirst("X-Content-Type-Options"));
+      assertEquals(200, Unirest.head("http://localhost:" + PORT + "/qqq/branding/icon").asString().getStatus());
+      for(String path : List.of("/login", "/index.html", "/branding1009/index.html", "/branding1009/private.js", "/branding1009/logo.png", "/qqq/branding/unknown", "/qqq/branding/logo/extra"))
+      {
+         assertEquals(404, Unirest.get("http://localhost:" + PORT + path).asString().getStatus(), path);
+      }
+   }
+
+
+
+   /***************************************************************************
     **
     ***************************************************************************/
    private static AbstractQQQApplication getQqqApplication()

@@ -150,6 +150,8 @@ public class QInstance
 
    private List<QCodeReference> runtimeServices = new ArrayList<>();
 
+   private QCodeReference recordSearchProvider = null;
+
    ////////////////////////////////////////////////////////////////////////////////
    // if true, MetaDataProducerHelper throws when it can't use or run a          //
    // producer, instead of logging a warning and skipping it.  the system        //
@@ -2157,6 +2159,41 @@ public class QInstance
          this.runtimeServices = new ArrayList<>();
       }
       this.runtimeServices.add(runtimeService);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for recordSearchProvider - a code reference to a
+    ** RecordSearchProviderInterface implementation, which RecordSearchAction
+    ** asks to search the tables it claims (null - the default - searches every
+    ** table with the default search over its search fields).
+    *******************************************************************************/
+   public QCodeReference getRecordSearchProvider()
+   {
+      return (this.recordSearchProvider);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordSearchProvider
+    *******************************************************************************/
+   public void setRecordSearchProvider(QCodeReference recordSearchProvider)
+   {
+      this.recordSearchProvider = recordSearchProvider;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordSearchProvider - a code reference to a
+    ** RecordSearchProviderInterface implementation.
+    *******************************************************************************/
+   public QInstance withRecordSearchProvider(QCodeReference recordSearchProvider)
+   {
+      this.recordSearchProvider = recordSearchProvider;
       return (this);
    }
 

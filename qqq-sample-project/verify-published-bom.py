@@ -206,6 +206,7 @@ def verify(version, source_bom, evidence_root, maven="mvn", source_commit=None, 
     tree_file = directory / "dependency-tree.json"
     command = [maven, "-B", "-ntp", "-s", str(settings), "-gs", str(settings),
                f"-Dmaven.repo.local={cache}", "-f", str(consumer),
+               "org.apache.maven.plugins:maven-dependency-plugin:3.9.0:resolve",
                "org.apache.maven.plugins:maven-dependency-plugin:3.9.0:tree",
                "-DoutputType=json", f"-DoutputFile={tree_file}"]
     evidence = {"status": "fail", "directory": str(directory), "candidate_version": version,

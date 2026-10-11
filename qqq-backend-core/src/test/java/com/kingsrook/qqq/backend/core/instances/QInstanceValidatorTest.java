@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.CancelProcessActionTest;
 import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.TestRecordSearchProvider;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
@@ -243,6 +244,25 @@ public class QInstanceValidatorTest extends BaseTest
 
       assertValidationSuccess((qInstance) -> qInstance.withRuntimeService(new QCodeReference(ValidRuntimeService.class)));
       assertValidationSuccess((qInstance) -> qInstance.setRuntimeServices(null));
+   }
+
+
+
+   /*******************************************************************************
+    ** The record search provider code reference must load as a
+    ** RecordSearchProviderInterface.
+    *******************************************************************************/
+   @Test
+   void testRecordSearchProvider()
+   {
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordSearchProvider(new QCodeReference(QInstanceValidator.class)),
+         "Instance recordSearchProvider CodeReference is not of the expected type");
+
+      assertValidationFailureReasons((qInstance) -> qInstance.withRecordSearchProvider(new QCodeReference("com.kingsrook.qqq.NoSuchProvider", QCodeType.JAVA)),
+         "Instance recordSearchProvider Class for com.kingsrook.qqq.NoSuchProvider could not be found");
+
+      assertValidationSuccess((qInstance) -> qInstance.withRecordSearchProvider(new QCodeReference(TestRecordSearchProvider.class)));
+      assertValidationSuccess((qInstance) -> qInstance.withRecordSearchProvider(null));
    }
 
 

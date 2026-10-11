@@ -7,6 +7,7 @@ import { createRequire } from 'node:module'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import { createPhaseJournal } from './phase-journal.mjs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
 
@@ -31,6 +32,7 @@ const report = { scope: 'quickstart-lifecycle', startedAt: new Date().toISOStrin
   cold: args.cold, platform: `${os.platform()}/${os.arch()}`, browser: args.browser,
   complete: false, releaseAcceptanceComplete: false, phases: [], pageErrors: [],
   remainingAcceptance: ['full screen/action/browser/platform matrix', 'public Maven/BOM provenance', 'all required recovery cases', 'Material browser feature compatibility'] }
+let journal
 let app, browser, page, phaseName
 let started, usableAt
 let interrupted = false
@@ -60,6 +62,10 @@ async function json(route) {
 }
 function appLog(name) {
   if (existsSync(path.join(project, 'quickstart.log'))) copyFileSync(path.join(project, 'quickstart.log'), path.join(output, `${name}-application.log`))
+}
+function checkpoint() {
+  journal?.checkpoint(phaseName ?? 'runner', path.join(output, 'lifecycle-partial.json'), report,
+    () => appLog(phaseName ?? 'runner'))
 }
 function groupAlive(pid) {
   try { process.kill(-pid, 0); return true }
@@ -126,21 +132,21 @@ async function launch(name, frontend = 'next', first = false, expectedCompileFai
   return { name, frontend, ownedProcessGroup: app.pid, launcherReadySeconds: (performance.now() - started) / 1000 }
 }
 async function nextReady(phase) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' })
-  page = await context.newPage()
+  const context = await journal.observe(phaseName ?? 'runner', 'context-create', () => browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' }))
+  page = await journal.observe(phaseName ?? 'runner', 'page-create', () => context.newPage())
   const errors = []
   page.on('pageerror', (error) => { errors.push(error.message); report.pageErrors.push({ phase: phase.name, message: error.message }) })
   page.setDefaultTimeout(20_000)
-  await page.goto(base + '/app/person')
+  await journal.observe(phaseName ?? 'runner', 'page-goto', () => page.goto(base + '/app/person'))
   await expect(page.getByText('Avery', { exact: true }).first()).toBeVisible()
   usableAt = performance.now()
   phase.usableSeconds = (usableAt - started) / 1000
   assert.equal((await json('/qqq/v1/table/person/1')).record.values.firstName, 'Avery')
   const person = (await json('/qqq/v1/table/person/1?includeAssociations=true')).record
   assert.deepEqual(person.associatedRecords.pets.map((pet) => pet.values.id).sort(), [1, 2, 3, 4])
-  await page.goto(base + '/app/person/1')
+  await journal.observe(phaseName ?? 'runner', 'page-goto', () => page.goto(base + '/app/person/1'))
   await expect(page.getByRole('heading', { name: 'Avery Sample', exact: true }).first()).toBeVisible()
-  await page.reload()
+  await journal.observe(phaseName ?? 'runner', 'page-reload', () => page.reload())
   await expect(page.getByRole('heading', { name: 'Avery Sample', exact: true }).first()).toBeVisible()
   assert.deepEqual(errors, [])
   return context
@@ -156,7 +162,9 @@ try {
     }
   }
   mkdirSync(output)
-  browser = await browserType.launch(args.channel ? { channel: args.channel } : {})
+  journal = createPhaseJournal(path.join(output, 'phase-journal.json'), { enabled: process.env.QQQ_QUICKSTART_BOUNDARY_CAPTURE === '1' })
+  journal.mark('runner', 'run', 'start')
+  browser = await journal.observe('runner', 'browser-launch', () => browserType.launch(args.channel ? { channel: args.channel } : {}))
   report.browserVersion = browser.version()
   let firstPublic = !args['rehearsal-source']
   const coldStarted = performance.now()
@@ -176,8 +184,8 @@ try {
     report.launcherUrl = url
     report.launcherSha256 = createHash('sha256').update(readFileSync(path.join(output, 'quickstart.sh'))).digest('hex')
   }
-  let phase = await launch('initial', 'next', firstPublic)
-  const initialContext = await nextReady(phase)
+  let phase = await journal.observe('initial', 'launcher-start', () => launch('initial', 'next', firstPublic))
+  const initialContext = await journal.observe(phaseName ?? 'runner', 'next-ready', () => nextReady(phase))
   if (firstPublic) {
     report.source = command('git', ['rev-parse', 'HEAD'], project)
     assert.equal(report.source, args['expected-sha'])
@@ -185,20 +193,23 @@ try {
     phase.totalDownloadToUsableSeconds = (usableAt - coldStarted) / 1000
     if (args.cold) assert(phase.totalDownloadToUsableSeconds <= 90, `Cold public quickstart took ${phase.totalDownloadToUsableSeconds.toFixed(3)} seconds; limit is 90`)
   }
-  await page.goto(base + '/app/person/create')
+  journal.mark('initial', 'crud', 'start')
+  await journal.observe(phaseName ?? 'runner', 'page-goto', () => page.goto(base + '/app/person/create'))
   for (const [field, value] of Object.entries({ firstName: 'Lifecycle', lastName: 'Verification', email: 'lifecycle@example.invalid' })) await page.locator(`#field-${field}`).fill(value)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Lifecycle Verification', exact: true }).first()).toBeVisible()
   const id = new URL(page.url()).pathname.split('/').filter(Boolean).at(-1)
   assert(/^\d+$/.test(id), 'Created record ID missing')
-  await page.goto(`${base}/app/person/${id}/edit`)
+  await journal.observe(phaseName ?? 'runner', 'page-goto', () => page.goto(`${base}/app/person/${id}/edit`))
   await page.locator('#field-firstName').fill('Lifecycle Updated')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Lifecycle Updated Verification', exact: true }).first()).toBeVisible()
-  await page.reload()
+  await journal.observe(phaseName ?? 'runner', 'page-reload', () => page.reload())
   assert.equal((await json(`/qqq/v1/table/person/${id}`)).record.values.firstName, 'Lifecycle Updated')
   phase.createdRecord = id
-  await page.screenshot({ path: path.join(output, 'created-edited.png'), fullPage: true })
+  journal.mark('initial', 'crud', 'success')
+  await journal.observe(phaseName ?? 'runner', 'screenshot', () => page.screenshot({ path: path.join(output, 'created-edited.png'), fullPage: true }))
+  journal.mark('initial', 'process', 'start')
   await page.getByRole('button', { name: 'Record actions menu', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Greet Interactive', exact: true }).click()
   await page.getByRole('textbox', { name: /Greeting Prefix/ }).fill('Hello')
@@ -206,59 +217,72 @@ try {
   await page.getByRole('button', { name: 'Submit', exact: true }).click()
   await expect(page.getByRole('cell', { name: 'Hello Lifecycle Updated QQQ', exact: true })).toBeVisible()
   await expect(page.locator('[data-qqq-id="process-record-list-range"]')).toHaveText('1–1 of 1')
-  await page.screenshot({ path: path.join(output, 'next-process-results.png'), fullPage: true })
+  await journal.observe(phaseName ?? 'runner', 'screenshot', () => page.screenshot({ path: path.join(output, 'next-process-results.png'), fullPage: true }))
   await page.getByRole('button', { name: 'Return', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Lifecycle Updated Verification', exact: true }).first()).toBeVisible()
   await expect(page).toHaveURL(new RegExp(`/app/person/${id}/?$`))
   phase.greetingProcess = 'Exactly one selected record reached greeting result and returned to record'
-  await initialContext.close()
-  await stop('SIGINT')
+  journal.mark('initial', 'process', 'success')
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'context-close', () => initialContext.close())
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'app-stop', () => stop('SIGINT'))
+  checkpoint()
   report.phases.push(phase)
-  phase = await launch('restart')
-  const restartContext = await nextReady(phase)
+  phase = await journal.observe('restart', 'launcher-start', () => launch('restart'))
+  const restartContext = await journal.observe(phaseName ?? 'runner', 'next-ready', () => nextReady(phase))
   const reset = await fetch(`${base}/qqq/v1/table/person/${id}`, { signal: AbortSignal.timeout(10_000) })
   assert.equal(reset.status, 404, 'Temporary record survived restart, contradicting documented reset')
-  await restartContext.close()
-  await stop('SIGTERM')
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'context-close', () => restartContext.close())
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'app-stop', () => stop('SIGTERM'))
+  checkpoint()
   report.phases.push(phase)
   const javaFile = path.join(project, 'qqq-sample-project/src/main/java/com/kingsrook/sampleapp/metadata/SampleMetaDataProvider.java')
   const before = readFileSync(javaFile, 'utf8')
   assert.equal(before.split('.withAppName("QQQ Sample")').length, 2, 'Java edit anchor must match exactly once')
   const brokenSource = before.replace('.withAppName("QQQ Sample")', '.withAppName(QQQ_ACCEPTANCE_UNDEFINED_APP_NAME)')
   writeFileSync(javaFile, brokenSource)
-  phase = await launch('compile-failure', 'next', false, true)
-  await stop('SIGTERM')
+  phase = await journal.observe('compile-failure', 'launcher-start', () => launch('compile-failure', 'next', false, true))
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'app-stop', () => stop('SIGTERM'))
+  checkpoint()
   assert.equal(readFileSync(javaFile, 'utf8'), brokenSource, 'Failed compilation discarded the local edit')
   report.phases.push(phase)
   const edited = before.replace('.withAppName("QQQ Sample")', '.withAppName("QQQ Lifecycle Edit")')
   writeFileSync(javaFile, edited)
-  phase = await launch('java-edit')
-  const editedContext = await nextReady(phase)
+  phase = await journal.observe('java-edit', 'launcher-start', () => launch('java-edit'))
+  const editedContext = await journal.observe(phaseName ?? 'runner', 'next-ready', () => nextReady(phase))
   assert.equal((await json('/qqq/v1/metaData')).branding.appName, 'QQQ Lifecycle Edit')
   await expect(page.getByRole('img', { name: 'QQQ Lifecycle Edit', exact: true })).toBeVisible()
-  await editedContext.close()
-  await stop('SIGTERM')
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'context-close', () => editedContext.close())
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'app-stop', () => stop('SIGTERM'))
+  checkpoint()
   assert.equal(readFileSync(javaFile, 'utf8'), edited, 'Restart discarded local Java edits')
   report.phases.push(phase)
-  phase = await launch('material', 'material')
+  phase = await journal.observe('material', 'launcher-start', () => launch('material', 'material'))
+  journal.mark('material', 'material-checks', 'start')
   const html = await (await fetch(base, { signal: AbortSignal.timeout(10_000) })).text()
   assert(html.includes('/static/js/'), 'Material assets were not selected')
   assert(!html.includes('/_next/static/'), 'Next served despite Material selection')
   assert.equal((await json('/qqq/v1/table/person/1')).record.values.firstName, 'Avery')
-  const materialContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' })
-  page = await materialContext.newPage()
+  const materialContext = await journal.observe(phaseName ?? 'runner', 'context-create', () => browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' }))
+  page = await journal.observe(phaseName ?? 'runner', 'page-create', () => materialContext.newPage())
   page.setDefaultTimeout(20_000)
   page.on('pageerror', (error) => report.pageErrors.push({ phase: 'material', message: error.message }))
   const materialPerson = base + '/peopleApp/greetingsApp/person'
-  await page.goto(materialPerson)
+  await journal.observe(phaseName ?? 'runner', 'page-goto', () => page.goto(materialPerson))
   await expect(page.getByText('Avery', { exact: true }).first()).toBeVisible()
-  await page.goto(base + '/peopleApp/greetingsApp/pet/1')
+  await journal.observe(phaseName ?? 'runner', 'page-goto', () => page.goto(base + '/peopleApp/greetingsApp/pet/1'))
   await expect(page.getByText('Viewing Pet: Charlie', { exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Avery Sample', exact: true }).click()
   await expect(page.getByText('Viewing Person: Avery Sample', { exact: true })).toBeVisible()
-  await page.reload()
+  await journal.observe(phaseName ?? 'runner', 'page-reload', () => page.reload())
   await expect(page.getByText('Viewing Person: Avery Sample', { exact: true })).toBeVisible()
-  await page.goto(materialPerson + '/create')
+  await journal.observe(phaseName ?? 'runner', 'page-goto', () => page.goto(materialPerson + '/create'))
   for (const [field, value] of Object.entries({ firstName: 'Material', lastName: 'Verification', email: 'material@example.invalid' }))
     await page.locator(`input[name="${field}"]`).fill(value)
   await page.getByRole('button', { name: /Save$/i }).click()
@@ -269,7 +293,7 @@ try {
   await page.locator('input[name="firstName"]').fill('Material Updated')
   await page.getByRole('button', { name: /Save$/i }).click()
   await expect(page.getByText('Viewing Person: Material Updated Verification', { exact: true })).toBeVisible()
-  await page.reload()
+  await journal.observe(phaseName ?? 'runner', 'page-reload', () => page.reload())
   await expect(page.getByText('Viewing Person: Material Updated Verification', { exact: true })).toBeVisible()
   assert.equal((await json(`/qqq/v1/table/person/${materialId}`)).record.values.firstName, 'Material Updated')
   await page.getByRole('button', { name: /actions/i }).click()
@@ -279,24 +303,33 @@ try {
   await page.getByRole('button', { name: /Submit$/i }).click()
   await expect(page.getByText('Hello Material Updated QQQ', { exact: true })).toBeVisible()
   await expect(page.getByText('1–1 of 1', { exact: true })).toBeVisible()
-  await page.screenshot({ path: path.join(output, 'material-process-results.png'), fullPage: true })
+  await journal.observe(phaseName ?? 'runner', 'screenshot', () => page.screenshot({ path: path.join(output, 'material-process-results.png'), fullPage: true }))
   await page.getByRole('button', { name: /Close$/i }).click()
   await expect(page.getByText('Viewing Person: Material Updated Verification', { exact: true })).toBeVisible()
   await expect(page).toHaveURL(`${materialPerson}/${materialId}`)
   phase.createdRecord = materialId
   phase.browserChecks = ['seeded query', 'Pet-to-Person link and refresh', 'create/edit/HTTP readback', 'selected-record greeting result and close']
-  await materialContext.close()
-  await stop('SIGTERM')
+  journal.mark('material', 'material-checks', 'success')
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'context-close', () => materialContext.close())
+  checkpoint()
+  await journal.observe(phaseName ?? 'runner', 'app-stop', () => stop('SIGTERM'))
+  checkpoint()
   report.phases.push(phase)
   assert.deepEqual(report.pageErrors, [], 'Browser reported unhandled JavaScript errors')
   report.complete = true
 } catch (error) {
   report.error = error.stack
   process.exitCode = 1
-  if (page && !page.isClosed()) await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {})
+  checkpoint()
+  if (page && !page.isClosed()) await journal.observe(phaseName ?? 'runner', 'failure-screenshot', () => page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true })).catch(() => {})
 } finally {
-  if (app) await stop('SIGTERM').catch((error) => { report.cleanupError = error.message; report.complete = false; process.exitCode = 1 })
-  if (browser) await browser.close()
+  checkpoint()
+  if (app) await journal.observe(phaseName ?? 'runner', 'app-stop', () => stop('SIGTERM')).catch((error) => { report.cleanupError = error.message; report.complete = false; process.exitCode = 1 })
+  checkpoint()
+  if (browser) await journal.observe(phaseName ?? 'runner', 'browser-close', () => browser.close())
+  checkpoint()
+  journal?.mark('runner', 'run', report.complete ? 'success' : 'error')
   report.finishedAt = new Date().toISOString()
   if (existsSync(output)) writeFileSync(path.join(output, 'lifecycle-result.json'), JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify(report, null, 2))

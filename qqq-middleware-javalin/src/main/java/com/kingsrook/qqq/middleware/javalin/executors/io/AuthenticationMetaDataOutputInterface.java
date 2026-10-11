@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardCspSources;
 
 
 /*******************************************************************************
@@ -40,6 +41,13 @@ public interface AuthenticationMetaDataOutputInterface extends AbstractMiddlewar
     ** sign-in.  Outputs that do not expose branding ignore it.
     ***************************************************************************/
    default void setBranding(QBrandingMetaData branding)
+   {
+   }
+
+   /***************************************************************************
+    ** Optional public policy sources for outputs that support standalone UIs.
+    ***************************************************************************/
+   default void setDashboardCspSources(NextDashboardCspSources sources)
    {
    }
 }

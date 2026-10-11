@@ -124,13 +124,18 @@ public class BulkInsertStepUtils
             BulkLoadProfileField bulkLoadProfileField = new BulkLoadProfileField();
             fieldList.add(bulkLoadProfileField);
             bulkLoadProfileField.setFieldName(jsonObject.optString("fieldName"));
-            bulkLoadProfileField.setHeaderName(jsonObject.has("headerName") ? jsonObject.getString("headerName") : null);
-            bulkLoadProfileField.setColumnIndex(jsonObject.has("columnIndex") ? jsonObject.getInt("columnIndex") : null);
-            bulkLoadProfileField.setDefaultValue((Serializable) jsonObject.opt("defaultValue"));
+
+            /////////////////////////////////////////////////////////////////////////
+            // optional values may be sent as JSON null (e.g., headerName for a    //
+            // file without a header row - QRun-IO/qqq#660) - treat that as absent //
+            /////////////////////////////////////////////////////////////////////////
+            bulkLoadProfileField.setHeaderName(jsonObject.isNull("headerName") ? null : jsonObject.getString("headerName"));
+            bulkLoadProfileField.setColumnIndex(jsonObject.isNull("columnIndex") ? null : jsonObject.getInt("columnIndex"));
+            bulkLoadProfileField.setDefaultValue(jsonObject.isNull("defaultValue") ? null : (Serializable) jsonObject.get("defaultValue"));
             bulkLoadProfileField.setDoValueMapping(jsonObject.optBoolean("doValueMapping"));
             bulkLoadProfileField.setClearIfEmpty(jsonObject.optBoolean("clearIfEmpty"));
 
-            if(BooleanUtils.isTrue(bulkLoadProfileField.getDoValueMapping()) && jsonObject.has("valueMappings"))
+            if(BooleanUtils.isTrue(bulkLoadProfileField.getDoValueMapping()) && !jsonObject.isNull("valueMappings"))
             {
                bulkLoadProfileField.setValueMappings(new HashMap<>());
                JSONObject valueMappingsJsonObject = jsonObject.getJSONObject("valueMappings");

@@ -163,6 +163,7 @@ class PublishedBomTest(unittest.TestCase):
                             "for artifact, version, ext in [('qqq-bom-pom','4.1.0-RC.1','pom'),"
                             "('qqq-backend-core','4.1.0-RC.1','jar'),('qqq-esb','4.1.0-RC.1','jar'),"
                             "('qqq-frontend-next','0.2.1','jar')]:\n"
+                            "  if ext == 'jar' and 'org.apache.maven.plugins:maven-dependency-plugin:3.9.0:resolve' not in args: continue\n"
                             "  path = repo / 'com/kingsrook/qqq' / artifact / version / (artifact+'-'+version+'.'+ext)\n"
                             "  path.parent.mkdir(parents=True, exist_ok=True)\n"
                             f"  path.write_text({json.dumps(POM.replace('${revision}', '4.1.0-RC.1'))} if ext == 'pom' else 'fixture')\n"

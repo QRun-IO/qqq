@@ -415,6 +415,19 @@ public class QJavalinImplementation
             authContext.put(ValueUtils.getValueAsString(entry.getKey()), ValueUtils.getValueAsString(entry.getValue()));
          }
 
+         ///////////////////////////////////////////////////////////////////////////////////
+         // Only an empty resume request (optionally with the existing storage control) //
+         // may use the cookie. Explicit or custom authentication input takes priority. //
+         ///////////////////////////////////////////////////////////////////////////////////
+         boolean resumedFromCookie = false;
+         boolean resumeRequest = map.isEmpty() || (map.size() == 1 && map.containsKey(Auth0AuthenticationModule.DO_STORE_USER_SESSION_KEY));
+         String cookieSessionUUID = context.cookie(SESSION_UUID_COOKIE_NAME);
+         if(resumeRequest && context.header("Authorization") == null && StringUtils.hasContent(cookieSessionUUID))
+         {
+            authContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, cookieSessionUUID);
+            resumedFromCookie = true;
+         }
+
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          // put the qInstance into context - but no session yet (since, the whole point of this call is to manage the session!) //
          /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -424,7 +437,10 @@ public class QJavalinImplementation
          setSessionCookie(context, SESSION_UUID_COOKIE_NAME, session.getUuid());
 
          Map<String, Serializable> resultMap = new HashMap<>();
-         resultMap.put("uuid", session.getUuid());
+         if(!getSessionCookieHttpOnly() && !resumedFromCookie)
+         {
+            resultMap.put("uuid", session.getUuid());
+         }
 
          if(session.getValuesForFrontend() != null)
          {

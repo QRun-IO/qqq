@@ -169,7 +169,17 @@ class SampleAuthenticationProvider implements AutoCloseable
     *******************************************************************************/
    String accessToken(String subject, Instant expiration, boolean wrongSignature) throws Exception
    {
-      JWTClaimsSet claims = claims(subject).expirationTime(Date.from(expiration)).claim("name", "Owned " + subject).build();
+      return accessToken(subject, expiration, wrongSignature, issuer);
+   }
+
+
+
+   /*******************************************************************************
+    ** Model provider-specific issuer claims without changing shared OIDC tokens.
+    *******************************************************************************/
+   String accessToken(String subject, Instant expiration, boolean wrongSignature, String tokenIssuer) throws Exception
+   {
+      JWTClaimsSet claims = claims(subject).issuer(tokenIssuer).expirationTime(Date.from(expiration)).claim("name", "Owned " + subject).build();
       return sign(claims, wrongSignature ? wrongKey : key);
    }
 

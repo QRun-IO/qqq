@@ -36,14 +36,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -54,12 +52,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.metadata.authentication.Auth0AuthenticationMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.middleware.javalin.QJavalinRouteProviderInterface;
 import io.javalin.config.JavalinConfig;
 import io.javalin.http.Context;
@@ -98,7 +91,7 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    //////////////////////////////////////////////////////////////////////////
    // where AWS serves QuickSight embeds (the quickSightChart widget's URL) //
    //////////////////////////////////////////////////////////////////////////
-   public static final String QUICKSIGHT_FRAME_SOURCE = "https://*.quicksight.aws.amazon.com";
+   public static final String QUICKSIGHT_FRAME_SOURCE = NextDashboardCspSources.QUICKSIGHT_FRAME_SOURCE;
 
    private static final Pattern SCRIPT_ELEMENT = Pattern.compile("<script\\b([^>]*)>(.*?)</script\\s*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
    private static final Pattern SRC_ATTRIBUTE  = Pattern.compile("(^|\\s)src\\s*=", Pattern.CASE_INSENSITIVE);
@@ -129,30 +122,7 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    private final Map<String, List<String>>                     scriptHashes    = new ConcurrentHashMap<>();
    private final AtomicReference<NextDashboardSecurityHeaders> securityHeaders = new AtomicReference<>();
    private       Consumer<NextDashboardSecurityHeaders>        securityHeadersCustomizer;
-   private       InstanceOrigins                               instanceOrigins = InstanceOrigins.NONE;
-
-
-
-   /*******************************************************************************
-    ** The origins an instance's metadata adds to the policy.
-    *******************************************************************************/
-   private record InstanceOrigins(Set<String> connect, Set<String> frame, Set<String> script, Set<String> style)
-   {
-      static final InstanceOrigins NONE = new InstanceOrigins(Set.of(), Set.of(), Set.of(), Set.of());
-
-
-
-      /***************************************************************************
-       ** Keep insertion order (the header lists sources in metadata order).
-       ***************************************************************************/
-      InstanceOrigins
-      {
-         connect = Collections.unmodifiableSet(new LinkedHashSet<>(connect));
-         frame = Collections.unmodifiableSet(new LinkedHashSet<>(frame));
-         script = Collections.unmodifiableSet(new LinkedHashSet<>(script));
-         style = Collections.unmodifiableSet(new LinkedHashSet<>(style));
-      }
-   }
+   private       NextDashboardCspSources                       instanceOrigins = NextDashboardCspSources.fromInstance(null);
 
 
 
@@ -230,47 +200,8 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
       // instance only decides which identity provider, embed, extension    //
       // and analytics origins the Content-Security-Policy allows.          //
       ////////////////////////////////////////////////////////////////////////
-      this.instanceOrigins = qInstance == null ? InstanceOrigins.NONE : instanceOrigins(qInstance);
+      this.instanceOrigins = NextDashboardCspSources.fromInstance(qInstance);
       this.securityHeaders.set(buildSecurityHeaders());
-   }
-
-
-
-   /*******************************************************************************
-    ** The origins an instance's metadata adds: its identity providers and its
-    ** configured analytics providers (connect-src), a QuickSight widget's embed
-    ** origin (frame-src), and its customComponent bundles' and configured
-    ** analytics scripts' origins (script-src), plus configured Google Drive
-    ** identity and picker script, frame, connect and style sources.
-    *******************************************************************************/
-   private static InstanceOrigins instanceOrigins(QInstance qInstance)
-   {
-      NextDashboardAnalyticsOrigins analytics = new NextDashboardAnalyticsOrigins(qInstance.getEnvironmentValues());
-
-      Set<String> connect = new LinkedHashSet<>(identityProviderOrigins(qInstance));
-      connect.addAll(analytics.getConnect());
-
-      Set<String> script = new LinkedHashSet<>(customComponentOrigins(qInstance));
-      script.addAll(analytics.getScript());
-
-      Set<String> frame = new LinkedHashSet<>();
-      Set<String> style = new LinkedHashSet<>();
-      if(hasQuickSightWidget(qInstance))
-      {
-         frame.add(QUICKSIGHT_FRAME_SOURCE);
-      }
-      Map<String, String> environment = qInstance.getEnvironmentValues();
-      if(environment != null && environment.get("GOOGLE_APP_CLIENT_ID") != null && !environment.get("GOOGLE_APP_CLIENT_ID").isBlank()
-         && environment.get("GOOGLE_APP_API_KEY") != null && !environment.get("GOOGLE_APP_API_KEY").isBlank())
-      {
-         script.add("https://accounts.google.com/gsi/client");
-         script.add("https://apis.google.com");
-         connect.add("https://accounts.google.com/gsi/");
-         frame.add("https://accounts.google.com/gsi/");
-         frame.add("https://docs.google.com");
-         style.add("https://accounts.google.com/gsi/style");
-      }
-      return (new InstanceOrigins(connect, frame, script, style));
    }
 
 
@@ -281,96 +212,15 @@ public final class NextDashboardRouteProvider implements QJavalinRouteProviderIn
    private NextDashboardSecurityHeaders buildSecurityHeaders()
    {
       NextDashboardSecurityHeaders headers = new NextDashboardSecurityHeaders();
-      instanceOrigins.connect().forEach(origin -> headers.withSources("connect-src", origin));
-      instanceOrigins.frame().forEach(origin -> headers.withSources("frame-src", origin));
-      instanceOrigins.script().forEach(origin -> headers.withSources(NextDashboardSecurityHeaders.SCRIPT_SRC, origin));
-      instanceOrigins.style().forEach(origin -> headers.withSources("style-src", origin));
+      instanceOrigins.getConnectSrc().forEach(origin -> headers.withSources("connect-src", origin));
+      instanceOrigins.getFrameSrc().forEach(origin -> headers.withSources("frame-src", origin));
+      instanceOrigins.getScriptSrc().forEach(origin -> headers.withSources(NextDashboardSecurityHeaders.SCRIPT_SRC, origin));
+      instanceOrigins.getStyleSrc().forEach(origin -> headers.withSources("style-src", origin));
       if(securityHeadersCustomizer != null)
       {
          securityHeadersCustomizer.accept(headers);
       }
       return (headers);
-   }
-
-
-
-   /*******************************************************************************
-    ** Origins of the instance's OAUTH2 and AUTH_0 identity providers, which the
-    ** dashboard calls from the browser (OIDC discovery, the Auth0 token exchange).
-    *******************************************************************************/
-   static Set<String> identityProviderOrigins(QInstance qInstance)
-   {
-      List<QAuthenticationMetaData> providers = new ArrayList<>();
-      providers.add(qInstance.getAuthentication());
-      if(qInstance.getScopedAuthenticationProviders() != null)
-      {
-         providers.addAll(qInstance.getScopedAuthenticationProviders().values());
-      }
-
-      Set<String> origins = new LinkedHashSet<>();
-      for(QAuthenticationMetaData provider : providers)
-      {
-         String baseUrl = null;
-         if(provider instanceof OAuth2AuthenticationMetaData oauth2)
-         {
-            baseUrl = oauth2.getBaseUrl();
-         }
-         else if(provider instanceof Auth0AuthenticationMetaData auth0)
-         {
-            baseUrl = auth0.getBaseUrl();
-         }
-         String origin = NextDashboardSecurityHeaders.originOf(baseUrl);
-         if(origin != null)
-         {
-            origins.add(origin);
-         }
-      }
-      return (origins);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static boolean hasQuickSightWidget(QInstance qInstance)
-   {
-      return (widgets(qInstance).stream().anyMatch(widget -> WidgetType.QUICK_SIGHT_CHART.getType().equals(widget.getType())));
-   }
-
-
-
-   /*******************************************************************************
-    ** Origins of the script bundles that customComponent widgets load (their
-    ** componentSourceUrl default value), when they are on another origin.
-    *******************************************************************************/
-   static Set<String> customComponentOrigins(QInstance qInstance)
-   {
-      Set<String> origins = new LinkedHashSet<>();
-      for(QWidgetMetaDataInterface widget : widgets(qInstance))
-      {
-         if(WidgetType.CUSTOM_COMPONENT.getType().equals(widget.getType()) && widget.getDefaultValues() != null)
-         {
-            Object sourceUrl = widget.getDefaultValues().get("componentSourceUrl");
-            String origin    = NextDashboardSecurityHeaders.originOf(sourceUrl == null ? null : String.valueOf(sourceUrl));
-            if(origin != null)
-            {
-               origins.add(origin);
-            }
-         }
-      }
-      return (origins);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private static List<QWidgetMetaDataInterface> widgets(QInstance qInstance)
-   {
-      Map<String, QWidgetMetaDataInterface> widgets = qInstance.getWidgets();
-      return (widgets == null ? List.of() : widgets.values().stream().filter(Objects::nonNull).toList());
    }
 
 

@@ -1392,22 +1392,32 @@ class QJavalinImplementationTest extends QJavalinTestBase
    @Test
    void testManageSession()
    {
-      String body = """
-         {
-            "accessToken": "abcd",
-            "doStoreUserSession": true
-         }
-         """;
-      HttpResponse<String> response = Unirest.post(BASE_URL + "/manageSession")
-         .header("Content-Type", "application/json")
-         .body(body)
-         .asString();
+      boolean previousHttpOnly = QJavalinImplementation.getSessionCookieHttpOnly();
+      try
+      {
+         // This contract describes the Material-compatible readable-cookie mode.
+         QJavalinImplementation.setSessionCookieHttpOnly(false);
+         String body = """
+            {
+               "accessToken": "abcd",
+               "doStoreUserSession": true
+            }
+            """;
+         HttpResponse<String> response = Unirest.post(BASE_URL + "/manageSession")
+            .header("Content-Type", "application/json")
+            .body(body)
+            .asString();
 
-      assertEquals(200, response.getStatus());
-      JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
-      assertNotNull(jsonObject);
-      assertTrue(jsonObject.has("uuid"));
-      response.getHeaders().get("Set-Cookie").stream().anyMatch(s -> s.contains("sessionUUID"));
+         assertEquals(200, response.getStatus());
+         JSONObject jsonObject = JsonUtils.toJSONObject(response.getBody());
+         assertNotNull(jsonObject);
+         assertTrue(jsonObject.has("uuid"));
+         response.getHeaders().get("Set-Cookie").stream().anyMatch(s -> s.contains("sessionUUID"));
+      }
+      finally
+      {
+         QJavalinImplementation.setSessionCookieHttpOnly(previousHttpOnly);
+      }
    }
 
 

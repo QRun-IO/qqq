@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
+import com.kingsrook.qqq.middleware.javalin.routeproviders.BrandingAssetsRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.NextDashboardSecurityHeaders;
@@ -173,6 +174,8 @@ public class QApplicationJavalinServer
       {
          addRouteProvider(new NextDashboardRouteProvider().withSecurityHeadersCustomizer(nextDashboardSecurityHeadersCustomizer));
       }
+
+      addRouteProvider(new BrandingAssetsRouteProvider());
 
       LOG.info("Admin dashboard selection", LogUtils.logPair("next", serveNext), LogUtils.logPair("materialDashboard", serveMaterial));
 

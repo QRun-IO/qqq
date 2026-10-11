@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -36,7 +38,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.RedirectStateMetaDataProducer;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionMetaDataProducer;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.metadata.UserSessionRefreshTokenMetaDataProducer;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.model.UserSessionRefreshToken;
 import com.kingsrook.qqq.middleware.javalin.LogoutTestProvider;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -85,8 +89,10 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
    {
       provider = new LogoutTestProvider();
       QInstance qInstance = TestUtils.defineInstance();
-      qInstance.withInstanceDefaultAuthentication(provider.authentication());
+      qInstance.withInstanceDefaultAuthentication(provider.authentication()
+         .withRefreshTokenEncryptionKey(Base64.getEncoder().encodeToString("backchannel-test-key-0123456789x".getBytes(StandardCharsets.UTF_8))));
       qInstance.addTable(new UserSessionMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
+      qInstance.addTable(new UserSessionRefreshTokenMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
       qInstance.addTable(new RedirectStateMetaDataProducer(TestUtils.BACKEND_NAME_MEMORY).produce(qInstance));
       return qInstance;
    }
@@ -147,6 +153,10 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
             .withValue("userId", userId)
             .withValue("accessToken", accessToken)));
          new InsertAction().execute(insertInput);
+
+         new InsertAction().execute(new InsertInput(UserSessionRefreshToken.TABLE_NAME).withRecordEntity(new UserSessionRefreshToken()
+            .withSessionUuid(sessionUuid)
+            .withRefreshToken("stored-refresh-token")));
       });
 
       //////////////////////////////////
@@ -174,6 +184,7 @@ class BackChannelLogoutSpecV1Test extends SpecTestBase
          queryInput.setTableName(UserSession.TABLE_NAME);
          QueryOutput queryOutput = new QueryAction().execute(queryInput);
          assertEquals(0, queryOutput.getRecords().size(), "Session should have been deleted");
+         assertEquals(0, new QueryAction().execute(new QueryInput(UserSessionRefreshToken.TABLE_NAME)).getRecords().size(), "Stored refresh token should have been deleted");
       });
    }
 

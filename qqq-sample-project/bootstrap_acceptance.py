@@ -188,7 +188,7 @@ def run_acceptance(args):
             archive = work / "source.tar"
             with archive.open("wb") as stream:
                 subprocess.run(["git", "archive", sha, "qqq-sample-project", "checkstyle",
-                                "pmd", "spotbugs", "qqq-bom"], cwd=root, stdout=stream, check=True)
+                                "pmd", "spotbugs", "qqq-bom", "LICENSE", "NOTICE"], cwd=root, stdout=stream, check=True)
             with tarfile.open(archive) as source_archive:
                 source_archive.extractall(work, filter="data")
             if expected_libraries(work / "qqq-bom/pom.xml") != libraries:
@@ -196,6 +196,8 @@ def run_acceptance(args):
             sample = work / "qqq-sample-project"
             for configuration in ("checkstyle", "spotbugs"):
                 shutil.copytree(work / configuration, sample / configuration)
+            for notice in ("LICENSE", "NOTICE"):
+                shutil.copyfile(work / notice, sample / notice)
             rewrite_published_sample(sample / "pom.xml", version)
             report["provenance"] = "git archive HEAD; empty settings/cache; public repositories"
         consumer = work / "consumer"

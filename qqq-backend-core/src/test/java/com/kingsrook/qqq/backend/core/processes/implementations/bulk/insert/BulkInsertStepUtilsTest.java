@@ -225,6 +225,56 @@ class BulkInsertStepUtilsTest extends BaseTest
 
 
    /*******************************************************************************
+    ** a file without a header row arrives with "headerName": null (QRun-IO/qqq#660)
+    *******************************************************************************/
+   @Test
+   void testGetBulkLoadProfile_v1WithNullHeaderName_parsedAsNull()
+   {
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("version", "v1");
+      input.addValue("layout", "FLAT");
+      input.addValue("hasHeaderRow", false);
+      input.addValue("keyFields", "");
+      input.addValue("isBulkEdit", false);
+      input.addValue("fieldListJSON", """
+         [{"fieldName":"firstName","columnIndex":0,"headerName":null,"doValueMapping":false,"clearIfEmpty":false}]
+         """);
+
+      BulkLoadProfile profile = BulkInsertStepUtils.getBulkLoadProfile(input);
+
+      assertNull(profile.getFieldList().get(0).getHeaderName());
+      assertEquals(0, profile.getFieldList().get(0).getColumnIndex());
+   }
+
+
+
+   /*******************************************************************************
+    ** other optional profile field values sent as JSON null read as absent
+    *******************************************************************************/
+   @Test
+   void testGetBulkLoadProfile_v1WithNullOptionalValues_parsedAsNull()
+   {
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("version", "v1");
+      input.addValue("layout", "FLAT");
+      input.addValue("hasHeaderRow", true);
+      input.addValue("keyFields", "");
+      input.addValue("isBulkEdit", false);
+      input.addValue("fieldListJSON", """
+         [{"fieldName":"status","headerName":"Status","columnIndex":null,"defaultValue":null,"doValueMapping":true,"valueMappings":null}]
+         """);
+
+      BulkLoadProfile profile = BulkInsertStepUtils.getBulkLoadProfile(input);
+
+      assertEquals("Status", profile.getFieldList().get(0).getHeaderName());
+      assertNull(profile.getFieldList().get(0).getColumnIndex());
+      assertNull(profile.getFieldList().get(0).getDefaultValue());
+      assertNull(profile.getFieldList().get(0).getValueMappings());
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

@@ -21,13 +21,18 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.Banner;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.BannerSlot;
 import com.kingsrook.qqq.backend.core.model.metadata.branding.QBrandingMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -66,6 +71,14 @@ class AuthenticationMetaDataSpecV1Test extends SpecTestBase
    {
       QInstance qInstance = TestUtils.defineInstance();
       qInstance.setBranding(brandingWithBanner());
+      qInstance.addWidget(new QWidgetMetaData().withName("extension").withCodeReference(new QCodeReference(TestUtils.EchoWidgetRenderer.class)).withType(WidgetType.CUSTOM_COMPONENT.getType())
+         .withDefaultValue("componentSourceUrl", "https://user:URL_SECRET@cdn.example.test/widget.js?token=QUERY_SECRET#HASH_SECRET")
+         .withDefaultValue("privatePayload", "WIDGET_SECRET"));
+      qInstance.addWidget(new QWidgetMetaData().withName("chart").withCodeReference(new QCodeReference(TestUtils.EchoWidgetRenderer.class)).withType(WidgetType.QUICK_SIGHT_CHART.getType()));
+      qInstance.setEnvironmentValues(new LinkedHashMap<>(Map.of(
+         "GOOGLE_ANALYTICS_ENABLED", "true", "GOOGLE_ANALYTICS_TRACKING_ID", "G-PUBLIC",
+         "ANALYTICS_PLUGIN_SCRIPTS", "https://plugins.example.test/analytics.js?secret=PLUGIN_SECRET",
+         "DATABASE_PASSWORD", "ENV_SECRET")));
       return (qInstance);
    }
 
@@ -107,6 +120,31 @@ class AuthenticationMetaDataSpecV1Test extends SpecTestBase
       assertEquals("#1d4ed8", branding.getString("accentColor"));
       assertEquals("#dbeafe", branding.getString("accentColorLight"));
       assertFalse(response.getBody().contains("Signed-in users only"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Public policy sources expose only origins needed by configured features.
+    *******************************************************************************/
+   @Test
+   void testPublicDashboardCspSources()
+   {
+      HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/authentication").asString();
+      assertEquals(200, response.getStatus());
+      JSONObject json = JsonUtils.toJSONObject(response.getBody());
+      assertTrue(json.has("dashboardCspSources"), "the public response must expose derived policy sources");
+      JSONObject sources = json.getJSONObject("dashboardCspSources");
+      assertEquals(Set.of("connectSrc", "scriptSrc", "frameSrc", "styleSrc"), sources.keySet());
+      assertEquals(Set.of("https://cdn.example.test", "https://www.googletagmanager.com", "https://plugins.example.test"), Set.copyOf(sources.getJSONArray("scriptSrc").toList()));
+      assertEquals(Set.of("https://*.quicksight.aws.amazon.com"), Set.copyOf(sources.getJSONArray("frameSrc").toList()));
+      assertEquals(Set.of("https://www.googletagmanager.com", "https://*.google-analytics.com", "https://*.analytics.google.com"), Set.copyOf(sources.getJSONArray("connectSrc").toList()));
+      assertEquals(0, sources.getJSONArray("styleSrc").length());
+      for(String secret : Set.of("URL_SECRET", "QUERY_SECRET", "HASH_SECRET", "WIDGET_SECRET", "PLUGIN_SECRET", "ENV_SECRET", "DATABASE_PASSWORD"))
+      {
+         assertFalse(response.getBody().contains(secret), "public policy metadata must not serialize private configuration");
+      }
+      assertEquals("QQQ Sample", json.getJSONObject("branding").getString("appName"));
    }
 
 

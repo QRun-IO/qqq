@@ -24,10 +24,16 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchProviderInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchResult;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -178,6 +184,97 @@ class RecordSearchSpecV1Test extends SpecTestBase
          HttpResponse<String> response = post(body);
          assertEquals(400, response.getStatus(), "for body " + body + ": " + response.getBody());
          assertThat(JsonUtils.toJSONObject(response.getBody()).getString("error")).isNotBlank();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** With a record search provider registered, the response keeps the same
+    ** shape: the provider's tables (here, person - its hits in its order) and
+    ** the default search's tables (pet) are merged into one results list.
+    *******************************************************************************/
+   @Test
+   void testProviderResultsUseTheSameContract()
+   {
+      serverQInstance.withRecordSearchProvider(new QCodeReference(PersonOnlyProvider.class));
+
+      assertThat(results(post(Map.of("searchTerm", "ch"))))
+         .containsExactly("person|Person|6|Linda Kelkhoff", "person|Person|1|Darin Kelkhoff", "pet|Pet|1|Chester");
+      assertThat(results(post(Map.of("searchTerm", "ch", "limitPerTable", 1))))
+         .containsExactly("person|Person|6|Linda Kelkhoff", "pet|Pet|1|Chester");
+   }
+
+
+
+   /*******************************************************************************
+    ** A failing provider does not fail the request: its tables fall back to the
+    ** default search.
+    *******************************************************************************/
+   @Test
+   void testFailingProviderFallsBackToDefaultSearch()
+   {
+      serverQInstance.withRecordSearchProvider(new QCodeReference(FailingProvider.class));
+
+      assertThat(results(post(Map.of("searchTerm", "ch")))).containsExactly("person|Person|3|Tim Chamberlain", "person|Person|5|Garret Richardson", "pet|Pet|1|Chester");
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider that claims the person table and always finds persons 6 then 1.
+    *******************************************************************************/
+   public static class PersonOnlyProvider implements RecordSearchProviderInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public boolean claimsTable(QTableMetaData table)
+      {
+         return (TestUtils.TABLE_NAME_PERSON.equals(table.getName()));
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public RecordSearchOutput search(RecordSearchInput input)
+      {
+         return (new RecordSearchOutput().withResults(List.of(
+            new RecordSearchResult().withTableName(TestUtils.TABLE_NAME_PERSON).withRecordId("6"),
+            new RecordSearchResult().withTableName(TestUtils.TABLE_NAME_PERSON).withRecordId(1))));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider that claims every table and always fails, like an unreachable
+    ** search index.
+    *******************************************************************************/
+   public static class FailingProvider implements RecordSearchProviderInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public boolean claimsTable(QTableMetaData table)
+      {
+         return (true);
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public RecordSearchOutput search(RecordSearchInput input) throws QException
+      {
+         throw (new QException("search index unavailable"));
       }
    }
 

@@ -75,6 +75,24 @@ The table meta data lists `searchFields` only to users who may read the table, s
 ----
 .withSearchFields("firstName", "lastName", "email")
 ----
++
+A *record search provider* can search some tables in place of the default "contains" query - for example, a module backed by a search index such as OpenSearch.
+Register one on the instance with `QInstance.withRecordSearchProvider(new QCodeReference(YourProvider.class))`, where `YourProvider` implements `RecordSearchProviderInterface`:
++
+--
+** `boolean claimsTable(QTableMetaData table)` - whether the provider searches this table.
+It is asked only about tables that are being searched (tables with search fields that the user may read and that support query), so a provider-searched table still needs `searchFields` (frontends use them to find searchable tables, and they are the fallback).
+** `RecordSearchOutput search(RecordSearchInput input)` - search the claimed tables.
+The input has the trimmed search term, exactly the claimed tables the user may read as `tableNames`, the effective `limitPerTable`, and the caller's input source.
+Return a `RecordSearchResult` with at least `tableName` and `recordId` (primary key) for each hit, most relevant first within each table.
+--
++
+Unclaimed tables keep the default search, and both sets of results are returned together, in table order, so the `POST /search` response does not change.
+Provider hits are read again by primary key through `QueryAction`, so record security locks apply, records deleted since they were indexed drop out, and record labels are computed as usual.
+For each table, up to `RecordSearchAction.MAX_PROVIDER_IDS_PER_TABLE` (100) ids are considered in the provider's order, and the first `limitPerTable` the user may read are returned; a provider may return more than `limitPerTable` ids per table to make up for hits that drop out.
+If the provider throws (or cannot be loaded), a warning is logged and its tables are searched with the default search, so an unavailable search index does not fail search.
+A new provider instance is loaded for each search; keep connections and other shared state outside it.
+Without a provider, record search is unchanged.
 
 * `sections` - *List of <<QFieldSection>>* - Mechanism to organize fields within user interfaces, into logical sections.
 If any sections are present in the table meta data, then all fields in the table must be listed in exactly 1 section.

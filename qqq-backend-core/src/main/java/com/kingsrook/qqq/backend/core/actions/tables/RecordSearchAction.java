@@ -23,10 +23,15 @@ package com.kingsrook.qqq.backend.core.actions.tables;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
@@ -34,6 +39,7 @@ import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
@@ -47,12 +53,14 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchOu
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchResult;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -67,12 +75,20 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
  ** personalization and query customizers apply exactly as for any query.
  ** String fields match when they contain the term, case-insensitively; integer
  ** fields match when they equal a numeric term.  Results per table are limited.
+ **
+ ** If the instance has a {@link RecordSearchProviderInterface record search
+ ** provider}, the tables it claims are searched by it instead (its hits are
+ ** re-read through QueryAction, so the same security applies), falling back to
+ ** the default search for those tables if the provider fails.
  *******************************************************************************/
 public class RecordSearchAction
 {
-   public static final int DEFAULT_LIMIT_PER_TABLE = 5;
-   public static final int MAX_LIMIT_PER_TABLE     = 25;
-   public static final int MAX_SEARCH_TERM_LENGTH  = 100;
+   private static final QLogger LOG = QLogger.getLogger(RecordSearchAction.class);
+
+   public static final int DEFAULT_LIMIT_PER_TABLE    = 5;
+   public static final int MAX_LIMIT_PER_TABLE        = 25;
+   public static final int MAX_SEARCH_TERM_LENGTH     = 100;
+   public static final int MAX_PROVIDER_IDS_PER_TABLE = 100;
 
    private static final int     QUERY_TIMEOUT_SECONDS = 30;
    private static final Pattern INTEGER_TERM          = Pattern.compile("-?\\d{1,18}");
@@ -98,8 +114,8 @@ public class RecordSearchAction
 
       Set<String> onlyTableNames = CollectionUtils.nullSafeHasContents(input.getTableNames()) ? new HashSet<>(input.getTableNames()) : null;
 
-      QInstance          qInstance = QContext.getQInstance();
-      RecordSearchOutput output    = new RecordSearchOutput();
+      QInstance            qInstance = QContext.getQInstance();
+      List<QTableMetaData> tables    = new ArrayList<>();
       for(QTableMetaData table : CollectionUtils.nonNullMap(qInstance.getTables()).values())
       {
          if(CollectionUtils.nullSafeIsEmpty(table.getSearchFields()) || (onlyTableNames != null && !onlyTableNames.contains(table.getName())))
@@ -112,10 +128,157 @@ public class RecordSearchAction
             continue;
          }
 
-         output.getResults().addAll(searchTable(input, table, searchTerm, limitPerTable));
+         tables.add(table);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // tables a provider searched use its results; all others (including the //
+      // provider's tables, if it failed) use the default search.  either way, //
+      // results are output in instance table order.                           //
+      ///////////////////////////////////////////////////////////////////////////
+      Map<String, List<RecordSearchResult>> providerResults = searchWithProvider(qInstance, input, tables, searchTerm, limitPerTable);
+
+      RecordSearchOutput output = new RecordSearchOutput();
+      for(QTableMetaData table : tables)
+      {
+         List<RecordSearchResult> tableResults = providerResults.get(table.getName());
+         output.getResults().addAll(tableResults != null ? tableResults : searchTable(input, table, searchTerm, limitPerTable));
       }
 
       return (output);
+   }
+
+
+
+   /*******************************************************************************
+    ** Search the tables that the instance's record search provider (if any)
+    ** claims.  Returns results by table name, for only those tables the provider
+    ** searched - so empty if there is no provider, it claims no tables, or it
+    ** fails (which is logged, and leaves its tables to the default search).
+    *******************************************************************************/
+   private Map<String, List<RecordSearchResult>> searchWithProvider(QInstance qInstance, RecordSearchInput input, List<QTableMetaData> tables, String searchTerm, int limitPerTable) throws QException
+   {
+      QCodeReference providerReference = qInstance.getRecordSearchProvider();
+      if(providerReference == null || tables.isEmpty())
+      {
+         return (new HashMap<>());
+      }
+
+      Map<String, QTableMetaData> claimedTables = new LinkedHashMap<>();
+      RecordSearchOutput          providerOutput;
+      try
+      {
+         RecordSearchProviderInterface provider = QCodeLoader.getAdHoc(RecordSearchProviderInterface.class, providerReference);
+         if(provider == null)
+         {
+            throw (new QException("The record search provider could not be loaded."));
+         }
+
+         for(QTableMetaData table : tables)
+         {
+            if(provider.claimsTable(table))
+            {
+               claimedTables.put(table.getName(), table);
+            }
+         }
+
+         if(claimedTables.isEmpty())
+         {
+            return (new HashMap<>());
+         }
+
+         providerOutput = provider.search(new RecordSearchInput()
+            .withSearchTerm(searchTerm)
+            .withTableNames(new ArrayList<>(claimedTables.keySet()))
+            .withLimitPerTable(limitPerTable)
+            .withInputSource(input.getInputSource()));
+      }
+      catch(Exception | LinkageError e)
+      {
+         LOG.warn("Error in record search provider - searching its tables with the default search instead", e, logPair("provider", providerReference.getName()), logPair("tableNames", claimedTables.keySet()));
+         return (new HashMap<>());
+      }
+
+      /////////////////////////////////////////////////////////////////////
+      // collect the provider's ids per claimed table, in its order      //
+      // (ignoring results for other tables, and results without an id) //
+      /////////////////////////////////////////////////////////////////////
+      Map<String, List<Serializable>> idsByTable = new HashMap<>();
+      for(String tableName : claimedTables.keySet())
+      {
+         idsByTable.put(tableName, new ArrayList<>());
+      }
+
+      List<RecordSearchResult> providerResults = providerOutput == null ? null : providerOutput.getResults();
+      for(RecordSearchResult result : CollectionUtils.nonNullList(providerResults))
+      {
+         List<Serializable> ids = result == null ? null : idsByTable.get(result.getTableName());
+         if(ids != null && result.getRecordId() != null)
+         {
+            ids.add(result.getRecordId());
+         }
+      }
+
+      Map<String, List<RecordSearchResult>> resultsByTable = new HashMap<>();
+      for(QTableMetaData table : claimedTables.values())
+      {
+         resultsByTable.put(table.getName(), readProviderResults(input, table, idsByTable.get(table.getName()), limitPerTable));
+      }
+      return (resultsByTable);
+   }
+
+
+
+   /*******************************************************************************
+    ** Re-read the records a provider returned for one table, by primary key,
+    ** through QueryAction - so only records that still exist and that the
+    ** session may read are output - keeping the provider's order.
+    *******************************************************************************/
+   private List<RecordSearchResult> readProviderResults(RecordSearchInput input, QTableMetaData table, List<Serializable> providerIds, int limitPerTable) throws QException
+   {
+      QFieldMetaData    primaryKeyField = table.getField(table.getPrimaryKeyField());
+      Set<Serializable> ids             = new LinkedHashSet<>();
+      for(Serializable providerId : providerIds)
+      {
+         if(ids.size() >= MAX_PROVIDER_IDS_PER_TABLE)
+         {
+            break;
+         }
+
+         Serializable id = valueAsFieldType(primaryKeyField, providerId);
+         if(id != null)
+         {
+            ids.add(id);
+         }
+      }
+
+      List<RecordSearchResult> results = new ArrayList<>();
+      if(ids.isEmpty())
+      {
+         return (results);
+      }
+
+      QQueryFilter filter = new QQueryFilter(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, new ArrayList<>(ids)));
+
+      Map<Serializable, QRecord> recordsById = new HashMap<>();
+      for(QRecord record : new QueryAction().execute(newQueryInput(input, table, filter)).getRecords())
+      {
+         recordsById.put(record.getValue(table.getPrimaryKeyField()), record);
+      }
+
+      for(Serializable id : ids)
+      {
+         QRecord record = recordsById.get(id);
+         if(record != null)
+         {
+            results.add(toResult(table, record));
+            if(results.size() >= limitPerTable)
+            {
+               break;
+            }
+         }
+      }
+      return (results);
    }
 
 
@@ -149,7 +312,7 @@ public class RecordSearchAction
          }
          else if(field.getType().isIntegral() && INTEGER_TERM.matcher(searchTerm).matches())
          {
-            Serializable value = integerValue(field, searchTerm);
+            Serializable value = valueAsFieldType(field, searchTerm);
             if(value != null)
             {
                filter.withCriteria(new QFilterCriteria(fieldName, QCriteriaOperator.EQUALS, value));
@@ -165,23 +328,10 @@ public class RecordSearchAction
       filter.withOrderBy(new QFilterOrderBy(table.getPrimaryKeyField()));
       filter.withLimit(limitPerTable);
 
-      QueryInput queryInput = new QueryInput(table.getName());
-      queryInput.setInputSource(input.getInputSource());
-      queryInput.setFilter(filter);
-      queryInput.setShouldGenerateDisplayValues(true);
-      queryInput.setShouldTranslatePossibleValues(true);
-      queryInput.setTimeoutSeconds(QUERY_TIMEOUT_SECONDS);
-      queryInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
-
       List<RecordSearchResult> results = new ArrayList<>();
-      for(QRecord record : new QueryAction().execute(queryInput).getRecords())
+      for(QRecord record : new QueryAction().execute(newQueryInput(input, table, filter)).getRecords())
       {
-         String recordLabel = record.getRecordLabel() != null ? record.getRecordLabel() : QValueFormatter.formatRecordLabel(table, record);
-         results.add(new RecordSearchResult()
-            .withTableName(table.getName())
-            .withTableLabel(table.getLabel())
-            .withRecordId(record.getValue(table.getPrimaryKeyField()))
-            .withRecordLabel(recordLabel));
+         results.add(toResult(table, record));
       }
       return (results);
    }
@@ -189,13 +339,46 @@ public class RecordSearchAction
 
 
    /*******************************************************************************
-    ** The term as the field's integer type, or null if it does not fit.
+    ** A query of the table as the search's caller, with display values (for
+    ** record labels).
     *******************************************************************************/
-   private static Serializable integerValue(QFieldMetaData field, String searchTerm)
+   private static QueryInput newQueryInput(RecordSearchInput input, QTableMetaData table, QQueryFilter filter)
+   {
+      QueryInput queryInput = new QueryInput(table.getName());
+      queryInput.setInputSource(input.getInputSource());
+      queryInput.setFilter(filter);
+      queryInput.setShouldGenerateDisplayValues(true);
+      queryInput.setShouldTranslatePossibleValues(true);
+      queryInput.setTimeoutSeconds(QUERY_TIMEOUT_SECONDS);
+      queryInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
+      return (queryInput);
+   }
+
+
+
+   /*******************************************************************************
+    ** The search result for a record.
+    *******************************************************************************/
+   private static RecordSearchResult toResult(QTableMetaData table, QRecord record)
+   {
+      String recordLabel = record.getRecordLabel() != null ? record.getRecordLabel() : QValueFormatter.formatRecordLabel(table, record);
+      return (new RecordSearchResult()
+         .withTableName(table.getName())
+         .withTableLabel(table.getLabel())
+         .withRecordId(record.getValue(table.getPrimaryKeyField()))
+         .withRecordLabel(recordLabel));
+   }
+
+
+
+   /*******************************************************************************
+    ** The value as the field's type, or null if it does not convert.
+    *******************************************************************************/
+   private static Serializable valueAsFieldType(QFieldMetaData field, Serializable value)
    {
       try
       {
-         return (ValueUtils.getValueAsFieldType(field.getType(), searchTerm));
+         return (ValueUtils.getValueAsFieldType(field.getType(), value));
       }
       catch(Exception e)
       {

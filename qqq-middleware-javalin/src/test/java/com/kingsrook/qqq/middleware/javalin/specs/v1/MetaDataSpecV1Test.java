@@ -377,6 +377,29 @@ class MetaDataSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** The instance's home app is published as homeAppName, and omitted when the
+    ** instance designates none.
+    *******************************************************************************/
+   @Test
+   void testHomeAppName()
+   {
+      assertFalse(JsonUtils.toJSONObject(getMetaDataBody()).has("homeAppName"));
+
+      String appName = serverQInstance.getApps().keySet().iterator().next();
+      serverQInstance.setHomeAppName(appName);
+      try
+      {
+         assertEquals(appName, JsonUtils.toJSONObject(getMetaDataBody()).getString("homeAppName"));
+      }
+      finally
+      {
+         serverQInstance.setHomeAppName(null);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Only the analytics environment values are published (QRun-IO/qqq#730):
     ** the named settings and the ANALYTICS_* namespace, never anything else from
     ** the environment.

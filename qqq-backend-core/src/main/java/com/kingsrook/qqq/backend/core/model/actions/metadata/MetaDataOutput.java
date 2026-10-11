@@ -56,6 +56,8 @@ public class MetaDataOutput extends AbstractActionOutput
 
    private Map<String, String> redirects;
 
+   private String homeAppName;
+
 
    /*******************************************************************************
     ** Getter for tables
@@ -336,6 +338,27 @@ public class MetaDataOutput extends AbstractActionOutput
       }
       this.redirects.put(from, to);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for homeAppName - the app whose dashboard a frontend shows as the
+    ** instance's home page, set only when the user may access that app.
+    *******************************************************************************/
+   public String getHomeAppName()
+   {
+      return (this.homeAppName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for homeAppName
+    *******************************************************************************/
+   public void setHomeAppName(String homeAppName)
+   {
+      this.homeAppName = homeAppName;
    }
 
 }

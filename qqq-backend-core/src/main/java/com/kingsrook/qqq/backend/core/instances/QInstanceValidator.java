@@ -261,6 +261,11 @@ public class QInstanceValidator
     ***************************************************************************/
    private void validateInstanceAttributes(QInstance qInstance)
    {
+      if(qInstance.getHomeAppName() != null)
+      {
+         assertCondition(qInstance.getApps() != null && qInstance.getApps().containsKey(qInstance.getHomeAppName()), "Instance homeAppName [" + qInstance.getHomeAppName() + "] is not the name of an app in the instance.");
+      }
+
       if(qInstance.getMetaDataActionCustomizer() != null)
       {
          validateSimpleCodeReference("Instance metaDataActionCustomizer ", qInstance.getMetaDataActionCustomizer(), MetaDataActionCustomizerInterface.class);

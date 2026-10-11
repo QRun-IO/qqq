@@ -1383,13 +1383,14 @@ shutdown assertions. `startupDispatchesMixedSimpleAndQuartzJobs` proves both
 scheduler types dispatch from one manager start. `startupRegistersPersistedDynamicJob`
 loads job/parameter rows inserted through native SQL and verifies dispatch without
 changing those rows. `startupPreservesExistingPausedRamJob` retains the original
-trigger, paused state and unrelated native job. `persistentQuartzStartupRetainsGuard`
+trigger, paused state and unrelated native job. `persistentQuartzStartupRegistersOnlyMissingJobs`
 uses a real H2-backed Quartz JDBC store: existing paused state remains unchanged and
-missing jobs stay absent, preserving the historical persistent-store startup guard.
+a missing configured job is registered, so a fresh persistent store gets its jobs.
 This is a local JDBC control, not multi-node cluster certification.
 
-[#855](https://github.com/QRun-IO/qqq/issues/855) bootstraps only missing jobs in
-nonpersistent stores. Startup never reconciles or replaces existing jobs; Quartz's
+[#855](https://github.com/QRun-IO/qqq/issues/855) bootstraps only missing jobs, and
+[#1044](https://github.com/QRun-IO/qqq/issues/1044) extends that from nonpersistent
+to persistent stores. Startup never reconciles or replaces existing jobs; Quartz's
 non-replacing insert also protects a job registered concurrently. Explicit management
 after startup retains its existing pause/reschedule/unschedule behavior.
 

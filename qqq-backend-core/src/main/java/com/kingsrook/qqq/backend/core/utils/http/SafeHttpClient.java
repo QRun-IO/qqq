@@ -40,9 +40,12 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.http.Header;
+import org.apache.http.HttpClientConnection;
 import org.apache.http.HttpConnection;
+import org.apache.http.HttpException;
 import org.apache.http.HttpInetConnection;
-import org.apache.http.HttpRequestInterceptor;
+import org.apache.http.HttpRequest;
+import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -59,6 +62,8 @@ import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.protocol.HttpContext;
+import org.apache.http.protocol.HttpRequestExecutor;
 import org.apache.http.ssl.SSLContexts;
 
 
@@ -178,16 +183,21 @@ public final class SafeHttpClient implements AutoCloseable
          .disableAutomaticRetries()
          .disableCookieManagement()
          .disableAuthCaching()
-         .addInterceptorLast((HttpRequestInterceptor) (request, context) ->
+         .setRequestExecutor(new HttpRequestExecutor()
          {
-            /////////////////////////////////////////////////////////////////////////
-            // record the connected address now: a response without a body releases //
-            // the connection inside execute(), after which it can't be asked.      //
-            /////////////////////////////////////////////////////////////////////////
-            String address = connectionAddress(HttpClientContext.adapt(context).getConnection());
-            if(address != null)
+            /*******************************************************************************
+             ** Record the connected address while the connection is live: a response
+             ** without a body releases the connection inside execute().
+             *******************************************************************************/
+            @Override
+            public HttpResponse execute(HttpRequest request, HttpClientConnection connection, HttpContext context) throws IOException, HttpException
             {
-               context.setAttribute(REMOTE_ADDRESS_ATTRIBUTE, address);
+               String address = connectionAddress(connection);
+               if(address != null)
+               {
+                  context.setAttribute(REMOTE_ADDRESS_ATTRIBUTE, address);
+               }
+               return (super.execute(request, connection, context));
             }
          })
          .setUserAgent(policy.getUserAgent())

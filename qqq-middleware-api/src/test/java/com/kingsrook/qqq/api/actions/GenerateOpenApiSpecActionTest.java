@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.api.actions;
 
 
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.api.BaseTest;
 import com.kingsrook.qqq.api.TestUtils;
@@ -29,16 +30,27 @@ import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecInput;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecOutput;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
+import com.kingsrook.qqq.api.model.metadata.ApiOperation;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessMetaData;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessMetaDataContainer;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaData;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaDataContainer;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.openapi.model.HttpMethod;
+import com.kingsrook.qqq.openapi.model.Path;
+import com.kingsrook.qqq.openapi.model.Schema;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -247,4 +259,70 @@ class GenerateOpenApiSpecActionTest extends BaseTest
          .hasMessageContaining("Missing required input: apiName");
    }
 
+
+
+
+   /*******************************************************************************
+    ** Operation flags follow the operation (insert and update were swapped), a
+    ** field security lock does not drop the field from the published spec, and
+    ** a process without an output documents a 204.
+    *******************************************************************************/
+   @Test
+   void publicApiSpecFixes() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      qInstance.addTable(new QTableMetaData()
+         .withName("insertOnly")
+         .withBackendName(TestUtils.MEMORY_BACKEND_NAME)
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
+         .withField(new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true))
+         .withField(new QFieldMetaData("secret", QFieldType.STRING).withFieldSecurityLock(new FieldSecurityLock().withSecurityKeyType("secretKey")))
+         .withSupplementalMetaData(new ApiTableMetaDataContainer().withApiTableMetaData(TestUtils.API_NAME, new ApiTableMetaData()
+            .withInitialVersion(TestUtils.V2022_Q4)
+            .withDisabledOperations(ApiOperation.UPDATE, ApiOperation.BULK_UPDATE))));
+      qInstance.addSecurityKeyType(new QSecurityKeyType().withName("secretKey"));
+      qInstance.addProcess(new QProcessMetaData()
+         .withName("noOutputProcess")
+         .withStep(new QBackendStepMetaData().withName("run").withCode(new QCodeReference(com.kingsrook.qqq.api.GetPersonInfoStep.class)))
+         .withSupplementalMetaData(new ApiProcessMetaDataContainer().withApiProcessMetaData(TestUtils.API_NAME, new ApiProcessMetaData()
+            .withInitialVersion(TestUtils.V2022_Q4)
+            .withMethod(HttpMethod.POST)
+            .withAsyncMode(ApiProcessMetaData.AsyncMode.NEVER))));
+      new QInstanceEnricher(qInstance).enrich();
+
+      GenerateOpenApiSpecOutput output = new GenerateOpenApiSpecAction().execute(new GenerateOpenApiSpecInput().withVersion(TestUtils.CURRENT_API_VERSION).withApiName(TestUtils.API_NAME));
+      Map<String, Path>         paths  = output.getOpenAPI().getPaths();
+      assertThat(paths.get("/api/" + TestUtils.CURRENT_API_VERSION + "/insertOnly/").getPost()).isNotNull();
+      assertThat(paths.get("/api/" + TestUtils.CURRENT_API_VERSION + "/insertOnly/{id}").getPatch()).isNull();
+      assertThat(paths.get("/api/" + TestUtils.CURRENT_API_VERSION + "/insertOnly/{id}").getGet()).isNotNull();
+
+      Schema schema = output.getOpenAPI().getComponents().getSchemas().get("insertOnly");
+      assertThat(schema.getProperties()).containsKeys("id", "name", "secret");
+      assertThat(schema.getProperties().get("secret").getDescription()).contains("field security lock");
+      assertThat(schema.getProperties().get("name").getDescription()).contains("Required when inserting");
+
+      assertThat(paths.get("/api/" + TestUtils.CURRENT_API_VERSION + "/noOutputProcess").getPost().getResponses()).containsKey(204);
+   }
+
+
+   /*******************************************************************************
+    ** An association child with its own API table name gets one schema under
+    ** that name (the schema closure used to loop forever on it).
+    *******************************************************************************/
+   @Test
+   void associationChildWithApiTableName() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      ApiTableMetaDataContainer.of(qInstance.getTable(TestUtils.TABLE_NAME_LINE_ITEM)).getApiTableMetaData(TestUtils.API_NAME).withApiTableName("lineItem");
+      new QInstanceEnricher(qInstance).enrich();
+
+      com.kingsrook.qqq.backend.core.context.CapturedContext context = QContext.capture();
+      GenerateOpenApiSpecOutput output = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(30), () ->
+      {
+         QContext.init(context);
+         return new GenerateOpenApiSpecAction().execute(new GenerateOpenApiSpecInput().withVersion(TestUtils.CURRENT_API_VERSION).withApiName(TestUtils.API_NAME));
+      });
+      assertThat(output.getOpenAPI().getComponents().getSchemas()).containsKey("lineItem").doesNotContainKey(TestUtils.TABLE_NAME_LINE_ITEM);
+   }
 }

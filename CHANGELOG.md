@@ -55,11 +55,31 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
 - **Tests** — the S3 module's tests run against MinIO (Testcontainers) instead of LocalStack.
 
 ### Added
+- **Public-internet APIs (`qqq-middleware-api`)** — `ApiInstanceMetaData.httpPolicy` (`ApiHttpPolicy`): anonymous
+  `GET`/`HEAD` 200s get shared-cache headers (`Cache-Control` with `s-maxage`, `stale-while-revalidate`,
+  `stale-if-error`; RFC 9213 `CDN-Cache-Control`), a weak `ETag` and `304` on `If-None-Match`; everything else is
+  `private, no-store`. CORS: public reads `Access-Control-Allow-Origin: *` without credentials or `Vary`, other requests
+  only for the allowed origins; preflights answer 204. `publicPath` (spec paths, docs page and its assets when a proxy
+  maps the mount path), `semanticVersions` (spec `info.version`, `versions.json`), `allowsAnonymousAccess` (optional
+  security in the spec). Instances without a policy behave as before.
+- **Scoped authentication modules** — `QAuthenticationMetaData.moduleCodeReference` names the module class for a
+  provider (new type `CUSTOM` requires one), so an API scope can use an application's module;
+  `QAuthenticationModuleInterface.createSession(instance, metaData, context)` receives the resolved provider.
+- **API processes** — `HttpApiResponse.headers`; request metadata (`ApiProcessUtils.REQUEST_REMOTE_ADDRESS`,
+  `REQUEST_FORWARDED_FOR`, `REQUEST_USER_AGENT`) in every API process run's values.
 - **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
   validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
 - **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
   `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
   not send their values to a model.
+
+### Fixed
+- OpenAPI: insert/update operation flags were swapped; field-security-locked fields were dropped from the published
+  model; processes without an output threw; the schema closure never ended when an association child had its own API
+  table name (the spec request hung). Required fields are noted in descriptions.
+- API: an empty association array (`"lines": []`) on update now clears the child list; process input values were lost
+  for fields with a `backendName`; an empty process body is no values and a non-object body a `400`; JSON responses
+  carry `Content-Type: application/json`; the `POST_RUN` process customizer declared the wrong interface.
 
 ## [4.1.0-RC.3] — candidate (2026-10-12)
 

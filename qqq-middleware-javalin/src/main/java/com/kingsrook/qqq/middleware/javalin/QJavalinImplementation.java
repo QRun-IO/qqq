@@ -585,7 +585,7 @@ public class QJavalinImplementation
          // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          QContext.init(qInstance, null);
-         QSession session = authenticationModule.createSession(qInstance, authenticationContext);
+         QSession session = authenticationModule.createSession(qInstance, authMetaData, authenticationContext);
          QContext.init(qInstance, session, null, input);
 
          String tableVariant = QJavalinUtils.getFormParamOrQueryParam(context, "tableVariant");

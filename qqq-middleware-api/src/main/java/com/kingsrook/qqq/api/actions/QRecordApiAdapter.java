@@ -448,6 +448,15 @@ public class QRecordApiAdapter
             Object      value       = jsonObject.get(jsonKey);
             if(value instanceof JSONArray jsonArray)
             {
+               ///////////////////////////////////////////////////////////////////////
+               // an empty array still names the association: on update it clears  //
+               // the child list (an omitted key leaves the children untouched)     //
+               ///////////////////////////////////////////////////////////////////////
+               if(qRecord.getAssociatedRecords() == null || !qRecord.getAssociatedRecords().containsKey(association.getName()))
+               {
+                  qRecord.withAssociatedRecords(association.getName(), new ArrayList<>());
+               }
+
                for(Object subObject : jsonArray)
                {
                   if(subObject instanceof JSONObject subJsonObject)

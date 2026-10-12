@@ -42,6 +42,7 @@ import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecInput;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecOutput;
 import com.kingsrook.qqq.api.model.actions.HttpApiResponse;
+import com.kingsrook.qqq.api.model.metadata.ApiHttpPolicy;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataProvider;
@@ -116,6 +117,11 @@ public class QJavalinApiHandler
 
 
 
+   /** Docs assets path under an API's root, used when the API has a publicPath. */
+   public static final String DOCS_ASSETS_PATH = "docs-assets/";
+
+
+
    /*******************************************************************************
     ** Constructor
     **
@@ -142,13 +148,18 @@ public class QJavalinApiHandler
     *******************************************************************************/
    private static void handleProcessResponse(Context context, HttpApiResponse response, APILog apiLog)
    {
+      for(Map.Entry<String, String> header : CollectionUtils.nonNullMap(response.getHeaders()).entrySet())
+      {
+         context.header(header.getKey(), header.getValue());
+      }
+
       if(response.getNeedsFormattedAsJson())
       {
          /////////////////////////////////////////////////////////////////////////////////////////
          // if the response object says that we should format the response as json, then do so. //
          /////////////////////////////////////////////////////////////////////////////////////////
          String resultString = toJson(Objects.requireNonNullElse(response.getResponseBodyObject(), ""));
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       else
@@ -210,8 +221,11 @@ public class QJavalinApiHandler
                String value = paramAccessor.apply(context, field.getName());
                if(value != null)
                {
-                  String backendName = ObjectUtils.requireConditionElse(field.getBackendName(), StringUtils::hasContent, field.getName());
-                  parameters.put(backendName, value);
+                  ////////////////////////////////////////////////////////////////////
+                  // keyed by field name: that is how ApiImplementation reads input //
+                  // values (a field's backendName must not drop its value).         //
+                  ////////////////////////////////////////////////////////////////////
+                  parameters.put(field.getName(), value);
                }
             }
             catch(Exception e)
@@ -327,6 +341,15 @@ public class QJavalinApiHandler
       Map<String, Object> rs = new HashMap<>();
       rs.put("supportedVersions", apiInstanceMetaData.getSupportedVersions().stream().map(String::valueOf).collect(Collectors.toList()));
       rs.put("currentVersion", apiInstanceMetaData.getCurrentVersion().toString());
+      if(CollectionUtils.nullSafeHasContents(apiInstanceMetaData.getSemanticVersions()))
+      {
+         Map<String, String> semanticVersions = new LinkedHashMap<>();
+         for(APIVersion version : apiInstanceMetaData.getSupportedVersions())
+         {
+            semanticVersions.put(version.toString(), apiInstanceMetaData.getSemanticVersion(version.toString()));
+         }
+         rs.put("semanticVersions", semanticVersions);
+      }
 
       context.contentType(ContentType.APPLICATION_JSON);
       context.result(toJson(rs));
@@ -502,7 +525,13 @@ public class QJavalinApiHandler
          /////////////////////////////////
          // do replacements in the html //
          /////////////////////////////////
-         html = html.replace("{spec-url}", apiInstanceMetaData.getPath() + version + "/openapi.json");
+         ////////////////////////////////////////////////////////////////////////
+         // links as clients see them: behind a path-mapping proxy (publicPath) //
+         // the docs assets are served under the API's own path                 //
+         ////////////////////////////////////////////////////////////////////////
+         String publicPath = apiInstanceMetaData.getEffectivePublicPath();
+         html = html.replace("{spec-url}", publicPath + version + "/openapi.json");
+         html = html.replace("{assetBase}", apiInstanceMetaData.getPublicPath() == null ? "/api/docs/" : publicPath + DOCS_ASSETS_PATH);
          html = html.replace("{version}", version);
          html = html.replace("{primaryColor}", (branding == null || branding.getAccentColor() == null) ? "#FF791A" : branding.getAccentColor());
 
@@ -521,14 +550,14 @@ public class QJavalinApiHandler
          ApiInstanceMetaDataContainer apiInstanceMetaDataContainer = ApiInstanceMetaDataContainer.of(qInstance);
          for(Map.Entry<String, ApiInstanceMetaData> entry : apiInstanceMetaDataContainer.getApis().entrySet())
          {
-            otherApisOptions.append("<option value=\"").append(entry.getValue().getPath()).append("\">").append(entry.getValue().getLabel()).append("</option>");
+            otherApisOptions.append("<option value=\"").append(entry.getValue().getEffectivePublicPath()).append("\">").append(entry.getValue().getLabel()).append("</option>");
          }
          html = html.replace("{otherApisOptions}", otherApisOptions.toString());
 
          StringBuilder otherVersionOptions = new StringBuilder();
          for(APIVersion supportedVersion : apiInstanceMetaData.getSupportedVersions())
          {
-            otherVersionOptions.append("<option value=\"").append(apiInstanceMetaData.getPath()).append(supportedVersion).append("/openapi.html\">").append(supportedVersion).append("</option>");
+            otherVersionOptions.append("<option value=\"").append(publicPath).append(supportedVersion).append("/openapi.html\">").append(supportedVersion).append("</option>");
          }
          html = html.replace("{otherVersionOptions}", otherVersionOptions.toString());
 
@@ -611,7 +640,7 @@ public class QJavalinApiHandler
 
          QJavalinAccessLogger.logEndSuccess();
          String resultString = toJson(outputRecord);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -851,7 +880,7 @@ public class QJavalinApiHandler
 
          QJavalinAccessLogger.logEndSuccess(logPair("recordCount", () -> ((List<?>) output.get("records")).size()), QJavalinAccessLogger.logPairIfSlow("filter", filter, SLOW_LOG_THRESHOLD_MS));
          String resultString = toJson(output);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -882,7 +911,7 @@ public class QJavalinApiHandler
          QJavalinAccessLogger.logEndSuccess();
          context.status(HttpStatus.Code.CREATED.getCode());
          String resultString = toJson(outputRecord);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -912,7 +941,7 @@ public class QJavalinApiHandler
 
          context.status(HttpStatus.Code.MULTI_STATUS.getCode());
          String resultString = toJson(response);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -943,7 +972,7 @@ public class QJavalinApiHandler
          QJavalinAccessLogger.logEndSuccess(logPair("recordCount", response.size()));
          context.status(HttpStatus.Code.MULTI_STATUS.getCode());
          String resultString = toJson(response);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -974,7 +1003,7 @@ public class QJavalinApiHandler
          QJavalinAccessLogger.logEndSuccess(logPair("recordCount", response.size()));
          context.status(HttpStatus.Code.MULTI_STATUS.getCode());
          String resultString = toJson(response);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -1156,7 +1185,7 @@ public class QJavalinApiHandler
       }
 
       String responseBody = toJson(Map.of("error", errorMessage));
-      context.result(responseBody);
+      context.contentType(ContentType.APPLICATION_JSON).result(responseBody);
 
       if(apiLog != null)
       {
@@ -1165,6 +1194,28 @@ public class QJavalinApiHandler
             apiLog.withStatusCode(statusCode.getCode()).withResponseBody(responseBody);
             storeApiLog(apiLog);
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A process's JSON object body: empty means no values; anything else must be
+    ** a JSON object (400 otherwise).
+    *******************************************************************************/
+   static JSONObject parseObjectBody(String body) throws QBadRequestException
+   {
+      if(!StringUtils.hasContent(body))
+      {
+         return (new JSONObject());
+      }
+      try
+      {
+         return (new JSONObject(body));
+      }
+      catch(Exception e)
+      {
+         throw (new QBadRequestException("The request body must be a JSON object."));
       }
    }
 
@@ -1202,7 +1253,22 @@ public class QJavalinApiHandler
             ApiInstanceMetaData apiInstanceMetaData = entry.getValue();
             String              rootPath            = apiInstanceMetaData.getPath();
 
-            ApiBuilder.before(rootPath + "*", QJavalinApiHandler::setupCORS);
+            if(apiInstanceMetaData.getPublicPath() != null)
+            {
+               ApiBuilder.get(rootPath + DOCS_ASSETS_PATH + "js/rapidoc.min.js", (context) -> QJavalinApiHandler.serveResource(context, "rapidoc/rapidoc-9.3.8.min.js", MapBuilder.of("Content-Type", ContentType.JAVASCRIPT)));
+               ApiBuilder.get(rootPath + DOCS_ASSETS_PATH + "css/qqq-api-styles.css", (context) -> QJavalinApiHandler.serveResource(context, "rapidoc/rapidoc-overrides.css", MapBuilder.of("Content-Type", ContentType.CSS)));
+            }
+
+            ApiHttpPolicy httpPolicy = apiInstanceMetaData.getHttpPolicy();
+            if(httpPolicy == null)
+            {
+               ApiBuilder.before(rootPath + "*", QJavalinApiHandler::setupCORS);
+            }
+            else
+            {
+               ApiBuilder.before(rootPath + "*", context -> ApiHttpPolicyHandler.applyCors(context, httpPolicy));
+               ApiBuilder.after(rootPath + "*", context -> ApiHttpPolicyHandler.applyCaching(context, httpPolicy));
+            }
 
             //////////////////////////////////////////////
             // default page is the current version spec //
@@ -1366,7 +1432,7 @@ public class QJavalinApiHandler
             ApiProcessInputFieldsContainer objectBodyParams = input.getObjectBodyParams();
             if(objectBodyParams != null)
             {
-               JSONObject jsonObject = new JSONObject(context.body());
+               JSONObject jsonObject = parseObjectBody(context.body());
                processProcessInputFieldsContainer(context, parameters, objectBodyParams, (ctx, name) -> jsonObject.optString(name, null));
             }
 
@@ -1380,6 +1446,14 @@ public class QJavalinApiHandler
          {
             parameters.put("async", context.queryParam("async"));
          }
+
+         ////////////////////////////////////////////////////////////////////
+         // request metadata a process may need (rate limits, audit): set //
+         // by the server, never taken from declared inputs.               //
+         ////////////////////////////////////////////////////////////////////
+         parameters.put(ApiProcessUtils.REQUEST_REMOTE_ADDRESS, context.ip());
+         parameters.put(ApiProcessUtils.REQUEST_FORWARDED_FOR, context.header("X-Forwarded-For"));
+         parameters.put(ApiProcessUtils.REQUEST_USER_AGENT, context.header("User-Agent"));
 
          /////////////////////
          // run the process //

@@ -32,6 +32,7 @@ These decisions override anything below that contradicts them. The sections they
 | D16 | **A full Admin → CDN sub-app** (like Quick Search and ESB), shown only when the qbit is installed and enabled. Its home is the single dashboard for CDN data. Admin → Health shows only a status card that links to it. | §4.9. The app shell and home, with honest empty states, ship in P1. Live data arrives from P2. |
 | D17 | **Alerts through the Alerts qbit when installed.** Dead/failed purges, invalidation budget near/over, connection test failures, config drift and secret rotation due are raised through the Alerts / Manage-by-Exception qbit's producer SPI. Without it, the CDN qbit works unchanged. | §4.9.1. |
 | D18 | **Object headers belong to the object-storage qbit ([#1089](https://github.com/QRun-IO/qqq/pull/1089) D10).** The CDN qbit no longer has its own header backfill. `cdnSetFileCacheHeaders` / `cdnBackfillObjectHeaders` are dropped in favour of storage's **Apply header policy** table/record action (standard Review and Result). The CDN qbit plugs into storage through a `PublicUrlResolver` (CDN hostnames) and a `StorageChangeListener` (purge planning when objects change). | §4.6, §4.7, §4.9. Without the storage qbit, apps keep their own upload-time headers, and the CloudFront 1-year default TTL (§4.6 c) still covers objects that lack headers. |
+| D19 | **One cutover instead of a staged rollout** (owner, 2026-10-12: "just do it all at once and make it work"). Everything is built first: the qbit, providers, planner, tables, actions, the Admin → CDN app, the Next.js ISR pieces and all the IaC. Then `s3`, `www` (assets and HTML, with the apex) and `api` move behind CloudFront together in one planned window. kof22 downtime is acceptable; no data loss and no hacks. | Supersedes D4's order and the per-hostname stages. §8.4 is the cutover runbook, and §11 the build plan. |
 
 ## 0. Summary
 
@@ -59,9 +60,9 @@ Phase 0 is about 3–4 days of origin cleanup that helps even before any CDN is 
 - **One distribution** serves `kof22.com`, `www`, `api` and `s3`, on the flat-rate Pro plan.
 - Its origin is `origin.kof22.com:8443`, a DNS-only record pointing to the WAN IP. Port 8443 is a new UniFi port-forward that only accepts traffic from CloudFront's origin-facing ranges, and it lands on a dedicated Traefik `cdn` entry point.
 - On that entry point, a tiny **`origin-guard`** forwardAuth service checks the secret `X-Origin-Verify` header that CloudFront adds. Only when the secret is valid does it set `X-Real-IP` from `CloudFront-Viewer-Address`.
-- Rollout is one hostname at a time. Rollback is reverting one Route53 record through octoDNS.
+- **One cutover (D19):** everything is built and tested first, then `s3`, `www` and `api` move behind CloudFront in a single planned window (§8.4). Rollback is a prepared octoDNS revert of the same records.
 
-**Cost** is about **$15–20/mo**: the Pro plan, plus paid invalidations only if the budget planner allows them beyond the free 1,000 paths, plus any optional metrics. **Effort** is about **6–8 weeks** for P0–P4.
+**Cost** is about **$15–20/mo**: the Pro plan, plus paid invalidations only if the budget planner allows them beyond the free 1,000 paths, plus any optional metrics. **Effort** is about **5–6 weeks** of build, then one 2–4 hour cutover window (D19).
 
 ---
 
@@ -88,7 +89,7 @@ Phase 0 is about 3–4 days of origin cleanup that helps even before any CDN is 
 | TLS | cert-manager issues Let's Encrypt certs through Route53 DNS-01. The Traefik default cert is the wildcard `kof22-wildcard-tls` (`*.kof22.com` plus the apex). | The origin keeps the LE wildcard, which covers `origin.kof22.com` and every forwarded Host. The viewer cert is from ACM in `us-east-1`. |
 | Media | MinIO public bucket `kof22-website-files`, served at `https://s3.kof22.com/kof22-website-files/...`. Keys look like `media/{siteId}/{slug}/{sha256}/{original.ext,thumbnail.jpg,gallery.jpg,slideshow.jpg}`.<br>Uploads set **no `Cache-Control`**.<br>iOS uploads use presigned PUTs into the private bucket `kof22-website-incoming`, **signed for `https://s3.kof22.com`** (`SITE_API_S3_PUBLIC_ENDPOINT`). | Media is immutable. Presigned PUTs must move to a hostname that is not behind the CDN before `s3` cuts over (§5.1). |
 | Site API | `api.kof22.com`. `SiteApiRouteProvider.finish()` sets `public, max-age=60` (300 for docs, feeds and the sitemap) and `no-store` on `/v1/me*` and `/v1/contact`. It strips `Set-Cookie` and adds `Vary: Origin`. Reads have no ETag and never return 304. | Almost ready for a CDN (§5.4). |
-| Frontend | Next.js `output: 'standalone'`, 2 replicas, `force-dynamic` in the root layout. There is no ISR, no tags, no `cacheHandler` and no revalidation route. The `/_next/image` optimizer caches per pod. | Stage A (assets and images) works now. Stage B (HTML) needs ISR (§6). |
+| Frontend | Next.js `output: 'standalone'`, 2 replicas, `force-dynamic` in the root layout. There is no ISR, no tags, no `cacheHandler` and no revalidation route. The `/_next/image` optimizer caches per pod. | Assets and images work now. HTML needs ISR (§6), built in B2. |
 | ESB | Artemis topics `kof22.cms.tables` (INSERT/UPDATE/DELETE events for 16 CMS tables) and `kof22.cms.processes`. **Nothing consumes `kof22.cms.tables`.** | The invalidation pipeline subscribes here (§4.5). |
 | Analytics | Privacy-first. The visitor hash is SHA-256(daily salt, site, IP, UA), and the IP is never stored. Geo is city-level. A SNAT'd IP is recorded as `GeoStatus.PROXY_IP`. | The real IP comes through the guard (§7.3). |
 | QQQ core | `QJavalinImplementation` and the API middleware have no cache or ETag handling. Only `NextDashboardRouteProvider` and `BrandingAssetsRouteProvider` set `Cache-Control`. | Needs one small core hook (§3.1). |
@@ -191,8 +192,8 @@ These are seeded as `cdnCachePolicy` rows (§4.4) and pinned by the header matri
 | Optimized images | `/_next/image?url=…&w=…&q=…` | `public, max-age=31536000` (with `minimumCacheTTL`, §6.1) | Never in practice, because the source is immutable | The cache key includes `url`, `w`, `q` and a normalized `Accept` |
 | API leaf (single record) | `api…/v1/blog-posts/123` | `public, max-age=60, s-maxage=86400, stale-while-revalidate=60, stale-if-error=86400` | `/v1/blog-posts/123*` | Long edge TTL because it gets invalidated |
 | API hub (lists, search, feeds, sitemap) | `/v1/blog-posts?blog=…`, `/v1/feeds/*`, `/v1/sitemap.xml` | `public, max-age=60, s-maxage=120, stale-while-revalidate=60, stale-if-error=86400` | **None.** It relies on a short TTL instead. | Keeps the path budget small (§4.3) |
-| HTML leaf (after P4) | `/blog/quick-bits/my-post` | `public, max-age=0, must-revalidate, s-maxage=86400, stale-while-revalidate=60`. The policy sets this, overriding Next's ISR default. | `/blog/quick-bits/my-post*` (also covers the `_rsc` variants) | |
-| HTML hub (after P4) | `/`, `/blog/quick-bits`, `/projects` | `public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300` | None, or 1 path when published from the record action | |
+| HTML leaf (ISR, B2) | `/blog/quick-bits/my-post` | `public, max-age=0, must-revalidate, s-maxage=86400, stale-while-revalidate=60`. The policy sets this, overriding Next's ISR default. | `/blog/quick-bits/my-post*` (also covers the `_rsc` variants) | |
+| HTML hub (ISR, B2) | `/`, `/blog/quick-bits`, `/projects` | `public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300` | None, or 1 path when published from the record action | |
 | Never cache | `/v1/me*`, `/v1/contact`, `/oauth/*`, `/api/*` (frontend, including `/api/e`), `/preview*`, and all `POST` requests | `private, no-store` | n/a | The CloudFront behaviors for these paths also use the managed `CachingDisabled` policy |
 
 ---
@@ -419,7 +420,7 @@ Later, CloudFront **trusted key groups** can provide signed URLs and cookies. A 
 | Hostname | Role | Notes |
 |---|---|---|
 | `s3.kof22.com` | MEDIA | Only `/kof22-website-files/*` is cached. Everything else on the host (other buckets, presigned `X-Amz-*` requests, writes) gets `CachingDisabled` and `AllViewer` forwarding.<br>**Before cutover**, presigned uploads move to a new DNS-only hostname, **`upload.kof22.com`** (`SITE_API_S3_PUBLIC_ENDPOINT`), with an IngressRoute to MinIO on `websecure`. That way big PUTs and SigV4 Host signing never go through CloudFront. |
-| `www.kof22.com`, `kof22.com` | SITE + ASSETS | Stage A: static assets, `/_next/image` and `public/` files. Stage B: HTML (P4).<br>The apex keeps its current redirect behavior and is served through the same distribution, as an ALIAS. |
+| `www.kof22.com`, `kof22.com` | SITE + ASSETS | Static assets, `/_next/image`, `public/` files and HTML (ISR), all moved in the one cutover (D19).<br>The apex keeps its current redirect behavior and is served through the same distribution, as an ALIAS. |
 | `api.kof22.com` | API | Policies from §3.2. `/v1/me*`, `/v1/contact`, `/oauth/*` and all writes are `CachingDisabled`. |
 | `admin`, `auth`, `minio-console`, DSM suite | none | Never proxied (D4) |
 | `origin.kof22.com` (new) | origin | DNS-only A record to `50.122.5.146`. Used only as CloudFront's origin domain, on port 8443. |
@@ -470,7 +471,7 @@ The HTML leaf `s-maxage` (1 day) is the longest a menu or snippet change can tak
 
 ## 6. Next.js frontend integration
 
-### 6.1 Stage A (P3): no rendering change
+### 6.1 Asset headers (done in P0)
 
 - `headers()`: `public/` files get `max-age=86400, s-maxage=604800`, and `/api/*` gets `no-store`.
 - `images.minimumCacheTTL = 31536000`, because the image sources are immutable.
@@ -483,7 +484,7 @@ v1 keeps the built-in `/_next/image` optimizer, cached at the edge (§5.2), plus
 
 Later and optional: a `CLOUDFRONT_FUNCTION` or Lambda@Edge resize engine behind `ImageTransformProviderInterface`, used through a custom `loaderFile`. Shared URL fixtures keep the backend and frontend in sync (§9.1).
 
-### 6.3 Stage B: HTML caching (P4, D8)
+### 6.3 HTML caching (B2, D8)
 
 1. Remove `force-dynamic` from the root layout. Keep it only on `/preview` and on routes that personalize.
 2. **ISR.** Data fetches use `cacheTag()` / `fetch(..., { next: { tags } })` with the canonical tags (`post:123`, `blog:7:list`, `site:1`). Pages also set a time-based `revalidate` as a safety net.
@@ -616,25 +617,58 @@ The paused **Traefik DaemonSet with `externalTrafficPolicy: Local` is still want
   - Env vars: `SITE_API_S3_PUBLIC_ENDPOINT=https://upload.kof22.com`, `CDN_*` and `CDN_REVALIDATE_SECRET`.
   - A headless Service for the frontend.
 
-### 8.4 Staged cutover per hostname (D4)
+### 8.4 Cutover runbook: one window (D19)
 
-1. **HEADERS_ONLY.** The policies emit headers, and the pipeline records `SKIPPED_STAGE_OFF` rows.
-   - The header matrix passes at the origin.
-   - The distribution exists with the alias attached. It is tested through the `dxxxx.cloudfront.net` name with a `Host` override, or with `curl --resolve`.
-   - The DNS TTL is lowered to 60 a day ahead.
-2. **LIVE.** The octoDNS PR switches the record to the ALIAS. For the next 48 h, watch:
-   - the `X-Cache` hit share in the header matrix
-   - CloudWatch 5xx
-   - the invalidation pipeline
-   - that analytics shows real geo.
-3. **LOCKED.** After 2 weeks, drop `websecure` from that IngressRoute.
+Everything ships **before** the window and is idle until the window: the qbit and the Admin → CDN app (running against the NONE provider), the Website-Backend and Website-Frontend changes (including ISR, `/api/revalidate` and the pod fan-out hook), and every IaC change as reviewed, **unmerged** PRs. The window is a planned outage-tolerant change, because kof22 downtime is acceptable (owner). No data is migrated, so nothing can be lost; the database and MinIO are untouched.
 
-**Order:** `s3` (once `upload.kof22.com` is live) → `www` Stage A (with the apex) → `api` → `www` Stage B (HTML, P4).
+#### Pre-checks (the day before)
 
-**Rollback:**
-- **From LIVE:** an octoDNS PR restores the A record to `50.122.5.146`. It takes effect in about a minute plus the apply time. Then set `cdnHostname.stage=OFF`.
-- **From LOCKED:** first restore `websecure` on the IngressRoute, then roll back as from LIVE.
-- **Emergency:** the A-record values are kept in a commented block in the zone file, so the revert is a one-line change.
+1. **PRs green and reviewed:** Praetor `terraform/cdn-cloudfront` (ACM, distribution, policies, function, IAM Key D), Praetor `unifi/` (8443 pinhole + `cloudfront-origin-facing` group), octoDNS (`origin` record, CAA `amazon.com`, the ACM validation CNAME placeholder, the ALIAS records), cluster-gitops (Traefik `cdn` entry point, `origin-guard`, secrets through ESO, backend/frontend env, the provider row seed).
+2. **Secrets ready in Infisical:** the origin secret (two values for rotation) and the Key D access key slot.
+3. **TTL lowering:** `kof22.com`, `www`, `api` and `s3` set to TTL 60 (octoDNS PR, applied at least one old-TTL period earlier: `www` and apex are 86400, so lower them **2 days** ahead).
+4. **Baseline captured:** the header matrix (§9.3) green at the origin; a `kof22-website-pg-pre-cdn-cutover` CNPG backup taken.
+5. **Rollback PR prepared:** an octoDNS PR that restores the four A/CNAME records to their current values, plus a cluster-gitops revert PR for the entry point and guard. Both are reviewed and ready to merge.
+6. **Owner on hand** for the CloudFront flat-rate Pro subscription (step 3 below).
+7. **Nothing else deploying** (coordinator / release captain notified).
+
+#### Inside the window, in order
+
+| # | Step | Verify before moving on |
+|---|---|---|
+| 1 | Merge and apply the tofu PR, part 1: **ACM certificate** for `kof22.com` + `*.kof22.com` in `us-east-1`. Apply the octoDNS PR with the real validation CNAME and the CAA `amazon.com` entry. | ACM status ISSUED (usually under 10 minutes) |
+| 2 | Apply the tofu PR, part 2: the **distribution** (aliases, origin `origin.kof22.com:8443` + `X-Origin-Verify`, behaviors, policies, the `Accept` function), Key D IAM user, WAF in count mode. | Distribution Deployed; `dxxxx.cloudfront.net` returns 502/504 (origin not reachable yet), which is expected |
+| 3 | **Owner subscribes** the distribution to the flat-rate Pro plan ($15/mo). | Plan shows on the distribution. (If the owner is delayed, continue: pay-as-you-go is about $0 at kof22 volume for a few days.) |
+| 4 | Merge cluster-gitops: Traefik `cdn` entry point on 8443, `origin-guard` (2 replicas) with the origin secret, edge-header stripping on `websecure`, Key D and CDN env for the backend, provider and hostname rows. | ArgoCD Synced/Healthy; guard pods Ready; backend `/health` UP on both pods |
+| 5 | Apply the UniFi PR: the **WAN 8443 pinhole** limited to the `cloudfront-origin-facing` group. | From outside, `curl https://origin.kof22.com:8443/` times out (not on the list); from CloudFront the guard answers |
+| 6 | Apply octoDNS: the **`origin.kof22.com`** A record (`upload.kof22.com` already exists since P0). | `dig origin.kof22.com` returns the WAN IP |
+| 7 | **Pre-flip test through CloudFront** without touching public DNS: `curl --resolve www.kof22.com:443:<edge IP>` (or `-H Host:` to `dxxxx.cloudfront.net`) for `www`, `api` and `s3`. Run the full verification matrix below against the edge. | Every row green. If not, fix or stop here: **public traffic has not moved yet** |
+| 8 | Apply octoDNS: **ALIAS flips** for `kof22.com`, `www`, `api` and `s3` to the distribution, in one PR. | `dig` shows CloudFront for all four (TTL 60, so within minutes) |
+| 9 | Set `cdn_hostname.stage = LIVE` for the four hostnames in Admin → CDN; run Test connection. | The CDN home shows Connection OK |
+| 10 | Run the verification matrix again against the public names. Watch for 30 minutes. | All green; no 5xx spike in CloudWatch; analytics shows real geo |
+
+#### Verification matrix
+
+| Area | Check | Expected |
+|---|---|---|
+| Headers | `www` pages, `_next/static`, `_next/image`, `api` reads, `s3` media, as in §3.2 | The documented `Cache-Control` per class |
+| Cache hits | Second request for a page, an asset, an image, an API read and a media file | `X-Cache: Hit from cloudfront` |
+| Never cached | `admin.kof22.com` (not behind CloudFront at all), `/v1/me`, `/v1/contact`, `/api/e`, `/preview`, any request with `Authorization` | No hit, ever; `private, no-store` where the app answers |
+| Purge | Edit and publish a test post in Admin | Both Next pods revalidate, a `cdn_purge_request` row reaches SUCCEEDED, and the edge serves the new version within about 2 minutes |
+| Uploads | Presigned PUT through `upload.kof22.com` (and an iOS app upload when the publisher token is available) | 200, and the file appears on `s3.kof22.com` through the edge |
+| Real client IP | A request with a spoofed `X-Real-IP` to the origin; a normal visit | The spoofed value is ignored; analytics records the real country, not `PROXY_IP` |
+| Origin protection | `curl -k https://<WAN IP>:8443/` from outside, and a request to the origin without `X-Origin-Verify` from inside | Timeout outside; 403 from the guard inside |
+| Auth flows | Admin login (Authentik), Site API bearer calls | Unchanged: `admin` and `auth` stay DNS-only |
+
+#### Rollback (ready before the window starts)
+
+- **Any failure before step 8:** stop. Public DNS has not changed; leave the idle resources, or remove them later.
+- **After step 8:** merge the prepared octoDNS rollback PR and apply it. With TTL 60, traffic is back on the direct path within minutes. The `websecure` entry point never stopped serving these hosts, so nothing else needs to change. Then set the four `cdn_hostname` rows to OFF.
+- **Optional cleanup:** revert the cluster-gitops change and close the 8443 pinhole. CloudFront and ACM can stay idle at no cost, or be destroyed with tofu.
+
+#### After the window
+
+- Raise TTLs back after 48 stable hours.
+- **LOCK** after 2 stable weeks: drop `websecure` from the `www`, `api` and `s3` IngressRoutes (§7.2).
 
 ### 8.5 Other tenants (D15)
 
@@ -730,22 +764,21 @@ Out of scope for now. The pattern can be reused later: the same distribution sty
 
 ---
 
-## 11. Phased plan (CloudFront)
+## 11. Plan: build everything, then one cutover (D19)
 
-Estimates assume one engineer working with Claude. Each phase can be deployed on its own.
+Estimates assume one engineer working with Claude.
 
-| Phase | Scope | Estimate | Exit criteria |
+| Stage | Scope | Estimate | Exit criteria |
 |---|---|---|---|
-| **P0: origin hygiene** (no CDN) | MinIO `Cache-Control` on upload, plus the backfill. Site API ETag/304 and the `Vary: Origin` cleanup. Next `headers()`, `minimumCacheTTL` and `deploymentId`. The header matrix script. **The `upload.kof22.com` split.** | 3–4 d | The matrix passes in production, and presigned uploads work on `upload.kof22.com`. |
-| **P1: qbit core** | `QRun-IO/qbit-cdn`: the SPI, the NONE and SOUIN adapters, the 9 tables, the header policy, the ESB trigger, the dispatcher (flush window, hooks first, async status, retries), the **path planner with budget**, the actions (standard ETL Review/Result), and Data Health. **The Admin → CDN app shell: the home with every card's honest empty state, the four sections, and the Health status card.** Origin header coverage is live already, from `cdnOriginCheck`. The core hook in QQQ (after RC.4). The contract and Testcontainers suites. | 11–13 d | `0.1.0` is published. kof22 runs HEADERS_ONLY with the would-be purges recorded. The CDN app is readable at 6 widths. |
-| **P2: CloudFront adapter + AWS/network IaC + media** | The CloudFront adapter (invalidation, status, health and drift, CloudWatch stats). **Live data on the CDN home:** connection, performance, budget and drift (tofu exports the expected config as an output that is mounted for the drift check). Praetor `terraform/cdn-cloudfront` (ACM, distribution, policies, function, Key D, prefix-list output). octoDNS validation record, CAA, and the `origin`/`upload` records. The UniFi port 8443 and firewall group. The Traefik `cdn` entry point, `origin-guard` and the edge-header stripping. The owner subscribes to flat-rate Pro. **Cut over `s3`.** | 6–8 d, plus a soak period | `s3` is LIVE, the edge matrix is green, and a direct `:8443` request without the secret gets 403. |
-| **P3: `www` Stage A + `api` + real IP** | Cut over `www` (with the apex) and `api`. ESB invalidation goes live. Analytics, `ClientIp` and `forward.ts` use `X-Real-IP`. The rate limiters move to `ipStrategy`. | 3–4 d | A publish is visible through the API in under ~2 min (flush window plus invalidation), and analytics shows real geo. |
-| **P4: `www` Stage B (HTML)** | Remove `force-dynamic`. ISR with `cacheTag`. `/api/revalidate`. The pod fan-out hook. The HTML leaf and hub policies. Verify the RSC cache key. The warm action. | 5–7 d | A published post is correct at the edge in under ~2 min, HTML leaves are mostly HITs, and no personalized page is cached. |
-| **P5: stats and polish** (optional) | Logs-based per-host stats. The CloudWatch alarm. | 1–2 d | Per-host performance on the CDN home (if enabled). |
-| **P6: second adapter** (optional) | A Bunny or Cloudflare adapter with fixtures, run through the same e2e suite. | 3–4 d | Portability is proven. |
-| **LOCK** | Drop `websecure` for each hostname after 2 weeks stable. | 0.5 d per hostname | Direct origin requests for those hosts get 404. |
+| **P0: origin hygiene** | Done 2026-10-12: cache headers, ETag/304, CORS, MinIO headers and backfill, `upload.kof22.com`, the Traefik Vary fix. | done | Live and verified |
+| **B1: qbit** | `QRun-IO/qbit-cdn` complete: the SPI; NONE, SOUIN and CLOUDFRONT adapters; the path planner with budget; the `cdn_` tables; the ESB trigger and dispatcher (flush window, hooks first, async status, retries); the actions on the standard ETL Review/Result flow; the Admin → CDN app (home with honest empty states, the four sections, the Health card); Data Health rules; optional Alerts producer. The core response-header hook in QQQ (after RC.4). Contract and Testcontainers suites. | 12–15 d | All tests green locally; published once the owner creates the repo |
+| **B2: apps** | Website-Backend: install the qbit (NONE provider until the window), tag rules and policies, `X-Real-IP` from the guard. Website-Frontend: ISR with `cacheTag`, `/api/revalidate`, path tags, HTML leaf/hub headers, RSC cache key checks. Both deployed ahead of the window (they are correct without a CDN). | 6–8 d | Deployed; the header matrix is green at the origin; would-be purges are recorded |
+| **B3: IaC PRs** | Praetor `terraform/cdn-cloudfront` (ACM, distribution, policies, function, Key D, prefix list), `unifi/` (8443 pinhole and group), octoDNS (origin, CAA, validation, ALIAS, and the rollback PR), cluster-gitops (entry point, `origin-guard`, ESO secrets, env). All reviewed, **unmerged**. | 4–5 d | `tofu plan` clean (no apply); kustomize renders; octoDNS dry runs show only the expected changes |
+| **Cutover window** | §8.4, steps 1–10. | 2–4 h | The verification matrix is green on the public names |
+| **LOCK** | Drop `websecure` from the three IngressRoutes after 2 stable weeks. | 0.5 d | Direct origin requests for those hosts get 404 |
+| **Optional** | Logs-based per-host stats; a second adapter (Bunny or Cloudflare) through the same e2e suite. | 4–6 d | |
 
-**Total:** about **6–8 weeks** for P0–P4, plus 1–1.5 weeks for P5 and P6. **P0 can start now.**
+**Total:** about **5–6 weeks** of build (B1–B3 partly in parallel), then one 2–4 hour window.
 
 ---
 
@@ -784,7 +817,7 @@ See D1–D15 in the table at the top of this document.
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | A personalized or authenticated response is cached | `CachingDisabled` behaviors, the header-policy safety rule, the matrix tests, and owner sign-off on P4 |
+| R1 | A personalized or authenticated response is cached | `CachingDisabled` behaviors, the header-policy safety rule, the matrix tests, and the pre-flip edge matrix in the cutover (§8.4, step 7) |
 | R2 | Stale content: invalidation takes minutes, a hook fails, or one Next pod is behind | Pods revalidate before the edge. Hub TTLs are short. DEAD rows alert. Manual purge is available. The publish SLA is stated as about 2 min, not instant. |
 | R3 | The invalidation budget runs out | Hubs expire by TTL, wildcards collapse paths, the planner has budget bands, paid paths are capped, and the CDN home shows a projection. The worst case is a few dollars, or a DEFER until the TTL expires. |
 | R4 | CloudFront's origin-facing ranges change and UniFi blocks the new ones | A weekly `syncToken` CI check, a PR to regenerate, and the `OriginGuardRejectSpike` and 5xx alarms. The 443 path is untouched, so a DNS rollback restores service. |
@@ -794,6 +827,7 @@ See D1–D15 in the table at the top of this document.
 | R8 | The flat-rate plan has feature limits (Lambda@Edge, logging, invalidation pricing) that differ from pay-as-you-go | *Verify* before P2 (O2). The design only needs CloudFront Functions, invalidations and CloudWatch metrics. |
 | R9 | `origin-guard` is a single point of failure | 2 replicas, a PDB and an alert. The guard is stateless. Rollback is a DNS revert. |
 | R10 | Release interference | No QQQ core change lands before RC.4 is cut. |
+| R12 | One cutover moves three hostnames at once, so several things can fail together | Everything is built and deployed idle beforehand; the matrix runs against the edge **before** the DNS flip (step 7); rollback is one prepared octoDNS PR with TTL 60; downtime is acceptable and no data moves. |
 | R11 | octoDNS deletes the ACM validation record or the ALIAS records | Keep them in the zone YAML. Rely on `delete_pcent_threshold`, and review the octoDNS plan in the PR. |
 
 ---

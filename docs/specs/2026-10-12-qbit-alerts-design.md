@@ -1,6 +1,6 @@
 # QQQ Alerts qbit (Manage by Exception): Design Spec
 
-Status: **Draft for owner review** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: **Approved** (owner, 2026-10-12) · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x (a small producer SPI in `qqq-backend-core`), QQQ Next UI 1.0.x (a bell and a record panel), and a proposed new repo, **`QRun-IO/qbit-alerts`** (Apache-2.0).
 Related specs, all of which plug into this one (§9):
 - web performance [#1088](https://github.com/QRun-IO/qqq/pull/1088)
@@ -12,7 +12,9 @@ Related specs, all of which plug into this one (§9):
 - QQQ Assistant [#1054](./2026-10-11-qqq-assistant-qbit-design.md)
 - ESB ([`2026-09-25-qqq-esb-design.md`](./2026-09-25-qqq-esb-design.md))
 
-> This is a design only. Nothing has been built, no repository has been created and no production system was touched. §13 lists the open questions for the owner, each with a recommendation. The first consumer's (kof22) private adoption notes belong in that app's own repository, not here; §10 only describes the adoption at the level a public reader needs.
+> **Owner decisions (2026-10-12): all recommendations accepted.** Every question in §13 is decided as recommended ("they are approved. we will adjust as needed once we can view them working"). The build follows the phases in §11.2.
+>
+> This was written as a design only; no production system was touched. §13 lists the questions that were put to the owner, each with its recommendation (now the decision). The first consumer's (kof22) private adoption notes belong in that app's own repository, not here; §10 only describes the adoption at the level a public reader needs.
 
 ---
 
@@ -315,7 +317,7 @@ public interface AlertChannelInterface
 | **In-app (bell)** | P1 | `alerts_inbox_item` rows | Always available. Required, and cannot be disabled globally. |
 | **Email** (to a user) | P1 | Core `SendMessageAction` through a configured `QMessagingProviderMetaData`: `EmailMessagingProviderMetaData` (SMTP) or SES | Plain-text plus simple HTML. `Message-ID`/`In-Reply-To` are derived from the alert id, so RESOLVED threads under RAISED in mail clients. `List-Id` and a footer link to the user's subscription record ("Change or stop these emails"). |
 | **Email list** | P1 | Same, to a fixed address list in `settings` | For distribution lists. Addresses are masked in the log. |
-| **Generic webhook** | P4 | HTTPS POST of a documented JSON body, HMAC-SHA256 signature header with a timestamp (qbit-webhooks' signing scheme), 10 s timeout | When qbit-webhooks is installed, this channel may delegate to it (optional; decided in P4). |
+| **Generic webhook** | P4 | HTTPS POST of a documented JSON body, signed with HMAC-SHA256 over an id, a timestamp and the body, using the shared signing format proposed in the qbit-webhooks assessment ([#1105](https://github.com/QRun-IO/qqq/pull/1105), §9; the shared signer lives in core per its D2). qbit-webhooks itself has no signing scheme today. 10 s timeout | When qbit-webhooks is installed, this channel may delegate to it (optional; decided in P4). |
 | **Slack** (optional) | P4 | v1: Incoming Webhook URL (one channel per URL, the URL is the secret). v2 (optional): bot token with `chat.postMessage` / `chat.update`, so a resolve edits the original message and replies in its thread | Never required. No Slack SDK dependency; plain `java.net.http` and Block Kit JSON. The legacy `qqq-middleware-slack` bot is unrelated and is not reused. |
 | **Microsoft Teams** | P4 | A Teams Workflows (Power Automate) "post to a channel when a webhook request is received" URL, with an Adaptive Card body | The classic Office 365 connectors are retired by Microsoft, so Workflows is the supported path. |
 | **PagerDuty** | P4 | Events API v2: `trigger` / `acknowledge` / `resolve` with `dedup_key` = alert type + key. The routing key is the secret. | The natural choice for real paging and on-call. PagerDuty acknowledgements can come back through a signed webhook (P6). |
@@ -658,7 +660,7 @@ Next UI (P3) ◄────────────┘ (bell + record panel; bo
 18. **Quiet hours and digests.**
     *Recommendation:* in P4. Quiet hours are off by default, and CRITICAL bypasses them. Digests are per subscription (hourly or daily at the user's `digestHour`).
 19. **Generic webhook channel.** Delegate to `qbit-webhooks` or build a small sender?
-    *Recommendation:* build the small sender (about 1 day) and reuse qbit-webhooks' signing format, so receivers verify both the same way. That avoids making qbit-webhooks a dependency.
+    *Recommendation:* build the small sender (about 1 day) and sign with the shared format from the webhooks assessment (#1105 §9, signer in core per its D2), so receivers verify both the same way. (An earlier draft said qbit-webhooks already had a signing scheme; it does not.) That avoids making qbit-webhooks a dependency.
 20. **Phasing.**
     *Recommendation:* approve P0 now (it unblocks CDN, Storage, web performance and backups), then P1–P3 as one milestone ("alerts you can see and triage, with email"). P4 is next, and the first-host migration (P5) follows.
 
@@ -683,7 +685,7 @@ All of these are on `QRun-IO/qqq` `develop` unless noted.
 | Widgets | `WidgetType` TABLE, HTML, MULTI_STATISTICS, LINE_CHART | The Alerts home |
 | Streamed ETL | `StreamedETLWithFrontendProcess` | Every action |
 | Qbit pattern | `QBitMetaDataProducer`, `QBitConfig`, qbit-quick-search's runtime service and listeners | Packaging |
-| qbit-webhooks | Signing, send log and health model (HEALTHY / PROBATION / UNHEALTHY) | Channel health and the webhook signature format |
+| qbit-webhooks | Send log and health model (HEALTHY / PROBATION / UNHEALTHY). It has no signing; the signature format comes from the #1105 assessment §9 | Channel health |
 | Next UI | `Header.tsx` placeholder bell (`button-notifications`) | `AlertsBell` |
 
 ## Appendix B: External references (checked 2026-10-12)

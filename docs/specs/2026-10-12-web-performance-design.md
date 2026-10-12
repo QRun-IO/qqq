@@ -42,7 +42,7 @@ The owner asked: *"could we design and integrate a Google PageSpeed like app or 
 2. **Real-user data** (RUM): Core Web Vitals (LCP, INP, CLS, FCP, TTFB) measured in visitors' browsers by the `web-vitals` v6 attribution build. They go through the **existing** consent-gated analytics beacon (`/api/e` → `/analytics/v1/collect`) into analytics tables, with p75 computed the way CrUX computes it.
 3. **Google field data (CrUX)**, recorded honestly. kof22 gets about 44 pageviews a day, so it is almost certainly below CrUX's popularity threshold. The CrUX check is still scheduled, and its result is stored as **"no CrUX data"** until Google publishes some. Our own RUM is the field truth in the meantime.
 
-Package it as a separate, reusable **`qbit-web-performance`** (prefix `webperf_`). It installs into any QQQ site, and the CMS plugs in through two small SPIs (URL source, content resolver). Its single home is a **Performance** sub-app under the CMS. Everything else (the CMS home, the Dashboard, the record screens, the Health home) only shows a compact summary or a per-record panel that links there. Tests run on a schedule (daily for key pages, weekly for the whole sitemap), on publish (via `kof22.cms.*` ESB events), after deploys (a build-id probe) and around CDN stage changes. Regressions are confirmed with extra runs before they are raised as alerts through the generic Alerts qbit (when installed), whose subscriptions and channels (in-app, email, Slack, webhook, ...) decide who hears about them. Without that qbit they still show on the Performance home and in Data Health.
+Package it as a separate, reusable **`qbit-web-performance`** (table prefix `web_performance_`). It installs into any QQQ site, and the CMS plugs in through two small SPIs (URL source, content resolver). Its single home is a **Performance** sub-app under the CMS. Everything else (the CMS home, the Dashboard, the record screens, the Health home) only shows a compact summary or a per-record panel that links there. Tests run on a schedule (daily for key pages, weekly for the whole sitemap), on publish (via `kof22.cms.*` ESB events), after deploys (a build-id probe) and around CDN stage changes. Regressions are confirmed with extra runs before they are raised as alerts through the generic Alerts qbit (when installed), whose subscriptions and channels (in-app, email, Slack, webhook, ...) decide who hears about them. Without that qbit they still show on the Performance home and in Data Health.
 
 **Cost:** $0 a month in API fees. PSI and CrUX are free; the only resource is one Google Cloud API key stored in Infisical. Storage is about 2–4 GB a year if full Lighthouse reports are kept forever.
 **Effort:** about **4–5 engineer-weeks** (one engineer with Claude) over six phases. Lab data, the first phase that delivers value, is about 1.5 weeks after the API key exists (§11).
@@ -94,7 +94,7 @@ These restate the owner's standing rules. Every later section was checked agains
 
 ### 2.3 Handling "no CrUX data" honestly
 
-- Each daily CrUX check writes or updates a `webperf_field_snapshot` row with `status = NO_DATA` and `last_checked_at`. Unchanged NO_DATA results update one row instead of adding a row per day.
+- Each daily CrUX check writes or updates a `web_performance_field_snapshot` row with `status = NO_DATA` and `last_checked_at`. Unchanged NO_DATA results update one row instead of adding a row per day.
 - Everywhere CrUX would appear, the UI says: *"Google field data (CrUX): not available. Google publishes data only for pages and sites with enough Chrome traffic. Last checked 2026-10-12. Real-user figures below are from this site's own measurements."*
 - When PSI returns `loadingExperience` with `origin_fallback: true`, the field data belongs to the origin, not the URL. It is stored with `scope = ORIGIN` and labelled that way.
 - When data appears, the History API is used once to backfill up to 40 weekly periods (P4).
@@ -110,19 +110,19 @@ These restate the owner's standing rules. Every later section was checked agains
 ### 3.1 Shape
 
 ```
-                      ┌────────────────────── qbit-web-performance (in the backend JVM) ───────────────────────┐
- sitemap.xml ──────►  │ webperfSyncTargets ─► webperf_target                                                     │
- (UrlSource SPI)      │                                                                                          │
- schedules ────────►  │ enqueue ─► webperf_lab_run (QUEUED) ─► webperfRunQueuedTests worker ─► PSI API v5         │
- ESB kof22.cms.* ──►  │   (dedupe, not_before)                    │  (LabRunner SPI; concurrency 2, daily cap)     │
- deploy probe ─────►  │                                           ├─► webperf_lab_run (scores, metrics)           │
- qbit-cdn stage ───►  │ webperf_change_event                      ├─► webperf_lab_finding (opportunities, ...)    │
- user actions ─────►  │                                           ├─► webperf_lab_report (full LHR, gzip)         │
-                      │                                           └─► evaluate budgets ─► webperf_regression       │
- CrUX API ─────────►  │ webperfRefreshFieldData ─► webperf_field_snapshot                                        │
-                      │ RumSource SPI ◄── analytics_vital_stat (p75) ◄── analytics_vital ◄── /analytics/v1/collect │
-                      │ widgets: Performance home, record "Performance" panel, summaries; Micrometer gauges      │
-                      └───────────────────────────────────────────────────────────────────────────────────────────┘
+                      ┌─────────────────────────── qbit-web-performance (in the backend JVM) ────────────────────────────┐
+ sitemap.xml ──────►  │ webPerformanceSyncTargets ─► web_performance_target                                              │
+ (UrlSource SPI)      │                                                                                                  │
+ schedules ────────►  │ enqueue ─► web_performance_lab_run (QUEUED) ─► webPerformanceRunQueuedTests worker ─► PSI API v5 │
+ ESB kof22.cms.* ──►  │   (dedupe, not_before)                    │  (LabRunner SPI; concurrency 2, daily cap)           │
+ deploy probe ─────►  │                                           ├─► web_performance_lab_run (scores, metrics)          │
+ qbit-cdn stage ───►  │ web_performance_change_event              ├─► web_performance_lab_finding (opportunities, ...)   │
+ user actions ─────►  │                                           ├─► web_performance_lab_report (full LHR, gzip)        │
+                      │                                           └─► evaluate budgets ─► web_performance_regression     │
+ CrUX API ─────────►  │ webPerformanceRefreshFieldData ─► web_performance_field_snapshot                                 │
+                      │ RumSource SPI ◄── analytics_vital_stat (p75) ◄── analytics_vital ◄── /analytics/v1/collect       │
+                      │ widgets: Performance home, record "Performance" panel, summaries; Micrometer gauges              │
+                      └──────────────────────────────────────────────────────────────────────────────────────────────────┘
  www.kof22.com (Next) ── web-vitals v6 ─► same-origin /api/e ─► backend collect (existing forwarder)
 ```
 
@@ -131,7 +131,7 @@ These restate the owner's standing rules. Every later section was checked agains
 | Setting | Default | Meaning |
 |---|---|---|
 | `backendName` | required | RDBMS backend for all tables |
-| `tableNamePrefix` / `namePrefix` | `webperf_` / `webperf` | SQL and table prefix, and the prefix for process, widget and permission names |
+| `tableNamePrefix` / `namePrefix` | `web_performance_` / `webPerformance` | SQL and table prefix, and the prefix for process, widget and permission names |
 | `appName`, `appLabel`, `parentAppName` | `webPerformance`, `Performance`, none | kof22 sets `parentAppName = "Content"` (the CMS app) |
 | `siteBaseUrl` | required | Public origin under test, e.g. `https://www.kof22.com` |
 | `urlSource` | `SitemapUrlSource(siteBaseUrl + "/sitemap.xml")` | SPI: the URLs to test |
@@ -141,7 +141,7 @@ These restate the owner's standing rules. Every later section was checked agains
 | `googleApiKey` | `${env.WEBPERF_GOOGLE_API_KEY}` | One key for PSI and CrUX. Redacted in `toString()`. |
 | `strategies`, `categories` | both; all four | |
 | `concurrency`, `maxRunsPerDay`, `minSpacingMillis` | 2, 500, 2000 | Below the PSI limits of 25,000 a day and 400 per 100 s |
-| `keyTargets` | home, top-level indexes, newest 3 posts | The tier tested daily and after deploys (`webperf_target.tier = KEY`) |
+| `keyTargets` | home, top-level indexes, newest 3 posts | The tier tested daily and after deploys (`web_performance_target.tier = KEY`) |
 | `schedulerName` | none | Without it, the processes exist but are unscheduled |
 | `esbTopics` | none | For kof22, `kof22.cms.processes` and `kof22.cms.tables` |
 | `publishSettleSeconds`, `deploySettleSeconds` | 180, 300 | `not_before` delays, so caches, revalidation and later CDN invalidation can settle first |
@@ -171,21 +171,23 @@ These restate the owner's standing rules. Every later section was checked agains
 
 ### 4.1 Naming (with #1083 and #1084 in mind)
 
-The SQL prefix is `webperf_` and the QQQ table names equal the SQL names, following the `analytics_` precedent. The prefix stays separate from `cms_`, so this qbit is not tied to the CMS's prefix: a site without the CMS can install it, and the #1083 rename of kof22's CMS tables to `cms_` does not touch these tables. Every table has `id`, `create_date` and `modify_date`, and audit is on for the tables people edit (targets, budgets, regressions). Measurement tables are written only by processes, and their fields are read-only in the UI.
+**Naming (owner rule, 2026-10-12):** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table name is lowercase snake_case and starts with the full qbit name, `web_performance_` (not an abbreviation such as `webperf_`). Possible-value sources take the table names. Process, widget and permission names use the camelCase `webPerformance` prefix. Java class names stay CamelCase.
+
+The SQL prefix is `web_performance_` and the QQQ table names equal the SQL (backend) names, following the `analytics_` precedent. The prefix stays separate from `cms_`, so this qbit is not tied to the CMS's prefix: a site without the CMS can install it, and the #1083 rename of kof22's CMS tables to `cms_` does not touch these tables. Every table has `id`, `create_date` and `modify_date`, and audit is on for the tables people edit (targets, budgets, regressions). Measurement tables are written only by processes, and their fields are read-only in the UI.
 
 ### 4.2 Tables
 
 | # | Table (label) | Purpose | Key fields | Indexes |
 |---|---|---|---|---|
-| 1 | `webperf_target` (Tested Pages) | One public URL under test | `site_key`, `url`, `path`, `source` (SITEMAP / MANUAL / CONTENT), `content_table`, `content_id`, `label`, `tier` (KEY / STANDARD), `enabled`, `in_sitemap`, `last_seen_in_sitemap_at`, plus the denormalized latest values for list sorting: `latest_mobile_performance`, `latest_desktop_performance`, `latest_accessibility`, `latest_tested_at`, `open_regression_count` | unique (`site_key`, `url`); (`content_table`, `content_id`); (`enabled`, `tier`) |
-| 2 | `webperf_lab_run` (Lab Runs) | One Lighthouse run of one URL and strategy | `target_id`, `url`, `final_url`, `strategy`, `runner` (PSI / LOCAL), `trigger` (SCHEDULE / PUBLISH / DEPLOY / MANUAL / SITE_AUDIT / CONFIRM / CHANGE_COMPARE), `trigger_ref`, `batch_id`, `status` (QUEUED / RUNNING / SUCCEEDED / RUNTIME_ERROR / FAILED / SKIPPED_QUOTA / MERGED), `not_before`, `queued_at`, `started_at`, `completed_at`, `attempts`, `http_status`, `error_message`, `lighthouse_version`, `chrome_user_agent`, `benchmark_index`, `score_performance`, `score_accessibility`, `score_best_practices`, `score_seo` (0–100, null when the category was not run), `fcp_ms`, `lcp_ms`, `tbt_ms`, `cls`, `speed_index_ms`, `lcp_element` (selector), `run_warnings`, `deployment_id` (frontend build at run time), `cdn_stage` | (`target_id`, `strategy`, `completed_at`); (`status`, `not_before`); (`batch_id`); (`completed_at`) |
-| 3 | `webperf_lab_finding` (Findings) | Each non-passing or informative audit of a run | `run_id`, `target_id`, `strategy`, `category`, `audit_id`, `lighthouse_version`, `kind` (INSIGHT / OPPORTUNITY / DIAGNOSTIC / FAILED_AUDIT), `title`, `score`, `display_value`, `savings_ms`, `savings_bytes`, `metric_savings` (JSON: LCP / FCP / CLS / TBT / INP), `top_items` (JSON, first 5 URLs or selectors, truncated) | (`run_id`); (`audit_id`, `create_date`); (`target_id`, `audit_id`) |
-| 4 | `webperf_lab_report` (Lighthouse Reports) | The complete PSI response, gzip-compressed, one row per run | `run_id` (unique), `content` (BLOB, gzip JSON), `bytes`, `sha256`. File-download adornment: "Download report (.json)", which opens in the Lighthouse Viewer. | unique (`run_id`) |
-| 5 | `webperf_field_snapshot` (Google Field Data) | A CrUX or PSI `loadingExperience` result | `source` (CRUX_API / CRUX_HISTORY / PSI), `scope` (URL / ORIGIN), `scope_key`, `form_factor` (ALL / PHONE / DESKTOP / TABLET), `status` (OK / NO_DATA / ERROR), `period_start`, `period_end`, `p75_lcp_ms`, `p75_inp_ms`, `p75_cls`, `p75_fcp_ms`, `p75_ttfb_ms`, `distributions` (JSON good / NI / poor per metric), `last_checked_at` | unique (`source`, `scope`, `scope_key`, `form_factor`, `period_end`) |
-| 6 | `webperf_budget` (Budgets) | Thresholds that define a regression | `name`, `scope` (SITE / TIER / TARGET / CONTENT_TABLE / PATH_PREFIX), `scope_value`, `source` (LAB / RUM / CRUX), `strategy`, `metric` (PERFORMANCE_SCORE, ACCESSIBILITY_SCORE, BEST_PRACTICES_SCORE, SEO_SCORE, LCP, INP, CLS, FCP, TTFB, TBT), `comparator`, `threshold`, `severity` (WARNING / CRITICAL), `enabled`, `seeded` | (`enabled`, `source`) |
-| 7 | `webperf_regression` (Regressions) | A detected drop or budget breach, kept as a record | `target_id`, `content_table`, `content_id`, `source`, `strategy` or `form_factor`, `metric`, `baseline_value`, `baseline_ref` (run ids or window), `current_value`, `current_ref`, `delta`, `budget_id`, `severity`, `status` (SUSPECTED / CONFIRMED / NOT_CONFIRMED / RESOLVED / DISMISSED), `cause_change_event_id`, `detected_at`, `confirmed_at`, `resolved_at`, `resolution_note` | (`status`, `severity`); (`target_id`, `metric`, `status`) |
-| 8 | `webperf_change_event` (Site Changes) | Things that may move performance, drawn as markers on trends | `kind` (FRONTEND_DEPLOY / BACKEND_DEPLOY / CDN_STAGE / LIGHTHOUSE_VERSION / MANUAL), `component`, `from_value`, `to_value` (build id, stage or version), `observed_at`, `source` (PROBE / WEBHOOK / QBIT_CDN / USER), `note` | (`observed_at`); (`kind`, `observed_at`) |
-| 9 | `webperf_comparison` (Before and After) | The result of comparing around a change event | `change_event_id`, `scope` (KEY tier / TARGET / SITE), `source` (LAB / RUM), `strategy` or `form_factor`, `metric`, `segment` (ALL or a country / device), `before_value`, `before_n`, `before_window`, `after_value`, `after_n`, `after_window`, `delta`, `delta_pct` | (`change_event_id`) |
+| 1 | `web_performance_target` (Tested Pages) | One public URL under test | `site_key`, `url`, `path`, `source` (SITEMAP / MANUAL / CONTENT), `content_table`, `content_id`, `label`, `tier` (KEY / STANDARD), `enabled`, `in_sitemap`, `last_seen_in_sitemap_at`, plus the denormalized latest values for list sorting: `latest_mobile_performance`, `latest_desktop_performance`, `latest_accessibility`, `latest_tested_at`, `open_regression_count` | unique (`site_key`, `url`); (`content_table`, `content_id`); (`enabled`, `tier`) |
+| 2 | `web_performance_lab_run` (Lab Runs) | One Lighthouse run of one URL and strategy | `target_id`, `url`, `final_url`, `strategy`, `runner` (PSI / LOCAL), `trigger` (SCHEDULE / PUBLISH / DEPLOY / MANUAL / SITE_AUDIT / CONFIRM / CHANGE_COMPARE), `trigger_ref`, `batch_id`, `status` (QUEUED / RUNNING / SUCCEEDED / RUNTIME_ERROR / FAILED / SKIPPED_QUOTA / MERGED), `not_before`, `queued_at`, `started_at`, `completed_at`, `attempts`, `http_status`, `error_message`, `lighthouse_version`, `chrome_user_agent`, `benchmark_index`, `score_performance`, `score_accessibility`, `score_best_practices`, `score_seo` (0–100, null when the category was not run), `fcp_ms`, `lcp_ms`, `tbt_ms`, `cls`, `speed_index_ms`, `lcp_element` (selector), `run_warnings`, `deployment_id` (frontend build at run time), `cdn_stage` | (`target_id`, `strategy`, `completed_at`); (`status`, `not_before`); (`batch_id`); (`completed_at`) |
+| 3 | `web_performance_lab_finding` (Findings) | Each non-passing or informative audit of a run | `run_id`, `target_id`, `strategy`, `category`, `audit_id`, `lighthouse_version`, `kind` (INSIGHT / OPPORTUNITY / DIAGNOSTIC / FAILED_AUDIT), `title`, `score`, `display_value`, `savings_ms`, `savings_bytes`, `metric_savings` (JSON: LCP / FCP / CLS / TBT / INP), `top_items` (JSON, first 5 URLs or selectors, truncated) | (`run_id`); (`audit_id`, `create_date`); (`target_id`, `audit_id`) |
+| 4 | `web_performance_lab_report` (Lighthouse Reports) | The complete PSI response, gzip-compressed, one row per run | `run_id` (unique), `content` (BLOB, gzip JSON), `bytes`, `sha256`. File-download adornment: "Download report (.json)", which opens in the Lighthouse Viewer. | unique (`run_id`) |
+| 5 | `web_performance_field_snapshot` (Google Field Data) | A CrUX or PSI `loadingExperience` result | `source` (CRUX_API / CRUX_HISTORY / PSI), `scope` (URL / ORIGIN), `scope_key`, `form_factor` (ALL / PHONE / DESKTOP / TABLET), `status` (OK / NO_DATA / ERROR), `period_start`, `period_end`, `p75_lcp_ms`, `p75_inp_ms`, `p75_cls`, `p75_fcp_ms`, `p75_ttfb_ms`, `distributions` (JSON good / NI / poor per metric), `last_checked_at` | unique (`source`, `scope`, `scope_key`, `form_factor`, `period_end`) |
+| 6 | `web_performance_budget` (Budgets) | Thresholds that define a regression | `name`, `scope` (SITE / TIER / TARGET / CONTENT_TABLE / PATH_PREFIX), `scope_value`, `source` (LAB / RUM / CRUX), `strategy`, `metric` (PERFORMANCE_SCORE, ACCESSIBILITY_SCORE, BEST_PRACTICES_SCORE, SEO_SCORE, LCP, INP, CLS, FCP, TTFB, TBT), `comparator`, `threshold`, `severity` (WARNING / CRITICAL), `enabled`, `seeded` | (`enabled`, `source`) |
+| 7 | `web_performance_regression` (Regressions) | A detected drop or budget breach, kept as a record | `target_id`, `content_table`, `content_id`, `source`, `strategy` or `form_factor`, `metric`, `baseline_value`, `baseline_ref` (run ids or window), `current_value`, `current_ref`, `delta`, `budget_id`, `severity`, `status` (SUSPECTED / CONFIRMED / NOT_CONFIRMED / RESOLVED / DISMISSED), `cause_change_event_id`, `detected_at`, `confirmed_at`, `resolved_at`, `resolution_note` | (`status`, `severity`); (`target_id`, `metric`, `status`) |
+| 8 | `web_performance_change_event` (Site Changes) | Things that may move performance, drawn as markers on trends | `kind` (FRONTEND_DEPLOY / BACKEND_DEPLOY / CDN_STAGE / LIGHTHOUSE_VERSION / MANUAL), `component`, `from_value`, `to_value` (build id, stage or version), `observed_at`, `source` (PROBE / WEBHOOK / QBIT_CDN / USER), `note` | (`observed_at`); (`kind`, `observed_at`) |
+| 9 | `web_performance_comparison` (Before and After) | The result of comparing around a change event | `change_event_id`, `scope` (KEY tier / TARGET / SITE), `source` (LAB / RUM), `strategy` or `form_factor`, `metric`, `segment` (ALL or a country / device), `before_value`, `before_n`, `before_window`, `after_value`, `after_n`, `after_window`, `delta`, `delta_pct` | (`change_event_id`) |
 | 10 | `analytics_vital` (Web Vitals), **in the analytics module** | One RUM metric report | §7.2 | §7.2 |
 | 11 | `analytics_vital_stat` (Web Vitals Daily), **in the analytics module** | p50, p75 and p95 rollups, both per day and over a trailing 28 days | §7.3 | §7.3 |
 
@@ -199,13 +201,13 @@ The SQL prefix is `webperf_` and the QQQ table names equal the SQL names, follow
 
 ### 4.4 Interaction with the #1083 `cms_` rename
 
-`webperf_target.content_table`, `webperf_regression.content_table` and `analytics_vital.content_table` store CMS **table names**, which the #1083 cutover renames (for example `blog_post` → `cms_blog_post`). The same is already true of `analytics_daily_stat.content_table`. **Add one statement per table to the cutover rename script** (`WB:ops/cms-qbit-cutover/rename-to-cms.sql`, #1083 §3.6.1):
+`web_performance_target.content_table`, `web_performance_regression.content_table` and `analytics_vital.content_table` store CMS **table names**, which the #1083 cutover renames (for example `blog_post` → `cms_blog_post`). The same is already true of `analytics_daily_stat.content_table`. **Add one statement per table to the cutover rename script** (`WB:ops/cms-qbit-cutover/rename-to-cms.sql`, #1083 §3.6.1):
 
 ```sql
-UPDATE webperf_target SET content_table = 'cms_' || content_table WHERE content_table IN (/* renamed tables */);
+UPDATE web_performance_target SET content_table = 'cms_' || content_table WHERE content_table IN (/* renamed tables */);
 ```
 
-The same statement applies to `webperf_regression` and `analytics_vital`. It runs inside the planned outage, is covered by the row-count and checksum verification, and loses no data. If this feature ships after the cutover, nothing is needed.
+The same statement applies to `web_performance_regression` and `analytics_vital`. It runs inside the planned outage, is covered by the row-count and checksum verification, and loses no data. If this feature ships after the cutover, nothing is needed.
 
 ---
 
@@ -233,7 +235,7 @@ Widgets in top-to-bottom order. All are real data with honest empty states.
 |---|---|---|
 | **Site Scores** | HTML, 12 | For each strategy: the median of the latest KEY-page runs for each category (Performance, Accessibility, Best Practices, SEO) as colored score rings in the 0–49 / 50–89 / 90–100 bands, plus the Lighthouse version and "tested 3 h ago". Below 640 px: label and value rows. |
 | **Core Web Vitals** | HTML, 12 | One row per metric (LCP, INP, CLS, FCP, TTFB): **Field (this site)** p75 over 28 d with a good / NI / poor bar and *n*; **Field (Google CrUX)** p75 or "not available"; **Lab (mobile)** median. The source label is on every value. |
-| **Trend** | LINE_CHART, 12 | Weekly medians of mobile and desktop Performance (lab) and RUM LCP p75 (field), with `webperf_change_event` markers (deploys, CDN stages, Lighthouse upgrades) listed under the chart with dates. The chart starts at the first recorded week and draws nothing before it. |
+| **Trend** | LINE_CHART, 12 | Weekly medians of mobile and desktop Performance (lab) and RUM LCP p75 (field), with `web_performance_change_event` markers (deploys, CDN stages, Lighthouse upgrades) listed under the chart with dates. The chart starts at the first recorded week and draws nothing before it. |
 | **Open Regressions** | TABLE, 12, ≤ 4 columns | Page (link to the record, or the URL), what changed (*"Mobile Performance 94 → 71 (confirmed, 3 runs)"*), since (with the suspected cause, e.g. "frontend deploy 3f2a…"), severity. "View all" goes to the Regressions table. |
 | **Slowest Pages** | TABLE, 12, 3 columns | The worst 10 pages by mobile Performance, with LCP lab and the top finding. |
 | **Top Opportunities** | TABLE, 12, 3 columns | Findings grouped by `audit_id` across the latest run of each page: the title, how many pages, total estimated savings. Links to filtered Findings. |
@@ -263,19 +265,19 @@ The "Test page speed" action is in the record's action menu (§6.1), not inside 
 
 | Process (label) | Where | Permission | Review summary lines (examples) | Result |
 |---|---|---|---|---|
-| `webperfTestPageSpeed` **Test page speed** | Record and bulk action on every `contentTables` table and on `webperf_target` | `webperf.test` | "3 pages will be tested on mobile and desktop (6 runs)" · "1 record is a draft with no public URL and will be skipped" · "1 page was tested less than 10 minutes ago and is already queued (merged)" · "Today's runs: 42 of 500 (Google allows 25,000)" | "Queued 6 runs. Results usually take 1–2 minutes", linking to the filtered Lab Runs |
-| `webperfRunSiteAudit` **Run site audit** | Table action on `webperf_target` | `webperf.test` | "87 pages × 2 = 174 runs; about 45 minutes at 2 at a time" · quota line | "Queued 174 runs as audit #12", with a link |
-| `webperfSyncTargets` **Sync pages from sitemap** | Table action on `webperf_target`; also scheduled daily | `webperf.admin` | "4 new pages, 83 unchanged, 1 no longer in the sitemap (kept, marked not in sitemap, history kept)" | Counts with links |
-| `webperfRetryRuns` **Retry** | Record and bulk action on `webperf_lab_run` (FAILED, RUNTIME_ERROR, SKIPPED_QUOTA) | `webperf.test` | "2 runs will be queued again" | |
-| `webperfRefreshFieldData` **Refresh Google field data** | Table action on `webperf_field_snapshot`; also scheduled daily at 06:00 UTC | `webperf.admin` | "264 Google field data queries will be made" (the origin plus 87 URLs = 88 keys × 3 form factors; paced to at most 150 a minute, so about 2 minutes) | "Origin: no CrUX data. 0 URLs with data." |
-| `webperfCompareChange` **Compare before and after** | Record action on `webperf_change_event` | `webperf.view` | "Lab: 9 KEY pages, 3 runs each before and after already recorded (or N to queue)" · "Field: 28 days before vs since (412 vs 96 LCP samples)" | Rows in `webperf_comparison`, with a link |
-| `webperfDismissRegressions` **Dismiss** / `webperfResolveRegressions` **Mark resolved** | Record and bulk action on `webperf_regression` | `webperf.manage` | "2 regressions will be dismissed" (a note is required as a process input field) | |
+| `webPerformanceTestPageSpeed` **Test page speed** | Record and bulk action on every `contentTables` table and on `web_performance_target` | `webPerformance.test` | "3 pages will be tested on mobile and desktop (6 runs)" · "1 record is a draft with no public URL and will be skipped" · "1 page was tested less than 10 minutes ago and is already queued (merged)" · "Today's runs: 42 of 500 (Google allows 25,000)" | "Queued 6 runs. Results usually take 1–2 minutes", linking to the filtered Lab Runs |
+| `webPerformanceRunSiteAudit` **Run site audit** | Table action on `web_performance_target` | `webPerformance.test` | "87 pages × 2 = 174 runs; about 45 minutes at 2 at a time" · quota line | "Queued 174 runs as audit #12", with a link |
+| `webPerformanceSyncTargets` **Sync pages from sitemap** | Table action on `web_performance_target`; also scheduled daily | `webPerformance.admin` | "4 new pages, 83 unchanged, 1 no longer in the sitemap (kept, marked not in sitemap, history kept)" | Counts with links |
+| `webPerformanceRetryRuns` **Retry** | Record and bulk action on `web_performance_lab_run` (FAILED, RUNTIME_ERROR, SKIPPED_QUOTA) | `webPerformance.test` | "2 runs will be queued again" | |
+| `webPerformanceRefreshFieldData` **Refresh Google field data** | Table action on `web_performance_field_snapshot`; also scheduled daily at 06:00 UTC | `webPerformance.admin` | "264 Google field data queries will be made" (the origin plus 87 URLs = 88 keys × 3 form factors; paced to at most 150 a minute, so about 2 minutes) | "Origin: no CrUX data. 0 URLs with data." |
+| `webPerformanceCompareChange` **Compare before and after** | Record action on `web_performance_change_event` | `webPerformance.view` | "Lab: 9 KEY pages, 3 runs each before and after already recorded (or N to queue)" · "Field: 28 days before vs since (412 vs 96 LCP samples)" | Rows in `web_performance_comparison`, with a link |
+| `webPerformanceDismissRegressions` **Dismiss** / `webPerformanceResolveRegressions` **Mark resolved** | Record and bulk action on `web_performance_regression` | `webPerformance.manage` | "2 regressions will be dismissed" (a note is required as a process input field) | |
 
-Hidden scheduled processes (never in the nav): `webperfRunQueuedTests` (every minute; the worker), `webperfScheduleKeyTests`, `webperfScheduleSiteAudit`, `webperfProbeDeploys`, `webperfEvaluateRum`. The RUM rollup extends the analytics module's existing rollup and its "Recompute selected days" table action. There is no new action for it.
+Hidden scheduled processes (never in the nav): `webPerformanceRunQueuedTests` (every minute; the worker), `webPerformanceScheduleKeyTests`, `webPerformanceScheduleSiteAudit`, `webPerformanceProbeDeploys`, `webPerformanceEvaluateRum`. The RUM rollup extends the analytics module's existing rollup and its "Recompute selected days" table action. There is no new action for it.
 
 ### 6.2 Which URLs and when
 
-**URLs:** every URL in the sitemap. Today that is 87: the home page, about, contact, blog and stream indexes, 19 posts, 55 project pages, and 6 personal pages. `webperfSyncTargets` keeps the list current, and `ContentResolver` links each URL to its CMS record. Admin, preview and draft paths are never tested. Pages that drop out of the sitemap stay, marked `in_sitemap = false`, with their history kept.
+**URLs:** every URL in the sitemap. Today that is 87: the home page, about, contact, blog and stream indexes, 19 posts, 55 project pages, and 6 personal pages. `webPerformanceSyncTargets` keeps the list current, and `ContentResolver` links each URL to its CMS record. Admin, preview and draft paths are never tested. Pages that drop out of the sitemap stay, marked `in_sitemap = false`, with their history kept.
 
 | Trigger | What runs | Expected runs |
 |---|---|---|
@@ -289,11 +291,11 @@ Hidden scheduled processes (never in the nav): `webperfRunQueuedTests` (every mi
 
 The total is about 50–70 runs on an average day, under 0.3% of the PSI quota. A worker with concurrency 2 and 2 s spacing finishes a full audit in about 45 minutes. `maxRunsPerDay` (500) is a safety cap: runs past it are `SKIPPED_QUOTA`, visible and retryable. They are never silently dropped.
 
-**Queue semantics.** Every trigger inserts `webperf_lab_run` rows with `status = QUEUED` and a `not_before`. A second request for the same target and strategy while one is QUEUED becomes `MERGED` into it, and the trigger is noted on the surviving row. The worker claims rows with `SELECT … FOR UPDATE SKIP LOCKED`, so any number of backend replicas never run a test twice. On HTTP 429 or 5xx the run is retried with backoff (max 3 attempts). A Lighthouse `runtimeError` (for example `NO_FCP`, or a page that failed to load) is stored as `RUNTIME_ERROR` with the message. It is a real result, not a missing one.
+**Queue semantics.** Every trigger inserts `web_performance_lab_run` rows with `status = QUEUED` and a `not_before`. A second request for the same target and strategy while one is QUEUED becomes `MERGED` into it, and the trigger is noted on the surviving row. The worker claims rows with `SELECT … FOR UPDATE SKIP LOCKED`, so any number of backend replicas never run a test twice. On HTTP 429 or 5xx the run is retried with backoff (max 3 attempts). A Lighthouse `runtimeError` (for example `NO_FCP`, or a page that failed to load) is stored as `RUNTIME_ERROR` with the message. It is a real result, not a missing one.
 
 ### 6.3 Re-test on publish and after deploys
 
-**On publish (ESB).** An `EsbTrigger` subscribes the hidden `webperfEnqueueFromCmsEvents` to:
+**On publish (ESB).** An `EsbTrigger` subscribes the hidden `webPerformanceEnqueueFromCmsEvents` to:
 
 - `kof22.cms.processes`: `PublishBlogPost` / `PublishProjectContent` COMPLETED. These are the clearest "it went live" signals. #1083 §2.8 adds a `PublishProjectContent` publication.
 - `kof22.cms.tables`: UPDATE events on content tables where publish-relevant fields changed (status, published date, slug, body). This catches pages, which have no publish process.
@@ -302,7 +304,7 @@ It enqueues the record's URL(s), and its hub pages, with `not_before = now + pub
 
 **After deploys (recommended: probes, no infra).**
 
-- **Frontend:** `WF:next.config.ts` already pins `deploymentId` to the commit SHA (CDN P0, `WF@65c2a60`). Add a no-store `GET /api/build` route returning `{ "deploymentId": "<sha>" }`, which the backend polls in-cluster every 5 min. A change writes a FRONTEND_DEPLOY `webperf_change_event` and enqueues the KEY tier with `not_before = +300 s`.
+- **Frontend:** `WF:next.config.ts` already pins `deploymentId` to the commit SHA (CDN P0, `WF@65c2a60`). Add a no-store `GET /api/build` route returning `{ "deploymentId": "<sha>" }`, which the backend polls in-cluster every 5 min. A change writes a FRONTEND_DEPLOY `web_performance_change_event` and enqueues the KEY tier with `not_before = +300 s`.
 - **Backend:** at startup the qbit compares the running version with the last BACKEND_DEPLOY event and records a new one if it differs.
 - **Alternative (D7):** enable ArgoCD notifications (`GO:platform/argocd/values.yaml` has `notifications.enabled: false`) with an `on-deployed` webhook to an HMAC-protected backend route. That is more moving parts, and it is specific to this cluster. A Munitor post-deploy call is a third option; it would tie the qbit to the CI tool.
 
@@ -316,14 +318,14 @@ PSI performs one Lighthouse run per call, and Lighthouse documents that scores m
 2. **Suspect** when, against the baseline: Performance drops ≥ 10 points, or LCP rises ≥ 25% and ≥ 500 ms, or CLS rises ≥ 0.05, or TBT rises ≥ 200 ms, or a seeded or owner budget is breached.
 3. **Confirm:** queue 2 CONFIRM runs and take the **median of 3**. If it still meets the rule, the regression becomes CONFIRMED and links the nearest preceding change event as the likely cause. Otherwise it becomes NOT_CONFIRMED and stays visible.
 4. **Accessibility, Best Practices and SEO** results are close to deterministic. A drop of ≥ 5 points, or a newly failing audit, is CONFIRMED immediately and listed with the failing audit ids.
-5. **RUM drift** (`webperfEvaluateRum`, daily): the trailing 7-day p75 is compared with the previous 28-day p75 for the site and for pages with ≥ `minSamples` (30) in both windows. Only a move into a worse rating band (good → NI → poor) opens a WARNING. Small samples never alert.
+5. **RUM drift** (`webPerformanceEvaluateRum`, daily): the trailing 7-day p75 is compared with the previous 28-day p75 for the site and for pages with ≥ `minSamples` (30) in both windows. Only a move into a worse rating band (good → NI → poor) opens a WARNING. Small samples never alert.
 6. **Resolve:** a CONFIRMED regression resolves automatically when the median of the next 3 runs is back within the rule, and the record keeps its history.
 
 ### 6.5 CDN before and after (with `qbit-cdn`, #1084)
 
-- When `qbit-cdn` is installed, `CdnStageChangeSource` observes `cdnHostname.stage` changes (OFF → HEADERS_ONLY → LIVE → LOCKED, #1084 §8.4) and writes CDN_STAGE change events.
+- When `qbit-cdn` is installed, `CdnStageChangeSource` observes `cdn_hostname.stage` changes (OFF → HEADERS_ONLY → LIVE → LOCKED, #1084 §8.4) and writes CDN_STAGE change events.
 - **Before:** setting a hostname to HEADERS_ONLY queues the KEY tier, 3 runs per strategy, as the lab baseline. RUM needs nothing extra; it already has the history.
-- **After:** the switch to LIVE queues the same set at +1 h and +24 h. `webperfCompareChange` then writes `webperf_comparison` rows:
+- **After:** the switch to LIVE queues the same set at +1 h and +24 h. `webPerformanceCompareChange` then writes `web_performance_comparison` rows:
   - lab medians (TTFB from the LCP phases, LCP, FCP, Performance)
   - RUM p75 for 28 days before against the days since. **TTFB and LCP are segmented by country**, because the CDN mainly helps distant visitors.
 - **Caveat:** country segmentation needs a real client IP. Today visits arrive as `proxy_ip` (SNAT, `WB:docs/design/cms-analytics-module.md`). #1084 P3 fixes it with `X-Real-IP` from CloudFront. Until then the comparison shows site-wide figures only and says why.
@@ -408,7 +410,7 @@ The existing analytics rollup (every 300 s for today and yesterday, under an adv
 
 ### 8.1 Permissions
 
-- `webperf.view` (read the app and tables), `webperf.test` (run tests and audits), `webperf.manage` (budgets, dismiss or resolve), `webperf.admin` (sync, field-data refresh, settings).
+- `webPerformance.view` (read the app and tables), `webPerformance.test` (run tests and audits), `webPerformance.manage` (budgets, dismiss or resolve), `webPerformance.admin` (sync, field-data refresh, settings).
 - kof22 maps `kof22-admins` to all of them.
 - Measurement tables are insert-only by processes, with every field read-only in the UI.
 - Multi-site hosts add `site_key` with a record security lock (the CMS qbit's `<prefix>Site` key type), so each site sees only its own targets.
@@ -434,7 +436,7 @@ The existing analytics rollup (every 300 s for today and yesterday, under an adv
 
 | Event | Call | Dedup key | Severity | Record links |
 |---|---|---|---|---|
-| A regression is CONFIRMED (lab, after the median of 3), or a category score drops | `raise` | `webperf:regression:<target_id>:<source>:<strategy>:<metric>` | The regression's `severity`: WARNING, or CRITICAL for KEY pages below their critical budget | The `webperf_regression` record, the target, the content record (`content_table` / `content_id`), the confirming runs |
+| A regression is CONFIRMED (lab, after the median of 3), or a category score drops | `raise` | `webperf:regression:<target_id>:<source>:<strategy>:<metric>` | The regression's `severity`: WARNING, or CRITICAL for KEY pages below their critical budget | The `web_performance_regression` record, the target, the content record (`content_table` / `content_id`), the confirming runs |
 | RUM drifts into a worse band (§6.4 step 5) | `raise` | `webperf:rum:<scope>:<metric>` | WARNING | The regression record, and the content record when the drift is page-level |
 | A regression is RESOLVED automatically, or the user runs Dismiss or Mark resolved | `resolve` | The same key | n/a | The regression record (with its resolution note) |
 | The runner is stale (no successful run in 48 h) | `raise` / `resolve` | `webperf:runner-stale` | WARNING | The Lab Runs list |
@@ -443,7 +445,7 @@ The existing analytics rollup (every 300 s for today and yesterday, under an adv
 Raises are keyed. A regression that stays open is one alert, not one alert per evaluation, and resolving the regression clears its alert. Who is notified, by which channel, and any quiet hours or escalation are all configured in the Alerts qbit's subscriptions and channels, not here. For example, a kof22 subscription that sends WARNING and CRITICAL web-performance alerts to Slack is one possible channel choice, and it is made in the Alerts qbit.
 
 **Without the Alerts qbit, nothing is lost.**
-- Regressions remain `webperf_regression` records.
+- Regressions remain `web_performance_regression` records.
 - The Performance home's Open Regressions widget and the Dashboard "Needs Attention" line show them.
 - The Data Health rules (`operations.webperf-regressions`, `operations.webperf-runner-stale`, `operations.webperf-quota`, `operations.webperf-errors`) feed the Health home.
 
@@ -493,11 +495,11 @@ kof22's backend is not scraped today. Enabling scraping means adding the `monito
 | Phase | Scope | Estimate | Exit criteria |
 |---|---|---|---|
 | **P0: key and secret** (owner plus 0.5 d) | The owner creates the Cloud project key (PSI and CrUX only). **Done:** the key exists and the Praetor write-only Infisical seed with `-target` is applied (#29). **Open:** the ExternalSecret and env var (cluster-gitops #87), then one manual PSI and CrUX call to confirm, including the **real** CrUX answer for kof22. | 0.5–1 d | The backend pod has `WEBPERF_GOOGLE_API_KEY`; a manual call succeeds. |
-| **P1: lab core** | `QRun-IO/qbit-web-performance` from qbit-template. Tables 1–4 and 6–7. PSI runner, **CrUX runner** (`webperf_field_snapshot`, the daily refresh and the honest NO_DATA path, moved here from P4), queue worker, sitemap sync, daily and weekly schedules. Actions: Test page speed, Run site audit, Sync, Retry. Performance home (Site Scores, Slowest Pages, Top Opportunities, Recent Runs, Trend). Record Performance panel (lab part). kof22 wiring (`ContentResolver` adapter, `contentTables`). Seeded budgets. | 8–10 d | A full audit of 87 pages is recorded; record panels show real scores. |
-| **P2: triggers, regressions, alerts** | ESB publish trigger plus the fallback sweep. `/api/build` and the deploy probes, and `webperf_change_event`. Regression engine with confirmation. Regressions widget, CMS home summary, Dashboard line, Data Health rules. Alerts qbit producer integration (raise and resolve with dedup keys) once that qbit is available. Optional Prometheus gauges. | 4–5 d | A publish leads to a re-test within ~4 min. A deploy leads to KEY re-tests. A forced regression appears on the Performance home and in Data Health. With the Alerts qbit installed, it is raised once and resolved when it clears. |
+| **P1: lab core** | `QRun-IO/qbit-web-performance` from qbit-template. Tables 1–4 and 6–7. PSI runner, **CrUX runner** (`web_performance_field_snapshot`, the daily refresh and the honest NO_DATA path, moved here from P4), queue worker, sitemap sync, daily and weekly schedules. Actions: Test page speed, Run site audit, Sync, Retry. Performance home (Site Scores, Slowest Pages, Top Opportunities, Recent Runs, Trend). Record Performance panel (lab part). kof22 wiring (`ContentResolver` adapter, `contentTables`). Seeded budgets. | 8–10 d | A full audit of 87 pages is recorded; record panels show real scores. |
+| **P2: triggers, regressions, alerts** | ESB publish trigger plus the fallback sweep. `/api/build` and the deploy probes, and `web_performance_change_event`. Regression engine with confirmation. Regressions widget, CMS home summary, Dashboard line, Data Health rules. Alerts qbit producer integration (raise and resolve with dedup keys) once that qbit is available. Optional Prometheus gauges. | 4–5 d | A publish leads to a re-test within ~4 min. A deploy leads to KEY re-tests. A forced regression appears on the Performance home and in Data Health. With the Alerts qbit installed, it is raised once and resolved when it clears. |
 | **P3: RUM** | The analytics `vitals` event, `analytics_vital` and `analytics_vital_stat`, the rollup extension. Frontend `web-vitals` v6 beacon and privacy-page sentence. Core Web Vitals widget, panel field section, RUM drift. | 5–7 d | Real vitals with *n* on the home and per page; DNT/GPC verified to send nothing. |
 | **P4: CrUX history** | The CrUX runner and NO_DATA path moved into P1. What remains: storing PSI `loadingExperience` per run, and a one-time CrUX History backfill (up to 40 weeks) if kof22 ever becomes eligible. | 0.5–1 d | The Field Data Status widget shows the real CrUX status. |
-| **P5: CDN before and after** (after #1084 P2/P3) | `CdnStageChangeSource`, `webperfCompareChange`, `webperf_comparison`, country-segmented RUM. | 2–3 d | The `s3` / `www` cutovers each have a recorded comparison. |
+| **P5: CDN before and after** (after #1084 P2/P3) | `CdnStageChangeSource`, `webPerformanceCompareChange`, `web_performance_comparison`, country-segmented RUM. | 2–3 d | The `s3` / `www` cutovers each have a recorded comparison. |
 | **P6 (optional): self-hosted runner** | `LocalLighthouseLabRunner` as a k8s Job (Lighthouse 13, Node 22.19), median of 5. Useful for pre-production URLs PSI cannot reach. | 3–4 d | The same tables, `runner = LOCAL`. |
 
 **Total P0–P5: about 20–27 engineer-days (≈ 4–5 weeks)**, or 3–4 more days with P6. **Sequencing:**

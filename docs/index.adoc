@@ -82,6 +82,7 @@ include::actions/RenderTemplateAction.adoc[leveloffset=+1]
 
 == QQQ Utility Classes
 include::utilities/RecordLookupHelper.adoc[leveloffset=+1]
+include::utilities/WebhookSigningAndSafeHttp.adoc[leveloffset=+1]
 
 == Migration Guides
 

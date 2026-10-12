@@ -34,10 +34,12 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
  *******************************************************************************/
 public class RecordSearchInput extends AbstractActionInput
 {
-   private String       searchTerm;
-   private List<String> tableNames;
-   private Integer      limitPerTable;
-   private InputSource  inputSource = QInputSource.SYSTEM;
+   private String           searchTerm;
+   private List<String>     tableNames;
+   private Integer          limitPerTable;
+   private Integer          offset;
+   private RecordSearchSort sort;
+   private InputSource      inputSource = QInputSource.SYSTEM;
 
 
 
@@ -162,6 +164,68 @@ public class RecordSearchInput extends AbstractActionInput
    public RecordSearchInput withInputSource(InputSource inputSource)
    {
       this.inputSource = inputSource;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for offset
+    *******************************************************************************/
+   public Integer getOffset()
+   {
+      return (this.offset);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for offset
+    *******************************************************************************/
+   public void setOffset(Integer offset)
+   {
+      this.offset = offset;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for offset - number of results to skip in each table (for paging one table; null or negative is 0)
+    *******************************************************************************/
+   public RecordSearchInput withOffset(Integer offset)
+   {
+      this.offset = offset;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for sort
+    *******************************************************************************/
+   public RecordSearchSort getSort()
+   {
+      return (this.sort);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sort
+    *******************************************************************************/
+   public void setSort(RecordSearchSort sort)
+   {
+      this.sort = sort;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sort - order of the results within each table (null is RELEVANCE)
+    *******************************************************************************/
+   public RecordSearchInput withSort(RecordSearchSort sort)
+   {
+      this.sort = sort;
       return (this);
    }
 

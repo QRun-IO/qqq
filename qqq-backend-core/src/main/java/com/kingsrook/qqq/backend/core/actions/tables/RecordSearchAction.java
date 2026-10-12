@@ -22,11 +22,12 @@ package com.kingsrook.qqq.backend.core.actions.tables;
 
 
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,6 +40,7 @@ import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
@@ -48,16 +50,26 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchDetail;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchHighlight;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchHighlightMatch;
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchProviderState;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchProviderStatus;
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchResult;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchSort;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchTableSummary;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -74,12 +86,20 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** queried through {@link QueryAction}, so record security locks, table
  ** personalization and query customizers apply exactly as for any query.
  ** String fields match when they contain the term, case-insensitively; integer
- ** fields match when they equal a numeric term.  Results per table are limited.
+ ** fields match when they equal a numeric term.  Results per table are limited,
+ ** and may be paged (offset) and sorted (relevance, or most recently modified).
  **
  ** If the instance has a {@link RecordSearchProviderInterface record search
  ** provider}, the tables it claims are searched by it instead (its hits are
  ** re-read through QueryAction, so the same security applies), falling back to
- ** the default search for those tables if the provider fails.
+ ** the default search for those tables if the provider fails.  The output says
+ ** what searched each table, and whether (and why) the provider failed.
+ **
+ ** Each result is described from the freshly read record, using only the
+ ** fields the session can see: plain-text highlights of the search fields that
+ ** match the term, a few other search field values (details), and when it was
+ ** last modified.  Fields in the record label are neither highlighted nor
+ ** detailed (the label already shows them), nor is the primary key detailed.
  *******************************************************************************/
 public class RecordSearchAction
 {
@@ -89,9 +109,51 @@ public class RecordSearchAction
    public static final int MAX_LIMIT_PER_TABLE        = 25;
    public static final int MAX_SEARCH_TERM_LENGTH     = 100;
    public static final int MAX_PROVIDER_IDS_PER_TABLE = 100;
+   public static final int MAX_OFFSET                 = 1000;
+
+   public static final int MAX_HIGHLIGHTS_PER_RESULT = 3;
+   public static final int MAX_DETAILS_PER_RESULT    = 3;
+   public static final int HIGHLIGHT_SNIPPET_LENGTH  = 160;
+
+   private static final int    HIGHLIGHT_SNIPPET_LEAD        = 40;
+   private static final int    HIGHLIGHT_MAX_SCANNED_CHARS   = 10_000;
+   private static final int    HIGHLIGHT_MAX_MATCHES         = 50;
+   private static final int    HIGHLIGHT_MAX_TOKENS          = 10;
+   private static final int    PROVIDER_HIGHLIGHT_MAX_LENGTH = 1000;
+   private static final int    FAILURE_MESSAGE_MAX_LENGTH    = 200;
+   static final String         ELLIPSIS                      = "…";
 
    private static final int     QUERY_TIMEOUT_SECONDS = 30;
    private static final Pattern INTEGER_TERM          = Pattern.compile("-?\\d{1,18}");
+   private static final Pattern WHITESPACE            = Pattern.compile("\\s+");
+
+
+
+   /*******************************************************************************
+    ** The results of searching one table.
+    *******************************************************************************/
+   private record TableSearch(List<RecordSearchResult> results, boolean hasMore, Integer totalCount)
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** What the provider did: its results by table (only for tables it searched),
+    ** the tables it claimed but failed to search, and its status.
+    *******************************************************************************/
+   private record ProviderOutcome(Map<String, TableSearch> resultsByTable, Set<String> fallbackTableNames, RecordSearchProviderStatus status)
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** The search's parameters, once validated.
+    *******************************************************************************/
+   private record SearchParameters(String searchTerm, List<String> tokens, int limitPerTable, int offset, RecordSearchSort sort)
+   {
+   }
 
 
 
@@ -110,7 +172,10 @@ public class RecordSearchAction
          throw (new QBadRequestException("The search term may not be longer than " + MAX_SEARCH_TERM_LENGTH + " characters."));
       }
 
-      int limitPerTable = input.getLimitPerTable() == null ? DEFAULT_LIMIT_PER_TABLE : Math.max(1, Math.min(MAX_LIMIT_PER_TABLE, input.getLimitPerTable()));
+      int              limitPerTable = input.getLimitPerTable() == null ? DEFAULT_LIMIT_PER_TABLE : Math.max(1, Math.min(MAX_LIMIT_PER_TABLE, input.getLimitPerTable()));
+      int              offset        = input.getOffset() == null ? 0 : Math.max(0, Math.min(MAX_OFFSET, input.getOffset()));
+      RecordSearchSort sort          = input.getSort() == null ? RecordSearchSort.RELEVANCE : input.getSort();
+      SearchParameters parameters    = new SearchParameters(searchTerm, termTokens(searchTerm), limitPerTable, offset, sort);
 
       Set<String> onlyTableNames = CollectionUtils.nullSafeHasContents(input.getTableNames()) ? new HashSet<>(input.getTableNames()) : null;
 
@@ -131,18 +196,45 @@ public class RecordSearchAction
          tables.add(table);
       }
 
+      /////////////////////////////////////////////////////////////////////////////
+      // the fields this session can see, per table (personalization may remove //
+      // fields for some users) - only these are searched, highlighted or shown //
+      /////////////////////////////////////////////////////////////////////////////
+      Map<String, QTableMetaData> personalizedTables = new HashMap<>();
+      for(QTableMetaData table : tables)
+      {
+         personalizedTables.put(table.getName(), TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput()
+            .withTableName(table.getName())
+            .withTableMetaData(table)
+            .withInputSource(input.getInputSource())));
+      }
+
       ///////////////////////////////////////////////////////////////////////////
       // tables a provider searched use its results; all others (including the //
       // provider's tables, if it failed) use the default search.  either way, //
       // results are output in instance table order.                           //
       ///////////////////////////////////////////////////////////////////////////
-      Map<String, List<RecordSearchResult>> providerResults = searchWithProvider(qInstance, input, tables, searchTerm, limitPerTable);
+      ProviderOutcome providerOutcome = searchWithProvider(qInstance, input, tables, personalizedTables, parameters);
 
-      RecordSearchOutput output = new RecordSearchOutput();
+      RecordSearchOutput output = new RecordSearchOutput().withProviderStatus(providerOutcome.status());
       for(QTableMetaData table : tables)
       {
-         List<RecordSearchResult> tableResults = providerResults.get(table.getName());
-         output.getResults().addAll(tableResults != null ? tableResults : searchTable(input, table, searchTerm, limitPerTable));
+         TableSearch        tableSearch = providerOutcome.resultsByTable().get(table.getName());
+         RecordSearchSource source      = RecordSearchSource.PROVIDER;
+         if(tableSearch == null)
+         {
+            tableSearch = searchTable(input, table, personalizedTables.get(table.getName()), parameters);
+            source = providerOutcome.fallbackTableNames().contains(table.getName()) ? RecordSearchSource.FALLBACK : RecordSearchSource.DEFAULT;
+         }
+
+         output.getResults().addAll(tableSearch.results());
+         output.getTables().add(new RecordSearchTableSummary()
+            .withTableName(table.getName())
+            .withTableLabel(table.getLabel())
+            .withResultCount(tableSearch.results().size())
+            .withHasMore(tableSearch.hasMore())
+            .withTotalCount(tableSearch.totalCount())
+            .withSource(source));
       }
 
       return (output);
@@ -153,15 +245,16 @@ public class RecordSearchAction
    /*******************************************************************************
     ** Search the tables that the instance's record search provider (if any)
     ** claims.  Returns results by table name, for only those tables the provider
-    ** searched - so empty if there is no provider, it claims no tables, or it
-    ** fails (which is logged, and leaves its tables to the default search).
+    ** searched - so none if there is no provider, it claims no tables, or it
+    ** fails (which is logged, reported in the status, and leaves its tables to
+    ** the default search).
     *******************************************************************************/
-   private Map<String, List<RecordSearchResult>> searchWithProvider(QInstance qInstance, RecordSearchInput input, List<QTableMetaData> tables, String searchTerm, int limitPerTable) throws QException
+   private ProviderOutcome searchWithProvider(QInstance qInstance, RecordSearchInput input, List<QTableMetaData> tables, Map<String, QTableMetaData> personalizedTables, SearchParameters parameters) throws QException
    {
       QCodeReference providerReference = qInstance.getRecordSearchProvider();
       if(providerReference == null || tables.isEmpty())
       {
-         return (new HashMap<>());
+         return (new ProviderOutcome(Map.of(), Set.of(), new RecordSearchProviderStatus().withStatus(RecordSearchProviderState.NONE)));
       }
 
       Map<String, QTableMetaData> claimedTables = new LinkedHashMap<>();
@@ -184,47 +277,76 @@ public class RecordSearchAction
 
          if(claimedTables.isEmpty())
          {
-            return (new HashMap<>());
+            return (new ProviderOutcome(Map.of(), Set.of(), new RecordSearchProviderStatus().withStatus(RecordSearchProviderState.NONE)));
          }
 
          providerOutput = provider.search(new RecordSearchInput()
-            .withSearchTerm(searchTerm)
+            .withSearchTerm(parameters.searchTerm())
             .withTableNames(new ArrayList<>(claimedTables.keySet()))
-            .withLimitPerTable(limitPerTable)
+            .withLimitPerTable(parameters.limitPerTable())
+            .withOffset(parameters.offset())
+            .withSort(parameters.sort())
             .withInputSource(input.getInputSource()));
       }
       catch(Exception | LinkageError e)
       {
          LOG.warn("Error in record search provider - searching its tables with the default search instead", e, logPair("provider", providerReference.getName()), logPair("tableNames", claimedTables.keySet()));
-         return (new HashMap<>());
+         return (new ProviderOutcome(Map.of(), new HashSet<>(claimedTables.keySet()), failedStatus(e)));
       }
 
       /////////////////////////////////////////////////////////////////////
-      // collect the provider's ids per claimed table, in its order      //
+      // collect the provider's results per claimed table, in its order //
       // (ignoring results for other tables, and results without an id) //
       /////////////////////////////////////////////////////////////////////
-      Map<String, List<Serializable>> idsByTable = new HashMap<>();
+      Map<String, List<RecordSearchResult>> providerResultsByTable = new HashMap<>();
       for(String tableName : claimedTables.keySet())
       {
-         idsByTable.put(tableName, new ArrayList<>());
+         providerResultsByTable.put(tableName, new ArrayList<>());
       }
 
       List<RecordSearchResult> providerResults = providerOutput == null ? null : providerOutput.getResults();
       for(RecordSearchResult result : CollectionUtils.nonNullList(providerResults))
       {
-         List<Serializable> ids = result == null ? null : idsByTable.get(result.getTableName());
-         if(ids != null && result.getRecordId() != null)
+         List<RecordSearchResult> tableResults = result == null ? null : providerResultsByTable.get(result.getTableName());
+         if(tableResults != null && result.getRecordId() != null)
          {
-            ids.add(result.getRecordId());
+            tableResults.add(result);
          }
       }
 
-      Map<String, List<RecordSearchResult>> resultsByTable = new HashMap<>();
+      Map<String, Integer>     totals         = providerOutput == null ? null : providerOutput.getTotalCountByTable();
+      Map<String, TableSearch> resultsByTable = new HashMap<>();
       for(QTableMetaData table : claimedTables.values())
       {
-         resultsByTable.put(table.getName(), readProviderResults(input, table, idsByTable.get(table.getName()), limitPerTable));
+         Integer totalCount = totals == null ? null : totals.get(table.getName());
+         resultsByTable.put(table.getName(), readProviderResults(input, table, personalizedTables.get(table.getName()), providerResultsByTable.get(table.getName()), totalCount, parameters));
       }
-      return (resultsByTable);
+      return (new ProviderOutcome(resultsByTable, Set.of(), new RecordSearchProviderStatus().withStatus(RecordSearchProviderState.OK)));
+   }
+
+
+
+   /*******************************************************************************
+    ** The status of a provider that failed: the simple class name of the root
+    ** cause, and - only when the failure is meant for users - its message.
+    ** Other messages (which may name internal hosts) stay in the log.
+    *******************************************************************************/
+   static RecordSearchProviderStatus failedStatus(Throwable e)
+   {
+      Throwable      root = e;
+      Set<Throwable> seen = new HashSet<>();
+      while(root.getCause() != null && seen.add(root))
+      {
+         root = root.getCause();
+      }
+
+      QUserFacingException userFacingException = ExceptionUtils.findClassInRootChain(e, QUserFacingException.class);
+      String               message             = userFacingException == null ? null : firstLine(userFacingException.getMessage(), FAILURE_MESSAGE_MAX_LENGTH);
+
+      return (new RecordSearchProviderStatus()
+         .withStatus(RecordSearchProviderState.FAILED)
+         .withFailureClass(root.getClass().getSimpleName())
+         .withMessage(message));
    }
 
 
@@ -232,33 +354,35 @@ public class RecordSearchAction
    /*******************************************************************************
     ** Re-read the records a provider returned for one table, by primary key,
     ** through QueryAction - so only records that still exist and that the
-    ** session may read are output - keeping the provider's order.
+    ** session may read are output - keeping the provider's order (and its
+    ** scores and highlights).
     *******************************************************************************/
-   private List<RecordSearchResult> readProviderResults(RecordSearchInput input, QTableMetaData table, List<Serializable> providerIds, int limitPerTable) throws QException
+   private TableSearch readProviderResults(RecordSearchInput input, QTableMetaData table, QTableMetaData personalized, List<RecordSearchResult> providerResults, Integer totalCount, SearchParameters parameters) throws QException
    {
-      QFieldMetaData    primaryKeyField = table.getField(table.getPrimaryKeyField());
-      Set<Serializable> ids             = new LinkedHashSet<>();
-      for(Serializable providerId : providerIds)
+      QFieldMetaData                        primaryKeyField    = table.getField(table.getPrimaryKeyField());
+      Map<Serializable, RecordSearchResult> providerResultById = new LinkedHashMap<>();
+      for(RecordSearchResult providerResult : providerResults)
       {
-         if(ids.size() >= MAX_PROVIDER_IDS_PER_TABLE)
+         if(providerResultById.size() >= MAX_PROVIDER_IDS_PER_TABLE)
          {
             break;
          }
 
-         Serializable id = valueAsFieldType(primaryKeyField, providerId);
+         Serializable id = valueAsFieldType(primaryKeyField, providerResult.getRecordId());
          if(id != null)
          {
-            ids.add(id);
+            providerResultById.putIfAbsent(id, providerResult);
          }
       }
 
-      List<RecordSearchResult> results = new ArrayList<>();
-      if(ids.isEmpty())
+      boolean                  totalHasMore = totalCount != null && totalCount > parameters.offset() + parameters.limitPerTable();
+      List<RecordSearchResult> results      = new ArrayList<>();
+      if(providerResultById.isEmpty())
       {
-         return (results);
+         return (new TableSearch(results, totalHasMore, totalCount));
       }
 
-      QQueryFilter filter = new QQueryFilter(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, new ArrayList<>(ids)));
+      QQueryFilter filter = new QQueryFilter(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, new ArrayList<>(providerResultById.keySet())));
 
       Map<Serializable, QRecord> recordsById = new HashMap<>();
       for(QRecord record : new QueryAction().execute(newQueryInput(input, table, filter)).getRecords())
@@ -266,19 +390,22 @@ public class RecordSearchAction
          recordsById.put(record.getValue(table.getPrimaryKeyField()), record);
       }
 
-      for(Serializable id : ids)
+      boolean hasMore = totalHasMore;
+      for(Map.Entry<Serializable, RecordSearchResult> entry : providerResultById.entrySet())
       {
-         QRecord record = recordsById.get(id);
+         QRecord record = recordsById.get(entry.getKey());
          if(record != null)
          {
-            results.add(toResult(table, record));
-            if(results.size() >= limitPerTable)
+            if(results.size() >= parameters.limitPerTable())
             {
+               hasMore = true;
                break;
             }
+            results.add(toResult(table, personalized, record, parameters.tokens(), entry.getValue()));
          }
       }
-      return (results);
+
+      return (new TableSearch(results, hasMore, totalCount));
    }
 
 
@@ -286,22 +413,19 @@ public class RecordSearchAction
    /*******************************************************************************
     ** Query one table for records whose search fields match the term.
     *******************************************************************************/
-   private List<RecordSearchResult> searchTable(RecordSearchInput input, QTableMetaData table, String searchTerm, int limitPerTable) throws QException
+   private TableSearch searchTable(RecordSearchInput input, QTableMetaData table, QTableMetaData personalized, SearchParameters parameters) throws QException
    {
+      String searchTerm = parameters.searchTerm();
+
       ////////////////////////////////////////////////////////////////////////////
       // search only the fields this session can see (personalization may      //
       // remove fields for some users; hidden and password fields never match) //
       ////////////////////////////////////////////////////////////////////////////
-      QTableMetaData personalized = TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput()
-         .withTableName(table.getName())
-         .withTableMetaData(table)
-         .withInputSource(input.getInputSource()));
-
       QQueryFilter filter = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR);
       for(String fieldName : table.getSearchFields())
       {
-         QFieldMetaData field = personalized.getFields().get(fieldName);
-         if(field == null || field.getIsHidden() || field.getType() == null || field.getType().needsMasked())
+         QFieldMetaData field = visibleField(personalized, fieldName);
+         if(field == null)
          {
             continue;
          }
@@ -322,18 +446,34 @@ public class RecordSearchAction
 
       if(CollectionUtils.nullSafeIsEmpty(filter.getCriteria()))
       {
-         return (new ArrayList<>());
+         return (new TableSearch(new ArrayList<>(), false, null));
       }
 
+      QFieldMetaData modifyDateField = parameters.sort() == RecordSearchSort.RECENT ? modifyDateField(table) : null;
+      if(modifyDateField != null)
+      {
+         filter.withOrderBy(new QFilterOrderBy(modifyDateField.getName(), false));
+      }
       filter.withOrderBy(new QFilterOrderBy(table.getPrimaryKeyField()));
-      filter.withLimit(limitPerTable);
+      filter.withSkip(parameters.offset());
+
+      //////////////////////////////////////////////////////////////
+      // one more than the limit, to know if there are more pages //
+      //////////////////////////////////////////////////////////////
+      filter.withLimit(parameters.limitPerTable() + 1);
 
       List<RecordSearchResult> results = new ArrayList<>();
+      boolean                  hasMore = false;
       for(QRecord record : new QueryAction().execute(newQueryInput(input, table, filter)).getRecords())
       {
-         results.add(toResult(table, record));
+         if(results.size() >= parameters.limitPerTable())
+         {
+            hasMore = true;
+            break;
+         }
+         results.add(toResult(table, personalized, record, parameters.tokens(), null));
       }
-      return (results);
+      return (new TableSearch(results, hasMore, null));
    }
 
 
@@ -357,16 +497,338 @@ public class RecordSearchAction
 
 
    /*******************************************************************************
-    ** The search result for a record.
+    ** The search result for a record: its label, plus (from only the fields the
+    ** session can see) highlights, details and last-modified time.  Fields in the
+    ** record label are not highlighted or detailed - the label shows them.
     *******************************************************************************/
-   private static RecordSearchResult toResult(QTableMetaData table, QRecord record)
+   private static RecordSearchResult toResult(QTableMetaData table, QTableMetaData personalized, QRecord record, List<String> tokens, RecordSearchResult providerResult)
    {
       String recordLabel = record.getRecordLabel() != null ? record.getRecordLabel() : QValueFormatter.formatRecordLabel(table, record);
-      return (new RecordSearchResult()
+      RecordSearchResult result = new RecordSearchResult()
          .withTableName(table.getName())
          .withTableLabel(table.getLabel())
          .withRecordId(record.getValue(table.getPrimaryKeyField()))
-         .withRecordLabel(recordLabel));
+         .withRecordLabel(recordLabel)
+         .withScore(providerResult == null ? null : providerResult.getScore());
+
+      QFieldMetaData modifyDateField = modifyDateField(table);
+      if(modifyDateField != null && visibleField(personalized, modifyDateField.getName()) != null)
+      {
+         result.setUpdatedAt(valueAsInstant(record.getValue(modifyDateField.getName())));
+      }
+
+      Set<String>                 labelFields  = new HashSet<>(CollectionUtils.nonNullList(table.getRecordLabelFields()));
+      List<RecordSearchHighlight> highlights   = new ArrayList<>();
+      Set<String>                 highlighted  = new HashSet<>();
+      List<QFieldMetaData>        detailFields = new ArrayList<>();
+      for(String fieldName : CollectionUtils.nonNullList(table.getSearchFields()))
+      {
+         QFieldMetaData field = visibleField(personalized, fieldName);
+         if(field == null || labelFields.contains(fieldName))
+         {
+            continue;
+         }
+
+         RecordSearchHighlight highlight = highlights.size() < MAX_HIGHLIGHTS_PER_RESULT ? highlight(field, fieldText(record, field), tokens) : null;
+         if(highlight != null)
+         {
+            highlights.add(highlight);
+            highlighted.add(fieldName);
+         }
+         else
+         {
+            detailFields.add(field);
+         }
+      }
+
+      ////////////////////////////////////////////////////////////////////////////
+      // a provider's highlights can show matches core can't find (e.g., stems) //
+      // - but only for fields the session can see, and only if well-formed     //
+      ////////////////////////////////////////////////////////////////////////////
+      List<RecordSearchHighlight> providerHighlights = providerResult == null ? null : providerResult.getHighlights();
+      for(RecordSearchHighlight providerHighlight : CollectionUtils.nonNullList(providerHighlights))
+      {
+         if(highlights.size() >= MAX_HIGHLIGHTS_PER_RESULT)
+         {
+            break;
+         }
+
+         QFieldMetaData field = providerHighlight == null ? null : visibleField(personalized, providerHighlight.getFieldName());
+         if(field == null || labelFields.contains(field.getName()) || highlighted.contains(field.getName()))
+         {
+            continue;
+         }
+
+         RecordSearchHighlight validHighlight = validProviderHighlight(field, providerHighlight);
+         if(validHighlight != null)
+         {
+            highlights.add(validHighlight);
+            highlighted.add(field.getName());
+         }
+      }
+
+      List<RecordSearchDetail> details = new ArrayList<>();
+      for(QFieldMetaData field : detailFields)
+      {
+         String displayValue = fieldText(record, field);
+         if(details.size() < MAX_DETAILS_PER_RESULT && !highlighted.contains(field.getName()) && !field.getName().equals(table.getPrimaryKeyField()) && StringUtils.hasContent(displayValue))
+         {
+            details.add(new RecordSearchDetail().withFieldName(field.getName()).withFieldLabel(field.getLabel()).withDisplayValue(displayValue));
+         }
+      }
+
+      return (result
+         .withHighlights(highlights.isEmpty() ? null : highlights)
+         .withDetails(details.isEmpty() ? null : details));
+   }
+
+
+
+   /*******************************************************************************
+    ** The field, if the session can see it in the (personalized) table: it
+    ** exists, is not hidden, and is not a masked (e.g., password) field.
+    *******************************************************************************/
+   private static QFieldMetaData visibleField(QTableMetaData personalized, String fieldName)
+   {
+      QFieldMetaData field = fieldName == null || personalized == null ? null : personalized.getFields().get(fieldName);
+      if(field == null || field.getIsHidden() || field.getType() == null || field.getType().needsMasked())
+      {
+         return (null);
+      }
+      return (field);
+   }
+
+
+
+   /*******************************************************************************
+    ** The table's last-modified field (the one whose default value behavior is
+    ** MODIFY_DATE), or null if it has none.
+    *******************************************************************************/
+   static QFieldMetaData modifyDateField(QTableMetaData table)
+   {
+      for(QFieldMetaData field : CollectionUtils.nonNullMap(table.getFields()).values())
+      {
+         if(field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class) == DynamicDefaultValueBehavior.MODIFY_DATE)
+         {
+            return (field);
+         }
+      }
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** A field's value as plain text (its display value, else its raw value),
+    ** with whitespace runs collapsed to single spaces; null if blank.
+    *******************************************************************************/
+   private static String fieldText(QRecord record, QFieldMetaData field)
+   {
+      String text = record.getDisplayValue(field.getName());
+      if(!StringUtils.hasContent(text))
+      {
+         text = ValueUtils.getValueAsString(record.getValue(field.getName()));
+      }
+      return (StringUtils.hasContent(text) ? WHITESPACE.matcher(text.trim()).replaceAll(" ") : null);
+   }
+
+
+
+   /*******************************************************************************
+    ** The distinct (ignoring case) whitespace-separated words of the search term.
+    *******************************************************************************/
+   static List<String> termTokens(String searchTerm)
+   {
+      List<String> tokens = new ArrayList<>();
+      Set<String>  seen   = new HashSet<>();
+      for(String token : WHITESPACE.split(searchTerm.trim()))
+      {
+         if(!token.isEmpty() && tokens.size() < HIGHLIGHT_MAX_TOKENS && seen.add(token.toLowerCase()))
+         {
+            tokens.add(token);
+         }
+      }
+      return (tokens);
+   }
+
+
+
+   /*******************************************************************************
+    ** A highlight of a field's text: a snippet around its first match of any
+    ** token (case-insensitive), with every match in the snippet.  Null if the
+    ** text is blank or does not match.
+    *******************************************************************************/
+   static RecordSearchHighlight highlight(QFieldMetaData field, String text, List<String> tokens)
+   {
+      if(!StringUtils.hasContent(text))
+      {
+         return (null);
+      }
+
+      String      scanned = text.length() > HIGHLIGHT_MAX_SCANNED_CHARS ? text.substring(0, HIGHLIGHT_MAX_SCANNED_CHARS) : text;
+      List<int[]> ranges  = new ArrayList<>();
+      for(String token : tokens)
+      {
+         int from = 0;
+         while(ranges.size() < HIGHLIGHT_MAX_MATCHES)
+         {
+            int at = indexOfIgnoreCase(scanned, token, from);
+            if(at < 0)
+            {
+               break;
+            }
+            ranges.add(new int[] { at, at + token.length() });
+            from = at + token.length();
+         }
+      }
+
+      if(ranges.isEmpty())
+      {
+         return (null);
+      }
+
+      ///////////////////////////////////////////
+      // sort, and merge overlapping or touching //
+      ///////////////////////////////////////////
+      ranges.sort(Comparator.comparingInt(r -> r[0]));
+      List<int[]> merged = new ArrayList<>();
+      for(int[] range : ranges)
+      {
+         int[] last = merged.isEmpty() ? null : merged.get(merged.size() - 1);
+         if(last != null && range[0] <= last[1])
+         {
+            last[1] = Math.max(last[1], range[1]);
+         }
+         else
+         {
+            merged.add(new int[] { range[0], range[1] });
+         }
+      }
+
+      /////////////////////////////////////////////////////////////
+      // the snippet: the whole text if short, else a window that //
+      // starts a little before the first match                   //
+      /////////////////////////////////////////////////////////////
+      int start = 0;
+      int end   = text.length();
+      if(text.length() > HIGHLIGHT_SNIPPET_LENGTH)
+      {
+         start = Math.max(0, merged.get(0)[0] - HIGHLIGHT_SNIPPET_LEAD);
+         end = Math.min(text.length(), start + HIGHLIGHT_SNIPPET_LENGTH);
+         start = Math.max(0, end - HIGHLIGHT_SNIPPET_LENGTH);
+         if(start > 0 && Character.isLowSurrogate(text.charAt(start)))
+         {
+            start++;
+         }
+         if(end < text.length() && Character.isHighSurrogate(text.charAt(end - 1)))
+         {
+            end--;
+         }
+      }
+
+      String prefix = start > 0 ? ELLIPSIS : "";
+      String suffix = end < text.length() ? ELLIPSIS : "";
+      int    shift  = prefix.length() - start;
+
+      List<RecordSearchHighlightMatch> matches = new ArrayList<>();
+      for(int[] range : merged)
+      {
+         int matchStart = Math.max(range[0], start);
+         int matchEnd   = Math.min(range[1], end);
+         if(matchStart < matchEnd)
+         {
+            matches.add(new RecordSearchHighlightMatch().withStart(matchStart + shift).withEnd(matchEnd + shift));
+         }
+      }
+
+      return (new RecordSearchHighlight()
+         .withFieldName(field.getName())
+         .withFieldLabel(field.getLabel())
+         .withText(prefix + text.substring(start, end) + suffix)
+         .withMatches(matches));
+   }
+
+
+
+   /*******************************************************************************
+    ** Index of the needle in the text at or after from, ignoring case; -1 if none.
+    *******************************************************************************/
+   private static int indexOfIgnoreCase(String text, String needle, int from)
+   {
+      for(int i = from; i <= text.length() - needle.length(); i++)
+      {
+         if(text.regionMatches(true, i, needle, 0, needle.length()))
+         {
+            return (i);
+         }
+      }
+      return (-1);
+   }
+
+
+
+   /*******************************************************************************
+    ** A copy of a provider's highlight, labeled by core, if it is well-formed:
+    ** non-blank text of bounded length, and at least one match, each within the
+    ** text, sorted and non-overlapping.  Null otherwise.
+    *******************************************************************************/
+   static RecordSearchHighlight validProviderHighlight(QFieldMetaData field, RecordSearchHighlight providerHighlight)
+   {
+      String text = providerHighlight.getText();
+      if(!StringUtils.hasContent(text) || text.length() > PROVIDER_HIGHLIGHT_MAX_LENGTH || CollectionUtils.nullSafeIsEmpty(providerHighlight.getMatches()))
+      {
+         return (null);
+      }
+
+      List<RecordSearchHighlightMatch> matches  = new ArrayList<>();
+      int                              previous = 0;
+      for(RecordSearchHighlightMatch match : providerHighlight.getMatches())
+      {
+         if(match == null || match.getStart() == null || match.getEnd() == null || match.getStart() < previous || match.getEnd() <= match.getStart() || match.getEnd() > text.length())
+         {
+            return (null);
+         }
+         matches.add(new RecordSearchHighlightMatch().withStart(match.getStart()).withEnd(match.getEnd()));
+         previous = match.getEnd();
+      }
+
+      return (new RecordSearchHighlight()
+         .withFieldName(field.getName())
+         .withFieldLabel(field.getLabel())
+         .withText(text)
+         .withMatches(matches));
+   }
+
+
+
+   /*******************************************************************************
+    ** The first line of a message, at most maxLength characters; null if blank.
+    *******************************************************************************/
+   private static String firstLine(String message, int maxLength)
+   {
+      if(!StringUtils.hasContent(message))
+      {
+         return (null);
+      }
+      String line = message.strip().lines().findFirst().orElse("").strip();
+      return (line.length() > maxLength ? line.substring(0, maxLength - 1) + ELLIPSIS : line);
+   }
+
+
+
+   /*******************************************************************************
+    ** The value as an Instant, or null if it is not one.
+    *******************************************************************************/
+   private static Instant valueAsInstant(Serializable value)
+   {
+      try
+      {
+         return (ValueUtils.getValueAsInstant(value));
+      }
+      catch(Exception e)
+      {
+         return (null);
+      }
    }
 
 

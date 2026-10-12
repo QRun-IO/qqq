@@ -114,7 +114,7 @@ Sources are in §14. Prices are as of 2026-10-12. *verify* marks a claim that wa
 |---|---|---|---|---|---|---|---|---|
 | **Purge by URL** | Yes (invalidation paths) | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | **Prefix / wildcard** | Yes. `*` only at the end, and a wildcard path counts as **1 path** for billing. | Yes (all plans) | via key | Yes | Yes (prefix, host) | Yes | via CP code | Varnish BAN |
-| **Purge by tag** | **No** | Yes, all plans (`Cache-Tag`) | Yes (`Surrogate-Key`) | Yes (`CDN-Tag`) | Yes (`Cache-Tag`, 50 per object) | **No** | Yes (`Edge-Cache-Tag`) | Yes (Souin `Surrogate-Key`, Varnish `xkey`) |
+| **Purge by tag** | **No** | Yes, all plans (`Cache-Tag`) | Yes (`Surrogate-Key`) | Yes (`CDN-Tag`) | Yes (`Cache-Tag`, 50 per object) | **No** | Yes (`Edge-Cache-Tag`) | Yes (Souin `Surrogate-Key`, comma-separated; Varnish `xkey`) |
 | **Purge cost / limits** | **First 1,000 paths/month free**, then about $0.005 per path.<br>Quotas cap concurrent in-progress paths (wildcards are capped low, about 15 in progress, *verify*).<br>Invalidation is not instant (typically up to a few minutes, *verify*).<br>Whether flat-rate plans include invalidations: *verify*. | Free: 5 tag/prefix requests per minute, 100 items each | ~100k/h | not published | 500/min | ~100 concurrent | plan | none |
 | **Signed URLs** | Yes. Key groups, canned or custom policy, URLs or cookies. | WAF HMAC or a Worker | VCL or Compute | Token auth (HMAC-SHA256) | Yes | Premium | EdgeAuth | imgproxy only |
 | **Image transforms** | None native. Use CloudFront Functions, Lambda@Edge, or your own service. | `/cdn-cgi/image`, 5k unique/month free | Image Optimizer | Optimizer, $9.50 per site | none | none | IVM | imgproxy / thumbor |
@@ -192,8 +192,8 @@ These are seeded as `cdn_cache_policy` rows (§4.4) and pinned by the header mat
 | Optimized images | `/_next/image?url=…&w=…&q=…` | `public, max-age=31536000` (with `minimumCacheTTL`, §6.1) | Never in practice, because the source is immutable | The cache key includes `url`, `w`, `q` and a normalized `Accept` |
 | API leaf (single record) | `api…/v1/blog-posts/123` | `public, max-age=60, s-maxage=86400, stale-while-revalidate=60, stale-if-error=86400` | `/v1/blog-posts/123*` | Long edge TTL because it gets invalidated |
 | API hub (lists, search, feeds, sitemap) | `/v1/blog-posts?blog=…`, `/v1/feeds/*`, `/v1/sitemap.xml` | `public, max-age=60, s-maxage=120, stale-while-revalidate=60, stale-if-error=86400` | **None.** It relies on a short TTL instead. | Keeps the path budget small (§4.3) |
-| HTML leaf (ISR, B2) | `/blog/quick-bits/my-post` | `public, max-age=0, must-revalidate, s-maxage=86400, stale-while-revalidate=60`. The policy sets this, overriding Next's ISR default. | `/blog/quick-bits/my-post*` (also covers the `_rsc` variants) | |
-| HTML hub (ISR, B2) | `/`, `/blog/quick-bits`, `/projects` | `public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300` | None, or 1 path when published from the record action | |
+| HTML leaf (ISR, B2) | `/blogs/quick-bits/my-post` | `public, max-age=0, must-revalidate, s-maxage=86400, stale-while-revalidate=60`. The policy sets this, overriding Next's ISR default. | `/blogs/quick-bits/my-post*` (also covers the `_rsc` variants) | |
+| HTML hub (ISR, B2) | `/`, `/blogs/quick-bits`, `/projects` | `public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300` | None, or 1 path when published from the record action | |
 | Never cache | `/v1/me*`, `/v1/contact`, `/oauth/*`, `/api/*` (frontend, including `/api/e`), `/preview*`, and all `POST` requests | `private, no-store` | n/a | The CloudFront behaviors for these paths also use the managed `CachingDisabled` policy |
 
 ---
@@ -230,7 +230,7 @@ public interface CdnProviderInterface
 
 ### 4.2 Canonical tags (provider-neutral)
 
-A tag has the form `<kind>:<id>[:<facet>]` and is at most 64 ASCII characters. Examples: `site:1`, `post:123`, `blog:7`, `blog:7:list`, `page:12`, `media:456`, `author:3`, `project:9`, `path:/blog/quick-bits/my-post`.
+A tag has the form `<kind>:<id>[:<facet>]` and is at most 64 ASCII characters. Examples: `site:1`, `post:123`, `blog:7`, `blog:7:list`, `page:12`, `media:456`, `author:3`, `project:9`, `path:/blogs/quick-bits/my-post`.
 
 - **Providers with a tag header:** tags are emitted within the portable budget of ≤ 20 tags and ≤ 1,000 bytes. A list response collapses to its list tag.
 - **CloudFront:** no tag header is emitted. Tags exist only inside the qbit, as the unit of invalidation, and the planner turns them into paths.
@@ -244,7 +244,7 @@ The same tag vocabulary is used by Next.js `cacheTag()` (§6.3). A tag therefore
 - **Providers with tag purge** (Fastly, Bunny, Cloudflare, Souin) send the tags as-is, in batches sized to the provider's `itemsPerRequest`.
 - **CloudFront** uses `CloudFrontPathPlanner`, which works in five steps:
   1. **Expand.** Each tag maps to invalidation paths through `cdn_table_tag_rule.invalidationPaths`. The paths are rendered from the event's `record` **and** its `oldRecord`, so a slug change also clears the old URL.
-     - Example: `post:123` becomes `www:/blog/{blog.slug}/{slug}*` and `api:/v1/blog-posts/{id}*`.
+     - Example: `post:123` becomes `www:/blogs/{blog.slug}/{slug}*` and `api:/v1/blog-posts/{id}*`.
      - The trailing `*` covers the RSC `?_rsc=` variants and other query variants.
      - The `host:` prefix is dropped, because one distribution serves all hosts and paths are host-agnostic. The trade-off is that `/v1/blog-posts/123*` on `api` and an identical path on `www` are invalidated together, which is harmless.
   2. **Skip hubs.** Paths whose policy class is *hub* (§3.2) are dropped, because they expire on their own within 60–120 s. A manual "Purge from CDN" action can include them on purpose.
@@ -452,7 +452,7 @@ Other distribution settings:
 
 | Table | Tags | Invalidation paths (leaves only; hubs expire by TTL) |
 |---|---|---|
-| `blog_post`, `blog_post_version` | `post:{id}`, `blog:{blogId}:list`, `site:{siteId}:feeds` | `/blog/{blog.slug}/{slug}*`, `/v1/blog-posts/{id}*` |
+| `blog_post`, `blog_post_version` | `post:{id}`, `blog:{blogId}:list`, `site:{siteId}:feeds` | `/blogs/{blog.slug}/{slug}*`, `/v1/blog-posts/{id}*` |
 | `blog` | `blog:{id}` | `/v1/blogs/{id}*` (the blog index page is a hub) |
 | `page`, `page_section` | `page:{pageId}` | `/{page.slug}*`, `/v1/pages/{pageId}*` |
 | `author` | `author:{id}` | `/v1/authors/{id}*`. Pages that embed the author card expire as hubs, or through a manual purge. |

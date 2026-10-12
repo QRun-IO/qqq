@@ -56,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QInstanceValidator` checks the code reference. Without a provider, search is unchanged.
 
 ### Fixed
+- **Partial updates under joined record-security locks ([#1073](https://github.com/QRun-IO/qqq/issues/1073))** — an
+  update that did not send the foreign key a joined write lock walks through (for example, editing only a line item's
+  `sku` when the line item is locked through its order) was always denied with "the referenced ... was not found".
+  `UpdateAction` now validates the write locks against each record as it will be after the update: its stored values
+  overlaid with the values being written. Fields that are sent, including nulls, are still validated as written, and
+  rows whose stored values fail the write locks are denied generically, so an error never names a stored lock value.
 - **Quartz schedules on a fresh persistent job store ([#1044](https://github.com/QRun-IO/qqq/issues/1044))** —
   `QScheduleManager.start()` now creates the jobs for every schedulable (processes, queues, table automations,
   scheduled-job records) when Quartz uses a persistent store such as a clustered `JobStoreTX` on PostgreSQL.

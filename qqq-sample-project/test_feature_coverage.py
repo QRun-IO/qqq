@@ -82,7 +82,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
                 'rationale': 'Scenario awaits a supported fixture', 'target_release': '4.1.1'}
 
     # (candidate, index in release-deferrals.json, source revision the orb turns into that candidate)
-    ACCEPTED_CANDIDATES = (('4.1.0-RC.1', 0, '4.1.0-SNAPSHOT'), ('4.1.0-RC.2', 1, '4.1.0-RC.1'))
+    ACCEPTED_CANDIDATES = (('4.1.0-RC.1', 0, '4.1.0-SNAPSHOT'), ('4.1.0-RC.2', 1, '4.1.0-RC.1'),
+                           ('4.1.0-RC.3', 2, '4.1.0-RC.2'))
 
     def configure_accepted_next(self, revision='4.1.0-SNAPSHOT'):
         shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
@@ -111,11 +112,16 @@ class FeatureCoverageGateTest(unittest.TestCase):
                 self.assertTrue(result['next_acceptance']['problems'])
                 self.assertEqual(1, self.run_gate(stage='source', candidate_version=candidate,
                                                  required='core.widget.row_builder')[0])
-                for version in ('4.1.0', '4.1.0-RC.3', '4.2.0-RC.1', '4.1.0-rc.2', ' 4.1.0-RC.2'):
+                for version in ('4.1.0', '4.1.0-RC.4', '4.2.0-RC.1', '4.1.0-rc.2', ' 4.1.0-RC.2',
+                                '4.1.0-rc.3', '4.1.0-RC.3 ', '4.1.0-RC3'):
                     self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=version)[0])
-        # Each candidate only accepts its own source revisions: RC.2 on the pre-RC1 snapshot is rejected.
+        # Each candidate only accepts its own source revisions: RC.2 on the pre-RC1 snapshot and RC.3 on the
+        # snapshot or the RC.1 revision are rejected.
         self.configure_accepted_next('4.1.0-SNAPSHOT')
         self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.2')[0])
+        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
+        self.configure_accepted_next('4.1.0-RC.1')
+        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
 
     def test_accepted_next_cannot_hide_framework_failures_or_public_gaps(self):
         for candidate, _, revision in self.ACCEPTED_CANDIDATES:
@@ -140,7 +146,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
             for field, value in (('next_version', '1.0.0-RC.1'), ('next_version', '1.0.0-RC.9'),
                                  ('next_version', '1.0.0-RC.12'), ('next_sha', '0' * 40),
                                  ('jar_sha256', '0' * 64), ('owner_approval', 'unapproved'),
-                                 ('owner_approval', approvals[1 - index]), ('owner_approval', approvals[index] + '0'),
+                                 *(('owner_approval', other) for other in approvals if other != approvals[index]),
+                                 ('owner_approval', approvals[index] + '0'),
                                  ('features', ['core.security.authentication']), ('target_release', ''),
                                  ('rationale', '')):
                 with self.subTest(candidate=candidate, field=field, value=value):
@@ -153,8 +160,10 @@ class FeatureCoverageGateTest(unittest.TestCase):
             root_content = root_pom.read_text()
             # The coverage verifier runs after publication too, so it also accepts the orb's bump commit revision.
             allowed_after_publish = {'4.1.0-RC.1': ('4.1.0-SNAPSHOT', '4.1.0-RC.1'),
-                                     '4.1.0-RC.2': ('4.1.0-RC.1', '4.1.0-RC.2')}[candidate]
-            for revision in ('4.1.0', '4.1.0-SNAPSHOT', '4.1.0-RC.1', '4.1.0-RC.2', '4.1.0-RC.3', '4.2.0-SNAPSHOT'):
+                                     '4.1.0-RC.2': ('4.1.0-RC.1', '4.1.0-RC.2'),
+                                     '4.1.0-RC.3': ('4.1.0-RC.2', '4.1.0-RC.3')}[candidate]
+            for revision in ('4.1.0', '4.1.0-SNAPSHOT', '4.1.0-RC.1', '4.1.0-RC.2', '4.1.0-RC.3', '4.1.0-RC.4',
+                             '4.2.0-SNAPSHOT'):
                 with self.subTest(candidate=candidate, revision=revision):
                     root_pom.write_text(root_content.replace(base_revision, revision))
                     code = self.run_gate(stage='source', candidate_version=candidate)[0]
@@ -171,18 +180,24 @@ class FeatureCoverageGateTest(unittest.TestCase):
     def test_accepted_next_policy_list_is_closed_and_unambiguous(self):
         path = self.sample / 'release-deferrals.json'
         original = json.loads(Path(__file__).with_name('release-deferrals.json').read_text())
-        rc1, rc2 = original['accepted_next_release']
-        rc3 = dict(rc2, qqq_version='4.1.0-RC.3')
-        self.configure_accepted_next('4.1.0-RC.1')
-        self.assertEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.2')[0])
-        for label, policy in (('legacy object', rc2), ('empty', []), ('missing RC.2', [rc1]),
-                              ('duplicate RC.2', [rc1, rc2, rc2]), ('unapproved RC.3', [rc1, rc2, rc3]),
-                              ('non-object entry', [rc1, rc2, '4.1.0-RC.2'])):
-            with self.subTest(policy=label):
-                path.write_text(json.dumps(dict(original, accepted_next_release=policy)))
-                self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.2')[0])
-        path.write_text(json.dumps(dict(original, accepted_next_release=[rc1, rc2, rc3])))
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
+        rc1, rc2, rc3 = original['accepted_next_release']
+        rc4 = dict(rc3, qqq_version='4.1.0-RC.4')
+        for candidate, revision in (('4.1.0-RC.2', '4.1.0-RC.1'), ('4.1.0-RC.3', '4.1.0-RC.2')):
+            self.configure_accepted_next(revision)
+            self.assertEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
+            own = next(entry for entry in (rc1, rc2, rc3) if entry['qqq_version'] == candidate)
+            others = [entry for entry in (rc1, rc2, rc3) if entry is not own]
+            for label, policy in (('legacy object', own), ('empty', []), ('missing own entry', others),
+                                  ('duplicate own entry', [rc1, rc2, rc3, own]),
+                                  ('unapproved RC.4', [rc1, rc2, rc3, rc4]),
+                                  ('non-object entry', [rc1, rc2, rc3, candidate])):
+                with self.subTest(candidate=candidate, policy=label):
+                    path.write_text(json.dumps(dict(original, accepted_next_release=policy)))
+                    self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
+            path.write_text(json.dumps(original))
+        self.configure_accepted_next('4.1.0-RC.3')
+        path.write_text(json.dumps(dict(original, accepted_next_release=[rc1, rc2, rc3, rc4])))
+        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
 
     def test_reviewed_passing_test_is_required(self):
         code, result = self.run_gate()

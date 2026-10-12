@@ -27,7 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.CaseChangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -159,6 +161,39 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          firstName.setHelpContents(original);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A FILE_PREVIEW adornment reaches v1 table meta-data with its type and its
+    ** values (the field names the frontend reads thumbnail / full-size URLs from).
+    *******************************************************************************/
+   @Test
+   void testFilePreviewAdornment()
+   {
+      QFieldMetaData lastName = serverQInstance.getTable("person").getField("lastName");
+      List<FieldAdornment> original = lastName.getAdornments() == null ? null : new ArrayList<>(lastName.getAdornments());
+      try
+      {
+         lastName.withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment()
+            .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "firstName")
+            .withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "image/jpeg")
+            .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 48));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONArray adornments = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields").getJSONObject("lastName").getJSONArray("adornments");
+         JSONObject preview = adornments.getJSONObject(adornments.length() - 1);
+         assertEquals("FILE_PREVIEW", preview.getString("type"));
+         assertEquals("firstName", preview.getJSONObject("values").getString("thumbnailUrlField"));
+         assertEquals("image/jpeg", preview.getJSONObject("values").getString("defaultMimeType"));
+         assertEquals(48, preview.getJSONObject("values").getInt("thumbnailMaxSize"));
+      }
+      finally
+      {
+         lastName.setAdornments(original);
       }
    }
 

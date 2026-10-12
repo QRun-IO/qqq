@@ -440,7 +440,7 @@ workflows:
                 - /release\/.*/
       - sample_acceptance:
           name: candidate_sample_acceptance
-          accepted_next_candidate: "4.1.0-RC.2"
+          accepted_next_candidate: "4.1.0-RC.3"
           require_complete_coverage: true
           requires: [sample_bootstrap_source]
           filters:

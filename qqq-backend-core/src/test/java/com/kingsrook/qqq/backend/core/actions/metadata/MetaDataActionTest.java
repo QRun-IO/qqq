@@ -60,6 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -191,6 +192,32 @@ class MetaDataActionTest extends BaseTest
       }
 
       // todo -- assert about sections in those apps not having stuff
+   }
+
+
+
+   /*******************************************************************************
+    ** The home app is published to users who may open it, and omitted otherwise
+    ** (and when the instance designates none), so a frontend falls back to its
+    ** own default home page.
+    *******************************************************************************/
+   @Test
+   void testHomeAppName() throws QException
+   {
+      assertNull(new MetaDataAction().execute(new MetaDataInput()).getHomeAppName());
+
+      QInstance instance = TestUtils.defineInstance();
+      instance.setHomeAppName(TestUtils.APP_NAME_GREETINGS);
+      reInitInstanceInContext(instance);
+      assertEquals(TestUtils.APP_NAME_GREETINGS, new MetaDataAction().execute(new MetaDataInput()).getHomeAppName());
+
+      instance = TestUtils.defineInstance();
+      instance.setHomeAppName(TestUtils.APP_NAME_GREETINGS);
+      instance.setDefaultPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION));
+      reInitInstanceInContext(instance);
+      MetaDataOutput withoutAccess = new MetaDataAction().execute(new MetaDataInput());
+      assertEquals(0, withoutAccess.getApps().size());
+      assertNull(withoutAccess.getHomeAppName());
    }
 
 

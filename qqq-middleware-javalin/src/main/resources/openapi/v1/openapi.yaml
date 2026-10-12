@@ -340,6 +340,7 @@ components:
           - "FILE_DOWNLOAD"
           - "WIDGET"
           - "ERROR"
+          - "FILE_PREVIEW"
           type: "string"
         values:
           description: "Values associated with this adornment.  Keys and the meanings\
@@ -740,6 +741,12 @@ components:
             \ query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource\
             \ slots).  Omitted when the instance defines none."
           type: "object"
+        homeAppName:
+          description: "Name of the app whose dashboard a frontend shows as the instance's\
+            \ home page (for example at /app/), when the instance designates one and\
+            \ the user may access that app.  Omitted otherwise, in which case the\
+            \ frontend uses its own default home page."
+          type: "string"
         processes:
           additionalProperties:
             $ref: "#/components/schemas/ProcessMetaDataLight"

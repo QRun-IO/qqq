@@ -31,6 +31,7 @@ These decisions override anything below that contradicts them. The sections they
 | D15 | **kof22 only for now.** Decide on qrun.io and Benchfinity after Phase 4. | §8.5. |
 | D16 | **A full Admin → CDN sub-app** (like Quick Search and ESB), shown only when the qbit is installed and enabled. Its home is the single dashboard for CDN data. Admin → Health shows only a status card that links to it. | §4.9. The app shell and home, with honest empty states, ship in P1. Live data arrives from P2. |
 | D17 | **Alerts through the Alerts qbit when installed.** Dead/failed purges, invalidation budget near/over, connection test failures, config drift and secret rotation due are raised through the Alerts / Manage-by-Exception qbit's producer SPI. Without it, the CDN qbit works unchanged. | §4.9.1. |
+| D18 | **Object headers belong to the object-storage qbit ([#1089](https://github.com/QRun-IO/qqq/pull/1089) D10).** The CDN qbit no longer has its own header backfill. `cdnSetFileCacheHeaders` / `cdnBackfillObjectHeaders` are dropped in favour of storage's **Apply header policy** table/record action (standard Review and Result). The CDN qbit plugs into storage through a `PublicUrlResolver` (CDN hostnames) and a `StorageChangeListener` (purge planning when objects change). | §4.6, §4.7, §4.9. Without the storage qbit, apps keep their own upload-time headers, and the CloudFront 1-year default TTL (§4.6 c) still covers objects that lack headers. |
 
 ## 0. Summary
 
@@ -311,7 +312,7 @@ Apps without the ESB call `CdnPurgeService.enqueue(tags, source)` from an after-
 
 **MinIO objects.**
 - (a) Uploads set `Cache-Control: public, max-age=31536000, immutable` (in `PhotoImageProcessor.uploadToS3` and `MediaImageProcessor`).
-- (b) A one-time backfill, `cdnBackfillObjectHeaders`, fixes existing keys with a copy-in-place using REPLACE metadata. It runs as a dry run first.
+- (b) Existing keys are fixed by the object-storage qbit's **Apply header policy** action (#1089 §6.2, D18): a copy-in-place with REPLACE metadata, through the standard Review (would change / already correct) and Result steps. The CDN qbit has no backfill of its own. kof22's 2026-10-12 one-time run used Website-Backend's `SetFileCacheHeaders`, which storage replaces at the kof22 cutover.
 - (c) As a fallback, the CloudFront behavior for `/kof22-website-files/*` uses a cache policy with a **default TTL of 1 year**, so objects that still lack headers are cached anyway.
 
 ### 4.7 Processes (table and record actions only)
@@ -326,13 +327,14 @@ All of these are table or record actions, offered on selected records, the curre
 | `cdnPurgeHostname` | Record action on `cdnHostname` | `cdn.purgeAll` | Guarded: the user must type the hostname to confirm. On CloudFront it sends `/*` for the **whole distribution**, and the screen says so. |
 | `cdnTestProvider` | Record action **"Test connection"** on `cdnProvider` | `cdn.admin` | Checks credentials, that the distribution exists, and the IAM scope (with `ListInvalidations`). Confirms the origin custom header is configured, using a read-only `GetDistributionConfig`. |
 | `cdnImportEdgeStats` | Table action **"Import edge stats"** on `cdnEdgeStatDaily`; also scheduled daily at 02:15 | `cdn.admin` | Imports the last N days of CloudWatch metrics, as an upsert |
-| `cdnSetFileCacheHeaders` | Table and bulk action **"Set File Cache Headers"** on each file-bearing table the app registers (kof22: Media and Photo) | `cdn.admin` | Review counts the files that will get each policy or no change. Execute rewrites only the differing files (§4.6). kof22 ships this today as `SetFileCacheHeaders` in Website-Backend, and the qbit takes it over. |
-| `cdnCheckOriginHeaders` | Table action **"Check origin headers"** on `cdnOriginCheck`; also weekly | `cdn.view` | Read-only. Samples or walks the origin objects and records coverage rows for the home |
+| `cdnCheckOriginHeaders` | Table action **"Check origin headers"** on `cdnOriginCheck`; also weekly. **Only when the object-storage qbit is not installed.** | `cdn.view` | Read-only. Samples or walks the origin objects and records coverage rows for the home. With the storage qbit, header coverage comes from its object index instead (D18). |
+
+Object header changes are **not** a CDN action. They are storage's **Apply header policy** (#1089 §6.2, D18), which the CDN home links to.
 | `cdnCheckDrift` | Record action **"Check config drift"** on `cdnProvider`; also daily | `cdn.admin` | Read-only. Compares `GetDistributionConfig` with the expected config exported by OpenTofu (§8.2) and records `cdnDriftFinding` rows |
 
 ### 4.8 Permissions and locks
 
-- Permissions are `cdn.view` (the app and its tables, read-only), `cdn.purge` (purge, warm and retry), `cdn.purgeAll` (purge a whole hostname or distribution) and `cdn.admin` (connection, settings, tests, imports and backfills).
+- Permissions are `cdn.view` (the app and its tables, read-only), `cdn.purge` (purge, warm and retry), `cdn.purgeAll` (purge a whole hostname or distribution) and `cdn.admin` (connection, settings, tests and imports).
 - `cdnPurgeRequest` is written only by processes, and all of its fields are read-only in the UI.
 - No table stores a secret value.
 - Multi-tenant apps add the tenant key and a `RecordSecurityLock` to every `cdn*` table.
@@ -349,7 +351,7 @@ A sub-app under Admin, like Quick Search and ESB. It exists only when the qbit i
 | Performance | Requests, bytes, 4xx/5xx rates and cache hit rate (when imported), as 7- and 30-day trends per scope | `cdnEdgeStatDaily` | "No edge statistics yet. They are imported daily once a provider is connected." |
 | Purge activity | The last 10 purges with status; failures and dead purges in the last 24 h and 7 days, each linking to a filtered `cdnPurgeRequest` list; median time to complete | `cdnPurgeRequest` | With the NONE provider: the would-be purges recorded as `SKIPPED_STAGE_OFF` (real rows, labeled as not sent) |
 | Invalidation budget | Month-to-date billable paths against the soft limit, the hard limit and the free 1,000, plus a projection to month end | `cdnPurgeRequest.billablePaths` | "No invalidations sent this month." |
-| Origin headers | Coverage: how many origin objects have the right Cache-Control, by scope, with the date of the last check | `cdnOriginCheck` | Works before P2. kof22: 396 of 396 media files correct after the 2026-10-12 backfill |
+| Origin headers | One line: how many origin objects have the right Cache-Control, with the date of the last check. It links to the Storage home and to **Apply header policy**; the CDN home does not repeat storage data (D18). | The storage qbit's object index when installed, else `cdnOriginCheck` | Works before P2. kof22: 396 of 396 media files correct after the 2026-10-12 backfill |
 | Config drift | Open drift findings by area, with the last check time | `cdnDriftFinding` | "Nothing to compare yet. Drift is checked once the distribution exists." |
 
 **Sections.** Each section is a standard QQQ table with full record screens (list, view, edit where allowed, audit):
@@ -359,7 +361,7 @@ A sub-app under Admin, like Quick Search and ESB. It exists only when the qbit i
 - **Activity:** `cdnPurgeRequest` (read-only) and `cdnRevalidationHook`.
 - **Performance:** `cdnEdgeStatDaily`, `cdnOriginCheck` and `cdnDriftFinding`.
 
-**Actions:** Test connection, Import edge stats, Purge (and Warm, Retry, Purge hostname), Set File Cache Headers, Check origin headers and Check config drift. These are the table and record actions from §4.7, using the standard Review and Result flow. **None of them is in the nav.**
+**Actions:** Test connection, Import edge stats, Purge (and Warm, Retry, Purge hostname), Check origin headers (without the storage qbit) and Check config drift. Header rewrites are storage's Apply header policy, linked from the Origin headers card (D18). These are the table and record actions from §4.7, using the standard Review and Result flow. **None of them is in the nav.**
 
 **Permissions:**
 
@@ -368,7 +370,7 @@ A sub-app under Admin, like Quick Search and ESB. It exists only when the qbit i
 | `cdn.view` | The app and every table, read-only |
 | `cdn.purge` | Purge, warm and retry actions |
 | `cdn.purgeAll` | Whole-hostname purges |
-| `cdn.admin` | Editing connection and settings, plus tests, imports, backfills and drift checks |
+| `cdn.admin` | Editing connection and settings, plus tests, imports and drift checks |
 
 **UI rules:**
 - Readable at every width. Cards stack to one column below 900 px, and tables use full width.

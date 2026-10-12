@@ -15,6 +15,7 @@ These decisions override anything below that contradicts them. The sections they
 | D4 | **Data policy.** The Anthropic API is acceptable for kof22, with the data-minimization rules in §3.6. The provider stays pluggable (Bedrock/Vertex/ZDR/self-hosted) for other apps. **Models:** default `claude-sonnet-5-5`, escalation `claude-opus-5-5`, titles and summaries `claude-haiku-5-5` (IDs confirmed against the Anthropic model table, 2026-10-06 cache). | §2.8, §2.9. One org key per deployment, held in that app's secret store. |
 | D5 | **Remaining §8.2 questions take the spec's recommended defaults:** retention 90/30/365 days; ephemeral opt-out offered later (not in v1); shortcut `⌘J`/`Ctrl+J`; Next panel ships in Next core gated by a `/assistant/config` probe (extension slots are a later RFC); `qbit-standard-process-trace` is a recommended (optional) dependency; **no MCP direct writes in v1**. | §8.2 is now a decision log. |
 | D6 | **qbit data is normal QQQ data.** Every `assistant*` table is a standard, visible QQQ table in the app's own backend, secured with record security locks (owner lock on `userId`, plus the tenant key when present). Nothing is hidden. | §4. Admins see them in the Assistant Admin app like any other table. |
+| D7 | **The record Developer screen shows the assistant's view of the record** when `qbit-assistant` is installed and enabled. It plugs into the generic core *developer panel provider* contract (qbits contribute panels to the record Developer view; a separate workstream adds it to QQQ core and a renderer to Next). | §5.7. Phase 1. |
 
 ## 0. Summary
 
@@ -654,6 +655,16 @@ Next has no plugin system today; ESB UI ships compiled in and is gated by a back
 
 - **Recommended for v1:** ship the assistant UI in `qqq-frontend-next` under `src/components/assistant/*` + `src/lib/api/assistant.ts`. It is gated by the `/assistant/config` probe or metadata. That is the ESB pattern, and it needs no new infrastructure.
 - **Follow-up:** introduce a small **extension-slot registry** in Next, e.g., `registerShellExtension({id, mount: 'shell.right', component, shortcut})`. Then the assistant, ESB and future qbits register UI instead of hard-coded switches. That's a separate Next RFC and should not block this work.
+
+### 5.7 Record Developer screen panel (D7)
+
+When the qbit is installed and enabled, it contributes an **Assistant** panel to the record Developer view (`/app/{slug}/{recordId}/dev`) through the core developer-panel-provider contract. The panel is computed for the **current user**, from `AiToolKernel.describeAccess(session, table, primaryKey)`:
+
+- whether the assistant is available to this user (per-app flag, kill switch, `assistant.hasAccess`)
+- the table's exposure level, and which generic tools apply to this table and record, each with a reason when it doesn't (e.g. "no READ on `audit`")
+- per field: exposure (`NONE`/`METADATA_ONLY`/`MASKED`/`VALUES`) and why, plus whether the user could have a change proposed (their own edit permission, D3)
+- what the assistant may read and propose for this record under the user's permissions. If the user can't read the record, the panel reveals nothing beyond "not available".
+- an **"Ask the assistant about this record"** link: `?assistant=open&assistantPrompt=…` on the record page. Next opens the panel, starts a new conversation with the record as context, and pre-fills (does not send) the prompt.
 
 ---
 

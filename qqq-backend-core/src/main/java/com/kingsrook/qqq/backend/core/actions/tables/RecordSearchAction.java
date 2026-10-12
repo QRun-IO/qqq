@@ -128,6 +128,12 @@ public class RecordSearchAction
    private static final Pattern INTEGER_TERM          = Pattern.compile("-?\\d{1,18}");
    private static final Pattern WHITESPACE            = Pattern.compile("\\s+");
 
+   ////////////////////////////////////////////////////////////////////////////
+   // how long the provider took in this search (for the log line that each //
+   // search writes); an action instance runs one search.                   //
+   ////////////////////////////////////////////////////////////////////////////
+   private long providerMillis = 0;
+
 
 
    /*******************************************************************************
@@ -215,30 +221,43 @@ public class RecordSearchAction
       // provider's tables, if it failed) use the default search.  either way, //
       // results are output in instance table order.                           //
       ///////////////////////////////////////////////////////////////////////////
-      ProviderOutcome providerOutcome = searchWithProvider(qInstance, input, tables, personalizedTables, parameters);
-
-      RecordSearchOutput output = new RecordSearchOutput().withProviderStatus(providerOutcome.status());
-      for(QTableMetaData table : tables)
+      long            start           = System.currentTimeMillis();
+      ProviderOutcome providerOutcome = null;
+      try
       {
-         TableSearch        tableSearch = providerOutcome.resultsByTable().get(table.getName());
-         RecordSearchSource source      = RecordSearchSource.PROVIDER;
-         if(tableSearch == null)
+         providerOutcome = searchWithProvider(qInstance, input, tables, personalizedTables, parameters);
+
+         RecordSearchOutput output = new RecordSearchOutput().withProviderStatus(providerOutcome.status());
+         for(QTableMetaData table : tables)
          {
-            tableSearch = searchTable(input, table, personalizedTables.get(table.getName()), parameters);
-            source = providerOutcome.fallbackTableNames().contains(table.getName()) ? RecordSearchSource.FALLBACK : RecordSearchSource.DEFAULT;
+            TableSearch        tableSearch = providerOutcome.resultsByTable().get(table.getName());
+            RecordSearchSource source      = RecordSearchSource.PROVIDER;
+            if(tableSearch == null)
+            {
+               tableSearch = searchTable(input, table, personalizedTables.get(table.getName()), parameters);
+               source = providerOutcome.fallbackTableNames().contains(table.getName()) ? RecordSearchSource.FALLBACK : RecordSearchSource.DEFAULT;
+            }
+
+            output.getResults().addAll(tableSearch.results());
+            output.getTables().add(new RecordSearchTableSummary()
+               .withTableName(table.getName())
+               .withTableLabel(table.getLabel())
+               .withResultCount(tableSearch.results().size())
+               .withHasMore(tableSearch.hasMore())
+               .withTotalCount(tableSearch.totalCount())
+               .withSource(source));
          }
 
-         output.getResults().addAll(tableSearch.results());
-         output.getTables().add(new RecordSearchTableSummary()
-            .withTableName(table.getName())
-            .withTableLabel(table.getLabel())
-            .withResultCount(tableSearch.results().size())
-            .withHasMore(tableSearch.hasMore())
-            .withTotalCount(tableSearch.totalCount())
-            .withSource(source));
+         LOG.info("Record search", logPair("termLength", searchTerm.length()), logPair("tableCount", tables.size()), logPair("resultCount", output.getResults().size()), logPair("offset", offset), logPair("sort", sort),
+            logPair("provider", providerOutcome.status().getStatus()), logPair("providerFailureClass", providerOutcome.status().getFailureClass()), logPair("providerMillis", providerMillis), logPair("millis", System.currentTimeMillis() - start));
+         return (output);
       }
-
-      return (output);
+      catch(QException | RuntimeException e)
+      {
+         LOG.warn("Record search failed", e, logPair("termLength", searchTerm.length()), logPair("tableCount", tables.size()), logPair("provider", providerOutcome == null ? null : providerOutcome.status().getStatus()),
+            logPair("errorClass", e.getClass().getName()), logPair("millis", System.currentTimeMillis() - start));
+         throw (e);
+      }
    }
 
 
@@ -281,6 +300,7 @@ public class RecordSearchAction
             return (new ProviderOutcome(Map.of(), Set.of(), new RecordSearchProviderStatus().withStatus(RecordSearchProviderState.NONE)));
          }
 
+         long providerStart = System.currentTimeMillis();
          providerOutput = provider.search(new RecordSearchInput()
             .withSearchTerm(parameters.searchTerm())
             .withTableNames(new ArrayList<>(claimedTables.keySet()))
@@ -288,10 +308,11 @@ public class RecordSearchAction
             .withOffset(parameters.offset())
             .withSort(parameters.sort())
             .withInputSource(input.getInputSource()));
+         providerMillis = System.currentTimeMillis() - providerStart;
       }
       catch(Exception | LinkageError e)
       {
-         LOG.warn("Error in record search provider - searching its tables with the default search instead", e, logPair("provider", providerReference.getName()), logPair("tableNames", claimedTables.keySet()));
+         LOG.warn("Error in record search provider - searching its tables with the default search instead", e, logPair("provider", providerReference.getName()), logPair("tableNames", claimedTables.keySet()), logPair("errorClass", e.getClass().getName()));
          return (new ProviderOutcome(Map.of(), new HashSet<>(claimedTables.keySet()), failedStatus(e)));
       }
 
@@ -500,11 +521,19 @@ public class RecordSearchAction
    /*******************************************************************************
     ** The search result for a record: its label, plus (from only the fields the
     ** session can see) highlights, details and last-modified time.  Fields in the
-    ** record label are not highlighted or detailed - the label shows them.
+    ** record label are not highlighted or detailed - the label shows them.  The
+    ** label is never blank: a record whose label fields are empty is labeled by
+    ** its primary key instead (a blank label is left out of the JSON response,
+    ** and clients require one).
     *******************************************************************************/
    private static RecordSearchResult toResult(QTableMetaData table, QTableMetaData personalized, QRecord record, List<String> tokens, RecordSearchResult providerResult)
    {
       String recordLabel = record.getRecordLabel() != null ? record.getRecordLabel() : QValueFormatter.formatRecordLabel(table, record);
+      if(!StringUtils.hasContent(recordLabel))
+      {
+         String primaryKeyDisplayValue = record.getDisplayValue(table.getPrimaryKeyField());
+         recordLabel = StringUtils.hasContent(primaryKeyDisplayValue) ? primaryKeyDisplayValue : ValueUtils.getValueAsString(record.getValue(table.getPrimaryKeyField()));
+      }
       RecordSearchResult result = new RecordSearchResult()
          .withTableName(table.getName())
          .withTableLabel(table.getLabel())

@@ -755,4 +755,26 @@ class RecordSearchActionTest extends BaseTest
       assertThat(output.getTables()).extracting(RecordSearchTableSummary::getSource).containsExactly(RecordSearchSource.DEFAULT);
    }
 
+
+
+   /*******************************************************************************
+    ** A record whose label fields are empty is labeled by its primary key - by
+    ** the default search and for provider results - never with a blank label
+    ** (which the JSON response would leave out).
+    *******************************************************************************/
+   @Test
+   void testBlankRecordLabelFallsBackToPrimaryKey() throws QException
+   {
+      QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY).withSearchFields("firstName", "lastName", "email", "id");
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecords(List.of(
+         new QRecord().withValue("id", 4).withValue("email", "unnamed@example.invalid"))));
+
+      assertThat(labels(search("unnamed"))).containsExactly("personMemory:4:4");
+
+      useTestProvider();
+      TestRecordSearchProvider.claim(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      TestRecordSearchProvider.respondWith(TestUtils.TABLE_NAME_PERSON_MEMORY, 4);
+      assertThat(labels(search("unnamed"))).containsExactly("personMemory:4:4");
+   }
+
 }

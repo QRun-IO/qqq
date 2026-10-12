@@ -1,37 +1,64 @@
 # QQQ CDN qbit: Design Spec
 
-Status: **Draft for owner review** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
-Targets: QQQ 4.1.x (one small response-header hook in `qqq-middleware-javalin`), new repo `QRun-IO/qbit-cdn`, first consumer kof22 (`Website-Backend`, `Website-Frontend`, `cluster-gitops` tenants/kof22, Praetor `dns/route53`)
+Status: **Owner decisions recorded 2026-10-12. Ready for review.** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
+Targets: QQQ 4.1.x (one small response-header hook in `qqq-middleware-javalin`) and a new repo, `QRun-IO/qbit-cdn`. The first consumer is kof22:
+- `Website-Backend` and `Website-Frontend`
+- `cluster-gitops` tenants/kof22
+- Praetor `dns/route53`, `unifi/`, and a new `terraform/cdn-cloudfront/`
 
-> Research and design only. Nothing in this document has been implemented. No accounts, keys, DNS records or cluster resources were created or changed. Every owner choice is collected in §12 as a multiple-choice decision with a recommendation first.
+> This is a design, not an implementation. No AWS resources, accounts, keys, DNS records or cluster resources were created or changed. The owner must answer the items in "Still open" (§12.2) before Phase 2 starts.
+
+## Owner decisions (2026-10-12)
+
+These decisions override anything below that contradicts them. The sections they affect have been updated.
+
+| # | Decision | Effect on the design |
+|---|---|---|
+| D1 | **AWS CloudFront first**, on the **flat-rate Pro plan ($15/mo)**. Cloudflare is not used. | CloudFront adapter first (§4.3, §8). Fastly, Bunny, Cloudflare and Souin stay in the SPI. Souin/Varnish is the e2e test target. |
+| D2 | **DNS stays in Route53, managed by octoDNS in Praetor.** | The Cloudflare zone-move question is moot. Route53 ALIAS records point to CloudFront, including the apex (§8.1). |
+| D3 | **Origin protection, CloudFront version.** A dedicated `cdn` Traefik entry point on its own WAN port, reachable only from CloudFront's origin-facing ranges (enforced at UniFi as IaC), **plus** a secret origin header checked at Traefik. VPC origins do not apply. | §7.1, §7.2. The trade-offs against a tunnel are in §7.1. |
+| D4 | Hostnames, in order: `s3` → `www` assets and images → `api` → `www` HTML. **Never** `admin`, `auth`, `minio-console` or the DSM hosts. | §5.1, §8.4. |
+| D5 | **The real client IP comes from `CloudFront-Viewer-Address`**, and is trusted **only** when the origin secret is valid. The paused Traefik DaemonSet / `externalTrafficPolicy: Local` change is **still wanted for hostnames that are not behind the CDN**. | §7.3. |
+| D6 | Media **stays on MinIO**, with CloudFront in front and immutable cache headers. | §4.6, §5.1. |
+| D7 | **No native image transforms.** Cache the existing renditions and Next's `/_next/image` output at the edge. CloudFront Functions or Lambda@Edge transforms can come later, optionally. | §6.2. A small CloudFront Function normalizes the `Accept` header for `/_next/image` (§5.2). |
+| D8 | **Yes, cache HTML in Phase 4.** Use ISR, and revalidate every Next pod **before** the CloudFront invalidation. | §6.3. |
+| D9 | **Edge configuration is OpenTofu in Praetor.** It uses the AWS provider with the existing `kingsrook_root_admin` profile and account-guard conventions. The qbit only emits headers, invalidates, and reads config for a drift view. | §8.2. |
+| D10 | A new repo, **`QRun-IO/qbit-cdn`**, plus one small generic response-header hook in QQQ core. | §3.1. |
+| D11 | Budget: **$0–25/mo**. | §10. Expected cost is about $15–20/mo. |
+| D12 | **No signed CDN URLs in v1.** Private media stays on MinIO presigned links that skip the edge. CloudFront **key groups** make signed URLs easy to add later. | §4.10. |
+| D13 | **Privacy.** No CDN-injected scripts and no CDN visitor analytics. Name AWS as a processor on the privacy page. Keep the first-party hashed analytics. | §7.4. |
+| D14 | **When a purge fails:** 5 retries with backoff, then DEAD plus a Data Health issue and an alert. Content corrects itself when the edge TTL expires. | §4.5. |
+| D15 | **kof22 only for now.** Decide on qrun.io and Benchfinity after Phase 4. | §8.5. |
 
 ## 0. Summary
 
-`qbit-cdn` lets any QQQ application put a CDN in front of its public site, its public API and its media without becoming tied to one CDN vendor. It does four things:
+`qbit-cdn` lets any QQQ application put a CDN in front of its public site, public API and media without being tied to one CDN vendor. It does four things.
 
-1. **Emits portable cache headers.** It writes standard `Cache-Control` for browsers and `CDN-Cache-Control` (RFC 9213) for shared caches. It also adds one cache-tag header per provider: `Cache-Tag`, `Surrogate-Key`, `CDN-Tag`, `Edge-Cache-Tag` or `xkey`. The values come from **cache policies** stored as normal QQQ records.
-2. **Purges on change.** When a CMS record is inserted, updated or deleted, the ESB event becomes **cache tags** (for example `post:123`, `blog:7`, `media:456`) and **URLs**. The qbit merges events that arrive close together into as few provider purge calls as possible. It retries failures and keeps every request in a visible `cdnPurgeRequest` table.
-3. **Builds URLs.** It rewrites media URLs to the CDN hostname. It builds image-transform URLs for `FILE_PREVIEW` and for the Next.js `next/image` loader. It signs URLs for private media when a provider supports that.
-4. **Reports real data.** It imports edge statistics (requests, cache hit ratio, bytes) into `cdnEdgeStatDaily`. It feeds a CDN widget in Admin → Health that shows only imported or recorded data.
+1. **Emits portable cache headers.** It sends standard `Cache-Control` for browsers, with `s-maxage` for shared caches. It also sends `CDN-Cache-Control` (RFC 9213) and a cache-tag header, but only for providers that support them. The values come from **cache policies** stored as normal QQQ records.
+2. **Invalidates on change.** CMS inserts, updates and deletes arrive as ESB events, and the qbit turns them into **canonical tags** such as `post:123`, `blog:7:list` and `media:456`. The provider adapter then turns those tags into what its CDN understands:
+   - on CloudFront, invalidation **paths** and **wildcards**, planned against a monthly invalidation budget
+   - on Fastly, Bunny and Souin, tag purges.
 
-Providers plug in through one SPI, `CdnProviderInterface`. Each provider declares what it can do (its capabilities), and the qbit fills gaps in a fixed order. If a provider has no tag purge, the qbit expands each tag to URL templates, then to prefixes, then to hostname purges. A **`NONE`** provider makes the qbit safe to install before any CDN exists, because headers are still correct and purges are recorded as no-ops. A **self-hosted Souin/Varnish** adapter is the real target for automated end-to-end tests.
+   Requests are merged, rate-limited, retried, and recorded in a visible `cdnPurgeRequest` table.
+3. **Builds URLs.** Media URLs stay the same, because the CDN fronts `s3.kof22.com` itself, so no stored URL changes. It also builds image URLs for `FILE_PREVIEW` and the Next.js loader. Signed URLs are part of the SPI but are not used in v1.
+4. **Reports real data.** It imports edge statistics from CloudWatch (requests, bytes, error rates and, when available, cache hit rate) into `cdnEdgeStatDaily`. These feed a CDN widget in Admin → Health, which shows only imported or recorded data.
 
-**What kof22 does today** (research, §1.2):
-- No CDN: `kof22.com`, `www`, `api`, `admin` and `s3` all resolve to the home WAN IP `50.122.5.146`.
-- The Next.js site is fully dynamic (`force-dynamic` in the root layout).
-- Media objects are uploaded with **no** `Cache-Control`, even though their keys are already immutable and content-addressed.
-- No one consumes the `kof22.cms.tables` ESB topic.
-- Traefik does not see real client IPs, and that fix is paused waiting on the owner.
+**What kof22 does today (§1.2):**
+- There is no CDN.
+- The Next.js site renders every page dynamically.
+- Media objects have no `Cache-Control`, even though their keys are immutable and content-addressed.
+- Nothing consumes the CMS ESB topic.
+- Traefik sees SNAT addresses instead of real client IPs.
 
-So the first gains are cheap: about **15 to 20 hours** of origin cleanup (Phase 0, §11) before any CDN is involved.
+Phase 0 is about 3–4 days of origin cleanup that helps even before any CDN is in place.
 
-**Recommendation in one paragraph:** Start with **Cloudflare Free** for kof22, reached over a **Cloudflare Tunnel** into a dedicated Traefik entry point that is not port-forwarded. Roll out one hostname at a time: `s3`, then `www` static assets and images, then `api`, then `www` HTML. Never put `admin` or `auth` behind the CDN. This setup:
-- costs $0/month
-- has purge by tag, prefix and hostname on every plan
-- hides and protects the origin without opening another port
-- gives a trustworthy `CF-Connecting-IP`, which fixes the real-client-IP problem for every hostname behind the CDN.
+**The CloudFront setup (§7, §8):**
+- **One distribution** serves `kof22.com`, `www`, `api` and `s3`, on the flat-rate Pro plan.
+- Its origin is `origin.kof22.com:8443`, a DNS-only record pointing to the WAN IP. Port 8443 is a new UniFi port-forward that only accepts traffic from CloudFront's origin-facing ranges, and it lands on a dedicated Traefik `cdn` entry point.
+- On that entry point, a tiny **`origin-guard`** forwardAuth service checks the secret `X-Origin-Verify` header that CloudFront adds. Only when the secret is valid does it set `X-Real-IP` from `CloudFront-Viewer-Address`.
+- Rollout is one hostname at a time. Rollback is reverting one Route53 record through octoDNS.
 
-**CloudFront flat-rate Pro ($15/month)** is the fallback if the owner wants to keep DNS entirely in Route53. Build the qbit provider-neutral, and add a second adapter (CloudFront or Bunny) only when it is needed. That second adapter is what proves the abstraction works.
+**Cost** is about **$15–20/mo**: the Pro plan, plus paid invalidations only if the budget planner allows them beyond the free 1,000 paths, plus any optional metrics. **Effort** is about **5.5–7.5 weeks** for P0–P4.
 
 ---
 
@@ -39,13 +66,13 @@ So the first gains are cheap: about **15 to 20 hours** of origin cleanup (Phase 
 
 ### 1.1 Goals
 
-- Faster first byte and asset load for visitors far from the homelab, and less traffic on the residential uplink.
-- One qbit that works with Cloudflare, CloudFront, Fastly, Bunny, Akamai, Azure Front Door, Google Cloud CDN, or a self-hosted cache, with no app code changes when switching.
-- Correct by default: nothing personalized or authenticated is ever cached at the edge, and published changes appear within seconds.
-- Protect the origin. Once a hostname is cut over, only the CDN can reach it.
+- Faster first byte and asset loads for visitors far from the homelab, and less load on the residential uplink.
+- One qbit that works with CloudFront, Cloudflare, Fastly, Bunny, Akamai, Azure Front Door, Google Cloud CDN or a self-hosted cache. Switching providers needs no app code changes.
+- Correct by default. Nothing personalized or authenticated is ever cached at the edge, and published changes appear within about a minute.
+- Only the CDN can use the protected origin path, and the real client IP is trusted only on that path.
 - Follow the owner's qbit rules:
-  - qbit data lives in standard QQQ tables, secured by QQQ permissions and locks
-  - processes run as table or record actions, never from the nav
+  - qbit data lives in standard QQQ tables, secured by permissions and locks
+  - processes are table or record actions, never nav items
   - only real data is shown
   - the UI is readable at every width.
 
@@ -53,116 +80,117 @@ So the first gains are cheap: about **15 to 20 hours** of origin cleanup (Phase 
 
 | Area | Today | CDN relevance |
 |---|---|---|
-| DNS | Route53 zone `kof22.com`, managed by octoDNS in Praetor `dns/route53/zones/kof22.com.yaml`. The zone and DNSSEC are in tofu `terraform/dns-route53`. `kof22.com`, `www`, `admin`, `api` (TTL 60) and the DSM suite hosts are A records to `50.122.5.146`. `s3`, `auth` and `minio-console` are CNAMEs to `www`. CAA allows only `letsencrypt.org`. | The CDN choice decides where DNS lives (D2). The CAA record must allow the CDN's CA. |
-| Edge path | UniFi port-forward → Cilium LB `10.100.22.64` → Traefik, a single replica, with `externalTrafficPolicy` left at the default `Cluster` (SNAT). `forwardedHeaders.trustedIPs` is set to the RFC1918 ranges. | Traefik sees SNAT addresses, not visitors. Behind a CDN, the viewer header must be trusted **only** on a path that only the CDN can reach (§7.3). |
-| TLS | cert-manager Let's Encrypt via Route53 DNS-01. The Traefik default cert is the wildcard `kof22-wildcard-tls`. | Keep it as the origin cert. The CDN issues the edge cert. |
-| Media | MinIO public bucket `kof22-website-files` at `https://s3.kof22.com/kof22-website-files/...`. Keys are `media/{siteId}/{slug}/{sha256}/original.{ext}` plus `thumbnail.jpg` (400px), `gallery.jpg` (1600px) and `slideshow.jpg` (2400px), and `photos/{album}/{photo}/...`. Renditions are made at upload with Thumbnailator. **Uploads set no `Cache-Control`.** The private `kof22-website-incoming` bucket gets presigned PUTs that expire in 1 day. | Ideal for a CDN: keys are immutable, so objects can be `max-age=31536000, immutable`. |
-| Site API | `api.kof22.com` (Traefik `addPrefix /site-api`). `SiteApiRouteProvider.finish()` sets `public, max-age=60` on anonymous 200 GETs: 300 for docs, sitemap and feeds, and `no-store` for `/v1/me*` and contact. It strips `Set-Cookie` and adds `Vary: Origin`. Reads have no ETag and no 304. | It is almost CDN-ready. Add `CDN-Cache-Control`, tags and conditional GETs, and reconsider `Vary: Origin` (§5.4). |
-| Frontend | Next.js `output: 'standalone'`, 2 replicas, `force-dynamic` in the root layout. There is no ISR, `revalidate`, tag, custom `cacheHandler`, `assetPrefix` or revalidation route. `next/image` uses the built-in `/_next/image` optimizer, whose cache is per-pod disk. | Static assets and optimized images can be cached at the edge right away. HTML caching first needs ISR (§6). |
-| ESB | Artemis. Topic `kof22.cms.tables` gets INSERT/UPDATE/DELETE for 16 CMS tables. Topic `kof22.cms.processes` gets `PublishBlogPost` lifecycle events. **No one consumes `kof22.cms.tables`.** | The purge pipeline subscribes here (§5.3). |
-| Analytics | Privacy-first: a beacon calls `/api/e`, which forwards to the backend `/analytics/v1/collect`. The visitor hash is SHA-256(daily salt, site, IP, UA). The IP is never stored. GeoLite2 is city-level. A SNAT IP produces `GeoStatus.PROXY_IP`. | A CDN header gives the real IP (§7.4). The CDN must not inject its own analytics (D13). |
-| QQQ core | Has no Cache-Control or ETag handling in `QJavalinImplementation` or the API middleware. Only `NextDashboardRouteProvider` (`_next/static/` gets `immutable`) and `BrandingAssetsRouteProvider` set cache headers. | The qbit needs one small core hook (§4.6). |
+| DNS | The Route53 zone `kof22.com` has DNSSEC on. Records are managed by octoDNS in Praetor `dns/route53/zones/kof22.com.yaml`.<br>The zone, DNSSEC and IAM live in tofu `terraform/dns-route53`: profile `kingsrook_root_admin`, `us-east-1`, `allowed_account_ids = ["744245396565"]`, and local git-crypt state. Each credential is a narrow IAM user: Key A octoDNS, Key B cert-manager, Key C registrar.<br>`kof22.com`, `www`, `admin`, `api` (TTL 60) and the DSM hosts are A records to `50.122.5.146`. `s3`, `auth` and `minio-console` are CNAMEs to `www`. CAA allows only `letsencrypt.org`. | ALIAS and CNAME records to CloudFront go through octoDNS. The ACM validation CNAME must be in the octoDNS zone file, or octoDNS will remove it. CAA needs an Amazon entry. |
+| Edge path | UniFi port-forward 443 → Cilium LB `10.100.22.64` → Traefik (1 replica). `externalTrafficPolicy` is left at `Cluster`, so traffic is SNAT'd. `forwardedHeaders.trustedIPs` is set to the RFC1918 ranges. | **Traefik cannot see source IPs**, so a Traefik `ipAllowList` of CloudFront ranges would not work today. The IP filter has to sit at UniFi (§7.1). |
+| TLS | cert-manager issues Let's Encrypt certs through Route53 DNS-01. The Traefik default cert is the wildcard `kof22-wildcard-tls` (`*.kof22.com` plus the apex). | The origin keeps the LE wildcard, which covers `origin.kof22.com` and every forwarded Host. The viewer cert is from ACM in `us-east-1`. |
+| Media | MinIO public bucket `kof22-website-files`, served at `https://s3.kof22.com/kof22-website-files/...`. Keys look like `media/{siteId}/{slug}/{sha256}/{original.ext,thumbnail.jpg,gallery.jpg,slideshow.jpg}`.<br>Uploads set **no `Cache-Control`**.<br>iOS uploads use presigned PUTs into the private bucket `kof22-website-incoming`, **signed for `https://s3.kof22.com`** (`SITE_API_S3_PUBLIC_ENDPOINT`). | Media is immutable. Presigned PUTs must move to a hostname that is not behind the CDN before `s3` cuts over (§5.1). |
+| Site API | `api.kof22.com`. `SiteApiRouteProvider.finish()` sets `public, max-age=60` (300 for docs, feeds and the sitemap) and `no-store` on `/v1/me*` and `/v1/contact`. It strips `Set-Cookie` and adds `Vary: Origin`. Reads have no ETag and never return 304. | Almost ready for a CDN (§5.4). |
+| Frontend | Next.js `output: 'standalone'`, 2 replicas, `force-dynamic` in the root layout. There is no ISR, no tags, no `cacheHandler` and no revalidation route. The `/_next/image` optimizer caches per pod. | Stage A (assets and images) works now. Stage B (HTML) needs ISR (§6). |
+| ESB | Artemis topics `kof22.cms.tables` (INSERT/UPDATE/DELETE events for 16 CMS tables) and `kof22.cms.processes`. **Nothing consumes `kof22.cms.tables`.** | The invalidation pipeline subscribes here (§4.5). |
+| Analytics | Privacy-first. The visitor hash is SHA-256(daily salt, site, IP, UA), and the IP is never stored. Geo is city-level. A SNAT'd IP is recorded as `GeoStatus.PROXY_IP`. | The real IP comes through the guard (§7.3). |
+| QQQ core | `QJavalinImplementation` and the API middleware have no cache or ETag handling. Only `NextDashboardRouteProvider` and `BrandingAssetsRouteProvider` set `Cache-Control`. | Needs one small core hook (§3.1). |
 
 ### 1.3 Non-goals (v1)
 
-- Caching anything on `admin.*`, `auth.*`, the QQQ Next dashboard or `/v1/me*`. Authenticated surfaces stay on the origin path.
-- Running edge compute (Workers, Lambda@Edge, Compute) as part of the qbit. Edge code, if ever needed, belongs to infrastructure.
-- Pushing CDN configuration (cache rules, WAF, TLS) from the app. Infrastructure as code owns that, and the qbit only reads and reports drift (D9).
-- Video streaming. Large video belongs to a purpose-built product such as Cloudflare Stream, R2 or MediaConvert, not to a general CDN plan (risk R6).
+- Caching `admin.*`, `auth.*`, the QQQ Next dashboard, `/v1/me*`, or any authenticated response.
+- Edge compute as part of the qbit. The single CloudFront Function in §5.2 is infrastructure owned by Praetor, not qbit code.
+- The app pushing CDN configuration. OpenTofu owns that (D9).
+- Video delivery and streaming.
+- Signed CDN URLs (D12).
 
 ---
 
 ## 2. Research summary
 
-Sources are listed in §14. Prices are as of 2026-10-12 and change often. Items marked *verify* were not confirmed against a primary source in this session.
+Sources are in §14. Prices are as of 2026-10-12. *verify* marks a claim that was not confirmed against a primary source in this session.
 
 ### 2.1 Provider comparison
 
-| | Cloudflare | AWS CloudFront | Fastly | Bunny.net | Google Cloud CDN | Azure Front Door | Akamai | Self-hosted (Souin / Varnish) |
+| | AWS CloudFront | Cloudflare | Fastly | Bunny.net | Google Cloud CDN | Azure Front Door | Akamai | Self-hosted (Souin / Varnish) |
 |---|---|---|---|---|---|---|---|---|
-| **Purge by URL** | Yes | Yes (invalidation paths) | Yes | Yes | Yes (path) | Yes (path) | Yes | Yes |
-| **Purge by prefix / wildcard** | Yes, **all plans** | Yes (`/path*` counts as 1 path) | Via key | Yes (wildcard URL) | Yes (prefix, host) | Yes (wildcard) | Via CP code | Varnish BAN |
-| **Purge by tag** | Yes, **all plans** (`Cache-Tag`) | **No** | Yes (`Surrogate-Key`, batch API, soft purge) | Yes (`CDN-Tag`, wildcard) | Yes (`Cache-Tag`, 50 tags per object, 10 tags per request) | **No** | Yes (`Edge-Cache-Tag`, Fast Purge v3) | Yes (Souin `Surrogate-Key`; Varnish `xkey`) |
-| **Purge limits** | Tag/prefix/host: Free 5 req/**min** (bucket 25), Pro 5 req/s. Up to 100 items per request. | First 1,000 paths/month free, then about $0.005 per path | About 100k purges/hour | Not published (*verify*) | 500 requests/min, about 10 s to take effect | About 100 concurrent (*weak source*) | Plan-dependent | None |
-| **Signed URLs** | No native signed URLs on self-serve plans. Use WAF HMAC validation (plan-gated, *verify*) or a Worker. | Yes: key groups, canned or custom policy, URLs or cookies | Via VCL or Compute | Yes: token auth, HMAC-SHA256 "advanced" | Yes: URLs and cookies | Yes (Premium: token auth, *verify*) | Yes (EdgeAuth tokens) | imgproxy HMAC (images only) |
-| **Image transforms** | `/cdn-cgi/image/<opts>/<src>`. 5,000 unique transforms/month free, then $0.50 per 1,000 | None native. Run your own (Lambda or imgproxy). | Image Optimizer: 100k free, then $0.50 per 10k | Bunny Optimizer $9.50 per site per month | None native | None native | Image & Video Manager | imgproxy or thumbor (self-hosted) |
-| **Origin protection** | **Tunnel** (outbound only, no inbound port), Authenticated Origin Pulls (global, zone or per-hostname mTLS), published IP ranges | Secret custom origin header plus allowlist from `ip-ranges.json` (managed prefix lists only work inside AWS) | Published IPs, shared-secret header, mTLS | Published edge IPs, secret header (*verify*) | Internet NEG plus ALB, published IPs | Private Link (Premium, Azure origins), header plus IPs | Site Shield, mTLS | Not needed (in-cluster) |
-| **Real client IP header** | `CF-Connecting-IP` (`True-Client-IP` on Enterprise) | `CloudFront-Viewer-Address` (needs an origin request policy) | `Fastly-Client-IP` | `CDN-ClientIP` (*verify*) | `X-Forwarded-For` (the client is the first entry) | `X-Forwarded-For`, `X-Azure-ClientIP` (*verify*) | `True-Client-IP` | Original `X-Forwarded-For` |
-| **Analytics API** | GraphQL Analytics API (all plans). Logpush of HTTP requests is Enterprise only (*verify*). | CloudWatch metrics, standard logs v2, real-time logs (Kinesis) | Real-time stats API, log streaming | Statistics API | Cloud Logging | Metrics and logs in Azure Monitor | Reporting API, DataStream | Prometheus exporters |
-| **Honors `CDN-Cache-Control` (RFC 9213)** | Yes (co-author) | No (use the `s-maxage` policy) | Co-author; default behavior *verify* (it honors `Surrogate-Control`) | No (use `s-maxage` or edge rules, *verify*) | No (`s-maxage`) | No | `Akamai-Cache-Control` / targeted (*verify*) | Souin: yes |
-| **IaC** | OpenTofu `cloudflare` provider (`cloudflare_ruleset`, phase `http_request_cache_settings`). octoDNS has a Cloudflare provider. | OpenTofu `aws` provider. Route53 alias works for the apex. | `fastly` provider | `bunnynet` provider (*verify*) | `google` provider | `azurerm` provider | `akamai` provider | Helm or GitOps |
-| **Cost for kof22-scale traffic** (100–500 GB, ~3M req/mo) | **$0** (Free). Pro ~$20–25 (*verify*). | **$0** pay-as-you-go (always-free 1 TB and 10M requests). Flat-rate **Pro $15** (Free plan caps at 1M requests / 100 GB). | Free tier is 100 GB / 100k requests, which kof22 exceeds. Packages start at $1,500/mo. | **$1–5** ($0.01/GB in NA/EU, $1 minimum) | ~$10–40 plus about $18 for the ALB (*verify*) | ~$35 base plus usage (*verify*) | Enterprise contract | $0, but **all traffic still goes over the home uplink** |
-| **Notes** | Proxying needs the zone on Cloudflare DNS, a Business-plan CNAME setup, or Cloudflare for SaaS (D2). The self-serve plan terms favor web content over bulk video (R6). | Keeps everything in AWS and Route53. ACM viewer certs need CAA for Amazon. No tag purge, so the qbit expands tags to URL templates. | Best-in-class tag purge, too expensive here | Cheapest paid option, simple API, good tag purge | Overkill for a homelab origin | Classic Front Door retires 2027-03-31. Classic Microsoft CDN retires 2027-09-30. | Enterprise only | Only useful as a dev/test adapter or an internal cache |
+| **Purge by URL** | Yes (invalidation paths) | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| **Prefix / wildcard** | Yes. `*` only at the end, and a wildcard path counts as **1 path** for billing. | Yes (all plans) | via key | Yes | Yes (prefix, host) | Yes | via CP code | Varnish BAN |
+| **Purge by tag** | **No** | Yes, all plans (`Cache-Tag`) | Yes (`Surrogate-Key`) | Yes (`CDN-Tag`) | Yes (`Cache-Tag`, 50 per object) | **No** | Yes (`Edge-Cache-Tag`) | Yes (Souin `Surrogate-Key`, Varnish `xkey`) |
+| **Purge cost / limits** | **First 1,000 paths/month free**, then about $0.005 per path.<br>Quotas cap concurrent in-progress paths (wildcards are capped low, about 15 in progress, *verify*).<br>Invalidation is not instant (typically up to a few minutes, *verify*).<br>Whether flat-rate plans include invalidations: *verify*. | Free: 5 tag/prefix requests per minute, 100 items each | ~100k/h | not published | 500/min | ~100 concurrent | plan | none |
+| **Signed URLs** | Yes. Key groups, canned or custom policy, URLs or cookies. | WAF HMAC or a Worker | VCL or Compute | Token auth (HMAC-SHA256) | Yes | Premium | EdgeAuth | imgproxy only |
+| **Image transforms** | None native. Use CloudFront Functions, Lambda@Edge, or your own service. | `/cdn-cgi/image`, 5k unique/month free | Image Optimizer | Optimizer, $9.50 per site | none | none | IVM | imgproxy / thumbor |
+| **Origin protection** | Secret custom origin header plus the origin-facing IP list.<br>The managed prefix list `com.amazonaws.global.cloudfront.origin-facing` only works inside AWS security groups, so a homelab has to use the list's entries or `ip-ranges.json`.<br>VPC origins only apply to origins hosted in AWS. | Tunnel, Authenticated Origin Pulls, IP ranges | header, IPs, mTLS | header, IPs | NEG plus IPs | Private Link (Azure origins) | Site Shield | n/a |
+| **Real client IP** | `CloudFront-Viewer-Address` (`IP:port`; must be added in an origin request policy) | `CF-Connecting-IP` | `Fastly-Client-IP` | `CDN-ClientIP` (*verify*) | XFF | XFF / `X-Azure-ClientIP` | `True-Client-IP` | XFF |
+| **Honors `CDN-Cache-Control`** | No. It uses `Cache-Control` `s-maxage`, kept within the cache policy's min/max TTL. | Yes | *verify* (honors `Surrogate-Control`) | *verify* | No | No | targeted (*verify*) | Souin: yes |
+| **Honors origin `Vary`** | Only through the cache key: headers must be listed in the cache policy (*verify* the exact behavior). | Partial | Yes | Partial | Partial | Partial | Yes | Yes |
+| **Stats** | CloudWatch `AWS/CloudFront` metrics, per distribution. Cache hit rate needs "additional metrics".<br>Standard logs v2 give a per-host breakdown. Real-time logs go through Kinesis. | GraphQL Analytics | real-time stats API | Statistics API | Cloud Logging | Azure Monitor | Reporting API | Prometheus |
+| **IaC** | OpenTofu `aws`: distribution, cache, origin-request and response-headers policies, functions, ACM, IAM.<br>The flat-rate plan subscription is a billing action (*verify* whether the API or IaC can do it). | `cloudflare` | `fastly` | `bunnynet` (*verify*) | `google` | `azurerm` | `akamai` | Helm |
+| **kof22-scale cost** (100–500 GB, ~3M requests/mo) | **Flat-rate Pro $15**: 10M requests, 50 TB, no overages, includes WAF, DDoS protection and log/S3 allowances.<br>The Free flat plan (1M requests / 100 GB) is too small.<br>Pay-as-you-go would be about $0 inside the always-free tier, but has no cost ceiling. | $0 (Free) | free tier too small; packages from $1,500 | $1–5 | ~$10–40 plus ALB | ~$35+ | contract | $0, but all traffic still goes over the home uplink |
 
-**Takeaways for the design:**
+### 2.2 Takeaways for the design
 
-1. **Cache tags are common but not universal.** CloudFront and Azure have no tag purge, so the qbit must be able to turn a tag into URL patterns (§4.3).
-2. **Tag header names and limits differ.** The strictest common limits are Bunny's 1 KB `CDN-Tag` header and Google's 50 tags per object and 120 bytes per tag. The qbit's **portable tag budget** is therefore ≤ 20 tags per response, each ≤ 64 ASCII characters, and ≤ 1,000 bytes in total. If a response would go over, the qbit collapses fine-grained tags into a coarse tag (§4.2).
-3. **`CDN-Cache-Control` is honored by Cloudflare and Souin.** Other providers need `s-maxage` or provider rules, so the qbit always emits **both**: `Cache-Control` with `s-maxage` and `CDN-Cache-Control`. They have the same edge TTL, so either one is correct.
-4. **Purge rate limits vary by orders of magnitude.** Cloudflare Free allows 5 tag-purge requests per **minute**. So the qbit must **merge** pending purges (one request carries up to 100 tags on Cloudflare) and **rate-limit per provider**.
-5. **Next.js does not purge any CDN.** Its CDN guide says the app must call the purge API itself, for both the HTML and the RSC (`_rsc`) variants, after `revalidateTag` or `revalidatePath`. Its self-hosting guide also says that with more than one pod, revalidation must reach every pod or the tags must be shared (§6.3).
+1. **CloudFront has no tags, and paths cost money once the free 1,000 per month are used.** The tag model stays provider-neutral. The CloudFront adapter adds a **path planner** that maps tags to paths and wildcards, collapses sibling paths into wildcards, and spends against a monthly budget (§4.3).
+2. **CloudFront caches by its cache policy, not by the origin's `Vary` header.** For Next.js, the cache key must include the `_rsc` query parameter and the `RSC` header (§5.2, §6). `/_next/image` content negotiation needs a normalized `Accept` header.
+3. **CloudFront ignores `CDN-Cache-Control`.** The qbit puts the edge TTL in `s-maxage`. The cache policy sets min TTL 0, default 0 and max 1 year, so the origin headers decide.
+4. **The origin cannot rely on an IP check at Traefik while traffic is SNAT'd.** The IP filter goes at UniFi, and the secret header check goes at Traefik (§7.1).
+5. **Next.js does not purge any CDN, and with 2 pods every pod must be revalidated** before the edge is invalidated. Both the Next.js self-hosting guide and its CDN caching guide say so.
 
-### 2.2 Standards the qbit relies on
+### 2.3 Standards
 
-| Standard | Use |
+| Standard | How the design uses it |
 |---|---|
-| RFC 9111 HTTP Caching | `max-age`, `s-maxage`, `public`/`private`/`no-store`, `immutable` (RFC 8246), how `Vary` works |
-| RFC 9213 Targeted Cache-Control | `CDN-Cache-Control` for shared CDN caches, separate from browser `Cache-Control` |
-| RFC 5861 | `stale-while-revalidate` and `stale-if-error`. The origin can be down for a while without visitors noticing. |
-| RFC 9110 §8.8 / §13 | `ETag`, `Last-Modified`, `If-None-Match` → 304, which makes CDN revalidation cheap |
-| RFC 9211 Cache-Status | Normalized HIT/MISS reporting (Souin emits it; other providers use their own headers, and the adapters normalize them) |
-| W3C Edge Architecture (`Surrogate-Control`) | Older targeted header. Emitted only for Fastly, and only if D1 picks Fastly. |
-| Tag headers | `Cache-Tag` (Cloudflare, Google), `Surrogate-Key` (Fastly, Souin), `CDN-Tag` (Bunny), `Edge-Cache-Tag` (Akamai), `xkey` (Varnish). The IETF draft `draft-ietf-httpbis-cache-groups` may standardize this later, so the qbit keeps the header name in the adapter. |
+| RFC 9111 | `max-age`, `s-maxage`, `public`/`private`/`no-store`, and `immutable` (RFC 8246) |
+| RFC 9213 | `CDN-Cache-Control` is emitted for providers that honor it. It is harmless on CloudFront. |
+| RFC 5861 | `stale-while-revalidate` and `stale-if-error`. CloudFront serves stale content on origin errors according to its error-caching settings (*verify* how much it honors `stale-*`). |
+| RFC 9110 §8.8/§13 | Weak `ETag` and `If-None-Match` → 304. CloudFront revalidates expired objects with conditional requests. |
+| RFC 9211 Cache-Status | Normalized HIT/MISS. Souin emits it natively. The adapters normalize CloudFront's `X-Cache: Hit from cloudfront`. |
+| Tag headers | `Cache-Tag`, `Surrogate-Key`, `CDN-Tag`, `Edge-Cache-Tag`, `xkey`. A tag header is emitted only when the provider has one. **CloudFront gets none**, because an unused tag header would leak to visitors. |
 
 ---
 
 ## 3. Architecture
 
 ```
-                               ┌────────────────────────── qbit-cdn (in each QQQ app) ──────────────────────────┐
- CMS edit / publish            │                                                                                 │
- (QQQ actions) ──commit──► ESB │  CdnPurgeTrigger (EsbTrigger, BATCH)                                            │
- topic kof22.cms.tables ───────┼─► CdnTagResolver (cdnTableTagRule) ─► cdnPurgeRequest rows (PENDING)           │
-                               │                                           │                                     │
-                               │  CdnPurgeDispatcher (scheduled, every 5 s, single runner)                       │
-                               │     merge ─► rate-limit per provider ─► [revalidation hooks: Next pods] ─►      │
-                               │     CdnProviderInterface.purge(tags|urls|prefixes|hosts)                        │
-                               │                                                                                 │
- HTTP response (Site API,      │  CdnResponseHeaderPolicy (cdnCachePolicy) ─► Cache-Control, CDN-Cache-Control,  │
- QQQ API, route providers) ◄───┼─    tag header in the provider's dialect, ETag/304                              │
-                               │                                                                                 │
- FILE_PREVIEW / Site API /     │  CdnUrlBuilder: media URL rewrite, image transform URL, signed URL               │
- Next loader ◄─────────────────┼─                                                                                │
-                               │                                                                                 │
- Admin → Health widget ◄───────┼─ cdnEdgeStatDaily ◄── CdnStatsImport (scheduled, daily + on demand)            │
-                               └─────────────────────────────────────────────────────────────────────────────────┘
-                                        │ provider adapters: CLOUDFLARE · CLOUDFRONT · FASTLY · BUNNY · SOUIN · VARNISH · NONE
-                                        ▼
-                     Visitor ──► CDN edge ──(Tunnel or allowlisted origin pull)──► Traefik "cdn" entry point ──► www / api / s3 services
+                               ┌──────────────────────────── qbit-cdn (in each QQQ app) ─────────────────────────────┐
+ CMS edit / publish ──commit──►│ ESB topic kof22.cms.tables ─► cdnEnqueuePurgeFromEvents (EsbTrigger, BATCH)         │
+                               │      └─► CdnTagResolver (cdnTableTagRule) ─► cdnPurgeRequest rows (PENDING, tags)     │
+                               │                                                                                       │
+                               │ cdnDispatchPurges (scheduled every 5 s; flush window 30 s for CloudFront)             │
+                               │   coalesce ─► [cdnRevalidationHook: every Next pod revalidateTag] ─►                  │
+                               │   provider planner (CloudFront: tags→paths/wildcards within budget) ─► provider.purge │
+                               │                                                                                       │
+ HTTP responses ◄──────────────┤ CdnResponseHeaderPolicy (cdnCachePolicy): Cache-Control/s-maxage, ETag/304, tags*    │
+ FILE_PREVIEW / Next loader ◄──┤ CdnUrlBuilder (media URL, rendition picker, signed URL later)                         │
+ Admin → Health widget ◄───────┤ cdnEdgeStatDaily ◄── cdnImportEdgeStats (CloudWatch, daily)                          │
+                               └───────────────────────────────────────────────────────────────────────────────────────┘
+                                   adapters: CLOUDFRONT (first) · SOUIN/VARNISH (tests) · NONE · later CLOUDFLARE/FASTLY/BUNNY
+                                                                  │ CreateInvalidation (IAM user cdn-qbit-kof22)
+                                                                  ▼
+ Visitor ─► CloudFront (1 distribution: kof22.com, www, api, s3; ACM us-east-1; flat-rate Pro)
+              └─ HTTPS to origin.kof22.com:8443 + header X-Origin-Verify ─► UniFi WAN:8443 (source = CloudFront origin-facing ranges)
+                   ─► Cilium LB 10.100.22.64:8443 ─► Traefik entry point "cdn" ─► forwardAuth origin-guard (secret ✓ → X-Real-IP)
+                        ─► www / api / s3 services            (direct visitors keep using WAN:443 → entry point "websecure")
 ```
 
 ### 3.1 Where code lives (D10)
 
-| Piece | Location | Why |
-|---|---|---|
-| SPI, adapters, tables, processes, widget, header policy, URL builder | New repo **`QRun-IO/qbit-cdn`** (package `com.kingsrook.qbits.cdn`), built with the `qbit-template` pattern (`CdnQBitConfig implements QBitConfig`, `CdnQBitProducer implements QBitMetaDataProducer<CdnQBitConfig>`) | Same layout as `qbit-quick-search`. Apps opt in. |
-| **Response header hook** | QQQ core, `qqq-middleware-javalin`: a `QJavalinResponseHeaderCustomizerInterface` registered on `QJavalinMetaData`. It is called after the QQQ API and table GET handlers, with table, record and route context. | Today the API middleware gives no way to set headers per response. This is the only core change, about 1 day, and it is generic, so security headers and others can use it too. |
-| Next.js helpers | Small npm package `@qrun-io/cdn-next`, or a folder copied into Website-Frontend in v1: an image loader, a header helper and the revalidate route | Keeps the frontend independent of the vendor |
-| Edge configuration (DNS, cache rules, WAF, tunnel, TLS) | Praetor (OpenTofu plus octoDNS) and cluster-gitops (cloudflared, Traefik entry point) | Infrastructure as code is the source of truth (D9) |
+| Piece | Location |
+|---|---|
+| SPI, adapters, tables, processes, widget, header policy, URL builder, path planner | New repo **`QRun-IO/qbit-cdn`** (`com.kingsrook.qbits.cdn`). It follows the `qbit-template` / `qbit-quick-search` pattern: `CdnQBitConfig implements QBitConfig`, `CdnQBitProducer implements QBitMetaDataProducer<CdnQBitConfig>`, and table producers as `QBitComponentMetaDataProducer`. |
+| Response header hook | QQQ core, `qqq-middleware-javalin`: `QJavalinResponseHeaderCustomizerInterface`. It is registered on `QJavalinMetaData` and called after the API and table GET handlers, with table, record and route context. It is generic, takes about 1 day, and lands **after RC.4** in the next 4.1.x. |
+| Next.js helpers | `src/lib/cdn/` in Website-Frontend for v1: image loader, revalidate route, cache headers. Extract them to `@qrun-io/cdn-next` if a second app needs them. |
+| Edge config | Praetor: a new `terraform/cdn-cloudfront/` root, `dns/route53` (octoDNS) and `unifi/` (port-forward and firewall group).<br>cluster-gitops: the Traefik `cdn` entry point, `origin-guard`, and middlewares. |
+| `origin-guard` | A small container (nginx, or a ~50-line Go binary) in cluster-gitops `platform/origin-guard/`. Its secret comes from Infisical through ESO. |
 
 ### 3.2 Request classes and default policies
 
-The qbit seeds these as `cdnCachePolicy` records (§4.4). Admins can tune them, and the e2e test matrix (§9.3) pins them.
+These are seeded as `cdnCachePolicy` rows (§4.4) and pinned by the header matrix (§9.3). The CloudFront cache policy uses min TTL 0, default 0 and max 31536000. That means **the origin header always decides**, and a response without a caching header is not cached.
 
-| Class | Example | Browser `Cache-Control` | Edge (`s-maxage` / `CDN-Cache-Control`) | Tags | Notes |
-|---|---|---|---|---|---|
-| Immutable media | `s3…/media/1/x/<sha>/gallery.jpg` | `public, max-age=31536000, immutable` | 1 year | `media:<id>` | The key changes when the content changes. Purge is only needed on delete or takedown. |
-| Hashed build assets | `/_next/static/*` | `public, max-age=31536000, immutable` (Next sets this) | 1 year | none | Never purged |
-| Optimized images | `/_next/image?url=…&w=…&q=…` | `public, max-age=86400` | 1 year (the source is immutable) | `media:<id>` when it can be derived | Next `images.minimumCacheTTL` must be raised (§6.2) |
-| Public API read | `api…/v1/blog-posts/123` | `public, max-age=60` | 1 day, `stale-while-revalidate=60`, `stale-if-error=86400` | `post:123`, `blog:7`, `site:1` | Purged on change, so a long edge TTL is safe |
-| Public API list, feed, sitemap | `/v1/blog-posts?blog=…`, `/v1/feeds/*` | `public, max-age=60` | 1 hour, swr 60, sie 1 day | `blog:7:list`, `site:1:feeds` | Coarse tags |
-| Public HTML (after ISR, §6) | `/blog/quick-bits/my-post` | `public, max-age=0, must-revalidate` | Next ISR `s-maxage`, swr | path tags (§6.4) | Browsers always revalidate, and the edge holds the page |
-| Never cache | `/v1/me*`, `/v1/contact`, `/api/e`, `/preview`, `/api/*` (frontend), `admin.*`, `auth.*` | `private, no-store` | `no-store` | none | The edge also bypasses these by rule (defense in depth) |
+| Class | Example | `Cache-Control` from origin | Invalidation | Notes |
+|---|---|---|---|---|
+| Immutable media | `s3…/kof22-website-files/media/1/x/<sha>/gallery.jpg` | `public, max-age=31536000, immutable` | Only on delete or takedown (exact paths) | The key changes when the content changes |
+| Hashed build assets | `/_next/static/*` | `public, max-age=31536000, immutable` (set by Next) | Never | |
+| Optimized images | `/_next/image?url=…&w=…&q=…` | `public, max-age=31536000` (with `minimumCacheTTL`, §6.1) | Never in practice, because the source is immutable | The cache key includes `url`, `w`, `q` and a normalized `Accept` |
+| API leaf (single record) | `api…/v1/blog-posts/123` | `public, max-age=60, s-maxage=86400, stale-while-revalidate=60, stale-if-error=86400` | `/v1/blog-posts/123*` | Long edge TTL because it gets invalidated |
+| API hub (lists, search, feeds, sitemap) | `/v1/blog-posts?blog=…`, `/v1/feeds/*`, `/v1/sitemap.xml` | `public, max-age=60, s-maxage=120, stale-while-revalidate=60, stale-if-error=86400` | **None.** It relies on a short TTL instead. | Keeps the path budget small (§4.3) |
+| HTML leaf (after P4) | `/blog/quick-bits/my-post` | `public, max-age=0, must-revalidate, s-maxage=86400, stale-while-revalidate=60`. The policy sets this, overriding Next's ISR default. | `/blog/quick-bits/my-post*` (also covers the `_rsc` variants) | |
+| HTML hub (after P4) | `/`, `/blog/quick-bits`, `/projects` | `public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300` | None, or 1 path when published from the record action | |
+| Never cache | `/v1/me*`, `/v1/contact`, `/oauth/*`, `/api/*` (frontend, including `/api/e`), `/preview*`, and all `POST` requests | `private, no-store` | n/a | The CloudFront behaviors for these paths also use the managed `CachingDisabled` policy |
 
 ---
 
@@ -173,472 +201,517 @@ The qbit seeds these as `cdnCachePolicy` records (§4.4). Admins can tune them, 
 ```java
 public interface CdnProviderInterface
 {
-   CdnProviderType getType();                                   // CLOUDFLARE, CLOUDFRONT, FASTLY, BUNNY, AKAMAI, AZURE_FRONT_DOOR, GOOGLE_CDN, SOUIN, VARNISH, NONE
-   Set<CdnCapability> getCapabilities(CdnProviderConfig config); // PURGE_URL, PURGE_PREFIX, PURGE_TAG, PURGE_HOST, PURGE_ALL, SOFT_PURGE,
-                                                                 // SIGNED_URL, SIGNED_COOKIE, IMAGE_TRANSFORM, STATS_IMPORT, RULES_READ, HONORS_CDN_CACHE_CONTROL
-   CdnHeaderDialect getHeaderDialect();                         // tag header name, separator, max tags/bytes, whether the edge strips it,
-                                                                 // cache-status header name + parser
-   CdnPurgeLimits getPurgeLimits(CdnProviderConfig config);     // items per request, requests per window, per kind
-   CdnPurgeResult purge(CdnPurgeInput input) throws CdnException; // one already-merged, already-sized batch
-   CdnHealth checkHealth(CdnProviderConfig config);             // credentials valid, zone/distribution exists, token scopes
+   CdnProviderType getType();   // CLOUDFRONT, CLOUDFLARE, FASTLY, BUNNY, AKAMAI, AZURE_FRONT_DOOR, GOOGLE_CDN, SOUIN, VARNISH, NONE
+   Set<CdnCapability> getCapabilities(CdnProviderConfig config);
+                                // PURGE_URL, PURGE_WILDCARD, PURGE_PREFIX, PURGE_TAG, PURGE_HOST, PURGE_ALL, SOFT_PURGE,
+                                // SIGNED_URL, SIGNED_COOKIE, IMAGE_TRANSFORM, STATS_IMPORT, CONFIG_READ, HONORS_CDN_CACHE_CONTROL
+   CdnHeaderDialect getHeaderDialect();          // tag header (or none), separator, budget, cache-status header + parser
+   CdnPurgePlanner getPurgePlanner(CdnProviderConfig config); // turns canonical tags into this provider's purge batches (§4.3)
+   CdnPurgeResult purge(CdnPurgeBatch batch) throws CdnException;
+   CdnPurgeStatus checkPurge(CdnProviderConfig config, String providerRequestId); // async providers (CloudFront: GetInvalidation)
+   CdnHealth checkHealth(CdnProviderConfig config);
    default List<CdnEdgeStat> importStats(CdnStatsInput input)   { throw new CdnCapabilityException(STATS_IMPORT); }
    default String signUrl(CdnSignInput input)                   { throw new CdnCapabilityException(SIGNED_URL); }
-   default CdnRulesSnapshot readRules(CdnProviderConfig config) { throw new CdnCapabilityException(RULES_READ); }
+   default CdnConfigSnapshot readConfig(CdnProviderConfig config) { throw new CdnCapabilityException(CONFIG_READ); }
 }
 ```
 
-Image transforms have their own SPI, **`ImageTransformProviderInterface`** (`buildUrl(source, width, height, fit, quality, format)`, `getCapabilities()`). The image engine is often not the CDN: for example CloudFront plus imgproxy, or Cloudflare with the existing pre-made renditions. The implementations are:
-- `RENDITIONS`: picks the nearest existing `thumbnail`/`gallery`/`slideshow` key, with zero compute
-- `CLOUDFLARE_IMAGES` (`/cdn-cgi/image/...`)
-- `IMGPROXY` (HMAC-signed, self-hosted)
-- `BUNNY_OPTIMIZER`
-- `NEXT_DEFAULT` (`/_next/image`)
-- `NONE`
+**Image transforms** have their own SPI, `ImageTransformProviderInterface`.
+- v1 ships `RENDITIONS`, which picks the nearest `thumbnail`/`gallery`/`slideshow` rendition, and `NEXT_DEFAULT`.
+- `CLOUDFLARE_IMAGES`, `IMGPROXY`, `BUNNY_OPTIMIZER` and a later `CLOUDFRONT_FUNCTION` engine are reserved slots.
 
-Adapters are stateless and take a `CdnProviderConfig` that holds identifiers and a **secret reference**, never the secret itself (§7.5). Each HTTP adapter uses the JDK `HttpClient` and has no vendor SDK dependency. The one exception is CloudFront, where AWS SDK v2 `cloudfront` is acceptable because SigV4 signing is not worth reimplementing.
+**Adapters are stateless.** They receive identifiers plus a **secret reference** (the name of an env var), never a secret value.
+- HTTP adapters use the JDK `HttpClient`.
+- The CloudFront adapter uses AWS SDK v2 `cloudfront` and `cloudwatch`, because SigV4 is not worth writing by hand. It authenticates with the key of the `cdn-qbit-kof22` IAM user (§7.5).
 
-### 4.2 Canonical cache tags
+### 4.2 Canonical tags (provider-neutral)
 
-Tags are defined once, provider-neutral, as short ASCII strings: `<kind>:<id>[:<facet>]`. Examples:
+A tag has the form `<kind>:<id>[:<facet>]` and is at most 64 ASCII characters. Examples: `site:1`, `post:123`, `blog:7`, `blog:7:list`, `page:12`, `media:456`, `author:3`, `project:9`, `path:/blog/quick-bits/my-post`.
 
-| Tag | Emitted on | Purged when |
-|---|---|---|
-| `site:1` | every public response for site 1 | site settings, menus, snippets (coarse) |
-| `post:123` | API read of post 123; HTML of that post | `blog_post` 123 or its current `blog_post_version` changes |
-| `blog:7` | blog 7 detail, and every post in blog 7 | the blog itself changes |
-| `blog:7:list` | lists, feeds and the sitemap section for blog 7 | any post in blog 7 is inserted, deleted, or changes publish state, title, slug, excerpt or featured image |
-| `page:12` | page 12 and its sections | `page` or `page_section` change |
-| `media:456` | media read, optimized-image responses | `media` 456 update or delete (renditions are immutable, so this is mainly for takedowns) |
-| `author:3` | author reads and the posts that embed the author card | `author` change |
-| `path:/blog/quick-bits/my-post` | HTML (§6.4) | the URL template expansion of the record |
+- **Providers with a tag header:** tags are emitted within the portable budget of ≤ 20 tags and ≤ 1,000 bytes. A list response collapses to its list tag.
+- **CloudFront:** no tag header is emitted. Tags exist only inside the qbit, as the unit of invalidation, and the planner turns them into paths.
 
-**Budget enforcement** (`CdnTagBudget`): emit at most 20 tags, each ≤ 64 characters, with a header ≤ 1,000 bytes. When a list response would go over, the item tags are replaced by the list tag (`blog:7:list`), so there is one tag instead of 50 `post:*`. This rule is what keeps the tags portable to Bunny and Google. The adapter's `CdnHeaderDialect` then formats them: comma-separated `Cache-Tag` for Cloudflare, space-separated `Surrogate-Key` for Fastly and Souin, and so on. If the edge does not strip the tag header before it reaches visitors, the adapter declares `stripsTagHeader=false` and the edge rule removes it. This is listed in the IaC checklist (§8.4).
+The same tag vocabulary is used by Next.js `cacheTag()` (§6.3). A tag therefore means the same thing in Next's cache, in the CDN, and in `cdnPurgeRequest`.
 
-### 4.3 Purge planning and capability fallback
+### 4.3 Purge planning, and the CloudFront path planner
 
-`CdnPurgePlanner` turns a set of tags into calls the provider can actually make:
+`CdnPurgePlanner` turns a merged group of tags into provider batches.
 
-1. If the provider has `PURGE_TAG`, send tags in batches of up to `limits.itemsPerRequest`.
-2. Otherwise, use the `urlTemplates` of each `cdnTableTagRule` to expand every tag into URLs, such as `/blog/{blog.slug}/{slug}`, `/blog/{blog.slug}`, `/`, `/feed.xml` and `/sitemap.xml`. Add the `?_rsc=*` variants as a prefix or wildcard where the provider supports it. On CloudFront, `/blog/quick-bits/my-post*` counts as **one** path, and it covers the RSC variants.
-3. If the URL count goes over a safety threshold (default 200), fall back to `PURGE_PREFIX`, and then `PURGE_HOST`.
-4. `PURGE_ALL` is never chosen automatically. It is only available through the guarded "Purge everything" action (§4.7), which needs the `cdn.purgeAll` permission.
+- **Providers with tag purge** (Fastly, Bunny, Cloudflare, Souin) send the tags as-is, in batches sized to the provider's `itemsPerRequest`.
+- **CloudFront** uses `CloudFrontPathPlanner`, which works in five steps:
+  1. **Expand.** Each tag maps to invalidation paths through `cdnTableTagRule.invalidationPaths`. The paths are rendered from the event's `record` **and** its `oldRecord`, so a slug change also clears the old URL.
+     - Example: `post:123` becomes `www:/blog/{blog.slug}/{slug}*` and `api:/v1/blog-posts/{id}*`.
+     - The trailing `*` covers the RSC `?_rsc=` variants and other query variants.
+     - The `host:` prefix is dropped, because one distribution serves all hosts and paths are host-agnostic. The trade-off is that `/v1/blog-posts/123*` on `api` and an identical path on `www` are invalidated together, which is harmless.
+  2. **Skip hubs.** Paths whose policy class is *hub* (§3.2) are dropped, because they expire on their own within 60–120 s. A manual "Purge from CDN" action can include them on purpose.
+  3. **Collapse.** If more than `collapseThreshold` paths (default 5) share a parent, they are replaced by `parent/*`, which costs 1 path. Any path already covered by a wildcard in the same batch is removed.
+  4. **Budget.** The planner counts this month's billed paths as the sum of `cdnPurgeRequest.billablePaths` for SUCCEEDED requests in the current UTC month. CloudFront bills a wildcard as 1 path and an exact path as 1 path.
+     - **Below the soft limit** (default 800 of the free 1,000): send as planned.
+     - **Between the soft and hard limits** (hard default 1,000): coarsen to one wildcard per top-level section, such as `/blog/*` or `/v1/*`.
+     - **Above the hard limit:** either pay ($0.005 per path, up to `monthlyPaidPathCap`, default 1,000 paths or $5), or queue the request as `DEFERRED_BUDGET` and let the TTL expire it. Each provider chooses one, and the default is to pay.
 
-Purges are **idempotent and order-independent**, which matches ESB at-least-once, unordered delivery. A duplicate event only produces a duplicate purge, and merging usually absorbs it.
+     The widget always shows the month-to-date count against the budget.
+  5. **Respect concurrency.** At most `maxInFlightWildcards` wildcards are in flight (default 10, under CloudFront's in-progress wildcard quota), and only one `CreateInvalidation` per distribution. The next one is sent after `GetInvalidation` reports `Completed`, or after 15 minutes.
+     - Each `CreateInvalidation` uses the `cdnPurgeRequest` id as its `CallerReference`, so an at-least-once retry never creates two invalidations.
+- **Never automatic:** `/*` (purge everything). It is only reachable through the guarded "Purge hostname" action, which requires `cdn.purgeAll`. With a single distribution, on CloudFront that means the whole distribution, and the confirmation screen says so.
+
+A typical kof22 publish costs **2 billable paths**: the post page wildcard and the API record wildcard. The free 1,000 paths cover about **500 publishes a month**, far more than kof22 needs.
 
 ### 4.4 QQQ tables
 
-Every table is a normal, visible QQQ table in the app's backend, prefixed by `CdnQBitConfig.tableNamePrefix` (default `cdn`). Each one has `id`, `createDate`, `modifyDate` and audit enabled. The `cdn.*` permissions are in §4.8.
+These are normal, visible QQQ tables. Each has the `cdn` prefix, audit enabled, and `id`/`createDate`/`modifyDate`.
 
 | Table | Purpose | Key fields |
 |---|---|---|
-| **`cdnProvider`** | One row per configured CDN or image engine | `name`, `providerType` (PVS), `role` (CDN / IMAGE_TRANSFORM), `enabled`, `accountRef`, `zoneOrDistributionId`, `secretRef` (the name of an env var or Infisical key; **never the value**), `defaultForApp`, `lastHealthStatus`, `lastHealthCheckDate`, `capabilities` (read-only display computed from the adapter) |
-| **`cdnHostname`** | Which public hostnames sit behind which provider, and their rollout stage | `hostname`, `cdnProviderId`, `hostnameRole` (SITE, API, MEDIA, ASSETS), `stage` (OFF / HEADERS_ONLY / LIVE), `purgeEnabled`, `originHost`, `notes` |
-| **`cdnCachePolicy`** | Header policy per hostname, path or route class (§3.2) | `name`, `cdnHostnameId` (nullable means all), `matchType` (PREFIX, GLOB, ROUTE_CLASS, TABLE), `matchValue`, `tableName` (for TABLE matches), `browserMaxAge`, `edgeMaxAge`, `staleWhileRevalidate`, `staleIfError`, `immutable`, `noStore`, `varyHeaders`, `emitTags`, `priority`, `enabled`, `seeded` (true for defaults the qbit owns; editing one sets `seeded=false` so upgrades don't overwrite it) |
-| **`cdnTableTagRule`** | How a table's changes become tags and URLs | `tableName`, `tagTemplates` (e.g. `post:{id}`, `blog:{blogId}:list`), `urlTemplates` (e.g. `/blog/{blog.slug}/{slug}`), `onlyWhenFieldsChange` (optional list, so autosaves of draft-only fields don't purge), `publishedFilter` (skip records that were never public), `enabled` |
-| **`cdnPurgeRequest`** | Every purge, from every source | `cdnProviderId`, `kind` (TAG / URL / PREFIX / HOST / ALL), `targets` (text, one per line), `targetCount`, `source` (ESB_EVENT, RECORD_ACTION, MANUAL, DEPLOY, RETRY), `sourceTable`, `sourceRecordId`, `causationId` (from the ESB `qqqcausationid`), `requestedByUserId`, `status` (PENDING, MERGED, SENT, SUCCEEDED, FAILED, DEAD, SKIPPED_NONE_PROVIDER, SKIPPED_STAGE_OFF), `mergedIntoId`, `attempts`, `nextAttemptDate`, `providerRequestId`, `httpStatus`, `errorMessage`, `sentDate`, `completedDate` |
-| **`cdnRevalidationHook`** | Downstream caches to refresh **before** the CDN purge, such as the Next.js pods | `name`, `url` (e.g. `http://website-frontend-headless.kof22-website-prod.svc:3000/api/revalidate`), `fanOutDns` (resolve every pod A record), `secretRef`, `timeoutMs`, `enabled` |
-| **`cdnEdgeStatDaily`** | Imported edge stats, real data only | `cdnProviderId`, `hostname`, `statDate`, `requests`, `cachedRequests`, `hitRatio` (computed), `bytes`, `cachedBytes`, `status4xx`, `status5xx`, `threatsBlocked` (if provided), `importedDate`, `importRunId`. Unique on (provider, hostname, date). |
+| **`cdnProvider`** | One row per CDN or image engine | `name`, `providerType`, `role` (CDN / IMAGE_TRANSFORM), `enabled`, `accountRef` (for example AWS account `744245396565`), `zoneOrDistributionId`, `secretRef` (env var name only), `settings` (JSON: `softPathLimit`, `hardPathLimit`, `monthlyPaidPathCap`, `overBudgetMode` PAY/DEFER, `flushWindowSeconds`, `collapseThreshold`), `lastHealthStatus`, `lastHealthCheckDate`, `capabilities` (read-only display) |
+| **`cdnHostname`** | Hostnames and their rollout stage | `hostname`, `cdnProviderId`, `hostnameRole` (SITE / API / MEDIA / ASSETS), `stage` (OFF / HEADERS_ONLY / LIVE / LOCKED), `purgeEnabled`, `notes` |
+| **`cdnCachePolicy`** | Header policy per hostname and path, or per route class | `name`, `cdnHostnameId`, `matchType` (PREFIX / GLOB / ROUTE_CLASS / TABLE), `matchValue`, `tableName`, `policyClass` (IMMUTABLE / LEAF / HUB / NEVER), `browserMaxAge`, `edgeMaxAge`, `staleWhileRevalidate`, `staleIfError`, `immutable`, `noStore`, `varyHeaders`, `priority`, `enabled`, `seeded` |
+| **`cdnTableTagRule`** | How a table's changes become tags and paths | `tableName`, `tagTemplates`, `invalidationPaths` (templates, with optional `host:` prefix and trailing `*`), `onlyWhenFieldsChange`, `publishedFilter`, `enabled` |
+| **`cdnPurgeRequest`** | Every purge | `cdnProviderId`, `kind` (TAG / PATHS / HOST / ALL), `tags`, `paths` (as planned), `billablePaths`, `source` (ESB_EVENT / RECORD_ACTION / MANUAL / DEPLOY / RETRY), `sourceTable`, `sourceRecordId`, `causationId`, `requestedByUserId`, `status` (PENDING / MERGED / PLANNED / SENT / IN_PROGRESS / SUCCEEDED / FAILED / DEAD / DEFERRED_BUDGET / SKIPPED_STAGE_OFF / SKIPPED_NONE_PROVIDER / SKIPPED_HUB_ONLY), `mergedIntoId`, `attempts`, `nextAttemptDate`, `providerRequestId` (the CloudFront invalidation id), `httpStatus`, `errorMessage`, `sentDate`, `completedDate` |
+| **`cdnRevalidationHook`** | Caches to refresh before the CDN (the Next pods) | `name`, `url`, `fanOutDns` (resolve every pod behind a headless Service), `secretRef`, `timeoutMs`, `enabled` |
+| **`cdnEdgeStatDaily`** | Imported stats (real data only) | `cdnProviderId`, `scope` (DISTRIBUTION, or a hostname when logs give a per-host breakdown), `statDate`, `requests`, `bytesDownloaded`, `cacheHitRate` (null unless CloudFront additional metrics are on), `error4xxRate`, `error5xxRate`, `importedDate`. Unique on (provider, scope, date). |
 
-Optional and later: `cdnRulesSnapshot` (read-only rule dumps for the drift view, D9) and `cdnSignedUrlGrant` (audit of signed URLs that were issued, if private media arrives, D12).
+### 4.5 Event pipeline
 
-### 4.5 ESB-driven purge
+**`cdnEnqueuePurgeFromEvents`** is an `EsbTrigger` on the app's CMS topic (for kof22, `kof22.cms.tables`). It runs in `BATCH` mode with concurrency 1, `maxAttempts` 5 and the standard DLQ. For each CloudEvent `qqq.table.<t>.inserted|updated|deleted`, it:
+1. finds the table's `cdnTableTagRule`
+2. applies `publishedFilter` and `onlyWhenFieldsChange`, so a draft autosave of `blog_post_version` invalidates nothing
+3. renders the tags from `record` and `oldRecord`
+4. inserts one `cdnPurgeRequest` (PENDING) for each provider whose affected hostnames are LIVE or LOCKED.
 
-- The qbit registers an `EsbTrigger` on the app's CMS topic (kof22: `kof22.cms.tables`) that runs the process **`cdnEnqueuePurgeFromEvents`**. It runs in `BATCH` mode, with concurrency 1, `maxAttempts` 5 and the default DLQ.
-  - For each CloudEvent (`qqq.table.<table>.inserted|updated|deleted`, with `data.record`/`data.oldRecord`), it finds the matching `cdnTableTagRule` and skips the event if `onlyWhenFieldsChange` or `publishedFilter` does not match.
-  - It renders the tag templates from **both** `record` and `oldRecord`, so a changed slug or a moved blog purges the old location too. It then inserts one `cdnPurgeRequest` (kind TAG, status PENDING) per provider whose hostnames are `LIVE`.
-  - If no hostname is `LIVE`, the row is recorded as `SKIPPED_STAGE_OFF`. That shows what *would* have been purged, which is useful in rollout stage HEADERS_ONLY.
-- **`cdnDispatchPurges`** is a scheduled process (every 5 s, single runner via the QQQ scheduler's clustered lock). It works per provider:
-  1. Merge PENDING rows into as few calls as `getPurgeLimits` allows, and mark the absorbed rows `MERGED` with `mergedIntoId`.
-  2. Wait if the provider's token bucket is empty. Cloudflare Free allows 5 tag purges per minute, so merging normally keeps kof22 well under that.
-  3. **Call each enabled `cdnRevalidationHook` first.** For Next.js, every pod revalidates the same tags (§6.3). This step must finish before the CDN purge. Otherwise the edge refetches a stale page from Next and caches it again.
-  4. Call `provider.purge`, and record the outcome, the provider request id and the HTTP status.
-  5. On failure, back off exponentially (5 s, 30 s, 2 min, 10 min, 1 h). After 5 attempts, set the status to `DEAD`. Content still corrects itself within the edge TTL plus `stale-while-revalidate`. The worst case is ≤ 1 day for API items, and that is why HTML edge TTLs stay short (§6).
-- **Publish without ESB.** Apps without the ESB can call `CdnPurgeService.enqueue(tags, source)` directly from a post-commit callback. The ESB route is preferred, because it survives restarts and has a DLQ.
+If no such hostname exists, it records the request as `SKIPPED_STAGE_OFF`. During HEADERS_ONLY this shows what would have been purged.
 
-### 4.6 Response headers
+**`cdnDispatchPurges`** is scheduled every 5 s, with a single runner under the scheduler's clustered lock. For each provider, it:
+1. **Waits out the flush window.** For CloudFront the default is 30 s from the oldest PENDING row, because invalidations are slow and billed per path, so batching pays.
+2. **Merges** the PENDING rows. The merged rows become `MERGED`, with `mergedIntoId` set.
+3. **Runs the revalidation hooks first.** Every Next pod runs `revalidateTag(tags)` (§6.3), and every pod must return 200. If any fails, the dispatcher retries the hook and does not invalidate the edge yet. Invalidating the edge while a pod still serves stale HTML would just cache the stale page again.
+4. **Plans** the batch with the provider planner (§4.3) and **sends** it.
+5. **Tracks async status.** `IN_PROGRESS` rows are polled through `checkPurge` (CloudFront `GetInvalidation`) until they reach `SUCCEEDED`.
+6. **Retries** with backoff of 5 s, 30 s, 2 min, 10 min and 1 h. After 5 failed attempts the row is `DEAD` (D14).
 
-- **`CdnResponseHeaderPolicy`** finds the highest-priority enabled `cdnCachePolicy` for the request (hostname, path or route class, table) and writes:
-  - `Cache-Control: public, max-age=<browser>, s-maxage=<edge>[, stale-while-revalidate=…][, stale-if-error=…][, immutable]`. Or `private, no-store`.
-  - `CDN-Cache-Control: max-age=<edge>[, stale-while-revalidate=…][, stale-if-error=…]`, emitted whenever there is an edge TTL. It is harmless where the provider ignores it.
-  - The tag header in the provider's dialect, built from the record context (table and primary key, plus `cdnTableTagRule` templates) and limited by the budget.
-  - A weak `ETag` (`W/"<table>:<id>:<modifyDate epoch ms>"` for single records, or a hash of ids and modifyDates for lists). It answers `If-None-Match` with **304**, so revalidation between the CDN and the origin costs almost nothing.
-  - **Safety rule:** if the response has `Set-Cookie`, an `Authorization`-bearing request, or a non-anonymous session, the policy forces `private, no-store` and emits no tags, whatever the policy says.
-- **Wiring:**
-  - QQQ API and table GETs use the new core `QJavalinResponseHeaderCustomizerInterface` (§3.1).
-  - kof22's custom `SiteApiRouteProvider.finish()` calls `CdnResponseHeaderPolicy.apply(ctx, routeClass, recordContext)` instead of its hard-coded `max-age` values. The current values become the seeded policies, so nothing changes until a policy is edited.
-- **MinIO objects** cannot carry dynamic headers, so they get two things:
-  - (a) `Cache-Control: public, max-age=31536000, immutable` set in `ObjectMetadata` at upload (`PhotoImageProcessor.uploadToS3`, `MediaImageProcessor`)
-  - (b) a one-time backfill (copy-in-place with `REPLACE` metadata) for existing keys
-  - (c) belt and braces: an edge cache rule for `s3.kof22.com/kof22-website-files/*` with edge TTL 1 year.
+Apps without the ESB call `CdnPurgeService.enqueue(tags, source)` from an after-commit callback.
 
-  Tags for media come from the key path (`media/{siteId}/{slug}/{sha}`). A Traefik `headers` middleware on the `cdn` entry point can add `Cache-Tag: media-key:<sha>` only if takedown by tag is needed. In v1, media takedown uses URL purge of the four rendition URLs, which the `media` record already lists.
+### 4.6 Response headers and media objects
 
-### 4.7 Processes (table and record actions only, never nav)
+`CdnResponseHeaderPolicy` finds the best-matching enabled `cdnCachePolicy` and writes:
+- `Cache-Control` (browser `max-age`, edge `s-maxage`, `stale-*`, `immutable`)
+- `CDN-Cache-Control`, only if the provider honors it
+- the tag header, only if the provider has one
+- a weak `ETag`, answering `If-None-Match` with 304.
+
+**Safety rule:** if the response has `Set-Cookie`, the request carries `Authorization`, or the session is authenticated, the policy forces `private, no-store`, whatever the policy row says.
+
+**Wiring.**
+- QQQ API and table GETs go through the new core hook.
+- kof22's `SiteApiRouteProvider.finish()` calls `CdnResponseHeaderPolicy.apply(...)` instead of its hard-coded `max-age` values. The seeded policies reproduce today's values and add `s-maxage`.
+
+**MinIO objects.**
+- (a) Uploads set `Cache-Control: public, max-age=31536000, immutable` (in `PhotoImageProcessor.uploadToS3` and `MediaImageProcessor`).
+- (b) A one-time backfill, `cdnBackfillObjectHeaders`, fixes existing keys with a copy-in-place using REPLACE metadata. It runs as a dry run first.
+- (c) As a fallback, the CloudFront behavior for `/kof22-website-files/*` uses a cache policy with a **default TTL of 1 year**, so objects that still lack headers are cached anyway.
+
+### 4.7 Processes (table and record actions only)
 
 | Process | Where it appears | Permission | What it does |
 |---|---|---|---|
-| `cdnPurgeRecordUrls` | Record action **"Purge from CDN"** on every table with an enabled `cdnTableTagRule` (blog_post, page, media, ...), and as a bulk action on selected rows | `cdn.purge` | Review screen listing the tags, the expanded URLs and the target providers, then enqueue with `source=RECORD_ACTION`, then a result screen with links to the `cdnPurgeRequest` rows |
-| `cdnWarmRecordUrls` | Record action **"Warm CDN cache"** (same tables) | `cdn.purge` | Requests the expanded URLs through the public hostname (HTML plus the `_rsc` variant) with a polite concurrency of 2, and reports the cache status of each one. Real responses only. |
-| `cdnRetryPurge` | Record action on `cdnPurgeRequest` (FAILED or DEAD) | `cdn.purge` | Requeues it with `source=RETRY` |
-| `cdnPurgeHostname` | Record action on `cdnHostname` | `cdn.purgeAll` | Guarded confirmation that requires typing the hostname. Purges by host if the provider can, otherwise purges everything for that zone. |
-| `cdnTestProvider` | Record action on `cdnProvider` | `cdn.admin` | `checkHealth()`: credentials, token scopes, zone or distribution, and a no-op purge of a sentinel tag |
-| `cdnImportEdgeStats` | Table action on `cdnEdgeStatDaily`, also scheduled daily at 02:15 | `cdn.admin` | Imports the last N days for each LIVE hostname. Upserts. |
-| `cdnBackfillObjectHeaders` | Table action on `cdnHostname` (MEDIA role) | `cdn.admin` | One-time MinIO metadata backfill (§4.6). Dry-run first, showing counts. |
+| `cdnPurgeRecordUrls` | Record action **"Purge from CDN"** on tables with an enabled `cdnTableTagRule`; also a bulk action | `cdn.purge` | A review screen shows the tags, the planned paths (hub paths optional), and the **billable path count against the month-to-date budget**. Then it enqueues the purge and shows the result. |
+| `cdnWarmRecordUrls` | Record action **"Warm CDN cache"** | `cdn.purge` | Fetches the record's public URLs (HTML and `_rsc`) through the CDN with concurrency 2, and reports `X-Cache` for each |
+| `cdnRetryPurge` | Record action on `cdnPurgeRequest` rows that are FAILED, DEAD or DEFERRED_BUDGET | `cdn.purge` | Requeues the request |
+| `cdnPurgeHostname` | Record action on `cdnHostname` | `cdn.purgeAll` | Guarded: the user must type the hostname to confirm. On CloudFront it sends `/*` for the **whole distribution**, and the screen says so. |
+| `cdnTestProvider` | Record action on `cdnProvider` | `cdn.admin` | Checks credentials, that the distribution exists, and the IAM scope (with `ListInvalidations`). Confirms the origin custom header is configured, using a read-only `GetDistributionConfig`. |
+| `cdnImportEdgeStats` | Table action on `cdnEdgeStatDaily`; also scheduled daily at 02:15 | `cdn.admin` | Imports the last N days of CloudWatch metrics, as an upsert |
+| `cdnBackfillObjectHeaders` | Table action on `cdnHostname` (MEDIA role) | `cdn.admin` | Runs the MinIO metadata backfill (§4.6) |
 
 ### 4.8 Permissions and locks
 
-- `cdn.view` lets a user read every `cdn*` table and the widget.
-- `cdn.purge` lets a user run purge, warm and retry actions.
-- `cdn.purgeAll` lets a user purge a whole hostname.
-- `cdn.admin` lets a user edit providers, hostnames, policies, tag rules and hooks, and run tests and imports.
-- `cdnPurgeRequest` rows are never edited by hand. The table is insert-only from processes, and its fields are read-only in the UI.
-- Secrets never appear in any table (`secretRef` only).
-- For multi-tenant apps, each table carries the app's tenant key with a `RecordSecurityLock`, the same way `qbit-assistant` does (§D6 of that spec).
+- Permissions are `cdn.view`, `cdn.purge`, `cdn.purgeAll` and `cdn.admin`.
+- `cdnPurgeRequest` is written only by processes, and all of its fields are read-only in the UI.
+- No table stores a secret value.
+- Multi-tenant apps add the tenant key and a `RecordSecurityLock` to every `cdn*` table.
 
 ### 4.9 Admin → Health: CDN widget
 
-A `CdnHealthWidget`, contributed to the Admin → Health area the way other qbits contribute widgets. Everything in it comes from table data. When there is no data, it says so ("No edge statistics imported yet. Run *Import edge stats* or wait for the 02:15 schedule.") and never draws placeholder numbers.
+The widget shows real data only. When a section has no data, it says why. For example: "CloudFront cache hit rate not available: additional metrics are off for this distribution."
 
-- **Per LIVE hostname:** the 7-day cache hit ratio and requests and bytes served from cache, from `cdnEdgeStatDaily`, with a sparkline of daily hit ratio.
-- **Purge pipeline:**
-  - PENDING count, and the age of the oldest PENDING row
-  - SUCCEEDED, FAILED and DEAD counts for the last 24 h
-  - median submit-to-complete latency
-  - links to filtered `cdnPurgeRequest` lists.
-- **Provider health:** last `checkHealth` status and time.
-- **Layout:** stacks to a single column below 640 px. Tables become label/value rows, per the readable-at-all-widths rule.
+It shows:
+- **Per provider:** 7-day requests, bytes and 4xx/5xx rates from `cdnEdgeStatDaily`, the cache hit rate if it was imported, and a daily sparkline.
+- **Invalidation budget:** month-to-date billable paths against the soft limit, the hard limit and the free 1,000, plus a projection to month end at the current rate.
+- **Pipeline:** the PENDING count and the age of the oldest row, the IN_PROGRESS count, and SUCCEEDED/FAILED/DEAD/DEFERRED counts for the last 24 h. Each count links to a filtered `cdnPurgeRequest` list.
+- **Provider health:** the last `cdnTestProvider` result.
 
-Data Health rules (where the app uses QQQ Data Health): `operations.cdn-dead-purges` (any DEAD in the last 24 h), `operations.cdn-purge-backlog` (oldest PENDING older than 5 min) and `operations.cdn-stats-stale` (no import in 48 h).
+Below 640 px wide, the widget becomes a single column of label/value rows.
 
-### 4.10 URL building
+Data Health rules:
+- `operations.cdn-dead-purges`
+- `operations.cdn-purge-backlog` (the oldest PENDING row is older than 5 min)
+- `operations.cdn-budget` (above the soft limit)
+- `operations.cdn-stats-stale` (no import in 48 h)
 
-- **`CdnUrlBuilder.mediaUrl(key)`** returns `https://<media hostname>/<bucket>/<key>`. When the MEDIA hostname is `LIVE`, the CDN serves it, and the URL stays the same, because the CDN fronts `s3.kof22.com` itself. This is a deliberate choice: **no stored URLs change**. The `publicUrl`, `thumbnailUrl`, `featuredImage` and similar values stay valid, and rollback is pure DNS. A separate media hostname, such as `media.kof22.com`, is optional later. If it is adopted, `CdnUrlBuilder` becomes the single place that formats URLs, and a migration rewrites the stored ones.
-- **`CdnUrlBuilder.imageUrl(source, w, h, fit, q)`** delegates to the configured `ImageTransformProviderInterface`. `FILE_PREVIEW` thumbnails in the admin keep using `thumbnailUrl` (the 400 px rendition). The builder serves the Site API's optional `srcset` hints and the Next loader (§6.2).
-- **`CdnUrlBuilder.signedUrl(key, ttl)`** uses the provider's `signUrl` when it has `SIGNED_URL`. Otherwise it falls back to a MinIO presigned GET against the origin hostname, which bypasses the edge cache (D12).
+### 4.10 URL building and signing
+
+- **`CdnUrlBuilder.mediaUrl(key)`** is unchanged: `https://s3.kof22.com/kof22-website-files/<key>`. Once that hostname is LIVE, CloudFront serves it, so **no stored URL changes**.
+- **`imageUrl(source, w, …)`** uses `RENDITIONS` for the admin `FILE_PREVIEW` thumbnails and for the Site API `srcset` hints. The frontend uses Next's optimizer (§6.2).
+- **`signedUrl(key, ttl)`** is not used in v1 (D12). Private and draft media use MinIO presigned GETs on the **origin-only upload hostname** (§5.1), which skips the edge.
+
+Later, CloudFront **trusted key groups** can provide signed URLs and cookies. A public key is registered in the distribution and the private key is kept in Infisical. The adapter's `signUrl` would implement the canned-policy signature, which is about 1–2 days of work when it is needed.
 
 ---
 
-## 5. Site API and media specifics (kof22)
+## 5. kof22 specifics
 
-### 5.1 Hostnames and stages
+### 5.1 Hostnames
 
-| Hostname | Role | Initial policy | Purge |
-|---|---|---|---|
-| `s3.kof22.com` | MEDIA | immutable, edge TTL 1 year; bypass for every bucket except `kof22-website-files`; presigned requests (`X-Amz-Signature` in the query) always bypass | URL purge on media delete or takedown |
-| `www.kof22.com`, `kof22.com` | SITE + ASSETS | Stage A: cache `/_next/static/*`, `/_next/image*` and public files only. Stage B: HTML through ISR (§6). | Path tags plus record tags |
-| `api.kof22.com` | API | §3.2 public API classes. `no-store` for `/v1/me*`, `/v1/contact`, `/oauth/*` and `POST`. | Record tags |
-| `admin.kof22.com`, `auth.kof22.com`, `minio-console`, DSM suite hosts | none | **Not proxied** (D4) | none |
-
-### 5.2 Cache key normalization
-
-The adapters ask IaC for these normalizations, and the drift view checks them:
-- Ignore marketing parameters (`utm_*`, `gclid`, `fbclid`, `ref`).
-- Keep every other query parameter, including Next's `_rsc`. The Next CDN guide requires this.
-- Lowercase the host.
-- Do not vary on cookies.
-- For `/_next/image`, key on `url`, `w` and `q` only.
-- Edge rules should **not** turn on "cache everything" for HTML until §6 ships. Without it, HTML stays dynamic at the edge, which is the default on most CDNs.
-
-### 5.3 ESB mapping for kof22
-
-Seeded `cdnTableTagRule` rows, using the 16 `PUBLISHED_TABLES` already on `kof22.cms.tables`:
-
-| Table | Tags | URL templates (for providers without tag purge) |
+| Hostname | Role | Notes |
 |---|---|---|
-| `blog_post` / `blog_post_version` | `post:{id}`, `blog:{blogId}:list`, `site:{siteId}:feeds`, `path:/blog/{blog.slug}/{slug}` | `/blog/{blog.slug}/{slug}*`, `/blog/{blog.slug}*`, `/`, `/feed.xml`, `/sitemap.xml`, `api:/v1/blog-posts/{id}*` |
-| `blog` | `blog:{id}`, `blog:{id}:list` | `/blog/{slug}*` |
-| `page`, `page_section` | `page:{pageId}`, `path:/{page.slug}` | `/{page.slug}*` |
-| `menu`, `menu_item`, `site`, `domain`, `snippet` | `site:{siteId}` (coarse: these appear on every page) | host purge (rare) |
-| `author` | `author:{id}` | `/about*`, `api:/v1/authors/{id}*` |
-| `media`, `photo`, `photo_album` | `media:{id}`, `album:{albumId}` | the rendition URLs from the record; `/photography/{album.slug}*` |
-| `project` (+section/update) | `project:{id}`, `path:/projects/{slug}` | `/projects/{slug}*` |
-| `redirect` | `site:{siteId}:redirects` | the source path |
+| `s3.kof22.com` | MEDIA | Only `/kof22-website-files/*` is cached. Everything else on the host (other buckets, presigned `X-Amz-*` requests, writes) gets `CachingDisabled` and `AllViewer` forwarding.<br>**Before cutover**, presigned uploads move to a new DNS-only hostname, **`upload.kof22.com`** (`SITE_API_S3_PUBLIC_ENDPOINT`), with an IngressRoute to MinIO on `websecure`. That way big PUTs and SigV4 Host signing never go through CloudFront. |
+| `www.kof22.com`, `kof22.com` | SITE + ASSETS | Stage A: static assets, `/_next/image` and `public/` files. Stage B: HTML (P4).<br>The apex keeps its current redirect behavior and is served through the same distribution, as an ALIAS. |
+| `api.kof22.com` | API | Policies from §3.2. `/v1/me*`, `/v1/contact`, `/oauth/*` and all writes are `CachingDisabled`. |
+| `admin`, `auth`, `minio-console`, DSM suite | none | Never proxied (D4) |
+| `origin.kof22.com` (new) | origin | DNS-only A record to `50.122.5.146`. Used only as CloudFront's origin domain, on port 8443. |
+| `upload.kof22.com` (new) | origin-only | DNS-only. Serves presigned uploads and private presigned GETs. |
 
-`blog_post_version` autosaves on drafts must not purge anything. The rule uses `publishedFilter` (the post is or was published) together with `onlyWhenFieldsChange`.
+### 5.2 CloudFront behaviors and cache keys (one distribution)
+
+There is **one distribution**, with the aliases `kof22.com`, `www.kof22.com`, `api.kof22.com` and `s3.kof22.com`.
+- **The origin receives the viewer's `Host`**, so Traefik routes exactly as it does today.
+- Every cache policy includes `Host` in the key, so `www`, `api` and `s3` never share objects.
+- CloudFront validates the origin certificate against the forwarded Host, and the LE wildcard covers all of them.
+
+| Behavior (path pattern) | Cache policy (key) | Origin request policy | Notes |
+|---|---|---|---|
+| `/_next/static/*` | `Host` only; no query strings, no cookies | minimal | immutable |
+| `/_next/image*` | `Host`; query strings `url`, `w`, `q`; header `Accept`, **normalized** by a viewer-request CloudFront Function to `image/avif`, `image/webp` or `*/*` | minimal plus `Accept` | Prevents format poisoning. CloudFront Functions are part of the flat-rate plan's edge compute allowance (*verify*). |
+| `/kof22-website-files/*` | `Host` only, default TTL 1 year | minimal | media |
+| `/api/*`, `/preview*`, `/v1/me*`, `/v1/contact*`, `/oauth/*` | `CachingDisabled` (managed) | `AllViewer` plus `CloudFront-Viewer-Address` | never cached |
+| `*` (default) | `Host`; a query-string **allow-list** (everything except `utm_*`, `gclid`, `fbclid` and `ref`), which includes `_rsc`; header `RSC` (separates Next RSC from HTML); no cookies | A custom policy, **not** `AllViewerExceptHostHeader`. It forwards all query strings, plus `Host`, `RSC`, `Next-Router-State-Tree`, `Next-Router-Prefetch`, `Next-Router-Segment-Prefetch`, `Next-Url` and `CloudFront-Viewer-Address`. | Next derives the `_rsc` value from the router headers, so `_rsc` plus `RSC` in the key is enough (*verify* against the Next CDN guide for 16.x) |
+
+Other distribution settings:
+- Cached behaviors allow `GET`, `HEAD` and `OPTIONS`. The `CachingDisabled` behaviors allow all methods.
+- HTTP/2 and HTTP/3 are on, and so is compression.
+- Price class is the flat-rate plan's default.
+
+### 5.3 Tag and path rules (seeded `cdnTableTagRule`)
+
+| Table | Tags | Invalidation paths (leaves only; hubs expire by TTL) |
+|---|---|---|
+| `blog_post`, `blog_post_version` | `post:{id}`, `blog:{blogId}:list`, `site:{siteId}:feeds` | `/blog/{blog.slug}/{slug}*`, `/v1/blog-posts/{id}*` |
+| `blog` | `blog:{id}` | `/v1/blogs/{id}*` (the blog index page is a hub) |
+| `page`, `page_section` | `page:{pageId}` | `/{page.slug}*`, `/v1/pages/{pageId}*` |
+| `author` | `author:{id}` | `/v1/authors/{id}*`. Pages that embed the author card expire as hubs, or through a manual purge. |
+| `media`, `photo`, `photo_album` | `media:{id}`, `album:{albumId}` | On delete or takedown only: the 4 rendition keys, as exact paths |
+| `project` (+section/update) | `project:{id}` | `/projects/{slug}*`, `/v1/projects/{id}*` |
+| `menu`, `menu_item`, `site`, `domain`, `snippet`, `redirect` | `site:{siteId}` | None by default. These appear on every page, so a change waits for the HTML leaf TTL. The rule offers an optional `/*` that **only an admin action can trigger**. |
+
+The HTML leaf `s-maxage` (1 day) is the longest a menu or snippet change can take to appear without a manual "Purge hostname". If the owner wants faster, the leaf TTL can drop to 1 h. It is one seeded policy value.
 
 ### 5.4 Site API changes (Website-Backend)
 
-1. Replace the hard-coded `max-age` values in `finish()` with `CdnResponseHeaderPolicy`. The seeded policies reproduce today's behavior, plus `s-maxage`, `CDN-Cache-Control` and tags.
-2. Add `ETag` and `If-None-Match` → 304 on anonymous reads.
-3. **Drop `Vary: Origin` on anonymous GETs.** Send `Access-Control-Allow-Origin: *` there instead. This is safe because the reads are public, cookie-less and published-only. `Vary: Origin` splits the edge cache per calling origin, and some CDNs refuse to cache responses with `Vary` at all. Credentialed CORS (`/v1/me*`) keeps the allow-list and `Vary: Origin`, but those routes are `no-store` anyway.
-4. Rate limiting: the Traefik limiters use `requestHost`, which is per host. Behind a CDN they would count the whole internet as one client. Switch to `ipStrategy` once real IPs are available (§7.4), and rely on edge WAF and rate limiting for anonymous floods.
+1. `finish()` uses `CdnResponseHeaderPolicy` instead of hard-coded values.
+2. Anonymous reads get a weak ETag and answer 304.
+3. Anonymous GETs drop `Vary: Origin` and send `Access-Control-Allow-Origin: *` instead, since those responses are public, cookie-less and published-only. Credentialed routes keep the allow-list, and they are `no-store`.
+4. The Traefik rate limiters change from `requestHost` to `ipStrategy`, keyed on `X-Real-IP`. The guard sets that header once a hostname is behind CloudFront (§7.3).
 
 ---
 
 ## 6. Next.js frontend integration
 
-### 6.1 Stage A: no rendering changes (works with any CDN)
+### 6.1 Stage A (P3): no rendering change
 
-- `/_next/static/*` already returns `immutable`, so the edge caches it as-is.
-- Add `headers()` in `next.config.mjs` for `public/` files (`max-age=86400, s-maxage=604800`) and `no-store` for `/api/*`.
-- Set `images.minimumCacheTTL` to `31536000`. The source images are immutable, and without this setting `/_next/image` responses get a short TTL. Each pod's on-disk optimizer cache then matters much less, because the edge becomes the shared image cache.
-- `deploymentId` (version-skew protection), as the Next self-hosting guide recommends whenever a CDN is in front.
+- `headers()`: `public/` files get `max-age=86400, s-maxage=604800`, and `/api/*` gets `no-store`.
+- `images.minimumCacheTTL = 31536000`, because the image sources are immutable.
+- `deploymentId` for version-skew protection.
+- `/_next/static` is already immutable.
 
-### 6.2 Image loader (optional, D7)
+### 6.2 Images (D7)
 
-`images.loader: 'custom'` with `loaderFile: './cdn-image-loader.ts'`. The loader reads `NEXT_PUBLIC_IMAGE_ENGINE` and builds URLs in the same format as the backend `ImageTransformProviderInterface`:
-- `RENDITIONS`: maps the width to `thumbnail` (≤ 400), `gallery` (≤ 1600) or `slideshow`
-- `CLOUDFLARE_IMAGES`: `/cdn-cgi/image/width=…,quality=…,format=auto/<src>`, following the official Next example
-- `IMGPROXY`: a signed URL from a small server route, because the HMAC key must stay server-side
-- `NEXT_DEFAULT`: no loader.
+v1 keeps the built-in `/_next/image` optimizer, cached at the edge (§5.2), plus the existing renditions. No component changes. The `Accept`-normalizing CloudFront Function is the only code running at the edge.
 
-Both sides share fixtures (§9.1), so a width maps to the same URL whether it was built by the backend or by Next.
+Later and optional: a `CLOUDFRONT_FUNCTION` or Lambda@Edge resize engine behind `ImageTransformProviderInterface`, used through a custom `loaderFile`. Shared URL fixtures keep the backend and frontend in sync (§9.1).
 
-### 6.3 Stage B: HTML caching (D8)
+### 6.3 Stage B: HTML caching (P4, D8)
 
-1. Remove `export const dynamic = 'force-dynamic'` from the root layout. Keep it only on routes that really are dynamic: `/preview` and anything that reads cookies or `searchParams` for personalization.
-2. Use ISR with time-based `revalidate` (default 300 s) and `expireTime` (default 3600). Next then emits `s-maxage=300, stale-while-revalidate=3300` on those pages, as the Next CDN guide describes.
-3. Tag the data fetches with `cacheTag()` (`'use cache'`) or `fetch(..., { next: { tags } })`, using the same canonical tags (`post:123`, `blog:7:list`, `site:1`), so one tag means the same thing on both sides.
-4. Add a revalidation route `POST /api/revalidate` that:
-   - takes `{tags: string[]}` and checks an HMAC with `CDN_REVALIDATE_SECRET`
-   - calls `revalidateTag` for each tag
-   - returns `200` only after revalidation has finished.
-5. **Multi-pod correctness.** There are 2 replicas and no shared cache handler, so revalidating one pod leaves the other one stale. The Next self-hosting guide says the same: implement `refreshTags`, or use a shared handler. v1 handles this with `cdnRevalidationHook.fanOutDns`, which resolves the headless Service and POSTs to **every** pod before the CDN purge. A shared Redis `cacheHandler` is the alternative (D8 option c). It adds Redis, which kof22 does not currently run for the frontend.
-6. Order of operations is fixed by the dispatcher: all pods revalidate, then the CDN purges by tag. Then, optionally, the `Warm` action fetches the HTML and RSC URLs.
-
-### 6.4 Path tags for HTML
-
-Next does not emit its internal tags as response headers in a form that can be relied on. The frontend therefore sets **path-derived tags** in `src/proxy.ts` (middleware) for cacheable routes. For example, `/blog/quick-bits/my-post` gets `path:/blog/quick-bits/my-post`, `blog-slug:quick-bits` and `site:1`. They are written in the provider's dialect, which is read from `CDN_TAG_HEADER`.
-
-The backend's `cdnTableTagRule` produces the same path tag from `urlTemplates`, so a change to a post purges its page and its RSC variants, which share the tags. Record tags such as `post:123` on HTML are a later improvement, if Next exposes a stable way to emit them.
-
-### 6.5 Assets on a separate hostname?
-
-`assetPrefix` (for example `https://static.kof22.com`) is **not** needed when the CDN fronts `www` itself. It would only help with a split "media/assets CDN, HTML at origin" setup. That setup is a reasonable stopgap if D4 limits the CDN to assets, but it is not recommended.
+1. Remove `force-dynamic` from the root layout. Keep it only on `/preview` and on routes that personalize.
+2. **ISR.** Data fetches use `cacheTag()` / `fetch(..., { next: { tags } })` with the canonical tags (`post:123`, `blog:7:list`, `site:1`). Pages also set a time-based `revalidate` as a safety net.
+3. A `headers()` rule, or the policy in `src/proxy.ts`, sets `Cache-Control` for HTML leaves and hubs (§3.2). This overrides Next's default ISR header so browsers always revalidate while the edge holds the page.
+   - *Verify* that Next 16 lets `headers()` override the ISR `Cache-Control`.
+   - If it does not, set the min TTL in the CloudFront cache policy for the HTML behaviors, and keep the browser TTL with a response headers policy.
+4. `POST /api/revalidate` takes `{tags}` with an HMAC made from `CDN_REVALIDATE_SECRET`. It calls `revalidateTag` for each tag and returns 200 once done.
+5. **Every pod, then the edge.** The `cdnRevalidationHook` with `fanOutDns` resolves the headless Service `website-frontend-headless` and POSTs to **each** pod. The dispatcher creates the CloudFront invalidation only after every pod has returned 200 (§4.5). This avoids the stale-pod problem the Next self-hosting guide warns about, without needing Redis.
+6. Optionally, the "Warm CDN cache" action then fetches the HTML and `_rsc` variants.
 
 ---
 
 ## 7. Security and privacy
 
-### 7.1 Origin protection, per provider
+### 7.1 Origin protection on CloudFront (D3)
 
-| Provider | Recommended | Why |
+CloudFront has no tunnel. VPC origins only reach origins inside an AWS VPC, so using them would mean an AWS-side proxy plus a VPN into the homelab, which adds cost and a new failure point. That option is **rejected**.
+
+The design instead layers three independent controls:
+
+1. **Network layer: UniFi, as IaC in Praetor `unifi/`.**
+   - A **new** port-forward, WAN `8443` → `10.100.22.64:8443`, restricted to a source firewall group of CloudFront's **origin-facing** IPv4 ranges.
+   - The group's ranges come from the entries of the managed prefix list `com.amazonaws.global.cloudfront.origin-facing`, read with the OpenTofu data source `aws_ec2_managed_prefix_list` in `terraform/cdn-cloudfront`. The alternative source is the `CLOUDFRONT_ORIGIN_FACING` service in `ip-ranges.json`.
+   - `make cdn-origin-ranges` regenerates the group. A weekly CI check compares the `syncToken` in `ip-ranges.json` with the last applied one, and opens a PR when it changes.
+   - The existing `443` forward is unchanged. It still carries direct traffic and the other tenants.
+   - *Verify* that a UniFi firewall group can hold the prefix list's entry count (about 55).
+2. **Application layer: the Traefik `cdn` entry point on `:8443`.**
+   - Every route on this entry point goes through a **forwardAuth** middleware to `origin-guard`.
+   - The guard compares `X-Origin-Verify` with the current **or** the previous secret, so rotation causes no downtime. It returns 403 otherwise.
+   - CloudFront adds the header as an **origin custom header**, configured in tofu with the value from Infisical. Viewers can neither set it nor see it.
+3. **Certificate layer.** The origin presents the LE wildcard. CloudFront talks to the origin over HTTPS only, at TLSv1.2 or later.
+
+**Why the IP check is not at Traefik.** With `externalTrafficPolicy: Cluster`, Traefik sees SNAT addresses, so an `ipAllowList` would treat every request the same way. Once the DaemonSet / `Local` change lands (D5), a Traefik `ipAllowList` on the `cdn` entry point becomes a fourth, redundant layer.
+
+**Trade-offs against a tunnel:**
+
+| | CloudFront: allowlisted port + secret header | Tunnel (Cloudflare, not chosen) |
 |---|---|---|
-| Cloudflare | **Tunnel**: `cloudflared` runs as a Deployment (2 replicas) in `kof22-website-prod`, or in a shared `cloudflare` namespace, and connects outbound. Its ingress rules map each hostname to `https://traefik.traefik.svc:8443` (a new `cdn` entry point) with `originServerName` set, and the origin cert stays the LE wildcard. | No inbound port. The home IP is not needed in DNS for these hostnames. The `cdn` entry point is **not** port-forwarded, so the only way to reach it is the tunnel. |
-| Cloudflare (no tunnel) | Port-forward plus **Authenticated Origin Pulls**, zone-level, with our own CA cert (not the global shared one), plus a Traefik `ipAllowList` of the Cloudflare ranges | The global AOP cert only proves "some Cloudflare customer", so use the zone cert |
-| CloudFront / Bunny / Fastly | Port-forward plus a **secret origin header** (`X-Origin-Auth: <random>`, rotated) checked by a Traefik middleware, plus an `ipAllowList` of the provider's published ranges. A gitops CronJob refreshes the list from `ip-ranges.json` or the provider API. | These providers have no tunnel that works with a homelab origin |
+| Inbound exposure | One extra WAN port, open only to CloudFront ranges | None |
+| Upkeep | The CloudFront range list changes, so the CI drift check and regeneration are needed | None |
+| Blast radius of one compromise | A leaked header alone is not enough, because the IP filter still applies. A request from CloudFront IPs **through another CloudFront customer's distribution** also needs the secret. | The tunnel token |
+| Real-IP trust | Conditional on the secret check (§7.3) | Implicit, because only the tunnel can reach the origin |
+| Single point of failure | No new component in the path except the guard, which runs 2 replicas | `cloudflared` |
 
-### 7.2 Locking a hostname to the CDN (after a soak period)
+### 7.2 LOCKED stage
 
-Once a hostname has been `LIVE` and stable for 2 weeks, its IngressRoute changes from `entryPoints: [websecure]` to `entryPoints: [cdn]`. Direct requests to `50.122.5.146` with that Host header then get a 404. This is a separate, reversible gitops change, and it is **not** part of the cutover (§8.3).
+After a hostname has been stable on CloudFront for 2 weeks, its IngressRoute drops `websecure` and keeps only `cdn`. Direct requests to `50.122.5.146:443` with that Host header then get a 404. This is reversible in gitops.
 
-Hiding the origin IP is only partial while other names, such as mail and DSM, still resolve to the same WAN IP. The design does not claim to hide it (R4).
+The origin IP stays discoverable, because mail, DSM and the other tenants share it. The design does not depend on hiding it.
 
-### 7.3 Real client IP
+### 7.3 Real client IP (D5)
 
-- Trust the CDN's viewer header **only** on the `cdn` entry point:
-  - Cloudflare: `CF-Connecting-IP`; the tunnel also sets `X-Forwarded-For`
-  - CloudFront: `CloudFront-Viewer-Address`
-  - Fastly: `Fastly-Client-IP`
-  - Bunny: `CDN-ClientIP` (*verify*)
-- That entry point's `forwardedHeaders.trustedIPs` is the pod CIDR (`172.24.0.0/16`, where `cloudflared` runs) and no other range. A Traefik `headers` middleware on that entry point copies the provider header into `X-Real-IP` and adds it at the right end of `X-Forwarded-For`.
-- The `websecure` entry point keeps its current behavior. A spoofed `CF-Connecting-IP` sent to the port-forward is never trusted.
-- Apps read **one** configured source. `IpAddresses.clientIp` (analytics), `siteapi/http/ClientIp` and the frontend `forward.ts` all switch from "count hops in XFF" to the following:
-  - prefer `X-Real-IP` when the request came through the `cdn` entry point (marked by a header Traefik sets, `X-Kof22-Edge: cdn`, which is stripped from inbound requests)
-  - otherwise use today's logic.
-- This fixes the "Client IP hidden by proxy" (`GeoStatus.PROXY_IP`) problem **for every hostname behind the CDN**, without the paused Traefik DaemonSet / `externalTrafficPolicy: Local` change. That change is still worth doing for hostnames that are not behind the CDN (D5).
+- On the `cdn` entry point, `origin-guard` parses `CloudFront-Viewer-Address`, which has the form `ip:port`. It splits the port off at the **last** colon, so IPv6 addresses work (*verify* the IPv6 format).
+- **Only when the secret is valid** does the guard return `X-Real-IP: <ip>` and `X-Edge-Verified: cloudfront`. Traefik copies both through forwardAuth `authResponseHeaders`, which **overwrite** any value the client sent.
+- On `websecure`, a `headers` middleware **removes** `X-Real-IP`, `X-Edge-Verified` and `CloudFront-Viewer-Address` from incoming requests, so they cannot be spoofed through the direct path.
+- **Consumers use one rule.** `IpAddresses.clientIp` (analytics), `siteapi/http/ClientIp` and the frontend's `src/lib/analytics/forward.ts` use `X-Real-IP` when `X-Edge-Verified: cloudfront` is present. Otherwise they keep today's XFF logic.
+  - The frontend forwards both headers to the backend collector.
+  - The backend trusts them only from in-cluster callers that hold `ANALYTICS_COLLECT_TOKEN`.
+- **Result:** `GeoStatus.PROXY_IP` disappears for every hostname behind CloudFront.
 
-### 7.4 Privacy (analytics stays privacy-first)
+The paused **Traefik DaemonSet with `externalTrafficPolicy: Local` is still wanted**. It covers hostnames that are not behind the CDN (other tenants, `admin`, `auth`), and it adds a defense-in-depth layer.
 
-- The CDN becomes a processor that sees visitor IPs and user agents. Name it on the privacy page and accept its DPA. This is an owner item in D13.
-- Turn off every CDN feature that injects scripts or sets cookies. On Cloudflare that means Web Analytics / RUM beacon auto-injection, Rocket Loader, Zaraz, Email Obfuscation, and JS-challenge bot modes for normal traffic. Each one breaks the "no third-party scripts" promise or the CSP.
-- `/api/e` (the analytics beacon) is `no-store` and bypassed at the edge, so every pageview still reaches the first-party collector. CDN cache hits on HTML do **not** cause analytics to be undercounted, because the beacon fires from the browser.
-- The IP is still hashed with the daily salt and never stored. The CDN's own analytics, imported into `cdnEdgeStatDaily`, are aggregate counts with no IPs.
+### 7.4 Privacy (D13)
 
-### 7.5 Credentials
+- AWS becomes a processor of visitor IPs and user agents. Update the privacy page and rely on the AWS DPA. The owner must confirm which entity's AWS agreement applies (§12.2).
+- CloudFront injects no scripts. Do not enable CloudWatch RUM or any client-side AWS SDK.
+- Standard logs v2 contain IPs, so they stay **off** by default. If they are turned on for per-host stats (P5), use a short CloudWatch Logs retention (7 days), and have the importer read aggregates only.
+- The analytics beacon `/api/e` is `CachingDisabled`, so cache hits do not undercount visits.
+- IPs stay hashed with the daily salt and are never stored.
 
-- One API token per provider, with the minimum scope:
-  - Cloudflare: *Zone → Cache Purge* and *Zone → Analytics: Read*, for the kof22.com zone only
-  - CloudFront: `cloudfront:CreateInvalidation` and `GetInvalidation` on one distribution, plus CloudWatch `GetMetricData`
-- Tokens are stored in Infisical and injected as env vars. `cdnProvider.secretRef` holds the env var name.
-- **The tokens are separate from the infrastructure-as-code token** (DNS, rules), which lives only in Praetor tfvars or Infisical. The app can purge, but it cannot reconfigure the edge.
+### 7.5 Credentials (following the Praetor Key A/B/C pattern)
+
+- **Key D: IAM user `cdn-qbit-kof22`**, defined in `terraform/cdn-cloudfront/iam.tf`.
+  - It is allowed `cloudfront:CreateInvalidation`, `GetInvalidation`, `ListInvalidations` and `GetDistributionConfig` on **the one distribution ARN**, plus `cloudwatch:GetMetricData` and `ListMetrics` (`Resource: *`, read-only).
+  - The key lives in Infisical and reaches Website-Backend through ESO as `CDN_AWS_ACCESS_KEY_ID` and `CDN_AWS_SECRET_ACCESS_KEY`. `cdnProvider.secretRef` holds these env var names.
+- **The origin secret** (`X-Origin-Verify`) lives in Infisical.
+  - Tofu reads it to set the CloudFront origin custom header, and ESO reads it for `origin-guard`.
+  - It rotates every 90 days, with two valid values during the overlap.
+- **The app cannot change the distribution.** Only `kingsrook_root_admin`, through tofu, can.
 
 ---
 
 ## 8. Infrastructure and rollout
 
-### 8.1 DNS and certificates (depends on D1/D2)
+### 8.1 DNS and certificates (D2)
 
-**Cloudflare, zone moved (D2a, recommended with D1a):**
-1. Create the Cloudflare zone `kof22.com` with OpenTofu (`cloudflare` provider) in Praetor `terraform/dns-cloudflare/`.
-2. Add `octodns-cloudflare` as a second provider in `dns/route53/config/production.yaml`, and target `kof22.com` at Cloudflare. All the other zones stay in Route53.
-3. Import every record unchanged and **DNS-only (grey cloud)**. Mail, DSM-suite, `admin`, `auth` and `minio-console` stay DNS-only permanently.
-4. DNSSEC: disable the Route53 signing for `kof22.com` with tofu, wait for the DS TTL to expire, change the NS at the registrar, enable Cloudflare DNSSEC, and publish the new DS. This follows the runbook in `docs/HANDOFF-dns-plan2.md`.
-5. CAA: add the CAs Cloudflare uses for edge certificates (*verify*: Cloudflare adds them automatically when CAA exists and Universal SSL is on) next to `letsencrypt.org`.
-6. cert-manager: add a **Cloudflare DNS-01 solver** (scoped token *Zone → DNS: Edit*) selected for `kof22.com`, and keep Route53 for every other zone. The origin keeps the LE wildcard. Set the Cloudflare SSL mode to **Full (strict)**.
+1. **ACM certificate** in `us-east-1`: one public certificate for `kof22.com` and `*.kof22.com`, validated by DNS.
+   - The validation CNAME is **added to `dns/route53/zones/kof22.com.yaml`**. octoDNS owns every record in the zone and would otherwise delete it.
+   - This is a two-step apply: tofu creates the certificate, its output goes into an octoDNS PR, and then tofu waits for validation.
+2. **CAA:** add `0 issue "amazon.com"` (and `amazontrust.com`, if wanted) next to `letsencrypt.org`.
+3. **Records**, through octoDNS, with one PR per hostname at cutover:
+   - The apex `kof22.com` becomes a Route53 **ALIAS** to the distribution, using the `octodns-route53` record type `Route53Provider/ALIAS`. *Verify* the syntax for CloudFront targets (hosted zone `Z2FDTNDATAQYW2`).
+   - `www`, `api` and `s3` become ALIAS records (preferred) or CNAMEs to `dxxxx.cloudfront.net`.
+   - `origin` and `upload` are new A records to `50.122.5.146`.
+4. **DNSSEC** is unchanged. ALIAS records are signed like any other record.
+5. **cert-manager** is unchanged. The origin keeps the LE wildcard.
 
-**Cloudflare, zone kept in Route53 (D2b):**
-- Use Cloudflare for SaaS custom hostnames on a Cloudflare-hosted zone. Pricing and limits need checking (*verify*).
-- `www`, `api` and `s3` become CNAMEs to the SaaS fallback origin.
-- The **apex cannot be proxied**, because Route53 only allows ALIAS records to AWS targets at the apex. It stays direct and redirects to `www`.
-- This is more complex, and it is the only option if moving DNS is off the table.
+### 8.2 OpenTofu root `terraform/cdn-cloudfront/` (D9; nothing has been created)
 
-**CloudFront (D1b):**
-- Route53 alias records (apex included).
-- An ACM cert in `us-east-1` for `kof22.com` and `*.kof22.com`. Its DNS validation goes through the existing Route53. CAA must add `amazon.com`/`amazontrust.com`.
-- One distribution per hostname group, with origin `origin.kof22.com`, a new DNS-only A record to `50.122.5.146`, and the secret origin header.
-- Use the managed cache policies plus an origin request policy that forwards `CloudFront-Viewer-Address`.
+**Provider block**, copied from `dns-route53`:
+- `profile = "kingsrook_root_admin"`, `region = "us-east-1"`, `allowed_account_ids = ["744245396565"]`
+- local git-crypt state
+- `default_tags { tenant = "kof22", stack = "cdn" }` for cost allocation.
 
-### 8.2 Cluster changes (cluster-gitops, all reversible)
+**Resources:**
+- `aws_acm_certificate`, plus `aws_acm_certificate_validation`.
+- `aws_cloudfront_distribution`: the aliases, one custom origin `origin.kof22.com` (`https-only`, port 8443, origin custom header from a variable), and the behaviors from §5.2.
+- Four `aws_cloudfront_cache_policy` and two `aws_cloudfront_origin_request_policy` resources.
+- `aws_cloudfront_response_headers_policy`: removes `Server` and `X-Powered-By`, and adds HSTS consistent with the origin.
+- `aws_cloudfront_function`: the `Accept` normalizer, and stripping of tracking parameters.
+- `aws_iam_user`, `aws_iam_user_policy` and `aws_iam_access_key` for Key D.
+- `data.aws_ec2_managed_prefix_list` for the origin-facing ranges, with its output going to the UniFi root.
 
-- Traefik: a new `cdn` entry point on `:8443`. It is ClusterIP-reachable only: not on the LoadBalancer service ports, or on the LB with no UniFi forward. Its own `forwardedHeaders.trustedIPs` is the pod CIDR.
-- A `real-ip-from-cdn` headers middleware on that entry point.
-- `cloudflared` Deployment (2 replicas, PDB) with the tunnel credentials from Infisical, and one ingress rule per LIVE hostname. Only for D3a.
-- For a non-tunnel provider: a CronJob that refreshes an `ipAllowList` Middleware from the provider's ranges, plus an `origin-auth` middleware.
-- Website-Backend and Website-Frontend env: `CDN_*` settings, revalidation secret, image engine.
+**Flat-rate Pro plan.** Subscribing is a billing action the owner takes in the console. *Verify* two things: whether the plan attaches per distribution, and whether tofu or the API can manage the attachment. If it is per distribution, the single-distribution design means **one $15 plan covers every kof22 hostname**.
 
-### 8.3 Staged cutover per hostname
+**WAF.** The flat-rate plan bundles WAF. Run the AWS managed core rule set in count mode first, then switch to block. Add rate-based rules for `/v1/search` and `/v1/contact`.
 
-Each hostname goes through these stages, which are recorded in `cdnHostname.stage`:
+**Drift.** The qbit's `cdnTestProvider` reads `GetDistributionConfig` and flags anything that differs from what is expected, such as a missing origin header, a changed behavior, or a caching policy on `/v1/me*`.
 
-1. **HEADERS_ONLY:** the policies emit headers and tags, and the purge pipeline records `SKIPPED_STAGE_OFF` rows. The e2e header matrix (§9.3) passes against the origin. Lower the DNS TTL to 60 a day ahead.
-2. **LIVE (proxied):** turn on the proxy for that one record (orange cloud, or swap the Route53 alias). Watch the hit ratio, 5xx, purge latency and the analytics geo-status for 48 h.
-3. **LOCKED:** after 2 weeks, bind the IngressRoute to the `cdn` entry point only (§7.2).
+### 8.3 Cluster and network changes (all reversible)
 
-The order is `s3.kof22.com` → `www` Stage A (assets and images) → `api.kof22.com` → `www` Stage B (HTML). Other tenants follow (§8.5).
+- **Praetor `unifi/`:** a firewall group `cloudfront-origin-facing` (generated), and a port-forward WAN `8443` → `10.100.22.64:8443` limited to that group.
+- **cluster-gitops `platform/traefik`:**
+  - A new entry point, `cdn`, on `:8443`. It is exposed on the LoadBalancer Service as port 8443 (`10.100.22.64`), with `forwardedHeaders.trustedIPs` set to the pod CIDR `172.24.0.0/16` only.
+  - New middlewares: `origin-guard-auth` (forwardAuth, with `authResponseHeaders: [X-Real-IP, X-Edge-Verified]`), and `strip-edge-headers`, added to the `websecure` chain for kof22 routes.
+- **`platform/origin-guard`:** 2 replicas, a PDB, a tiny image, and its secret through ESO.
+- **tenants/kof22:**
+  - IngressRoutes for `www`, `api` and `s3` add `entryPoints: [websecure, cdn]`, with the guard middleware on `cdn`.
+  - A new `upload.kof22.com` IngressRoute.
+  - Env vars: `SITE_API_S3_PUBLIC_ENDPOINT=https://upload.kof22.com`, `CDN_*` and `CDN_REVALIDATE_SECRET`.
+  - A headless Service for the frontend.
 
-**Rollback** for any hostname:
-- From LIVE: un-proxy the DNS record (grey cloud, or point the Route53 record back to the WAN IP). With a 60 s TTL, this takes effect in minutes. The port-forward path never went away.
-- From LOCKED: first revert the IngressRoute to `websecure`.
-- In the app, set `cdnHostname.stage=OFF` so purges stop.
-- Header policies can stay. They are correct with or without a CDN.
+### 8.4 Staged cutover per hostname (D4)
 
-### 8.4 IaC checklist (edge config owned by Praetor, D9)
+1. **HEADERS_ONLY.** The policies emit headers, and the pipeline records `SKIPPED_STAGE_OFF` rows.
+   - The header matrix passes at the origin.
+   - The distribution exists with the alias attached. It is tested through the `dxxxx.cloudfront.net` name with a `Host` override, or with `curl --resolve`.
+   - The DNS TTL is lowered to 60 a day ahead.
+2. **LIVE.** The octoDNS PR switches the record to the ALIAS. For the next 48 h, watch:
+   - the `X-Cache` hit share in the header matrix
+   - CloudWatch 5xx
+   - the invalidation pipeline
+   - that analytics shows real geo.
+3. **LOCKED.** After 2 weeks, drop `websecure` from that IngressRoute.
 
-- Cache rules:
-  - bypass for `admin.*`, `auth.*`, `/v1/me*`, `/api/*`, `/preview*`, and any request with an `Authorization` header or a session cookie
-  - respect origin headers everywhere else
-  - for `s3.*/kof22-website-files/*`, edge TTL 1 year and bypass on `X-Amz-*` query strings
-- Cache key normalization (§5.2).
-- Strip the tag header from responses to visitors, if the provider does not do it already.
-- Turn off script-injecting features (§7.4).
-- WAF: managed ruleset at a sensible level, plus rate limiting on `/v1/search` and `/v1/contact`.
-- The `cdnProvider.readRules` drift view compares the live edge rules against this checklist and reports any difference.
+**Order:** `s3` (once `upload.kof22.com` is live) → `www` Stage A (with the apex) → `api` → `www` Stage B (HTML, P4).
 
-### 8.5 Other tenants
+**Rollback:**
+- **From LIVE:** an octoDNS PR restores the A record to `50.122.5.146`. It takes effect in about a minute plus the apply time. Then set `cdnHostname.stage=OFF`.
+- **From LOCKED:** first restore `websecure` on the IngressRoute, then roll back as from LIVE.
+- **Emergency:** the A-record values are kept in a commented block in the zone file, so the revert is a one-line change.
 
-The qbit helps any **QQQ** app: the qrun.io marketing site and Benchfinity's QQQ apps can install it with their own provider rows. Non-QQQ tenants, such as galaxy.direct, kingsrook.com and mmltholdings, and static or marketing sites, can use the same infrastructure pattern (zone, tunnel, `cdn` entry point) without the qbit. They purge on deploy only, through a CI step that calls the provider API. Each zone is a separate owner decision. Nothing for other tenants is included in this spec's estimates.
+### 8.5 Other tenants (D15)
+
+Out of scope for now. The pattern can be reused later: the same distribution style, an IAM user like Key D, and the same UniFi port and guard. Each QQQ tenant would install the qbit with its own provider row.
 
 ---
 
 ## 9. Testing
 
-### 9.1 Contract tests per provider (`qbit-cdn`, CI)
+### 9.1 Contract tests (CI)
 
-- An abstract **`CdnProviderContractTest`** that every adapter extends. The adapters are tested against **WireMock** stubs built from **recorded fixtures** of each provider's real API. The fixtures are recorded once by hand against a sandbox zone, with tokens scrubbed, and stored under `src/test/resources/fixtures/<provider>/`.
-- What the contract checks:
-  - the request shape (method, path, auth header, body)
-  - batching at `itemsPerRequest`
-  - that a 429 with `Retry-After` is honored and results in FAILED-then-retry
-  - that a 5xx is retried
-  - that a 4xx auth error goes straight to DEAD with a clear message
-  - `checkHealth` success and failure
-  - `importStats` parsing into `CdnEdgeStat`
-  - `CdnHeaderDialect` formatting and budget collapse
-  - that `signUrl` output verifies against the provider's documented algorithm
-- **Shared URL fixtures:** the image URL builder and the TS loader both read `fixtures/image-urls.json` (source, w, h, q → expected URL per engine), so the backend and frontend cannot drift apart.
-- **Live smoke tests** (`-Dcdn.live=true`, never in CI) run against a real zone with real tokens from the env. They purge a sentinel tag and import yesterday's stats.
+**`CdnProviderContractTest`** is an abstract suite that each adapter extends. It runs against **WireMock** stubs built from recorded, scrubbed fixtures stored in `src/test/resources/fixtures/<provider>/`.
+
+**CloudFront contract tests cover:**
+- the `CreateInvalidation` XML shape, and idempotency through `CallerReference`
+- `TooManyInvalidationsInProgress` → backoff
+- `AccessDenied` → DEAD
+- `GetInvalidation` polling until `Completed`
+- `GetMetricData` parsing
+- the `GetDistributionConfig` drift checks.
+
+**`CloudFrontPathPlannerTest`** is table-driven. It covers:
+- expansion from both `record` and `oldRecord` (slug change)
+- hub skipping
+- collapsing siblings into a wildcard
+- removing paths a wildcard already covers
+- every budget band (below soft; between soft and hard; above hard, with PAY and with DEFER)
+- the month rollover
+- the in-flight wildcard cap.
+
+**Shared image URL fixtures** (`fixtures/image-urls.json`) are used by the backend `RENDITIONS` engine and by any future loader.
+
+**Live smoke test** (`-Dcdn.live=true`, run by hand, never in CI): one invalidation of the sentinel path `/__cdn-smoke/<uuid>`, plus a stats import for yesterday.
 
 ### 9.2 Real cache end-to-end (CI, Testcontainers)
 
-- **Souin** (or Varnish with `xkey`) in a container in front of a test QQQ app that has the qbit installed and the SOUIN adapter configured. The test:
-  1. does a GET and checks for a MISS
-  2. does the GET again and checks for a HIT (`Cache-Status`)
-  3. updates the record through a QQQ action
-  4. runs the ESB event (the embedded Artemis test broker from the ESB test kit) and then the dispatcher
-  5. checks that the next GET is a MISS with the new content.
-- The same flow runs with a fake revalidation hook, to prove the hook is called before the purge.
+- **Souin** runs in front of a test QQQ app with the qbit and the SOUIN adapter. The test goes:
+  1. MISS, then HIT
+  2. update a record through a QQQ action
+  3. the ESB event passes through the embedded Artemis test broker to the dispatcher
+  4. MISS with the new content.
+- A fake revalidation hook proves the ordering: the hook is called before the purge, and a hook failure blocks the purge.
 - Safety tests:
-  - a response with `Set-Cookie` or an authenticated session is never stored
-  - a `blog_post_version` autosave enqueues nothing
+  - a response with `Set-Cookie`, or an authenticated response, is never cacheable
+  - a draft autosave enqueues nothing
   - a slug change purges both the old and the new path.
+- The CloudFront path planner also runs against Souin in "paths mode", which exercises the same pipeline without AWS.
 
-### 9.3 Header matrix (Website-Backend and Website-Frontend)
+### 9.3 Header and edge matrix
 
-A table-driven test script (`scripts/cdn-header-matrix.ts`, run in CI against the preview or staging environment, and by hand against production) checks `Cache-Control`, `CDN-Cache-Control`, the tag header (at the origin), the absence of `Set-Cookie`, and `ETag`/304 for every row in §3.2:
-- `/`
-- a post
-- `/_next/static/...`
-- `/_next/image?...`
-- `/api/e`
-- `/preview`
-- `api /v1/blog-posts/{id}`
-- `/v1/me`
-- `/v1/feeds/...`
-- a media rendition
-
-After cutover, the same script runs against the edge. It normalizes `cf-cache-status`, CloudFront `x-cache` and Bunny `cdn-cache` into HIT/MISS/BYPASS, and checks that `admin.kof22.com` never shows HIT.
+`scripts/cdn-header-matrix.ts` is table-driven. It checks:
+- **At the origin**, in CI against staging: `Cache-Control`, `ETag`/304, and the absence of `Set-Cookie`, for every class in §3.2.
+- **At the edge, after cutover:**
+  - the second request is an `X-Cache` hit for every cached class
+  - there is never a hit on `/v1/me`, `/api/e`, `/preview` or `admin.kof22.com`
+  - `/_next/image` returns a different `Content-Type` for each normalized `Accept`.
+- **Origin protection:**
+  - a direct request to `origin.kof22.com:8443` without the secret header gets **403** from the guard
+  - a spoofed `X-Real-IP` sent on `websecure` never reaches the app.
 
 ---
 
 ## 10. Observability and cost
 
-- **Tables are the source of truth** for the widget and Data Health (§4.9). The qbit also exports Micrometer metrics if the app has a registry:
+### 10.1 Observability
+
+- **Tables** feed the widget and Data Health (§4.9).
+- **Micrometer metrics**, when the app has a registry:
   - `cdn_purge_requests_total{provider,status}`
-  - `cdn_purge_latency_seconds`
+  - `cdn_purge_latency_seconds` (enqueue → SUCCEEDED, including CloudFront propagation)
+  - `cdn_invalidation_paths_month`
   - `cdn_purge_pending`
-  - `cdn_stats_import_age_seconds`
-- PrometheusRules in cluster-gitops `monitoring`:
-  - `CdnPurgeDead` (any DEAD in 1 h, warning)
-  - `CdnPurgeBacklog` (pending > 0 for 10 min)
-  - `CdnHitRatioLow` (daily hit ratio below 50% for MEDIA, from the imported stats, info)
-- The `cloudflared` metrics endpoint is scraped. An alert fires when its connections drop to 0, because tunnel-down means LIVE hostnames are down. The rollback runbook is linked in the alert.
-- **Cost.** kof22 is estimated at 100–500 GB and about 3M requests per month:
+- **PrometheusRules:**
+  - `CdnPurgeDead`
+  - `CdnPurgeBacklog` (over 10 min)
+  - `CdnInvalidationBudgetSoft`
+  - `OriginGuardDown`: 0 ready replicas means every LIVE hostname returns 5xx through CloudFront
+  - `OriginGuardRejectSpike`: a jump in the 403 rate, which may mean secret drift after a rotation
+- **CloudWatch alarm** (via tofu, optional): distribution `5xxErrorRate > 5%` for 10 min, sent to SNS email.
 
-| Option | Monthly cost |
+### 10.2 Cost (kof22: 100–500 GB and ~3M requests a month)
+
+| Item | Monthly |
 |---|---|
-| Cloudflare Free | $0 |
-| CloudFront pay-as-you-go | $0 (always-free tier) |
-| CloudFront flat Pro | $15 |
-| Bunny | $1–5 |
-| Bunny Optimizer | +$9.50 |
-| Cloudflare image transforms | $0 up to 5k unique per month |
-| R2 (only if D6b) | ~$0.15 for 10 GB stored, egress free |
-
-Engineering effort is in §11.
+| CloudFront flat-rate **Pro**: 10M requests, 50 TB, WAF, DDoS protection, edge compute and log allowances, no overages | **$15** |
+| Invalidations: about 2 paths per publish, well under the free 1,000 | $0. Capped by `monthlyPaidPathCap` at 1,000 paid paths, which is $5. |
+| ACM public certificate, Route53 ALIAS queries | $0 |
+| CloudWatch `GetMetricData` (a few hundred metric reads per day) | < $0.10 |
+| CloudFront additional metrics (cache hit rate), *optional* | About $0.30 per metric per month on pay-as-you-go. *Verify* whether flat-rate includes it. |
+| Standard logs v2 to CloudWatch Logs, *optional, off by default* | Within the plan's log allowance (*verify*), with 7-day retention |
+| `origin-guard` pods, UniFi | $0 |
+| **Expected total** | **About $15–20/mo**, within D11's $0–25 |
 
 ---
 
-## 11. Phased plan
+## 11. Phased plan (CloudFront)
 
-Estimates assume one engineer working with Claude, the same assumption as the other qbit specs. Each phase ends in a deployable state.
+Estimates assume one engineer working with Claude. Each phase can be deployed on its own.
 
 | Phase | Scope | Estimate | Exit criteria |
 |---|---|---|---|
-| **P0: origin hygiene** (no CDN) | Website-Backend: `Cache-Control` on MinIO uploads plus a backfill script; Site API `ETag`/304; `Vary: Origin` cleanup. Website-Frontend: `headers()`, `images.minimumCacheTTL`, `deploymentId`. Header matrix script. | 2–3 days | The matrix passes against production. Browsers already benefit, because images are cached for a year. |
-| **P1: qbit core** | New repo `QRun-IO/qbit-cdn`: SPI, `NONE` + `SOUIN` adapters, the 7 tables, header policy, tag budget, ESB trigger, dispatcher with merging, rate limit and retries, record and table actions, Health widget, Data Health rules. Core hook `QJavalinResponseHeaderCustomizerInterface` in QQQ (after the RC.4 release; targets 4.1.x). Contract and Testcontainers tests. | 8–10 days | `0.1.0` published. kof22 runs it in HEADERS_ONLY, with `SKIPPED_STAGE_OFF` rows recording the would-be purges. |
-| **P2: Cloudflare adapter + infra, media first** | Cloudflare adapter (purge, health, GraphQL stats). Praetor: Cloudflare zone, octoDNS provider, DNSSEC move, CAA, cert-manager solver. cluster-gitops: `cdn` entry point, `cloudflared`, middlewares. Cut over `s3.kof22.com`. | 4–5 days, plus a DNS soak | `s3` LIVE, media hit ratio above 90% after a week |
-| **P3: www Stage A + api** | Cut over `www` (assets and images only) and `api`. Purge from ESB is live. Real client IP through the `cdn` entry point. Analytics, `ClientIp` and `forward.ts` switched to the single-source rule. Traefik rate limiter switched to `ipStrategy`. | 3–4 days | Publish shows up on the API in under 30 s. Analytics shows real geo, not `PROXY_IP`. |
-| **P4: www Stage B (HTML)** | Remove `force-dynamic`. ISR plus tags. `/api/revalidate`. Revalidation hook fan-out. Path tags in `proxy.ts`. Warm action. | 5–7 days | A published post is live at the edge in under 30 s. HTML hit ratio above 70%. No personalized page cached (matrix plus a manual check). |
-| **P5: images + stats polish** | Image loader (D7), `ImageTransformProviderInterface` implementation, stats import tuning, drift view (rules read). | 3–4 days | Optional. Only if D7 picks transforms. |
-| **P6: portability proof** (optional) | A second adapter (CloudFront or Bunny) with recorded fixtures, and an evaluation switch on a test hostname | 3–4 days | The same e2e suite passes with the second adapter |
-| **LOCK** | Bind each hostname to the `cdn` entry point after 2 weeks stable | 0.5 day per hostname | Direct-origin requests for those hosts return 404 |
+| **P0: origin hygiene** (no CDN) | MinIO `Cache-Control` on upload, plus the backfill. Site API ETag/304 and the `Vary: Origin` cleanup. Next `headers()`, `minimumCacheTTL` and `deploymentId`. The header matrix script. **The `upload.kof22.com` split.** | 3–4 d | The matrix passes in production, and presigned uploads work on `upload.kof22.com`. |
+| **P1: qbit core** | `QRun-IO/qbit-cdn`: the SPI, the NONE and SOUIN adapters, the 7 tables, the header policy, the ESB trigger, the dispatcher (flush window, hooks first, async status, retries), the **path planner with budget**, the actions, the widget and Data Health. The core hook in QQQ (after RC.4). The contract and Testcontainers suites. | 9–11 d | `0.1.0` is published, and kof22 runs HEADERS_ONLY with the would-be purges recorded. |
+| **P2: CloudFront adapter + AWS/network IaC + media** | The CloudFront adapter (invalidation, status, health and drift, CloudWatch stats). Praetor `terraform/cdn-cloudfront` (ACM, distribution, policies, function, Key D, prefix-list output). octoDNS validation record, CAA, and the `origin`/`upload` records. The UniFi port 8443 and firewall group. The Traefik `cdn` entry point, `origin-guard` and the edge-header stripping. The owner subscribes to flat-rate Pro. **Cut over `s3`.** | 6–8 d, plus a soak period | `s3` is LIVE, the edge matrix is green, and a direct `:8443` request without the secret gets 403. |
+| **P3: `www` Stage A + `api` + real IP** | Cut over `www` (with the apex) and `api`. ESB invalidation goes live. Analytics, `ClientIp` and `forward.ts` use `X-Real-IP`. The rate limiters move to `ipStrategy`. | 3–4 d | A publish is visible through the API in under ~2 min (flush window plus invalidation), and analytics shows real geo. |
+| **P4: `www` Stage B (HTML)** | Remove `force-dynamic`. ISR with `cacheTag`. `/api/revalidate`. The pod fan-out hook. The HTML leaf and hub policies. Verify the RSC cache key. The warm action. | 5–7 d | A published post is correct at the edge in under ~2 min, HTML leaves are mostly HITs, and no personalized page is cached. |
+| **P5: stats and polish** (optional) | Additional metrics and/or logs-based per-host stats. The budget projection. The CloudWatch alarm. The `GetDistributionConfig` drift view. | 2–3 d | The widget shows the hit rate (if enabled). |
+| **P6: second adapter** (optional) | A Bunny or Cloudflare adapter with fixtures, run through the same e2e suite. | 3–4 d | Portability is proven. |
+| **LOCK** | Drop `websecure` for each hostname after 2 weeks stable. | 0.5 d per hostname | Direct origin requests for those hosts get 404. |
 
-**Total:** about 5–7 weeks of work for P0–P4. P5 and P6 add 1–1.5 weeks. P0 can start immediately, because it does not depend on any decision.
+**Total:** about **5.5–7.5 weeks** for P0–P4, plus 1–1.5 weeks for P5 and P6. **P0 can start now.**
 
 ---
 
-## 12. Owner decisions
+## 12. Decisions
 
-Each item is multiple choice, with the **recommended option first**.
+### 12.1 Decided (2026-10-12)
 
-| # | Decision | Options (recommended first) |
+See D1–D15 in the table at the top of this document.
+
+### 12.2 Still open: the owner must decide before P2
+
+| # | Question | Options (recommended first) |
 |---|---|---|
-| **D1** | Which CDN goes first for kof22? | **(a) Cloudflare Free.** $0, tag/prefix/host purge on all plans, Tunnel, `CF-Connecting-IP`, image transforms with 5k free. (b) CloudFront flat-rate Pro, $15/mo. Keeps everything in Route53 and AWS, has no tag purge, and needs an inbound port plus a secret header. (c) Bunny, $1–5/mo. Cheap with good tag purge, but no tunnel and its real-IP header is unverified. (d) Self-hosted Souin or Varnish. No egress or latency benefit, so test use only. |
-| **D2** | Where does `kof22.com` DNS live, if D1 = Cloudflare? | **(a) Move this one zone to Cloudflare DNS**, still managed by octoDNS in Praetor through `octodns-cloudflare`, with DNSSEC re-keyed at Cloudflare. All other zones stay in Route53. (b) Keep Route53 and use Cloudflare for SaaS custom hostnames. The apex can't be proxied, and pricing needs checking. (c) Cloudflare Business partial (CNAME) setup at about $200/mo. Not worth it. |
-| **D3** | How does the CDN reach the origin? | **(a) Cloudflare Tunnel into a dedicated `cdn` Traefik entry point that is not port-forwarded.** (b) Port-forward plus zone-level Authenticated Origin Pulls plus a Cloudflare IP allowlist. (c) Port-forward plus an IP allowlist only. |
-| **D4** | Which hostnames sit behind the CDN, and in what order? | **(a) `s3`, then `www` assets and images, then `api`, then `www` HTML. Never `admin`, `auth`, `minio-console` or DSM hosts.** (b) Also front `admin` for static assets only. Low value and adds risk. (c) Media only (`s3`), with HTML left at the origin. |
-| **D5** | Use the CDN to solve the real-client-IP problem? | **(a) Yes, for CDN hostnames, through the trusted `cdn` entry point. Still do the paused Traefik DaemonSet / `externalTrafficPolicy: Local` change later for non-CDN hostnames.** (b) CDN header only, and drop the DaemonSet plan. (c) DaemonSet only, and ignore the CDN header. Analytics then sees CDN edge IPs, which would be worse than today. |
-| **D6** | Where does media live? | **(a) Stay on MinIO, with the CDN in front and immutable headers.** (b) Move the public bucket to Cloudflare R2: zero egress, $0.015/GB-month, and fewer home-uplink fills. MinIO keeps the incoming and private buckets. Revisit if the media library grows a lot. (c) Move to AWS S3. Only if D1 = CloudFront. |
-| **D7** | How are image transforms done? | **(a) Phase 1: cache Next's `/_next/image` output at the edge and keep the existing renditions (`RENDITIONS` engine for the admin and API). Add a CDN-native engine later only if needed.** (b) Cloudflare Image Transformations now, through the loader: 5k unique per month free, then $0.50 per 1k. (c) Self-hosted imgproxy now. More moving parts, but vendor-neutral. |
-| **D8** | Cache HTML for `www`? | **(a) Yes, in P4: drop `force-dynamic`, use ISR plus canonical tags, and fan the revalidation out to every pod before the CDN purge.** (b) No. Keep HTML dynamic and cache only assets, images, media and the API. Simpler, and still most of the byte savings. (c) Yes, with a shared Redis `cacheHandler` instead of the fan-out. |
-| **D9** | Who owns edge configuration (cache rules, WAF, TLS)? | **(a) OpenTofu in Praetor. The qbit only emits headers, purges, and reads rules for a drift view.** (b) The qbit pushes cache rules through the provider API from `cdnCachePolicy`. This gives the app reconfiguration rights, which is not recommended. |
-| **D10** | Where does the code live? | **(a) New repo `QRun-IO/qbit-cdn`, plus one small generic response-header hook in QQQ core.** (b) Everything in QQQ core. (c) Only inside Website-Backend, with no reuse. |
-| **D11** | Monthly budget cap for kof22's CDN | **(a) $0–25/mo.** Covers Cloudflare Free or Pro, CloudFront flat Pro, or Bunny with Optimizer. (b) Up to $50/mo. (c) No cap. |
-| **D12** | Private media through signed CDN URLs in v1? | **(a) No. Private and draft media stays on MinIO presigned GETs that bypass the edge. Add `signUrl` when a real need appears.** (b) Yes. That pushes D1 toward CloudFront or Bunny, which have native signed URLs and tokens. |
-| **D13** | Privacy posture | **(a) Turn off every CDN script injection and CDN analytics beacon. Name the CDN as a processor on the privacy page and accept its DPA. Keep the first-party hashed analytics as the only visitor analytics.** (b) Also enable CDN-side bot JS challenges for everyone. This adds friction and third-party JS. |
-| **D14** | Purge failure policy | **(a) 5 retries with backoff, then DEAD, a Data Health issue and an alert. Content corrects itself at the edge TTL.** (b) On DEAD, automatically fall back to a hostname purge. Riskier, because it can trigger a cache stampede on a residential origin. |
-| **D15** | Other tenants | **(a) kof22 only for now. Decide qrun.io and benchfinity after P4.** (b) Plan qrun.io's marketing site alongside P2. |
+| O1 | **Which AWS account?** | **(a)** The existing account `744245396565` (profile `kingsrook_root_admin`), which already holds the Route53 zone. Add `tenant=kof22` cost tags and keep the `allowed_account_ids` guard. **Recommended.**<br>(b) A new AWS Organizations member account for kof22 with its own profile. Billing is cleaner, and cross-account Route53 ALIAS still works, but the account has to be set up. |
+| O2 | **Subscribe to the CloudFront flat-rate Pro plan** ($15/mo). This is a billing action only the owner can take, after the distribution exists in P2. Also confirm the plan covers **one distribution with 4 aliases** (*verify* whether it attaches per distribution). | **(a)** Yes: one Pro plan on the single kof22 distribution. **Recommended.**<br>(b) Pay-as-you-go: about $0 at this volume, but no cost ceiling and no bundled WAF. |
+| O3 | **ACM certificate in `us-east-1`:** which names, and how to validate | **(a)** `kof22.com` + `*.kof22.com`, validated by DNS. Add the validation CNAME to the octoDNS zone file and extend CAA with `amazon.com`. **Recommended.**<br>(b) Explicit names only: `kof22.com`, `www`, `api`, `s3`. |
+| O4 | **Open WAN port 8443**, limited to CloudFront's origin-facing ranges (UniFi, as IaC) | **(a)** Approve. **Recommended.**<br>(b) Reuse 443 instead. No source restriction is possible there because other tenants share it, so protection rests on the secret header alone. Weaker. |
+| O5 | **New hostnames** `origin.kof22.com` and `upload.kof22.com` (DNS-only) | **(a)** Approve both. **Recommended.**<br>(b) Different names. |
+| O6 | **Origin secret:** where it is stored, and how it rotates | **(a)** An Infisical path for the kof22 website, rotated every 90 days with two valid values during the overlap. **Recommended.**<br>(b) A static secret, rotated by hand. |
+| O7 | **Optional metrics and logs** for cache hit rate and per-host stats | **(a)** CloudFront additional metrics only (cache hit rate per distribution), with standard logs off. **Recommended.**<br>(b) Also standard logs v2, with 7-day retention, for per-host stats. These logs contain IPs (§7.4).<br>(c) Neither: requests, bytes and error rates only. |
+| O8 | **Which AWS agreement and DPA cover kof22 visitor data** (privacy page wording) | Needs owner or legal input. Depends on O1. |
 
 ---
 
@@ -646,16 +719,17 @@ Each item is multiple choice, with the **recommended option first**.
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | A personalized or authenticated response is cached and served to others | Bypass rules at the edge, plus the `Set-Cookie`/session safety rule in the header policy (§4.6), plus matrix tests on `/v1/me`, `/preview` and `admin`. HTML caching (P4) needs explicit sign-off. |
-| R2 | Stale content after a publish (purge failure, multi-pod Next) | Revalidation fan-out before the purge. DEAD alerts. Short HTML edge TTLs with `stale-while-revalidate`. Manual "Purge from CDN" action. |
-| R3 | The DNS move breaks mail or DSM, or DNSSEC goes wrong | Import every record as DNS-only and diff it with octoDNS before switching NS. Follow the DNSSEC runbook with TTL waits. Do the move in a quiet window, and test MX, SPF and DKIM afterwards. |
-| R4 | The origin IP is still discoverable, because other hosts share `50.122.5.146` | Don't claim it is hidden. The LOCK step blocks direct access per hostname anyway. Origin protection does not depend on secrecy. |
-| R5 | Spoofed real-IP headers | Viewer headers are trusted only on the `cdn` entry point, which is reachable only through the tunnel or allowlist (§7.3). The edge marker header is stripped from inbound requests. |
-| R6 | Provider terms restrict non-HTML or bulk media | kof22 serves images, not bulk video. Move video to R2 or Stream if it ever appears. Re-read the provider's current self-serve terms before P2 (*verify*). |
-| R7 | Purge rate limits (Cloudflare Free: 5 tag purges per minute) | Merging and per-provider token buckets. One request carries up to 100 tags. Upgrade to Pro (5 per second) only if the backlog alert fires. |
-| R8 | Lock-in through provider-specific rules | Rules live in IaC, the app only uses canonical headers and tags, and P6 proves a second adapter. |
-| R9 | The tunnel is a single point of failure | Two `cloudflared` replicas with a PDB and an alert. Rollback is a DNS un-proxy, because the port-forward still exists until LOCK. |
-| R10 | Release interference | No QQQ core change lands before RC.4 is cut. The core hook goes to the next 4.1.x. |
+| R1 | A personalized or authenticated response is cached | `CachingDisabled` behaviors, the header-policy safety rule, the matrix tests, and owner sign-off on P4 |
+| R2 | Stale content: invalidation takes minutes, a hook fails, or one Next pod is behind | Pods revalidate before the edge. Hub TTLs are short. DEAD rows alert. Manual purge is available. The publish SLA is stated as about 2 min, not instant. |
+| R3 | The invalidation budget runs out | Hubs expire by TTL, wildcards collapse paths, the planner has budget bands, paid paths are capped, and the widget shows a projection. The worst case is a few dollars, or a DEFER until the TTL expires. |
+| R4 | CloudFront's origin-facing ranges change and UniFi blocks the new ones | A weekly `syncToken` CI check, a PR to regenerate, and the `OriginGuardRejectSpike` and 5xx alarms. The 443 path is untouched, so a DNS rollback restores service. |
+| R5 | The origin secret leaks | An attacker would still need a CloudFront source IP (UniFi filter), and with it a distribution of their own, plus the secret. Rotate through Infisical with the overlap. |
+| R6 | Spoofed real-IP headers | They are trusted only when the guard validates the secret. They are stripped on `websecure`, and `authResponseHeaders` overwrites them. |
+| R7 | Wrong `Vary` or cache key for Next RSC or image formats | Explicit cache-key headers (`RSC`, normalized `Accept`), matrix tests for both variants, and a re-check against the Next CDN guide on every Next upgrade |
+| R8 | The flat-rate plan has feature limits (Lambda@Edge, logging, invalidation pricing) that differ from pay-as-you-go | *Verify* before P2 (O2). The design only needs CloudFront Functions, invalidations and CloudWatch metrics. |
+| R9 | `origin-guard` is a single point of failure | 2 replicas, a PDB and an alert. The guard is stateless. Rollback is a DNS revert. |
+| R10 | Release interference | No QQQ core change lands before RC.4 is cut. |
+| R11 | octoDNS deletes the ACM validation record or the ALIAS records | Keep them in the zone YAML. Rely on `delete_pcent_threshold`, and review the octoDNS plan in the PR. |
 
 ---
 
@@ -663,22 +737,17 @@ Each item is multiple choice, with the **recommended option first**.
 
 Researched 2026-10-12. Prices change often.
 
-- Cloudflare purge (all plans, rate limits): https://developers.cloudflare.com/cache/how-to/purge-cache/ ; tags: https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-tags/
-- Cloudflare Cache Rules / Tiered Cache: https://developers.cloudflare.com/cache/how-to/cache-rules/ , https://developers.cloudflare.com/cache/how-to/tiered-cache/
-- Cloudflare `CDN-Cache-Control`: https://blog.cloudflare.com/cdn-cache-control/
-- Cloudflare Images transformations and pricing: https://developers.cloudflare.com/images/optimization/features/ , https://developers.cloudflare.com/images/pricing/
-- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
-- Cloudflare Authenticated Origin Pulls: https://developers.cloudflare.com/ssl/origin-configuration/authenticated-origin-pull/ ; Tunnel: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/ ; IPs: https://www.cloudflare.com/ips-v4 ; headers: https://developers.cloudflare.com/fundamentals/reference/http-headers/ ; GraphQL Analytics: https://developers.cloudflare.com/analytics/graphql-api/ ; plans: https://www.cloudflare.com/plans/
-- CloudFront flat-rate plans: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/flat-rate-pricing-plan.html , https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-flat-rate-pricing-plans-with-no-overages/
-- CloudFront pricing: https://aws.amazon.com/cloudfront/pricing/ ; invalidation: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html ; private content: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PrivateContent.html ; edge functions: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/edge-functions-choosing.html ; origin shield: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/origin-shield.html ; edge locations and prefix lists: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/LocationsOfEdgeServers.html ; custom origin headers: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/add-origin-custom-headers.html ; viewer headers: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/adding-cloudfront-headers.html ; real-time logs: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html
-- Fastly Surrogate-Key: https://www.fastly.com/documentation/reference/http/http-headers/Surrogate-Key/ ; purging: https://www.fastly.com/documentation/guides/full-site-delivery/purging/getting-started-with-purging/ ; batch purge: https://www.fastly.com/blog/introducing-batch-api-surrogate-key-purge ; client IP: https://www.fastly.com/documentation/reference/http/http-headers/Fastly-Client-IP/ ; pricing: https://www.fastly.com/pricing
-- Bunny purge: https://bunny.net/docs/cdn/purge-cache , https://bunny.net/docs/api-reference/core/pull-zone/purge-cache , https://bunny.net/blog/introducing-tag-based-cdn-cache-purging/ ; token auth: https://bunny.net/docs/cdn/security/token-authentication/advanced ; pricing: https://bunny.net/pricing/cdn/
-- Akamai cache tags: https://techdocs.akamai.com/purge-cache/docs/purge-content-cache-tag , https://techdocs.akamai.com/purge-cache/reference/api ; targeted cache control: https://www.akamai.com/blog/news/targeted-cache-control
-- Azure Front Door: https://learn.microsoft.com/en-us/azure/frontdoor/front-door-cdn-comparison , https://learn.microsoft.com/en-us/azure/frontdoor/cache-purge , https://azure.microsoft.com/en-us/pricing/details/cdn/
-- Google Cloud CDN invalidation (incl. cache tags): https://docs.cloud.google.com/cdn/docs/cache-invalidation-overview ; pricing: https://cloud.google.com/cdn/pricing ; external backends: https://docs.cloud.google.com/cdn/docs/ext-backend-internet-neg-overview ; signed URLs: https://docs.cloud.google.com/cdn/docs/using-signed-urls
-- Varnish xkey: https://docs.varnish-software.com/book/invalidation/secondary-keys/ ; Souin: https://github.com/darkweak/souin ; Traefik Hub HTTP cache: https://doc.traefik.io/traefik-hub/api-gateway/reference/routing/http/middlewares/ref-httpcache ; nginx `proxy_cache_purge`: https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_purge
-- imgproxy signing: https://docs.imgproxy.net/usage/signing_url ; presets: https://docs.imgproxy.net/usage/presets ; thumbor: https://thumbor.readthedocs.io/
-- RFC 9111: https://www.rfc-editor.org/rfc/rfc9111 ; RFC 9110: https://www.rfc-editor.org/rfc/rfc9110 ; RFC 9213: https://httpwg.org/specs/rfc9213.html ; RFC 5861: https://www.rfc-editor.org/rfc/rfc5861 ; W3C Edge Architecture: https://www.w3.org/TR/edge-arch/ ; cache groups draft: https://datatracker.ietf.org/doc/draft-ietf-httpbis-cache-groups/
-- Next.js self-hosting: https://nextjs.org/docs/app/guides/self-hosting ; CDN caching: https://nextjs.org/docs/app/guides/cdn-caching ; `expireTime`: https://nextjs.org/docs/app/api-reference/config/next-config-js/expireTime ; images and loaders: https://nextjs.org/docs/app/api-reference/config/next-config-js/images
-- Traefik forwarded headers: https://doc.traefik.io/traefik/routing/entrypoints/#forwarded-headers
-- Internal (kof22): Website-Backend `docs/site-api.md`, `docs/cms-media.md`, `metadata/esb/WebsiteEsbMetaData`, `siteapi/http/SiteApiRouteProvider`; Website-Frontend `next.config.mjs`, `src/app/layout.tsx`, `src/lib/analytics/forward.ts`; cluster-gitops `tenants/kof22/website/*`, `platform/traefik/values.yaml`; Praetor `dns/route53/zones/kof22.com.yaml`, `docs/STATUS-2026-10-11-requests.md`; QQQ `docs/specs/2026-09-25-qqq-esb-design.md`.
+- CloudFront flat-rate plans: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/flat-rate-pricing-plan.html , https://docs.aws.amazon.com/PricingPlanManager/latest/UserGuide/plans.html , https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-flat-rate-pricing-plans-with-no-overages/
+- CloudFront pricing: https://aws.amazon.com/cloudfront/pricing/ ; invalidation pricing: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html ; invalidation how-to and quotas: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Invalidation.html , https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html
+- CloudFront private content / key groups: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PrivateContent.html ; edge functions: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/edge-functions-choosing.html ; origin shield: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/origin-shield.html
+- CloudFront origin-facing ranges and prefix list: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/LocationsOfEdgeServers.html , https://ip-ranges.amazonaws.com/ip-ranges.json ; custom origin headers: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/add-origin-custom-headers.html ; viewer headers (`CloudFront-Viewer-Address`): https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/adding-cloudfront-headers.html ; cache key and policies: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-the-cache-key.html ; real-time logs: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html
+- Cloudflare purge: https://developers.cloudflare.com/cache/how-to/purge-cache/ ; tags: https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-tags/ ; `CDN-Cache-Control`: https://blog.cloudflare.com/cdn-cache-control/ ; images: https://developers.cloudflare.com/images/pricing/ ; R2: https://developers.cloudflare.com/r2/pricing/ ; Authenticated Origin Pulls: https://developers.cloudflare.com/ssl/origin-configuration/authenticated-origin-pull/
+- Fastly Surrogate-Key: https://www.fastly.com/documentation/reference/http/http-headers/Surrogate-Key/ ; purging: https://www.fastly.com/documentation/guides/full-site-delivery/purging/getting-started-with-purging/ ; pricing: https://www.fastly.com/pricing
+- Bunny purge and tags: https://bunny.net/docs/cdn/purge-cache , https://bunny.net/blog/introducing-tag-based-cdn-cache-purging/ ; token auth: https://bunny.net/docs/cdn/security/token-authentication/advanced ; pricing: https://bunny.net/pricing/cdn/
+- Akamai cache tags: https://techdocs.akamai.com/purge-cache/docs/purge-content-cache-tag ; Azure Front Door: https://learn.microsoft.com/en-us/azure/frontdoor/front-door-cdn-comparison , https://learn.microsoft.com/en-us/azure/frontdoor/cache-purge ; Google Cloud CDN: https://docs.cloud.google.com/cdn/docs/cache-invalidation-overview
+- Varnish xkey: https://docs.varnish-software.com/book/invalidation/secondary-keys/ ; Souin: https://github.com/darkweak/souin ; imgproxy: https://docs.imgproxy.net/usage/signing_url
+- RFC 9111: https://www.rfc-editor.org/rfc/rfc9111 ; RFC 9110: https://www.rfc-editor.org/rfc/rfc9110 ; RFC 9213: https://httpwg.org/specs/rfc9213.html ; RFC 5861: https://www.rfc-editor.org/rfc/rfc5861 ; cache groups draft: https://datatracker.ietf.org/doc/draft-ietf-httpbis-cache-groups/
+- Next.js self-hosting: https://nextjs.org/docs/app/guides/self-hosting ; CDN caching: https://nextjs.org/docs/app/guides/cdn-caching ; `expireTime`: https://nextjs.org/docs/app/api-reference/config/next-config-js/expireTime ; images: https://nextjs.org/docs/app/api-reference/config/next-config-js/images
+- Traefik entry points and forwarded headers: https://doc.traefik.io/traefik/routing/entrypoints/#forwarded-headers ; forwardAuth: https://doc.traefik.io/traefik/middlewares/http/forwardauth/
+- octoDNS Route53 provider (ALIAS): https://github.com/octodns/octodns-route53
+- Internal: Praetor `terraform/dns-route53/{providers,iam}.tf`, `dns/route53/zones/kof22.com.yaml`, `docs/STATUS-2026-10-11-requests.md`; Website-Backend `docs/site-api.md`, `docs/cms-media.md`, `metadata/esb/WebsiteEsbMetaData`, `siteapi/http/SiteApiRouteProvider`; Website-Frontend `next.config.mjs`, `src/app/layout.tsx`, `src/lib/analytics/forward.ts`; cluster-gitops `tenants/kof22/website/*`, `platform/traefik/values.yaml`; QQQ `docs/specs/2026-09-25-qqq-esb-design.md`.

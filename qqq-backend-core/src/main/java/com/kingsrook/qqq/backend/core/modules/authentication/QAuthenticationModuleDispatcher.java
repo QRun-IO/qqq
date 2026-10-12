@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.modules.authentication;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
@@ -81,6 +82,36 @@ public class QAuthenticationModuleDispatcher
       if(authenticationMetaData == null)
       {
          throw (new QModuleDispatchException("No authentication meta data defined."));
+      }
+
+      ////////////////////////////////////////////////////////////////////////////
+      // an explicit module class on the metadata wins over the type's module, //
+      // so a scoped provider can use an application module.                   //
+      ////////////////////////////////////////////////////////////////////////////
+      if(authenticationMetaData.getModuleCodeReference() != null)
+      {
+         try
+         {
+            QAuthenticationModuleInterface module = QCodeLoader.getAdHoc(QAuthenticationModuleInterface.class, authenticationMetaData.getModuleCodeReference());
+            if(module == null)
+            {
+               throw (new QModuleDispatchException("Could not load authentication module [" + authenticationMetaData.getModuleCodeReference().getName() + "]"));
+            }
+            return (module);
+         }
+         catch(QModuleDispatchException qmde)
+         {
+            throw (qmde);
+         }
+         catch(Exception e)
+         {
+            throw (new QModuleDispatchException("Error loading authentication module [" + authenticationMetaData.getModuleCodeReference().getName() + "]", e));
+         }
+      }
+
+      if(authenticationMetaData.getType() == null)
+      {
+         throw (new QModuleDispatchException("Authentication meta data [" + authenticationMetaData.getName() + "] has no type."));
       }
 
       return getQModule(authenticationMetaData.getType().getName());

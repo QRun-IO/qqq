@@ -81,7 +81,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
    public static Map<String, QFieldMetaData> getTableApiFieldMap(GetTableApiFieldsInput input) throws QException
    {
       String         userId = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
-      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource());
+      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource(), input.getForSpecification());
 
       return fieldMapMemoization.getResultThrowing(key, k ->
       {
@@ -118,7 +118,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
    public static List<QFieldMetaData> getTableApiFieldList(GetTableApiFieldsInput input) throws QException
    {
       String         userId = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
-      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource());
+      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource(), input.getForSpecification());
 
       return fieldListMemoization.getResultThrowing(key, k -> (new GetTableApiFieldsAction().execute(input).getFields())).orElse(null);
    }
@@ -129,7 +129,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
     * memoization key.  Adds both userId and inputSource, as those are the
     * expected "keys" that would be used within a table personalizer.
     ***************************************************************************/
-   private record MemoizationKey(String apiName, String apiVersion, String tableName, String userId, InputSource inputSource)
+   private record MemoizationKey(String apiName, String apiVersion, String tableName, String userId, InputSource inputSource, boolean forSpecification)
    {
 
    }
@@ -149,7 +149,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
          throw (new QNotFoundException("Unrecognized table name: " + input.getTableName()));
       }
 
-      table = TableMetaDataPersonalizerAction.execute(input);
+      table = input.getForSpecification() ? TableMetaDataPersonalizerAction.execute(input, false) : TableMetaDataPersonalizerAction.execute(input);
 
       APIVersion version = new APIVersion(input.getVersion());
 

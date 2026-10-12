@@ -39,6 +39,12 @@ public class GetTableApiFieldsInput extends AbstractTableActionInput
    /////////////////////////////////////////////////////////////////////////////////////
    private Boolean doCheckTableApiVersion = true;
 
+   ///////////////////////////////////////////////////////////////////////////
+   // building the published spec: list every field of the model, including //
+   // ones a field security lock hides from some sessions.                   //
+   ///////////////////////////////////////////////////////////////////////////
+   private boolean forSpecification = false;
+
 
 
    /*******************************************************************************
@@ -152,6 +158,38 @@ public class GetTableApiFieldsInput extends AbstractTableActionInput
    public GetTableApiFieldsInput withInputSource(InputSource inputSource)
    {
       super.withInputSource(inputSource);
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for forSpecification
+    *******************************************************************************/
+   public boolean getForSpecification()
+   {
+      return (this.forSpecification);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for forSpecification
+    *******************************************************************************/
+   public void setForSpecification(boolean forSpecification)
+   {
+      this.forSpecification = forSpecification;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for forSpecification: list the fields of the model for the
+    ** published spec, without removing fields a field security lock denies to
+    ** the current (often absent) session.
+    *******************************************************************************/
+   public GetTableApiFieldsInput withForSpecification(boolean forSpecification)
+   {
+      this.forSpecification = forSpecification;
       return (this);
    }
 }

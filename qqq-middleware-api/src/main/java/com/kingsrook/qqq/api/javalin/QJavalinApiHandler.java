@@ -42,6 +42,7 @@ import com.kingsrook.qqq.api.model.APIVersion;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecInput;
 import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecOutput;
 import com.kingsrook.qqq.api.model.actions.HttpApiResponse;
+import com.kingsrook.qqq.api.model.metadata.ApiHttpPolicy;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataProvider;
@@ -142,13 +143,18 @@ public class QJavalinApiHandler
     *******************************************************************************/
    private static void handleProcessResponse(Context context, HttpApiResponse response, APILog apiLog)
    {
+      for(Map.Entry<String, String> header : CollectionUtils.nonNullMap(response.getHeaders()).entrySet())
+      {
+         context.header(header.getKey(), header.getValue());
+      }
+
       if(response.getNeedsFormattedAsJson())
       {
          /////////////////////////////////////////////////////////////////////////////////////////
          // if the response object says that we should format the response as json, then do so. //
          /////////////////////////////////////////////////////////////////////////////////////////
          String resultString = toJson(Objects.requireNonNullElse(response.getResponseBodyObject(), ""));
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       else
@@ -210,8 +216,11 @@ public class QJavalinApiHandler
                String value = paramAccessor.apply(context, field.getName());
                if(value != null)
                {
-                  String backendName = ObjectUtils.requireConditionElse(field.getBackendName(), StringUtils::hasContent, field.getName());
-                  parameters.put(backendName, value);
+                  ////////////////////////////////////////////////////////////////////
+                  // keyed by field name: that is how ApiImplementation reads input //
+                  // values (a field's backendName must not drop its value).         //
+                  ////////////////////////////////////////////////////////////////////
+                  parameters.put(field.getName(), value);
                }
             }
             catch(Exception e)
@@ -327,6 +336,15 @@ public class QJavalinApiHandler
       Map<String, Object> rs = new HashMap<>();
       rs.put("supportedVersions", apiInstanceMetaData.getSupportedVersions().stream().map(String::valueOf).collect(Collectors.toList()));
       rs.put("currentVersion", apiInstanceMetaData.getCurrentVersion().toString());
+      if(CollectionUtils.nullSafeHasContents(apiInstanceMetaData.getSemanticVersions()))
+      {
+         Map<String, String> semanticVersions = new LinkedHashMap<>();
+         for(APIVersion version : apiInstanceMetaData.getSupportedVersions())
+         {
+            semanticVersions.put(version.toString(), apiInstanceMetaData.getSemanticVersion(version.toString()));
+         }
+         rs.put("semanticVersions", semanticVersions);
+      }
 
       context.contentType(ContentType.APPLICATION_JSON);
       context.result(toJson(rs));
@@ -611,7 +629,7 @@ public class QJavalinApiHandler
 
          QJavalinAccessLogger.logEndSuccess();
          String resultString = toJson(outputRecord);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -851,7 +869,7 @@ public class QJavalinApiHandler
 
          QJavalinAccessLogger.logEndSuccess(logPair("recordCount", () -> ((List<?>) output.get("records")).size()), QJavalinAccessLogger.logPairIfSlow("filter", filter, SLOW_LOG_THRESHOLD_MS));
          String resultString = toJson(output);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -882,7 +900,7 @@ public class QJavalinApiHandler
          QJavalinAccessLogger.logEndSuccess();
          context.status(HttpStatus.Code.CREATED.getCode());
          String resultString = toJson(outputRecord);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -912,7 +930,7 @@ public class QJavalinApiHandler
 
          context.status(HttpStatus.Code.MULTI_STATUS.getCode());
          String resultString = toJson(response);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -943,7 +961,7 @@ public class QJavalinApiHandler
          QJavalinAccessLogger.logEndSuccess(logPair("recordCount", response.size()));
          context.status(HttpStatus.Code.MULTI_STATUS.getCode());
          String resultString = toJson(response);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -974,7 +992,7 @@ public class QJavalinApiHandler
          QJavalinAccessLogger.logEndSuccess(logPair("recordCount", response.size()));
          context.status(HttpStatus.Code.MULTI_STATUS.getCode());
          String resultString = toJson(response);
-         context.result(resultString);
+         context.contentType(ContentType.APPLICATION_JSON).result(resultString);
          storeApiLog(apiLog.withStatusCode(context.statusCode()).withResponseBody(resultString));
       }
       catch(Exception e)
@@ -1156,7 +1174,7 @@ public class QJavalinApiHandler
       }
 
       String responseBody = toJson(Map.of("error", errorMessage));
-      context.result(responseBody);
+      context.contentType(ContentType.APPLICATION_JSON).result(responseBody);
 
       if(apiLog != null)
       {
@@ -1202,7 +1220,16 @@ public class QJavalinApiHandler
             ApiInstanceMetaData apiInstanceMetaData = entry.getValue();
             String              rootPath            = apiInstanceMetaData.getPath();
 
-            ApiBuilder.before(rootPath + "*", QJavalinApiHandler::setupCORS);
+            ApiHttpPolicy httpPolicy = apiInstanceMetaData.getHttpPolicy();
+            if(httpPolicy == null)
+            {
+               ApiBuilder.before(rootPath + "*", QJavalinApiHandler::setupCORS);
+            }
+            else
+            {
+               ApiBuilder.before(rootPath + "*", context -> ApiHttpPolicyHandler.applyCors(context, httpPolicy));
+               ApiBuilder.after(rootPath + "*", context -> ApiHttpPolicyHandler.applyCaching(context, httpPolicy));
+            }
 
             //////////////////////////////////////////////
             // default page is the current version spec //

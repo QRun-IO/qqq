@@ -66,6 +66,29 @@ public class ApiInstanceMetaData implements ApiOperation.EnabledOperationsProvid
 
    private boolean includeErrorTooManyRequests = true;
 
+   //////////////////////////////////////////////////////////////////////////////
+   // public-internet behaviour: cache headers, validators, CORS (null = none). //
+   //////////////////////////////////////////////////////////////////////////////
+   private ApiHttpPolicy httpPolicy;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // the API also answers callers without credentials (its authentication     //
+   // module creates anonymous sessions).  Documented as optional security.    //
+   //////////////////////////////////////////////////////////////////////////////
+   private boolean allowsAnonymousAccess = false;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // path the API is published under, when a proxy maps it (e.g. mounted at   //
+   // "/site-api/" but served as "/" on its own host).  Used for spec paths.   //
+   //////////////////////////////////////////////////////////////////////////////
+   private String publicPath;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // full semantic version per API version (e.g. "v2" -> "2.0.0"), reported  //
+   // as the spec's info.version and in versions.json.                         //
+   //////////////////////////////////////////////////////////////////////////////
+   private Map<String, String> semanticVersions = new LinkedHashMap<>();
+
 
 
    /*******************************************************************************
@@ -643,4 +666,149 @@ public class ApiInstanceMetaData implements ApiOperation.EnabledOperationsProvid
       return (this);
    }
 
+   /*******************************************************************************
+    ** Getter for httpPolicy: public-internet HTTP behaviour (null = historical behaviour)
+    *******************************************************************************/
+   public ApiHttpPolicy getHttpPolicy()
+   {
+      return (this.httpPolicy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for httpPolicy
+    *******************************************************************************/
+   public void setHttpPolicy(ApiHttpPolicy httpPolicy)
+   {
+      this.httpPolicy = httpPolicy;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for httpPolicy
+    *******************************************************************************/
+   public ApiInstanceMetaData withHttpPolicy(ApiHttpPolicy httpPolicy)
+   {
+      this.httpPolicy = httpPolicy;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowsAnonymousAccess: whether callers without credentials are answered
+    *******************************************************************************/
+   public boolean getAllowsAnonymousAccess()
+   {
+      return (this.allowsAnonymousAccess);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowsAnonymousAccess
+    *******************************************************************************/
+   public void setAllowsAnonymousAccess(boolean allowsAnonymousAccess)
+   {
+      this.allowsAnonymousAccess = allowsAnonymousAccess;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowsAnonymousAccess
+    *******************************************************************************/
+   public ApiInstanceMetaData withAllowsAnonymousAccess(boolean allowsAnonymousAccess)
+   {
+      this.allowsAnonymousAccess = allowsAnonymousAccess;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for publicPath: path the API is published under (null = its mount path)
+    *******************************************************************************/
+   public String getPublicPath()
+   {
+      return (this.publicPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for publicPath
+    *******************************************************************************/
+   public void setPublicPath(String publicPath)
+   {
+      this.publicPath = publicPath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for publicPath
+    *******************************************************************************/
+   public ApiInstanceMetaData withPublicPath(String publicPath)
+   {
+      this.publicPath = publicPath;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for semanticVersions: semantic version per API version
+    *******************************************************************************/
+   public Map<String, String> getSemanticVersions()
+   {
+      return (this.semanticVersions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for semanticVersions
+    *******************************************************************************/
+   public void setSemanticVersions(Map<String, String> semanticVersions)
+   {
+      this.semanticVersions = semanticVersions;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for semanticVersions
+    *******************************************************************************/
+   public ApiInstanceMetaData withSemanticVersions(Map<String, String> semanticVersions)
+   {
+      this.semanticVersions = semanticVersions;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The path clients use for this API (publicPath when set, else the mount path).
+    *******************************************************************************/
+   public String getEffectivePublicPath()
+   {
+      return (publicPath == null ? path : publicPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** The semantic version of an API version (the version itself when not mapped).
+    *******************************************************************************/
+   public String getSemanticVersion(String version)
+   {
+      if(semanticVersions == null || !semanticVersions.containsKey(version))
+      {
+         return (version);
+      }
+      return (semanticVersions.get(version));
+   }
 }

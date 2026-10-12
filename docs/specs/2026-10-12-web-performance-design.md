@@ -58,7 +58,7 @@ These restate the owner's standing rules. Every later section was checked agains
 | Rule | How this design follows it |
 |---|---|
 | 100% real data, nothing mocked | Every figure is a stored PSI or CrUX response or a RUM measurement from a real browser. Empty states say why (never tested, draft, CrUX has no data, too few samples). No estimated or interpolated values, and no "sample" scores. Lab and field values are always labelled as such. |
-| Qbit data lives in standard, visible QQQ tables | All 11 tables (§4) are normal QQQ tables in the host's RDBMS, including the full Lighthouse report. They are secured by `webperf.*` permissions and, on multi-site hosts, a site record lock. No side store. |
+| Qbit data lives in standard, visible QQQ tables | All 11 tables (§4) are normal QQQ tables in the host's RDBMS, including the full Lighthouse report. They are secured by `web_performance.*` permissions and, on multi-site hosts, a site record lock. No side store. |
 | Processes are table or record actions, never in the nav | Every process is a table or record action (§6). Scheduled jobs are hidden processes. Labels are plain ("Test page speed", "Run site audit"), with no "ETL". |
 | Record actions use the standard streamed ETL flow | Every action is `StreamedETLWithFrontendProcess`: record input → standard Review summary lines → Result summary lines. There are no custom dry-run forms. |
 | One landing per app, no duplicated data | The Performance home owns every performance widget. The CMS home, Dashboard and Health only get summaries that use the owner's loader and link to it (§5). This is registered in `WB:docs/admin-dashboards.md` and enforced by `LandingPagesTest`. |
@@ -131,7 +131,7 @@ These restate the owner's standing rules. Every later section was checked agains
 | Setting | Default | Meaning |
 |---|---|---|
 | `backendName` | required | RDBMS backend for all tables |
-| `tableNamePrefix` / `namePrefix` | `web_performance_` / `webPerformance` | SQL and table prefix, and the prefix for process, widget and permission names |
+| `tableNamePrefix` / `namePrefix` | `web_performance_` / `webPerformance` | SQL and table prefix (and the permission base, `web_performance`, e.g. `web_performance.view`); the camelCase prefix for process and widget names |
 | `appName`, `appLabel`, `parentAppName` | `webPerformance`, `Performance`, none | kof22 sets `parentAppName = "Content"` (the CMS app) |
 | `siteBaseUrl` | required | Public origin under test, e.g. `https://www.kof22.com` |
 | `urlSource` | `SitemapUrlSource(siteBaseUrl + "/sitemap.xml")` | SPI: the URLs to test |
@@ -171,7 +171,7 @@ These restate the owner's standing rules. Every later section was checked agains
 
 ### 4.1 Naming (with #1083 and #1084 in mind)
 
-**Naming (owner rule, 2026-10-12):** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table name is lowercase snake_case and starts with the full qbit name, `web_performance_` (not an abbreviation such as `webperf_`). Possible-value sources take the table names. Process, widget and permission names use the camelCase `webPerformance` prefix. Java class names stay CamelCase.
+**Naming (owner rule, 2026-10-12):** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table name is lowercase snake_case and starts with the full qbit name, `web_performance_` (not an abbreviation such as `webperf_`). Possible-value sources take the table names. Permissions use the full snake_case name too (`web_performance.view`, `.test`, `.manage`, `.admin`; owner, 2026-10-12). Process and widget names use the camelCase `webPerformance` prefix. Java class names stay CamelCase.
 
 The SQL prefix is `web_performance_` and the QQQ table names equal the SQL (backend) names, following the `analytics_` precedent. The prefix stays separate from `cms_`, so this qbit is not tied to the CMS's prefix: a site without the CMS can install it, and the #1083 rename of kof22's CMS tables to `cms_` does not touch these tables. Every table has `id`, `create_date` and `modify_date`, and audit is on for the tables people edit (targets, budgets, regressions). Measurement tables are written only by processes, and their fields are read-only in the UI.
 
@@ -265,13 +265,13 @@ The "Test page speed" action is in the record's action menu (§6.1), not inside 
 
 | Process (label) | Where | Permission | Review summary lines (examples) | Result |
 |---|---|---|---|---|
-| `webPerformanceTestPageSpeed` **Test page speed** | Record and bulk action on every `contentTables` table and on `web_performance_target` | `webPerformance.test` | "3 pages will be tested on mobile and desktop (6 runs)" · "1 record is a draft with no public URL and will be skipped" · "1 page was tested less than 10 minutes ago and is already queued (merged)" · "Today's runs: 42 of 500 (Google allows 25,000)" | "Queued 6 runs. Results usually take 1–2 minutes", linking to the filtered Lab Runs |
-| `webPerformanceRunSiteAudit` **Run site audit** | Table action on `web_performance_target` | `webPerformance.test` | "87 pages × 2 = 174 runs; about 45 minutes at 2 at a time" · quota line | "Queued 174 runs as audit #12", with a link |
-| `webPerformanceSyncTargets` **Sync pages from sitemap** | Table action on `web_performance_target`; also scheduled daily | `webPerformance.admin` | "4 new pages, 83 unchanged, 1 no longer in the sitemap (kept, marked not in sitemap, history kept)" | Counts with links |
-| `webPerformanceRetryRuns` **Retry** | Record and bulk action on `web_performance_lab_run` (FAILED, RUNTIME_ERROR, SKIPPED_QUOTA) | `webPerformance.test` | "2 runs will be queued again" | |
-| `webPerformanceRefreshFieldData` **Refresh Google field data** | Table action on `web_performance_field_snapshot`; also scheduled daily at 06:00 UTC | `webPerformance.admin` | "264 Google field data queries will be made" (the origin plus 87 URLs = 88 keys × 3 form factors; paced to at most 150 a minute, so about 2 minutes) | "Origin: no CrUX data. 0 URLs with data." |
-| `webPerformanceCompareChange` **Compare before and after** | Record action on `web_performance_change_event` | `webPerformance.view` | "Lab: 9 KEY pages, 3 runs each before and after already recorded (or N to queue)" · "Field: 28 days before vs since (412 vs 96 LCP samples)" | Rows in `web_performance_comparison`, with a link |
-| `webPerformanceDismissRegressions` **Dismiss** / `webPerformanceResolveRegressions` **Mark resolved** | Record and bulk action on `web_performance_regression` | `webPerformance.manage` | "2 regressions will be dismissed" (a note is required as a process input field) | |
+| `webPerformanceTestPageSpeed` **Test page speed** | Record and bulk action on every `contentTables` table and on `web_performance_target` | `web_performance.test` | "3 pages will be tested on mobile and desktop (6 runs)" · "1 record is a draft with no public URL and will be skipped" · "1 page was tested less than 10 minutes ago and is already queued (merged)" · "Today's runs: 42 of 500 (Google allows 25,000)" | "Queued 6 runs. Results usually take 1–2 minutes", linking to the filtered Lab Runs |
+| `webPerformanceRunSiteAudit` **Run site audit** | Table action on `web_performance_target` | `web_performance.test` | "87 pages × 2 = 174 runs; about 45 minutes at 2 at a time" · quota line | "Queued 174 runs as audit #12", with a link |
+| `webPerformanceSyncTargets` **Sync pages from sitemap** | Table action on `web_performance_target`; also scheduled daily | `web_performance.admin` | "4 new pages, 83 unchanged, 1 no longer in the sitemap (kept, marked not in sitemap, history kept)" | Counts with links |
+| `webPerformanceRetryRuns` **Retry** | Record and bulk action on `web_performance_lab_run` (FAILED, RUNTIME_ERROR, SKIPPED_QUOTA) | `web_performance.test` | "2 runs will be queued again" | |
+| `webPerformanceRefreshFieldData` **Refresh Google field data** | Table action on `web_performance_field_snapshot`; also scheduled daily at 06:00 UTC | `web_performance.admin` | "264 Google field data queries will be made" (the origin plus 87 URLs = 88 keys × 3 form factors; paced to at most 150 a minute, so about 2 minutes) | "Origin: no CrUX data. 0 URLs with data." |
+| `webPerformanceCompareChange` **Compare before and after** | Record action on `web_performance_change_event` | `web_performance.view` | "Lab: 9 KEY pages, 3 runs each before and after already recorded (or N to queue)" · "Field: 28 days before vs since (412 vs 96 LCP samples)" | Rows in `web_performance_comparison`, with a link |
+| `webPerformanceDismissRegressions` **Dismiss** / `webPerformanceResolveRegressions` **Mark resolved** | Record and bulk action on `web_performance_regression` | `web_performance.manage` | "2 regressions will be dismissed" (a note is required as a process input field) | |
 
 Hidden scheduled processes (never in the nav): `webPerformanceRunQueuedTests` (every minute; the worker), `webPerformanceScheduleKeyTests`, `webPerformanceScheduleSiteAudit`, `webPerformanceProbeDeploys`, `webPerformanceEvaluateRum`. The RUM rollup extends the analytics module's existing rollup and its "Recompute selected days" table action. There is no new action for it.
 
@@ -410,7 +410,7 @@ The existing analytics rollup (every 300 s for today and yesterday, under an adv
 
 ### 8.1 Permissions
 
-- `webPerformance.view` (read the app and tables), `webPerformance.test` (run tests and audits), `webPerformance.manage` (budgets, dismiss or resolve), `webPerformance.admin` (sync, field-data refresh, settings).
+- `web_performance.view` (read the app and tables), `web_performance.test` (run tests and audits), `web_performance.manage` (budgets, dismiss or resolve), `web_performance.admin` (sync, field-data refresh, settings).
 - kof22 maps `kof22-admins` to all of them.
 - Measurement tables are insert-only by processes, with every field read-only in the UI.
 - Multi-site hosts add `site_key` with a record security lock (the CMS qbit's `<prefix>Site` key type), so each site sees only its own targets.

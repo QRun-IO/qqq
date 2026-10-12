@@ -728,8 +728,9 @@ components:
         environmentValues:
           additionalProperties:
             type: "string"
-          description: "Environment values a frontend may use: the analytics settings\
-            \ (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS,\
+          description: "Environment values a frontend may use: Google Picker public\
+            \ browser settings GOOGLE_APP_CLIENT_ID and GOOGLE_APP_API_KEY, and the\
+            \ analytics settings (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS,\
             \ GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED,\
             \ POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other\
             \ ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit\
@@ -1578,6 +1579,48 @@ components:
                 type: "string"
               type: "array"
           type: "object"
+      type: "object"
+    RecordDeveloperPanelsResponseV1:
+      properties:
+        panels:
+          description: "The panels that the instance's developer panel providers contribute\
+            \ for this record, sorted by order then title.  Each panel has an id,\
+            \ title, order, optional icon, description and status badge (statusLabel,\
+            \ statusTone: INFO, SUCCESS, WARNING or ERROR), and either an error message\
+            \ (when its provider failed) or a list of blocks.  Each block has a type\
+            \ and a label; KEY_VALUES blocks use items (label, value, monospace, href),\
+            \ TEXT blocks use text and tone, CODE blocks use language and code, TABLE\
+            \ blocks use columns and rows (lists of display strings), LINKS blocks\
+            \ use links (label, href, description, external) and ACTIONS blocks use\
+            \ actions (label, processName, tableName, includeRecordId, description).\
+            \  Hrefs are app-relative (e.g., /app/table/1) or absolute."
+          items:
+            properties:
+              blocks:
+                type: "array"
+              description:
+                type: "string"
+              error:
+                type: "string"
+              icon:
+                type: "string"
+              id:
+                type: "string"
+              order:
+                type: "number"
+              statusLabel:
+                type: "string"
+              statusTone:
+                enum:
+                - "INFO"
+                - "SUCCESS"
+                - "WARNING"
+                - "ERROR"
+                type: "string"
+              title:
+                type: "string"
+            type: "object"
+          type: "array"
       type: "object"
     RecordSearchDetailV1:
       properties:
@@ -3216,9 +3259,13 @@ paths:
       description: "Receives logout notifications from the Identity Provider (IdP)\
         \ when a user\nlogs out from the IdP or another application in the SSO ecosystem.\n\
         \nThe IdP sends a POST request with a 'logout_token' JWT parameter containing\n\
-        either a 'sub' (subject) or 'sid' (session ID) claim. QQQ finds and deletes\n\
-        all matching sessions.\n\nThis endpoint should be registered with your IdP\
-        \ as the back-channel logout URI."
+        either a 'sub' (subject) or 'sid' (session ID) claim. QQQ validates the RS256\n\
+        signature against the configured OAuth2 provider's discovered JWKS, issuer,\n\
+        client audience, logout event and timestamps before deleting matching sessions\n\
+        from the configured session table. Both subject and session ID must match\
+        \ when\nboth are present. Invalid tokens or unsupported configuration return\
+        \ HTTP 400.\n\nThis endpoint should be registered with your IdP as the back-channel\
+        \ logout URI."
       responses:
         200:
           content:
@@ -4094,6 +4141,71 @@ paths:
       summary: "Get a record's associated scripts (developer mode)"
       tags:
       - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}/developer/panels:
+    get:
+      description: "Fetch the panels shown on a record's developer view: one per developer\
+        \ panel provider (built in, or\nregistered by modules and qbits in the instance's\
+        \ developerPanels supplemental meta-data) that is available\nfor this table\
+        \ and record for the current user - for example record security, ESB events,\
+        \ quick search\nindexing, or SQL workbench queries.\n\nRequires permission\
+        \ to read records from the table, and the record must be visible under its\
+        \ record\nsecurity locks.  If the record is not found, a 404 is returned.\
+        \  A provider that fails yields a panel\nwith an error message rather than\
+        \ failing the request."
+      parameters:
+      - description: "Name of the table that the record is in."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                Record security:
+                  value:
+                    panels:
+                    - blocks:
+                      - columns:
+                        - "Security key"
+                        - "Field"
+                        - "Scope"
+                        - "Null values"
+                        - "This record's value"
+                        - "Your access"
+                        label: "Locks"
+                        rows:
+                        - - "store"
+                          - "storeId"
+                          - "READ_AND_WRITE"
+                          - "DENY"
+                          - "42"
+                          - "Your session has key value 42"
+                        type: "TABLE"
+                      id: "recordSecurity"
+                      order: 150
+                      statusLabel: "1 lock"
+                      statusTone: "SUCCESS"
+                      title: "Record Security"
+              schema:
+                $ref: "#/components/schemas/RecordDeveloperPanelsResponseV1"
+          description: "The record's developer panels"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get a record's developer panels"
+      tags:
+      - "Tables"
   /qqq/v1/table/{tableName}/{primaryKey}/developer/associatedScript/{fieldName}:
     post:
       description: "Save new contents for the script that a record references in one\
@@ -4611,8 +4723,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4623,8 +4735,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -4756,8 +4868,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4768,8 +4880,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -4866,8 +4978,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4878,8 +4990,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"

@@ -38,18 +38,25 @@ def read_json(path):
 
 
 
-# Owner-approved QQQ candidates paired with the unchanged Next RC11 artifact. Each binding fixes the approval
-# permalink and the source revisions the pinned orb turns into that candidate (before publish) or leaves behind
-# after its version-bump commit. Any other candidate, approval or revision rejects the exception.
+# Exact public Next artifacts an approved candidate may pair with: release version, the commit its tag points to,
+# and the SHA-256 of the JAR on Maven Central.
+NEXT_RC11 = {'next_version': '1.0.0-RC.11', 'next_sha': '2853b9b148282ae0e6d454adab6d0f534ba48280',
+             'jar_sha256': '0c89bc0a104131010e5607e8a3669f8579048fab43170d05344dd47721188d99'}
+NEXT_RC14 = {'next_version': '1.0.0-RC.14', 'next_sha': '03e7415aa22445ba5b5dc45ae133f7ae704ea90e',
+             'jar_sha256': 'df7eb6706859820346adf870397163d44efe60d6e288d5b6c022d24f7d880952'}
+
+# Owner-approved QQQ candidates. Each binding fixes the approval permalink, the exact Next artifact the candidate is
+# paired with, and the source revisions the pinned orb turns into that candidate (before publish) or leaves behind
+# after its version-bump commit. Any other candidate, approval, Next identity or revision rejects the exception.
 APPROVED_NEXT_CANDIDATES = {
     '4.1.0-RC.1': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-5944789583',
-                   'before_publish': ('4.1.0-SNAPSHOT',), 'after_publish': ('4.1.0-SNAPSHOT', '4.1.0-RC.1')},
+                   'next': NEXT_RC11, 'before_publish': ('4.1.0-SNAPSHOT',), 'after_publish': ('4.1.0-SNAPSHOT', '4.1.0-RC.1')},
     '4.1.0-RC.2': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6109806327',
-                   'before_publish': ('4.1.0-RC.1',), 'after_publish': ('4.1.0-RC.1', '4.1.0-RC.2')},
+                   'next': NEXT_RC11, 'before_publish': ('4.1.0-RC.1',), 'after_publish': ('4.1.0-RC.1', '4.1.0-RC.2')},
     '4.1.0-RC.3': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6115006801',
-                   'before_publish': ('4.1.0-RC.2',), 'after_publish': ('4.1.0-RC.2', '4.1.0-RC.3')},
-    '4.1.0-RC.4': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6124075606',
-                   'before_publish': ('4.1.0-RC.3',), 'after_publish': ('4.1.0-RC.3', '4.1.0-RC.4')},
+                   'next': NEXT_RC11, 'before_publish': ('4.1.0-RC.2',), 'after_publish': ('4.1.0-RC.2', '4.1.0-RC.3')},
+    '4.1.0-RC.4': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6125729475',
+                   'next': NEXT_RC14, 'before_publish': ('4.1.0-RC.3',), 'after_publish': ('4.1.0-RC.3', '4.1.0-RC.4')},
 }
 
 
@@ -67,10 +74,9 @@ def accepted_release(sample, candidate_version, before_publish=False):
     require(binding is not None and candidate_version in versions,
             'Next exception is only approved for QQQ ' + ', '.join(APPROVED_NEXT_CANDIDATES))
     policy = policies[versions.index(candidate_version)]
-    require(policy['next_version'] == '1.0.0-RC.11'
-            and policy['next_sha'] == '2853b9b148282ae0e6d454adab6d0f534ba48280'
-            and policy['jar_sha256'] == '0c89bc0a104131010e5607e8a3669f8579048fab43170d05344dd47721188d99',
-            'Next exception must identify the accepted immutable public Next RC11')
+    next_identity = binding['next']
+    require(all(policy[field] == value for field, value in next_identity.items()),
+            'Next exception must identify the accepted immutable public Next ' + next_identity['next_version'])
     require(policy['owner_approval'] == binding['owner_approval'],
             'Next exception lacks the reviewed maintainer decision')
     require(len(policy['features']) == len(FEATURE_IDS) and set(policy['features']) == set(FEATURE_IDS),

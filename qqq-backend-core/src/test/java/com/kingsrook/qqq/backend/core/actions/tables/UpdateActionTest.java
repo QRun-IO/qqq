@@ -569,6 +569,53 @@ class UpdateActionTest extends BaseTest
 
 
    /*******************************************************************************
+    ** A partial update that does not send the foreign key a joined lock walks
+    ** through (or the lock field) is validated with the stored value: allowed
+    ** for an authorized session, still denied for others.
+    *******************************************************************************/
+   @Test
+   void testPartialUpdateWithoutJoinedLockForeignKey() throws QException
+   {
+      QContext.getQSession().setSecurityKeyValues(MapBuilder.of(TestUtils.SECURITY_KEY_TYPE_STORE, ListBuilder.of(1, 2)));
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_ORDER).withRecords(List.of(
+         new QRecord().withValue("id", 1).withValue("orderNo", "O1").withValue("storeId", 1),
+         new QRecord().withValue("id", 2).withValue("orderNo", "O2").withValue("storeId", 2))));
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_LINE_ITEM).withRecords(List.of(
+         new QRecord().withValue("id", 10).withValue("orderId", 1).withValue("sku", "BASIC1"),
+         new QRecord().withValue("id", 20).withValue("orderId", 2).withValue("sku", "BASIC2"))));
+      new InsertAction().execute(new InsertInput(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC).withRecords(List.of(
+         new QRecord().withValue("id", 100).withValue("lineItemId", 10).withValue("key", "Key1").withValue("value", "Value1"))));
+
+      ///////////////////////////////////////////////////////////////////////
+      // store-1 session: one-hop (line item) and two-hop (extrinsic)       //
+      // partial updates of store-1 records, without their foreign keys     //
+      ///////////////////////////////////////////////////////////////////////
+      QContext.getQSession().setSecurityKeyValues(MapBuilder.of(TestUtils.SECURITY_KEY_TYPE_STORE, ListBuilder.of(1)));
+      UpdateOutput lineOutput = new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_LINE_ITEM).withRecord(new QRecord().withValue("id", 10).withValue("sku", "UPDATED")));
+      assertThat(lineOutput.getRecords().get(0).getErrors()).isNullOrEmpty();
+      UpdateOutput extrinsicOutput = new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_LINE_ITEM_EXTRINSIC).withRecord(new QRecord().withValue("id", 100).withValue("value", "Updated")));
+      assertThat(extrinsicOutput.getRecords().get(0).getErrors()).isNullOrEmpty();
+      assertEquals("UPDATED", TestUtils.queryTable(TestUtils.TABLE_NAME_LINE_ITEM).stream().filter(r -> r.getValueInteger("id") == 10).findFirst().orElseThrow().getValueString("sku"));
+
+      ////////////////////////////////////////////////////////////////////////////
+      // moving it into store 2 (sent explicitly) is still validated and denied //
+      ////////////////////////////////////////////////////////////////////////////
+      UpdateOutput moveOutput = new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_LINE_ITEM).withRecord(new QRecord().withValue("id", 10).withValue("orderId", 2)));
+      assertTrue(moveOutput.getRecords().get(0).getErrors().stream().anyMatch(em -> em.getMessage().contains("the referenced Order was not found")));
+
+      ////////////////////////////////////////////////////////////////////////
+      // store-2 session: the store-1 line is still not updatable           //
+      ////////////////////////////////////////////////////////////////////////
+      QContext.getQSession().setSecurityKeyValues(MapBuilder.of(TestUtils.SECURITY_KEY_TYPE_STORE, ListBuilder.of(2)));
+      UpdateOutput deniedOutput = new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_LINE_ITEM).withRecord(new QRecord().withValue("id", 10).withValue("sku", "NOPE")));
+      assertThat(deniedOutput.getRecords().get(0).getErrors()).isNotEmpty();
+      QContext.getQSession().setSecurityKeyValues(MapBuilder.of(TestUtils.SECURITY_KEY_TYPE_STORE, ListBuilder.of(1, 2)));
+      assertEquals("UPDATED", TestUtils.queryTable(TestUtils.TABLE_NAME_LINE_ITEM).stream().filter(r -> r.getValueInteger("id") == 10).findFirst().orElseThrow().getValueString("sku"));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

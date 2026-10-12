@@ -1,10 +1,32 @@
 # Web performance ("PageSpeed") for QQQ CMS sites: Design Spec
 
-Status: **Draft for owner review** · 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: **Approved** · drafted 2026-10-12, owner decisions 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x, QQQ Next UI 1.0.x, proposed new repo `QRun-IO/qbit-web-performance`; first host `KofTwentyTwo/Website-Backend` + `KofTwentyTwo/Website-Frontend` (www.kof22.com)
 Related: [`2026-10-12-qbit-cms-design.md`](https://github.com/QRun-IO/qqq/pull/1083) (#1083), [`2026-10-12-qbit-cdn-design.md`](https://github.com/QRun-IO/qqq/pull/1084) (#1084), [`2026-10-11-qqq-assistant-qbit-design.md`](./2026-10-11-qqq-assistant-qbit-design.md) (#1054), [`2026-09-25-qqq-esb-design.md`](./2026-09-25-qqq-esb-design.md)
 
-Scope: **design only.** Nothing was built or deployed, and no cloud resource or API key was created. The owner's open questions are in §12.
+Scope: **design only.** Nothing was built or deployed, and no cloud resource or API key was created.
+
+## Owner decisions (2026-10-12)
+
+The owner accepted every recommendation on 2026-10-12 ("accept all pagespeed recommendations"). D1–D13 are decided as recommended; §12 is now the decision log. In short:
+
+| # | Decided | Effect |
+|---|---|---|
+| D1 | PSI lab + own RUM + CrUX recorded honestly | §2.4 |
+| D2 | PSI API runner behind a `LabRunner` SPI; self-hosted Lighthouse is optional P6 | §2.2, §11 |
+| D3 | New `qbit-web-performance`, built as a qbit from day one (Apache-2.0). Creating the public `QRun-IO` repo still needs the owner's explicit go-ahead. | §9 |
+| D4 | RUM vitals stored in the analytics module (`analytics_vital*`) | §7 |
+| D5 | Performance home is a CMS sub-app | §5 |
+| D6 | Daily KEY + weekly full + on publish + after deploy, cap 500/day | §6.2 |
+| D7 | Build-id probe (`/api/build`, backend version at startup) | §6.3 |
+| D8 | Keep all Lighthouse reports forever in PostgreSQL | §4.3 |
+| D9 | Prometheus → existing Slack routes + Data Health | §8.3 |
+| D10 | One key for PSI + CrUX, Infisical write-only seed with `-target`; the owner creates the key and names the 1Password item | §8.2 |
+| D11 | RUM attributed to the landing URL (no soft navigations) | §7.1 |
+| D12 | Seed Google's "good" thresholds as budgets | §4.2 |
+| D13 | All four categories on every run | §6 |
+
+Work that does not need the API key (RUM collection, the `analytics_vital*` tables and p75 rollup, `/api/build`, a local qbit skeleton) starts now; the key, the Infisical seed and P1's PSI runner wait for the owner.
 
 Path conventions: `WB:` is Website-Backend (`origin/main` @ `7760c80`), `WF:` is Website-Frontend (`origin/main` @ `199e8f8`), `GO:` is `KofTwentyTwo/cluster-gitops`, `PR:` is `KofTwentyTwo/Praetor`. `J/` is `WB:src/main/java/com/kof22/website/`.
 
@@ -484,9 +506,9 @@ Each alert's annotation links to the Regressions list or the Lab Runs list. The 
 
 ---
 
-## 12. Decisions for the owner
+## 12. Decision log (owner, 2026-10-12: all recommendations accepted)
 
-| # | Decision | Options | Recommendation |
+| # | Decision | Options | Decided (as recommended) |
 |---|---|---|---|
 | **D1** | Data sources | A) PSI lab + own RUM + CrUX recorded honestly · B) PSI only · C) self-hosted Lighthouse + RUM | **A.** It is the only combination that gives "what to fix" (lab, four categories), real field truth at kof22's traffic (RUM) and Google's view when it exists (CrUX), at $0. |
 | **D2** | Lab runner | A) PSI API v5 · B) self-hosted Lighthouse / LHCI in-cluster · C) both now | **A, with a `LabRunner` SPI** and B as optional phase P6. PSI measures over the internet (and later through CloudFront), is free at 174 runs per audit, and needs no Chrome pods. In-cluster runs measure the LAN path, and LHCI Server would be a second UI and store. |

@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -643,7 +644,7 @@ public class RecordSearchAction
       Set<String>  seen   = new HashSet<>();
       for(String token : WHITESPACE.split(searchTerm.trim()))
       {
-         if(!token.isEmpty() && tokens.size() < HIGHLIGHT_MAX_TOKENS && seen.add(token.toLowerCase()))
+         if(!token.isEmpty() && tokens.size() < HIGHLIGHT_MAX_TOKENS && seen.add(token.toLowerCase(Locale.ROOT)))
          {
             tokens.add(token);
          }

@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchAction;
@@ -195,7 +196,7 @@ public class RecordSearchSpecV1 extends AbstractEndpointSpec<RecordSearchMiddlew
 
          try
          {
-            input.setSort(RecordSearchSort.valueOf(sort.trim().toUpperCase()));
+            input.setSort(RecordSearchSort.valueOf(sort.trim().toUpperCase(Locale.ROOT)));
          }
          catch(IllegalArgumentException e)
          {

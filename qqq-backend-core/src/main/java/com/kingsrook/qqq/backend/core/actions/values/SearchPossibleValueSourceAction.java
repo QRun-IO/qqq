@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
@@ -304,7 +305,9 @@ public class SearchPossibleValueSourceAction
 
    /*******************************************************************************
     ** OR a criteria per search field into the filter: strings by the given
-    ** operator, dates/date-times by equality, other types as integers.
+    ** operator (case-insensitively for a picker's CONTAINS, as record search
+    ** does - PostgreSQL's LIKE is case-sensitive), dates/date-times by
+    ** equality, other types as integers.
     *******************************************************************************/
    private static void addSearchCriteria(QQueryFilter queryFilter, QTableMetaData table, List<String> searchFields, String searchTerm, QCriteriaOperator stringOperator)
    {
@@ -315,7 +318,12 @@ public class SearchPossibleValueSourceAction
             QFieldMetaData field = table.getField(valueField);
             if(field.getType().equals(QFieldType.STRING))
             {
-               queryFilter.addCriteria(new QFilterCriteria(valueField, stringOperator, List.of(searchTerm)));
+               QFilterCriteria criteria = new QFilterCriteria(valueField, stringOperator, List.of(searchTerm));
+               if(QCriteriaOperator.CONTAINS.equals(stringOperator))
+               {
+                  criteria.withOption(CriteriaOption.CASE_INSENSITIVE);
+               }
+               queryFilter.addCriteria(criteria);
             }
             else if(field.getType().equals(QFieldType.DATE))
             {

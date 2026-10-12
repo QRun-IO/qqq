@@ -154,6 +154,12 @@ class SearchPossibleValueSourcePickerTest extends BaseTest
       SearchPossibleValueSourceOutput output = search(input().withSearchTerm("angle").withLimit(10));
       assertThat(output.getResults()).extracting(QPossibleValue::getLabel).containsExactlyInAnyOrder("Triangle", "Rectangle");
       assertFalse(output.getHasMore());
+
+      //////////////////////////////////////////////////////
+      // case-insensitive, whatever the backend's LIKE is //
+      //////////////////////////////////////////////////////
+      output = search(input().withSearchTerm("tRIANGLE").withLimit(10));
+      assertThat(output.getResults()).extracting(QPossibleValue::getLabel).containsExactly("Triangle");
    }
 
 

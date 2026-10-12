@@ -35,10 +35,13 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 /*******************************************************************************
  ** Behaviors for string fields, if their value is too long.
  **
+ ** Sent to frontends (as the constant's name in the field's behaviors), so that a
+ ** form can cap typing when the behavior is ERROR, and note trimming when it is TRUNCATE.
+ **
  ** Note:  This was the first implementation of a FieldBehavior, so its test
  ** coverage is provided in ValueBehaviorApplierTest.
  *******************************************************************************/
-public enum ValueTooLongBehavior implements FieldBehavior<ValueTooLongBehavior>
+public enum ValueTooLongBehavior implements FieldBehavior<ValueTooLongBehavior>, FieldBehaviorForFrontend
 {
    TRUNCATE,
    TRUNCATE_ELLIPSIS,

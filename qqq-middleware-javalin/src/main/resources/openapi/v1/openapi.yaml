@@ -454,6 +454,14 @@ components:
         maxLength:
           description: "For String fields, the max length the field supports."
           type: "number"
+        maxValue:
+          description: "For number fields, the largest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        minValue:
+          description: "For number fields, the smallest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
         name:
           description: "Unique name for this field within its container (table or\
             \ process)"
@@ -2538,6 +2546,14 @@ components:
         maxLength:
           description: "For String fields, the max length the field supports."
           type: "number"
+        maxValue:
+          description: "For number fields, the largest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        minValue:
+          description: "For number fields, the smallest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
         name:
           description: "Unique name for this field within its container (table or\
             \ process)"
@@ -2874,6 +2890,14 @@ components:
                   maxLength:
                     description: "For String fields, the max length the field supports."
                     type: "number"
+                  maxValue:
+                    description: "For number fields, the largest value the field accepts\
+                      \ (inclusive).  Absent when there is no such limit."
+                    type: "string"
+                  minValue:
+                    description: "For number fields, the smallest value the field\
+                      \ accepts (inclusive).  Absent when there is no such limit."
+                    type: "string"
                   name:
                     description: "Unique name for this field within its container\
                       \ (table or process)"

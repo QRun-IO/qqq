@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFron
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -61,6 +62,8 @@ public class QFrontendFieldMetaData implements Serializable
    private String       displayFormat;
    private Serializable defaultValue;
    private Integer      maxLength;
+   private Number       minValue;
+   private Number       maxValue;
 
    private List<FieldAdornment> adornments;
    private List<QHelpContent>   helpContents;
@@ -96,6 +99,23 @@ public class QFrontendFieldMetaData implements Serializable
       this.helpContents = fieldMetaData.getHelpContents();
       this.inlinePossibleValueSource = fieldMetaData.getInlinePossibleValueSource();
       this.maxLength = fieldMetaData.getMaxLength();
+
+      /////////////////////////////////////////////////////////////////////////////////////////
+      // a value range that rejects (ERROR) values outside it, and includes its bounds, can   //
+      // be shown to a user as is; other kinds (CLIP, exclusive bounds) are left to the backend //
+      /////////////////////////////////////////////////////////////////////////////////////////
+      ValueRangeBehavior valueRangeBehavior = fieldMetaData.getBehaviorOnlyIfSet(ValueRangeBehavior.class);
+      if(valueRangeBehavior != null)
+      {
+         if(valueRangeBehavior.getMinBehavior() == ValueRangeBehavior.Behavior.ERROR && valueRangeBehavior.getMinAllowEqualTo())
+         {
+            this.minValue = valueRangeBehavior.getMinValue();
+         }
+         if(valueRangeBehavior.getMaxBehavior() == ValueRangeBehavior.Behavior.ERROR && valueRangeBehavior.getMaxAllowEqualTo())
+         {
+            this.maxValue = valueRangeBehavior.getMaxValue();
+         }
+      }
       this.possibleValueSourceFilter = fieldMetaData.getPossibleValueSourceFilter();
 
       for(FieldBehavior<?> behavior : CollectionUtils.nonNullCollection(fieldMetaData.getBehaviors()))
@@ -319,6 +339,30 @@ public class QFrontendFieldMetaData implements Serializable
    public Integer getMaxLength()
    {
       return maxLength;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for minValue - the smallest value accepted, when the field's
+    ** ValueRangeBehavior rejects smaller ones.
+    **
+    *******************************************************************************/
+   public Number getMinValue()
+   {
+      return minValue;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for maxValue - the largest value accepted, when the field's
+    ** ValueRangeBehavior rejects larger ones.
+    **
+    *******************************************************************************/
+   public Number getMaxValue()
+   {
+      return maxValue;
    }
 
 

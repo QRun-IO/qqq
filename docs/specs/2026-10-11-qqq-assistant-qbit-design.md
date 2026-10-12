@@ -1,7 +1,20 @@
 # QQQ Assistant qbit: Design Spec
 
-Status: Draft for review · 2026-10-11 · Author: James Maes (drafted with Claude)
-Targets: QQQ 4.1.x, QQQ Next UI 1.0.x (researched at `v1.0.0-RC.11`), new repo `QRun-IO/qbit-assistant`
+Status: **Approved** · drafted 2026-10-11, owner decisions 2026-10-12 · Author: James Maes (drafted with Claude)
+Targets: QQQ 4.1.x (tool kernel in `qqq-backend-core`), QQQ Next UI 1.0.x (researched at `v1.0.0-RC.11`), new repo `QRun-IO/qbit-assistant`
+
+## Owner decisions (2026-10-12)
+
+These decisions override anything below that contradicts them. The sections they touch have been updated.
+
+| # | Decision | Effect on the design |
+|---|---|---|
+| D1 | **Core permission gaps are fixed in QQQ 4.1.x first.** #1061 (actions don't enforce permissions), #1062 (`FieldSecurityLock` not enforced), opt-in `PermissionEnforcement.ENFORCE`, `dryRun` on DML inputs and `QFieldMetaData.isSensitive` ship in 4.1.0-RC.4 (separate workstream). | The kernel builds on them when released. Until then, and **permanently afterwards as defense in depth**, the kernel keeps its own `PermissionsHelper` checks (§2.2, §2.4). |
+| D2 | **The tool kernel lives in QQQ core**, package `com.kingsrook.qqq.backend.core.actions.ai` in `qqq-backend-core`. **The chat UI's backend, conversations, turn engine and provider adapters live in the new qbit `QRun-IO/qbit-assistant`.** | MCP (`qbit-middleware-mcp`) and other entry points use the kernel without depending on a qbit (§2.3, §2.7). |
+| D3 | **Same permissions as the logged-in user, for reads and writes.** There is no assistant-specific read or write grant layered on top: whatever the user can read or write in QQQ, the assistant can, nothing more. | `assistant.write` is **removed**. Mutations still go through human-approval proposal cards: the model proposes, the user approves. That is a confirmation step, not a separate permission. An admin **kill switch** and a **per-app enable flag** remain, plus the `assistant.hasAccess` permission to use the panel at all (§3.1, §3.9). |
+| D4 | **Data policy.** The Anthropic API is acceptable for kof22, with the data-minimization rules in §3.6. The provider stays pluggable (Bedrock/Vertex/ZDR/self-hosted) for other apps. **Models:** default `claude-sonnet-5-5`, escalation `claude-opus-5-5`, titles and summaries `claude-haiku-5-5` (IDs confirmed against the Anthropic model table, 2026-10-06 cache). | §2.8, §2.9. One org key per deployment, held in that app's secret store. |
+| D5 | **Remaining §8.2 questions take the spec's recommended defaults:** retention 90/30/365 days; ephemeral opt-out offered later (not in v1); shortcut `⌘J`/`Ctrl+J`; Next panel ships in Next core gated by a `/assistant/config` probe (extension slots are a later RFC); `qbit-standard-process-trace` is a recommended (optional) dependency; **no MCP direct writes in v1**. | §8.2 is now a decision log. |
+| D6 | **qbit data is normal QQQ data.** Every `assistant*` table is a standard, visible QQQ table in the app's own backend, secured with record security locks (owner lock on `userId`, plus the tenant key when present). Nothing is hidden. | §4. Admins see them in the Assistant Admin app like any other table. |
 
 ## 0. Summary
 
@@ -172,7 +185,7 @@ MCP tool today  ─────────────────────�
 
 Any code that calls actions directly bypasses table and process permissions. That includes MCP, a naive assistant, and Data Health rules running as system. The assistant therefore never calls an action except through the **Tool Kernel** (§2.3). The kernel performs the same checks the middleware does, before and after every action.
 
-Recommended core follow-up (separate QQQ issue, not blocking): add an opt-in `PermissionEnforcement.ENFORCE` flag on `AbstractActionInput`. With it set, the actions run the same `PermissionsHelper` checks themselves. MCP, the assistant and future callers would then get defense in depth from core instead of each re-implementing it. Also enforce `FieldSecurityLock` at runtime.
+**Core fix (decided, D1):** QQQ 4.1.0-RC.4 adds an opt-in `PermissionEnforcement.ENFORCE` flag on `AbstractActionInput` (#1061) and runtime `FieldSecurityLock` enforcement (#1062). With the flag set, the actions run the same `PermissionsHelper` checks themselves. Once that release is available, the kernel also sets `ENFORCE` on every action input it builds. The kernel's own checks stay, so a check happens twice (defense in depth). The kernel never relies on the core flag alone.
 
 ### 2.3 Components
 
@@ -201,13 +214,13 @@ Recommended core follow-up (separate QQQ issue, not blocking): add an opt-in `Pe
         GetAuditsForRecord) → backends (record security locks)
 ```
 
-**Packaging.** One repo, `QRun-IO/qbit-assistant`, with three Maven modules:
+**Packaging (decided, D2).**
 
-| Module | Contents |
+| Where | Contents |
 |---|---|
-| `qbit-assistant-kernel` | Tool Kernel, tool schemas, exposure policy, redaction. Depends only on `qqq-backend-core`. Shared with MCP. |
-| `qbit-assistant` | The QBit: `AssistantQBitProducer`, `AssistantQBitConfig`, tables, processes, route provider, TurnEngine, ApprovalService, provider SPI |
-| `qbit-assistant-provider-anthropic`, `-openai` | Provider implementations. Apps choose one, so the core qbit has no SDK dependency. |
+| `QRun-IO/qqq` · `qqq-backend-core` · package `com.kingsrook.qqq.backend.core.actions.ai` | **Tool Kernel** (`AiToolKernel`), tool definitions and JSON schemas, exposure policy (`AiExposure`, supplemental table/field metadata), result post-filter, redaction, deep-link builder. No LLM SDK, no HTTP. Shared by the assistant, MCP and any other entry point. Ships in the QQQ 4.1.x release train. |
+| `QRun-IO/qbit-assistant` · module `qbit-assistant` | The QBit: `AssistantQBitProducer`, `AssistantQBitConfig`, tables, processes, Javalin route provider (SSE), TurnEngine, ConversationService, budgets and kill switch, provider SPI, ApprovalService (phase 3). |
+| `QRun-IO/qbit-assistant` · module `qbit-assistant-provider-anthropic` | Anthropic provider (`com.anthropic:anthropic-java`). Apps add it explicitly, so the core qbit has no SDK dependency. `-openai` etc. follow in phase 5. |
 
 The Next UI code ships in `qqq-frontend-next` itself (§5.6).
 
@@ -316,12 +329,12 @@ Thinking content is not streamed to end users. It is stored summarized/omitted f
 
 ### 2.7 MCP convergence
 
-- **Refactor `qbit-middleware-mcp` into a thin adapter over `qbit-assistant-kernel`** (phase 4):
+- **Refactor `qbit-middleware-mcp` into a thin adapter over the core kernel (`qqq-backend-core` `actions.ai`)** (phase 4). It does not depend on `qbit-assistant`:
   - The same tools and the same checks.
   - Add `UserSessionMCPSessionProvider`, which resolves the MCP HTTP request's `Authorization: Bearer` / `x-api-key` / OAuth2 token through `QAuthenticationModuleDispatcher` (i.e., the same as `ExecutorSessionUtils`).
   - Delete the `QSystemUserSession` README recipe.
   - Upgrade the MCP SDK from 0.12 to the current 2.x.
-- **Writes over MCP** are proposals by default. An external client gets back an approval URL that the human opens in the app. Approving opens the same `ApprovalCard` page. Direct-write mode for MCP is an explicit per-user, per-token admin opt-in.
+- **Writes over MCP** are proposals. An external client gets back an approval URL that the human opens in the app. Approving opens the same `ApprovalCard` page. **No direct-write mode in v1 (D5).** A per-token admin opt-in may be designed later.
 - **We will NOT use the Claude API's MCP connector** (the model calling our MCP server directly) for the in-app assistant. Tool execution must happen in-process, under the user's `QSession`, with our approval gate. The connector also isn't available on Bedrock/Vertex and isn't ZDR-eligible.
 
 ### 2.8 Model provider SPI
@@ -339,7 +352,7 @@ public interface AssistantModelProvider {
 
 | Provider | Implementation | Notes |
 |---|---|---|
-| **Anthropic (default)** | `com.anthropic:anthropic-java` (≥2.71) `createStreaming` + `MessageAccumulator` | Strict tools with `tool_choice: auto` (Opus/Sonnet 5.5 reject forced `any`/`tool`), `cache_control` on tools+system, adaptive thinking, `output_config.effort`, context editing (`clear_tool_uses`) for long threads |
+| **Anthropic (default)** | `com.anthropic:anthropic-java` (≥2.71) `createStreaming` + `MessageAccumulator` | Strict tools with `tool_choice: auto` (Opus/Sonnet 5.5 reject forced `any`/`tool` with a 400), `cache_control` on tools+system, adaptive thinking (it cannot be disabled on Opus/Sonnet 5.5), `output_config.effort` always set explicitly (Sonnet 5.5 defaults to `high`, Opus/Haiku 5.5 to `medium`), handle `stop_reason: refusal`, context editing (`clear_tool_uses`) for long threads. API key from env/secret only, never logged. |
 | Bedrock / Vertex / Foundry | The same SDK's `-bedrock` / `-vertex` / `-foundry` add-ons | For customers who need their own cloud account and data residency. Feature gaps are noted per capability (e.g., tool search on Bedrock needs InvokeModel). |
 | OpenAI-compatible | `/v1/chat/completions` or Responses-style, including Azure OpenAI | Also covers **self-hosted** vLLM / Ollama / LM Studio models with tool calling |
 | Fake/recording | Deterministic replay for tests and evals | |
@@ -354,7 +367,7 @@ public interface AssistantModelProvider {
 | Conversation titles, summaries, compaction, intent pre-classification, help retrieval rerank | `claude-haiku-5-5` | $0.10/$0.50 per MTok (≤100K prompt) |
 | Escalation: multi-step report building, data-issue root-cause analysis, large bulk-edit drafting | `claude-opus-5-5`, effort `high` | Triggered by tool-call depth >8, a failed plan, or an explicit "think harder" option. Admin can disable it. |
 
-Prices are as listed in the Anthropic docs in Oct 2026. Re-check them before budgeting.
+Prices are as listed in the Anthropic docs in Oct 2026 (Opus 5.5: $4/$20 per MTok). Re-check them before budgeting. Model IDs are the exact strings above, with no date suffix (D4).
 
 ---
 
@@ -362,8 +375,9 @@ Prices are as listed in the Anthropic docs in Oct 2026. Re-check them before bud
 
 ### 3.1 Same-as-user capability
 
-- **The assistant needs its own permission, and that permission adds nothing.** Using the assistant requires `assistant.hasAccess`. It grants no data access. Every data operation also needs the user's normal permission for that table or process.
-- **Writes need a second permission.** Write proposals require `assistant.write`, which is off by default. Without it, write tools return "not permitted for assistant". The user can still do the action manually in the UI. This is a *restriction* on top of the user's rights, never an expansion.
+- **Reads and writes use exactly the user's permissions (D3).** Whatever the logged-in user can read or write in QQQ, the assistant can, nothing more and nothing less. There is no assistant-specific read or write grant. Every data operation is checked against the user's normal permission for that table, process, report or widget.
+- **Opening the panel needs `assistant.hasAccess`.** It is an on/off switch for the feature and grants no data access. Together with the per-app `enabled` flag and the admin kill switch, it is the only assistant-specific control.
+- **Writes are confirmed, not separately permitted.** Write tools only create a proposal. The user approves it on an approval card, and the server then runs it under the user's session with the user's permissions re-checked. A user who can't edit a table gets the same denial the UI would give. (The former `assistant.write` permission is removed.)
 - **No other session exists.** The assistant has no `QSystemUserSession`, no `createAutomatedSessionForUser`, and no `runAsSessionSupplier` path. CI fails if kernel code references `QSystemUserSession` or `QSession` constructors (ArchUnit test).
 - **Record security locks** apply automatically because the session is the real one.
 - **Data Health and other system-run sources** are re-scoped:
@@ -504,7 +518,7 @@ Data changes also go through normal QQQ DML auditing, with an `auditContext` nam
 ### 3.9 Admin controls
 
 These live in the **Assistant Admin app** (metadata-generated QQQ app; permission `assistant.admin`):
-- **Enablement:** global on/off (also env `QQQ_ASSISTANT_ENABLED`); per-role/permission enablement through normal QQQ permissions (`assistant.hasAccess`, `assistant.write`, `assistant.useOpus`, `assistant.sql`).
+- **Enablement:** the per-app `enabled` flag in `AssistantQBitConfig` (also env `QQQ_ASSISTANT_ENABLED`); per-role enablement through the normal QQQ permission `assistant.hasAccess`. Optional feature permissions `assistant.useOpus` and `assistant.sql` gate cost and SQL features only; they never grant data access. Data access is always the user's own (D3).
 - **Kill switch:** an `assistantPolicy.killSwitch` row checked at the start of every turn and every approval. Flipping it cancels in-flight turns within one tool step.
 - **Models:** provider and model per routing slot; disable escalation.
 - **Budgets:** tokens or $ per user per day, per instance per month. Soft limit warns, hard limit blocks with a clear message. Usage dashboard widgets.
@@ -523,6 +537,12 @@ These live in the **Assistant Admin app** (metadata-generated QQQ app; permissio
 ## 4. Data model
 
 All tables are produced by the qbit (`QBitProducer`), on a configurable backend, with standard `id`, `createDate`, `modifyDate`.
+
+**They are standard, visible QQQ tables (D6).** They are not hidden, and they appear in the Assistant Admin app like any other table. Access is controlled the normal QQQ way:
+- table permissions (`assistant.admin`-style permission rules for the admin app), and
+- **record security locks**: `assistantConversation`, `assistantMessage`, `assistantTurn`, `assistantToolCall`, `assistantApproval`, `assistantArtifact` and `assistantFeedback` carry `userId` and are locked to it (children through a join lock on `conversationId`). A tenant key lock is added when the app uses one. Admins see other users' rows only through an all-access key for that lock, granted by permission.
+
+The assistant's own tool kernel still treats `assistant*` tables as exposure `NONE`, so the model never reads its own audit trail.
 
 | Table | Key fields | Notes |
 |---|---|---|
@@ -775,24 +795,27 @@ The app digest (labels + `aiDescription` + help summaries) is built once per app
 
 ## 8. Delivery plan
 
-The estimates assume one senior engineer with AI assistance, plus about 25% of a frontend engineer from phase 1. They are calendar weeks.
+Updated 2026-10-12 for the owner decisions. Estimates assume one senior engineer with AI assistance plus about 25% of a frontend engineer from phase 1, in calendar weeks.
 
-| Phase | Scope | Exit criteria | Est. |
-|---|---|---|---|
-| **0. Foundations** | Create `qbit-assistant` repo (template); kernel skeleton with permission checks + exposure policy (port schema/filter code from `qbit-middleware-mcp`); provider SPI + Anthropic adapter; SSE spike through Javalin + Traefik; conversation tables | Kernel red-team suite green for read tools; a streamed "hello" through the k8s ingress | 2 wk |
-| **1. MVP: read-only Q&A + navigation** | Read tools (list/describe/query/count/get/search/history/widget/help), turn engine, caching, budgets, kill switch, audit tables; Next panel (docked/drawer, ⌘J, conversations, streaming, cancel, record chips, inline tables, deep links, context chip); admin app basics; golden tasks v1 | Internal use on kof22 Admin; examples D and the read half of A pass; permission red team 100% | 5 wk |
-| **2. Reports** | `aggregate_records`, charts, report previews; `propose_save_report/view` (first approval cards, low-risk); export; ESB/scheduler/process-trace status tools; Haiku titles/summaries; Opus escalation | Example B end-to-end; cost per turn measured | 3 wk |
-| **3. Guarded writes and process runs** | Proposal/approval service (single + bulk via `bulkEdit/bulkDelete` preview/validate), editable diffs, typed confirmation, stale checks, undo; process side-effect classes, hand-off to process screens; `assistant.write` permission; injection defenses hardened | Example A end-to-end; write red team 100%; no write possible without an approval in any eval | 4 wk |
-| **4. Data-issue agent and MCP convergence** | `DataIssueProvider` SPI + kof22 Data Health adapter (re-scoped); "explain and fix" flows; example C; refactor `qbit-middleware-mcp` onto the kernel with user-session auth and approval URLs; MCP SDK upgrade | Example C; Claude Desktop/Code act as a user over MCP with identical denials | 3 wk |
-| **5. Providers and hardening** | OpenAI-compatible provider (incl. self-hosted), Bedrock/Vertex add-ons, per-provider eval gates, Next extension-slot RFC, core follow-ups (`ENFORCE` permission flag, `dryRun`, `isSensitive`, `FieldSecurityLock` enforcement) | Provider matrix documented with eval scores | 3 wk |
+| Phase | Scope | Where | Exit criteria | Est. |
+|---|---|---|---|---|
+| **0. Foundations** | Core kernel skeleton in `qqq-backend-core` `actions.ai`: `AiToolKernel`, tool definitions + strict JSON schemas, exposure policy (supplemental table/field metadata, defaults from §3.6), post-filter/truncation/redaction, kernel-local `PermissionsHelper` checks, ArchUnit rules, red-team permission test suite. `qbit-assistant` repo from the org qbit template; provider SPI + Anthropic adapter; conversation/audit tables as standard locked QQQ tables; SSE spike through Javalin + Traefik | `qqq` (kernel), `qbit-assistant` | Kernel red-team suite green for read tools; a streamed "hello" through the route provider | 2 wk |
+| **1. MVP: read-only Q&A + navigation** | Read tools (list/describe/query/count/get/search/history/widget/help/navigate), turn engine with SSE streaming, cancel, resume, prompt caching, budgets, kill switch + per-app enable, audit tables; Next panel in `qqq-frontend-next` behind the `/assistant/config` probe (docked/drawer, `⌘J`, conversations, streaming, cancel, record chips, inline tables, deep links, context chip; readable at all widths, one scroll container per region); admin app basics; golden tasks v1 + red-team gate in CI | `qqq`, `qbit-assistant`, `qqq-frontend-next` | Released (QQQ RC with the kernel, `qbit-assistant` release, Next RC); examples D and the read half of A pass in evals; permission red team 100% | 5 wk |
+| **1a. kof22 adoption (internal)** | Only after phase 1 is green and released: Anthropic API key as a new Infisical secret (Praetor `terraform/infisical-config`, targeted apply), ExternalSecret + env in `cluster-gitops`, `Website-Backend` feature branch adding the qbit, CNPG backup before deploy, standard verification | Praetor, `cluster-gitops`, `Website-Backend` | kof22 Admin users with `assistant.hasAccess` can use the panel; budgets observed | 1 wk |
+| **2. Reports** | `aggregate_records`, charts, report previews; `propose_save_report/view` (first approval cards, low-risk); export; ESB/scheduler/process-trace status tools; Haiku titles/summaries; Opus escalation | `qqq` (tools), `qbit-assistant`, Next | Example B end-to-end; cost per turn measured | 3 wk |
+| **3. Approved writes and process runs** | Proposal/approval service (single + bulk via `bulkEdit/bulkDelete` preview/validate, and core `dryRun` from 4.1.0-RC.4), editable diffs, typed confirmation, stale checks, undo; process side-effect classes, hand-off to process screens; injection defenses hardened. Writes use the user's own permissions; the approval card is the confirmation (D3) | `qqq`, `qbit-assistant`, Next | Example A end-to-end; write red team 100%; no write possible without an approval in any eval | 4 wk |
+| **4. Data-issue agent and MCP convergence** | `DataIssueProvider` SPI + kof22 Data Health adapter (re-scoped); "explain and fix" flows; example C; refactor `qbit-middleware-mcp` onto the core kernel with user-session auth and approval URLs (no direct writes); MCP SDK upgrade | `qbit-middleware-mcp`, `Website-Backend` | Example C; Claude Desktop/Code act as a user over MCP with identical denials | 3 wk |
+| **5. Providers and hardening** | OpenAI-compatible provider (incl. self-hosted), Bedrock/Vertex add-ons, per-provider eval gates, Next extension-slot RFC; adopt core `ENFORCE` and `isSensitive` everywhere once released | `qbit-assistant`, Next | Provider matrix documented with eval scores | 3 wk |
 
-The total is about 20 weeks to full scope. The MVP (phases 0–1) takes about 7 weeks.
+The core permission work (D1: #1061, #1062, `ENFORCE`, `dryRun`, `isSensitive`) runs in parallel in its own workstream and is no longer part of phase 5.
+
+**Release coordination.** QQQ uses the develop → `release/4.1` candidate flow with one RC at a time across workstreams; the kernel lands in 4.1.0-RC.4 if ready alongside the permission work, otherwise RC.5. `qbit-assistant` uses its release-branch push flow. Next uses its RC flow, coordinated with the other Next RCs. Phase 2+ ship as follow-up PRs.
 
 ### 8.1 Risks
 
 | Risk | Mitigation |
 |---|---|
-| A permission bypass, because core actions don't check permissions | Kernel-only execution, ArchUnit, red-team release gate, core `ENFORCE` follow-up |
+| A permission bypass, because core actions don't check permissions | Kernel-only execution, ArchUnit, red-team release gate, core `ENFORCE` (4.1.0-RC.4) plus the kernel's own checks |
 | Data leaks through system-evaluated sources (Data Health cache, widgets that render as system) | Re-scoping in providers, and an allowlist of widgets marked `assistantSafe` |
 | Prompt injection leads to harmful writes | Proposals plus server-rendered previews plus human approval; no exfil channel |
 | Over-trust in model-written numbers | Numbers only from tool results, a "How I got this" expander, faithfulness evals |
@@ -803,19 +826,21 @@ The total is about 20 weeks to full scope. The MVP (phases 0–1) takes about 7 
 | Provider/model drift changes behaviour | Pinned model IDs, nightly evals, staged rollout per app |
 | Undo that relies on audits fails, because audits truncate at 250 chars | Own before-image snapshots |
 
-### 8.2 Open questions for the owner
+### 8.2 Decisions (formerly open questions)
 
-1. **Repo and ownership.** Should the new repo be `QRun-IO/qbit-assistant`, with the kernel as a module there? Or should the kernel live in `qqq` core (e.g., `qqq-backend-core` `actions/ai` package) so MCP and others don't depend on a qbit?
-2. **Core changes.** Do we take on the opt-in `PermissionEnforcement.ENFORCE` action flag, `dryRun` on DML inputs, `QFieldMetaData.isSensitive`, and runtime `FieldSecurityLock` enforcement in 4.1.x, or defer them to 4.2?
-3. **Default posture for writes.** Should `assistant.write` be off by default for every role, with admins opting in? Or should it be on for admins in apps like kof22, where all authenticated users already have full content CRUD?
-4. **kof22 permissions.** CMS tables have no permission rules today, so any authenticated user has full CRUD. Should we add per-table rules before enabling assistant writes, so that "same as the user" means something more fine-grained?
-5. **Data provider policy.** Is sending record content (blog post bodies, analytics aggregates) to Anthropic acceptable for kof22? For future customer apps, do we need ZDR, Bedrock/Vertex (customer cloud), or self-hosted models as a hard requirement?
-6. **Model defaults.** Are Sonnet 5.5 as the default and Opus 5.5 only on escalation acceptable? Or should Opus be the default for admins? Who pays: one org key, or a key per app?
-7. **Retention.** Are 90 days for conversations, 30 for tool payloads, and 365 for approvals right? Should users be able to opt out of storage entirely (ephemeral conversations)?
-8. **Frontend extensibility.** Should we ship the panel in Next core now (ESB pattern), or build the extension-slot registry first?
-9. **Process trace.** Should `qbit-standard-process-trace` become a recommended dependency, so "why is X failing" questions have durable run history?
-10. **MCP writes.** Should external agents ever get direct writes without in-app approval, e.g., with scoped API tokens for automation users?
-11. **Shortcut.** Is `⌘J` free of conflicts for our users' browsers and OS setups? An alternative is `⌘⇧K`.
+All answered by the owner on 2026-10-12 (see the decision table at the top).
+
+1. **Repo and ownership:** kernel in `qqq-backend-core` (`actions.ai`); chat backend, conversations, turn engine and providers in `QRun-IO/qbit-assistant` (D2).
+2. **Core changes:** `ENFORCE`, `dryRun`, `isSensitive` and `FieldSecurityLock` enforcement land in 4.1.x (RC.4), in a separate workstream. The kernel keeps its own checks regardless (D1).
+3. **Default posture for writes:** no separate write permission. Writes follow the user's own permissions, confirmed on an approval card (D3).
+4. **kof22 permissions:** "same as the user" applies to whatever kof22's permission rules are. Tightening CMS table permissions is a kof22 decision, independent of the assistant.
+5. **Data provider policy:** Anthropic API acceptable for kof22 with §3.6 minimization; provider stays pluggable (D4).
+6. **Model defaults:** Sonnet 5.5 default, Opus 5.5 on escalation, Haiku 5.5 for titles/summaries; one org key per deployment (D4).
+7. **Retention:** 90 days conversations, 30 days tool payloads, 365 days approvals. Ephemeral opt-out is deferred, not v1 (D5).
+8. **Frontend extensibility:** ship in Next core gated by the `/assistant/config` probe; extension slots are a later RFC (D5).
+9. **Process trace:** recommended optional dependency; tools degrade gracefully without it (D5).
+10. **MCP writes:** no direct writes in v1; proposals with approval URLs only (D5).
+11. **Shortcut:** `Ctrl/⌘ + J` (D5).
 
 ---
 

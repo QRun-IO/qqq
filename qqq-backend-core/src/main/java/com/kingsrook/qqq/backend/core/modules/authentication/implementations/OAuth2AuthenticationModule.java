@@ -177,7 +177,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             // verify the state in our state table //
             /////////////////////////////////////////
             AtomicReference<String> redirectUri = new AtomicReference<>(null);
-            QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession()), () ->
+            QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(qInstance)), () ->
             {
                QRecord redirectStateRecord = GetAction.execute(oauth2MetaData.getRedirectStateTableName(), Map.of("state", context.get("state")));
                if(redirectStateRecord == null)
@@ -446,7 +446,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          /////////////////////////////
          // insert the state record //
          /////////////////////////////
-         QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession()), () ->
+         QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(qInstance)), () ->
          {
             QRecord insertedState = new InsertAction().execute(new InsertInput(oauth2MetaData.getRedirectStateTableName()).withRecord(new QRecord()
                .withValue("state", stateValue)
@@ -927,7 +927,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          return;
       }
 
-      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession()), () ->
+      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(qInstance)), () ->
       {
          ////////////////////////////////////////////////////////////////////////
          // encrypt, bound to this session (by uuid, and the userId as stored  //
@@ -1372,7 +1372,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          return;
       }
 
-      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession()), () ->
+      QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession(qInstance)), () ->
       {
          var deleteOutput = new DeleteAction().execute(new DeleteInput(tableName)
             .withQueryFilter(new QQueryFilter(new QFilterCriteria("sessionUuid", QCriteriaOperator.IN, sessionUuids))));

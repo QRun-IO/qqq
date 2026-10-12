@@ -72,6 +72,7 @@ public class QuartzJobRunner implements Job
 
          QuartzScheduler quartzScheduler = QuartzScheduler.getInstance();
          QInstance       qInstance       = quartzScheduler.getQInstance();
+         QContext.setQInstance(qInstance);
          QContext.init(qInstance, quartzScheduler.getSessionSupplier().get());
 
          schedulableType = qInstance.getSchedulableType(context.getJobDetail().getJobDataMap().getString("type"));

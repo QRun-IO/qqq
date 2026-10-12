@@ -160,7 +160,11 @@ public class QScheduleManager
       /////////////////////////////////////////////////////////////////////////////////////////////////
       // ensure that everything which should be scheduled is scheduled, in the appropriate scheduler //
       /////////////////////////////////////////////////////////////////////////////////////////////////
-      QContext.withTemporaryContext(new CapturedContext(qInstance, systemUserSessionSupplier.get()), () -> setupAllSchedules());
+      QContext.withTemporaryContext(new CapturedContext(qInstance, QContext.getQSession()), () ->
+      {
+         QContext.setQSession(systemUserSessionSupplier.get());
+         setupAllSchedules();
+      });
 
       //////////////////////////
       // start each scheduler //

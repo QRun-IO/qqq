@@ -2,7 +2,7 @@
 
 Status: **Approved** · drafted 2026-10-12, owner decisions 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x (`qqq-backend-module-filesystem` S3 upgrade) and a new repo, **`QRun-IO/qbit-object-storage`** (Apache-2.0).
-Related specs: the CMS qbit (#1083) and the CDN qbit (#1084) both consume this one (§9). When the Alerts qbit is installed, storage problems are raised through it (§9.3).
+Related specs: the CMS qbit (#1083), the CDN qbit (#1084) and the backups qbit (#1091) consume this one (§9). When the Alerts qbit is installed, storage problems are raised through it (§9.3).
 
 > Phase P0 (the core S3 upgrade, §8.1) is in progress in QQQ core. The qbit repository has not been created yet; that needs the owner's explicit approval. The first consumer's (kof22) private migration notes live in that app's own repository, not here.
 
@@ -465,7 +465,7 @@ public interface StorageReferenceProvider
 
 ### 6.7 Protection rules
 
-`storageProtectionRule`: bucket, prefix glob, mode (`READ_ONLY`, `NO_DELETE`, `WARN`), reason. Actions skip matching objects (or warn, for `WARN`) and say why in the Review. Changing a rule needs `s3.admin` and is audited. Typical use: an IaC-owned prefix, or legal/retention material.
+`storageProtectionRule`: bucket, prefix glob, mode (`READ_ONLY`, `NO_DELETE`, `WARN`), reason, and optional `allowedSystemCallers` (for example `backups`, whose system-context permanent delete may pass a `NO_DELETE` rule, §9.4). Actions skip matching objects (or warn, for `WARN`) and say why in the Review. Changing a rule needs `s3.admin` and is audited. Typical use: an IaC-owned prefix, or legal/retention material.
 
 ---
 
@@ -562,7 +562,21 @@ When the Alerts / Manage-by-Exception qbit is installed, this qbit raises alerts
 - Subscriptions, channels (Slack optional) and routing belong to the Alerts qbit. This qbit only produces.
 - The thresholds live on `storageBucket` and `storageConnection` rows, so they are ordinary audited data.
 
-### 9.4 Migrating an app's hand-rolled S3 code
+### 9.4 Backups qbit (#1091): storage follow-ups SF1–SF5
+
+The backups qbit writes backup sets through this service (#1091 §6, Q19 option (a)). It needs five small additions. They land in **storage P1–P2**, so backups never needs a workaround.
+
+| # | Addition | Lands in | Notes |
+|---|---|---|---|
+| SF1 | **`BucketRole.BACKUP`**: always private, never public; excluded from the header policy, Apply header policy, and orphan and missing scans | P1 | The config validator rejects a `BACKUP` bucket with a public base URL or a public policy. Backup objects are not app media, so they are never "orphaned" and never get Cache-Control rewritten. |
+| SF2 | **`PutRequest.withObjectLock(mode, retainUntil)`** and **`withStorageClass(...)`** | P1 | Object lock is offered only when the bucket's `OBJECT_LOCK` capability is `SUPPORTED`. Otherwise the call fails with `UNSUPPORTED`, so a lock is never silently dropped. |
+| SF3 | **Permanent delete for system callers**: `delete(DeleteRequest.of(key).permanent())` deletes every version and delete marker of the key | P2 | It exists only in a system-caller context (SF5). The calling qbit's own permission check gates it (backups: `backups.admin`), not `s3.delete`. Objects under object-lock retention are skipped, and the result says so. It bypasses the `NO_DELETE` protection rule only for the context named in that rule's `allowedSystemCallers`. |
+| SF4 | **Probes and locked buckets**: write probes (§3.6) skip `BACKUP` buckets that have object lock on. Alternatively they use a `.qqq-probe/` prefix that the bucket's default retention excludes. | P1 | A probe object in a locked bucket could not be deleted. The probe result records "write probes skipped: object lock". |
+| SF5 | **System-caller context**: `ObjectStorage.asSystem("backups", runId).bucket(alias)` | P2 | The calls run in a system context tagged with the caller and run. `storageOperation` records "system: backups run 1234 (started by user X)". User `s3.*` permissions don't apply, so a backups operator doesn't also need `s3.write` on the backup bucket. The caller qbit must have checked its own permission first. |
+
+Until these land, backups can fall back to role `PRIVATE` plus a `NO_DELETE` protection rule, and prune by lifecycle expiry (#1091 R12).
+
+### 9.5 Migrating an app's hand-rolled S3 code
 
 The pattern, with **identical behavior and no data moves**:
 
@@ -641,13 +655,13 @@ The README publishes the latest result per provider, so §3.3's `?` cells turn i
 | Phase | Scope | Effort |
 |---|---|---|
 | **P0 — core** | §8.1 SDK v2 and connection settings in `qqq-backend-module-filesystem`; §8.2 `${file.}` refs; conformance suite skeleton on MinIO and Garage | 7–9 days |
-| **P1 — service** | Repo from `qbit-template`; config and config upsert; connection, bucket, capability, operation, header-rule tables; `ObjectStorage` API, keys, header policy, public URL resolver, listeners, rate limiter; Test connection; full conformance suite | 8–10 days |
-| **P2 — first consumer migration** | §9.4 in the first consumer, behavior-identical, plus equivalence tests | 3–4 days |
+| **P1 — service** | Repo from `qbit-template`; config and config upsert; connection, bucket, capability, operation, header-rule tables; `ObjectStorage` API, keys, header policy, public URL resolver, listeners, rate limiter; Test connection; full conformance suite; backups follow-ups SF1, SF2, SF4 (§9.4) | 8–10 days |
+| **P2 — first consumer migration** | §9.5 in the first consumer, behavior-identical, plus equivalence tests; backups follow-ups SF3, SF5 (§9.4) | 4–5 days |
 | **P3 — Storage app, read side** | Index, scan, HEAD backlog, folders, object record with preview and download route, search, references (orphans and missing), usage snapshots, home, alert producer (§9.3, when the Alerts qbit is installed) | 8–10 days |
 | **P4 — Storage app, write side** | Upload, copy, move/rename, change headers, apply header policy, tags, presign, delete and restore with versioning and trash, protection rules, bulk caps | 8–10 days |
 | **P5 — later** | Bucket-config edits for UI-managed buckets, admin-API usage plug-ins (MinIO, Garage, Ceph), provider event notifications, direct browser uploads, `BYTES` display format if not already done | 6–8 days |
 
-Total for P0–P4: about 34–43 days. P2 can ship right after P1, so the first consumer stops hand-rolling clients before the admin app exists. CMS and CDN can build on P1.
+Total for P0–P4: about 35–44 days. P2 can ship right after P1, so the first consumer stops hand-rolling clients before the admin app exists. CMS and CDN can build on P1.
 
 ---
 

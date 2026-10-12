@@ -151,12 +151,12 @@ def coverage(sample, environment, report_only):
     try:
         accepted_next = accepted_release(sample, candidate_version, before_publish=True)
         if accepted_next:
-            require(not environment.get('CIRCLE_TAG'), 'Next RC11 candidate exception is not allowed in a tag pipeline')
+            require(not environment.get('CIRCLE_TAG'), 'Next candidate exception is not allowed in a tag pipeline')
             if environment.get('CIRCLECI') or 'CIRCLE_BRANCH' in environment:
                 require(environment.get('CIRCLE_BRANCH') in ('release/4.1', 'release/4.1.0'),
-                        'Next RC11 candidate exception is only allowed on the 4.1 candidate branch')
+                        'Next candidate exception is only allowed on the 4.1 candidate branch')
     except (OSError, ValueError, KeyError, TypeError):
-        print('Invalid candidate binding for the approved Next RC11 exception', file=sys.stderr)
+        print('Invalid candidate binding for the approved Next exception', file=sys.stderr)
         return 1
     if candidate_version:
         command += ['--candidate-version', candidate_version]

@@ -83,6 +83,21 @@ moves to AWS SDK for Java v2 (see Changed and [Adopting QQQ 4.1 features](docs/m
   `QAuthenticationModuleInterface.createSession(instance, metaData, context)` receives the resolved provider.
 - **API processes** — `HttpApiResponse.headers`; request metadata (`ApiProcessUtils.REQUEST_REMOTE_ADDRESS`,
   `REQUEST_FORWARDED_FOR`, `REQUEST_USER_AGENT`) in every API process run's values.
+- **Alerts producer SPI ([#1108](https://github.com/QRun-IO/qqq/pull/1108); design #1090)** — `QAlerts.raise` / `resolve` /
+  `heartbeat` let any qbit or app report "a person should do something" with no dependency beyond core.
+  `QAlertTypeMetaData` declares alert types (validated, stored in the supplemental `AlertsInstanceMetaData`), and
+  `AlertProcessMetaData` gives any process "alert when this fails" and "alert when this didn't run" by meta-data. Calls
+  never throw into the caller, are deferred until the transaction commits (dropped on rollback), and go to a
+  rate-limited `LoggingAlertSink` unless an alerts implementation (such as `qbit-alerts`) registers its sink. See
+  [Alerts](docs/misc/Alerts.adoc).
+- **Webhook signing and an SSRF-safe HTTP client ([#1109](https://github.com/QRun-IO/qqq/pull/1109))** — `utils.webhooks`
+  signs and verifies in the Standard Webhooks format (`webhook-id`/`-timestamp`/`-signature`, HMAC-SHA256, multi-secret
+  rotation, 5-minute tolerance, constant-time compare). `utils.http.SafeHttpClient` sends to user-entered URLs: HTTPS
+  only by default, private/loopback/link-local/metadata and other reserved ranges refused (every DNS answer checked and
+  the connection pinned to them), redirects never followed, TLS 1.2+, timeouts and a response size cap, with an
+  admin-only allowlist. Shared by qbit-webhooks, alerts and CDN (qbit-webhooks design D2). See
+  [Webhook Signing and Safe HTTP](docs/utilities/WebhookSigningAndSafeHttp.adoc). httpclient 4.5.14 / httpcore 4.4.16
+  are declared explicitly.
 
 ### Fixed
 - **Table sync ([#1097](https://github.com/QRun-IO/qqq/pull/1097))** — overriding `SYNC_TABLE_PERFORM_UPDATES_KEY` no longer replaces
@@ -119,13 +134,6 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
 ### Added
-- **Alerts producer SPI ([#1090](https://github.com/QRun-IO/qqq/pull/1090))** — `QAlerts.raise` / `resolve` /
-  `heartbeat` let any qbit or app report "a person should do something" with no dependency beyond core.
-  `QAlertTypeMetaData` declares alert types (validated, stored in the supplemental `AlertsInstanceMetaData`), and
-  `AlertProcessMetaData` gives any process "alert when this fails" and "alert when this didn't run" by meta-data. Calls
-  never throw into the caller, are deferred until the transaction commits (dropped on rollback), and go to a
-  rate-limited `LoggingAlertSink` unless an alerts implementation (such as `qbit-alerts`) registers its sink. See
-  [Alerts](docs/misc/Alerts.adoc).
 - **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
   validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
 - **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless

@@ -32,6 +32,9 @@ import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -78,6 +81,34 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
     *******************************************************************************/
    @Override
    public ReplaceOutput execute(ReplaceInput input) throws QException
+   {
+      if(input.getTableName() != null && input.getTable() != null)
+      {
+         boolean enforce = input.getPerformDeletes()
+            ? CorePermissionEnforcer.checkTablePermissions(input, TablePermissionSubType.INSERT, TablePermissionSubType.EDIT, TablePermissionSubType.DELETE)
+            : CorePermissionEnforcer.checkTablePermissions(input, TablePermissionSubType.INSERT, TablePermissionSubType.EDIT);
+         if(enforce)
+         {
+            FieldSecurityLockHelper.assertWritesAccessible(input.getTable(), input.getRecords());
+            if(input.getFilter() != null)
+            {
+               CorePermissionEnforcer.checkReadCriteria(input, null, input.getFilter(), null);
+            }
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(input));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The replace itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private ReplaceOutput executeInAuthorizedScope(ReplaceInput input) throws QException
    {
       ReplaceOutput output = new ReplaceOutput();
 

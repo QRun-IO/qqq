@@ -45,6 +45,8 @@ public class InsertInput extends AbstractTableActionInput
 
    private boolean skipUniqueKeyCheck = false;
 
+   private boolean dryRun = false;
+
    private boolean omitDmlAudit = false;
    private String  auditContext = null;
 
@@ -358,6 +360,41 @@ public class InsertInput extends AbstractTableActionInput
       }
 
       return (this.flags.contains(flag));
+   }
+
+
+   /*******************************************************************************
+    ** Getter for dryRun - if true, run the pre-insert customizers (with isPreview=true) and all validations
+    ** (required fields, unique keys, record security locks, field security locks and
+    ** permissions if enforced) but do NOT store anything: no backend insert, no
+    ** associations, audits, record change listeners or post-insert customizers.  The
+    ** output records are the would-be inserted records (without generated keys),
+    ** carrying any errors/warnings.
+    *******************************************************************************/
+   public boolean getDryRun()
+   {
+      return (this.dryRun);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public void setDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public InsertInput withDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+      return (this);
    }
 
 }

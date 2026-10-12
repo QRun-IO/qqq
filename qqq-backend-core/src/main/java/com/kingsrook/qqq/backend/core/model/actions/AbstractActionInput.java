@@ -26,11 +26,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.async.NonPersistedAsyncJobCallback;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 
 
 /*******************************************************************************
@@ -42,6 +44,9 @@ public class AbstractActionInput
    private static final QLogger LOG = QLogger.getLogger(AbstractActionInput.class);
 
    private AsyncJobCallback asyncJobCallback;
+
+   private PermissionEnforcement permissionEnforcement  = PermissionEnforcement.DEFAULT;
+   private String                permissionBypassReason = null;
 
 
 
@@ -118,4 +123,73 @@ public class AbstractActionInput
       this.asyncJobCallback = asyncJobCallback;
    }
 
+
+   /*******************************************************************************
+    ** Getter for permissionEnforcement - how core actions should treat permissions
+    ** for this input.  See PermissionEnforcement and CorePermissionEnforcer.
+    *******************************************************************************/
+   @JsonIgnore
+   public PermissionEnforcement getPermissionEnforcement()
+   {
+      return (this.permissionEnforcement == null ? PermissionEnforcement.DEFAULT : this.permissionEnforcement);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for permissionEnforcement.  Accepts DEFAULT or ENFORCE.  SKIP must be
+    ** requested through withPermissionBypass(reason), so that every bypass of
+    ** permission checks carries an explicit justification.
+    *******************************************************************************/
+   public void setPermissionEnforcement(PermissionEnforcement permissionEnforcement)
+   {
+      if(PermissionEnforcement.SKIP.equals(permissionEnforcement))
+      {
+         throw (new IllegalArgumentException("PermissionEnforcement.SKIP may only be set via withPermissionBypass(reason)"));
+      }
+      this.permissionEnforcement = permissionEnforcement;
+      this.permissionBypassReason = null;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for permissionEnforcement (DEFAULT or ENFORCE).
+    *******************************************************************************/
+   public AbstractActionInput withPermissionEnforcement(PermissionEnforcement permissionEnforcement)
+   {
+      setPermissionEnforcement(permissionEnforcement);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Mark this input as a trusted, framework- or system-internal call, which the
+    ** core actions will not subject to table/process permission checks or field
+    ** security locks - regardless of the instance setting.  The reason is required,
+    ** is logged when the bypass is applied, and makes bypasses easy to audit (grep
+    ** for withPermissionBypass).  Record security locks are NOT affected by this.
+    *******************************************************************************/
+   public AbstractActionInput withPermissionBypass(String reason)
+   {
+      if(!StringUtils.hasContent(reason))
+      {
+         throw (new IllegalArgumentException("A reason is required to bypass permission enforcement"));
+      }
+      this.permissionEnforcement = PermissionEnforcement.SKIP;
+      this.permissionBypassReason = reason;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for permissionBypassReason (only set when permissionEnforcement is SKIP)
+    *******************************************************************************/
+   @JsonIgnore
+   public String getPermissionBypassReason()
+   {
+      return (this.permissionBypassReason);
+   }
 }

@@ -39,6 +39,8 @@ There are also type-specific methods (e.g., `addTable`, `addProcess`, etc), whic
 be a matter of personal preference.
 * `withRecordSearchProvider(QCodeReference codeReference)` - Optional `RecordSearchProviderInterface` implementation that record search (the v1 `POST /search` endpoint) uses for the tables it claims, such as a search-index module.
 See `searchFields` in <<Tables>> for details.
+* `withHomeAppName(String homeAppName)` - Optional name of the app whose dashboard a frontend shows as the instance's home page (Next renders it at `/app/`).
+Validation requires it to name an app in the instance. The metadata response includes `homeAppName` only for users who may access that app.
 
 *QInstance Usage:*
 

@@ -78,6 +78,14 @@
          <artifactId>aws-java-sdk-secretsmanager</artifactId>
          <version>1.12.797</version>
       </dependency>
+      <!-- Apache HttpClient 4.5 is used directly by utils.http.SafeHttpClient   -->
+      <!-- (its DnsResolver pins checked addresses). Same version the AWS and     -->
+      <!-- Google SDKs already bring in transitively.                             -->
+      <dependency>
+         <groupId>org.apache.httpcomponents</groupId>
+         <artifactId>httpclient</artifactId>
+         <version>4.5.13</version>
+      </dependency>
       <dependency>
          <groupId>com.ibm.icu</groupId>
          <artifactId>icu4j</artifactId>

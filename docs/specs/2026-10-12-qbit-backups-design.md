@@ -1,6 +1,6 @@
 # QQQ Backups qbit: Design Spec
 
-Status: **Draft for owner review. Q7 decided by the owner 2026-10-12; the other questions are open.** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: **Approved. Owner decisions (2026-10-12): all recommendations accepted (Q7 decided earlier).** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x (a small set of backend-agnostic core hooks, §5) and a new repo, `QRun-IO/qbit-backups` (Apache-2.0). It writes through **`qbit-object-storage`** (#1089, approved) and raises alerts through the **Alerts qbit** (in progress) when that is installed. The first consumer is kof22's Website-Backend: Postgres on CloudNativePG.
 Related specs: object storage (#1089), alerts (in progress), CMS (#1083), CDN (#1084), Authentik (#1065).
 
@@ -13,6 +13,10 @@ These decisions override anything below that contradicts them. The sections they
 | # | Decision | Effect on the design |
 |---|---|---|
 | D1 (Q7) | **Files referenced by records are part of backups and exports.** Media, photos and any other S3 objects that records point at are copied into the content-addressed, deduplicated store by default. Reference-only stays available as an option. Restore brings files back, and verification checks file checksums. | `fileObjectPolicy` defaults to `COPY` for every scope (§4.1). File copy is a first-class part of the run (§8.5). There is a visible `backups_file_object` table (§4.8). Restore restores files by default (§9.3). Every verify level checks files (§10.1). File copy moves into P1–P3 (§14). |
+
+### Owner decisions (2026-10-12): all recommendations accepted
+
+The owner approved every open design on 2026-10-12 ("they are approved. we will adjust as needed once we can view them working"). Every open question in §16 (Q1–Q6, Q8–Q20) is decided as the spec recommends; Q7 is decided as D1 above. Adjustments will follow once the qbit can be viewed working.
 
 ## 0. Summary
 

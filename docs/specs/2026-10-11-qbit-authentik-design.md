@@ -34,7 +34,7 @@ Seven design rules shape everything below:
 6. **Credentials never pass through QQQ.**
    - New users and password resets go through Authentik's own emails (enrollment or recovery).
    - QQQ never sets passwords, never shows recovery links and never displays token keys.
-7. **Every change is audited on both sides.** QQQ writes a local append-only `authentikAdminAction` row. Authentik receives a `custom_qqq_admin_action` event naming the human operator.
+7. **Every change is audited on both sides.** QQQ writes a local append-only `authentik_admin_action` row. Authentik receives a `custom_qqq_admin_action` event naming the human operator.
 
 ### 0.1 Owner decisions (2026-10-11)
 
@@ -328,7 +328,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 |---|---|---|
 | `baseUrl` | required | Authentik host root, e.g. `https://auth.kof22.com`. `/api/v3` is appended. This is separate from the OAuth2 issuer URL, as MHP learned. |
 | `apiToken` | required | Usually `${env.AUTHENTIK_API_TOKEN}`. Interpolated by the qbit (because `APIBackendMetaData.enrich()` is disabled) and redacted in `toString()` |
-| `tableNamePrefix` / namespace | `authentik` | Prefix for tables, processes and widgets |
+| `tableNamePrefix` / namespace | `authentik` | Prefix for tables (joined with `_`: `authentik_user`), processes and widgets (camel-cased: `authentikResyncMirror`) |
 | `features` | `{READ}` | A subset of `READ`, `USERS` (create, invite, edit, deactivate), `GROUPS` (create, edit, permissions and app-access attributes), `MEMBERSHIP`, `CREDENTIALS` (recovery email, MFA reset, app-password revoke), `SESSIONS`, `RBAC` (phase 4), `ACCESS_MATRIX`, `MIRROR`, `WEBHOOK`, `SNAPSHOT_EXPORT`. A feature that is off produces no metadata. |
 | `readOnly` | `false` | Hard kill switch. Every write is refused. |
 | `appKey` | required | Identifies this QQQ app in attributes, audit and the app-access attribute, e.g. `kof22-admin` |
@@ -696,20 +696,20 @@ The mapper is a `QAuthenticationModuleCustomizerInterface` component. It replace
 
 | Table | Source | Key | Capabilities | Notes |
 |---|---|---|---|---|
-| `authentikUser` | `/core/users/` | `pk` (int) | Query, get. Insert via *Create user*/*Invite*; update via processes only. | Computed: `isProtected`, `isSuperuser` (inherited), `createdByQqq`, `effectivePermissions` (detail), `mfaDeviceCount` (detail). `attributes` beyond `qqq.io/*` is sensitive. |
-| `authentikGroup` | `/core/groups/` | `pk` (uuid) | Query, get. Insert via *Create group*; update via *Edit group* / *Edit permissions*. | `parents` as display names; `isSuperuser` (inherited, locked); `permissions` (own `qqq.io/permissions`) and `effectivePermissions` (with ancestors); `appAccess`; member count. |
-| `authentikGroupMember` | Virtual: `GET /core/users/?groups_by_pk=` / `GET /core/groups/{uuid}/?include_users=true` | `(groupPk, userPk)` composite string | Query, insert → `add_user`, delete → `remove_user` | The membership association. It supports the generic child-record UI on both user and group. Insert and delete go through the guard, with processes as the preferred UI. |
-| `authentikRole` | `/rbac/roles/` | uuid | Query, get | `managed` roles (`ak-managed-role--*`, `ak-migrated-role--*`) are hidden by default |
-| `authentikRoleAssignment` | Virtual over `GET /rbac/roles/?users=` / `?groups=` (`inherited=true` for effective) | composite | Query; insert/delete in phase 4 | `assignedVia`: DIRECT or a group name |
-| `authentikPermission` | `/rbac/permissions/` + `assigned_by_roles` | id | Query | Catalogue and per-role view (read only) |
-| `authentikApplication` | `/core/applications/` | slug | Query, get | Read only. Links to bindings. |
-| `authentikPolicyBinding` | `/policies/bindings/?target=` | uuid | Query | Read only. Shows the policy, group or user, plus negate, order and expiry. |
-| `authentikSession` | `/core/authenticated_sessions/` | uuid | Query, delete (revoke) | Sensitive |
-| `authentikMfaDevice` | `/authenticators/admin/all/?user=` | `type:id` | Query, delete (reset) | Metadata only. Query requires a `user` criterion. |
-| `authentikToken` | `/core/tokens/?user__username=` | identifier | Query, delete (revoke) | **No key field.** Only `intent`, `expires`, `description`. |
-| `authentikEvent` | `/events/events/` | uuid | Query, get | Sensitive. Ordered `-created`. `context` is rendered as JSON. |
-| `authentikInvitation` | `/stages/invitation/invitations/` | uuid | Query; insert via *Invite*; delete (cancel) | |
-| `authentikBlueprint` | `/managed/blueprints/` | uuid | Query | Read only. Used by the drift report. |
+| `authentik_user` | `/core/users/` | `pk` (int) | Query, get. Insert via *Create user*/*Invite*; update via processes only. | Computed: `isProtected`, `isSuperuser` (inherited), `createdByQqq`, `effectivePermissions` (detail), `mfaDeviceCount` (detail). `attributes` beyond `qqq.io/*` is sensitive. |
+| `authentik_group` | `/core/groups/` | `pk` (uuid) | Query, get. Insert via *Create group*; update via *Edit group* / *Edit permissions*. | `parents` as display names; `isSuperuser` (inherited, locked); `permissions` (own `qqq.io/permissions`) and `effectivePermissions` (with ancestors); `appAccess`; member count. |
+| `authentik_group_member` | Virtual: `GET /core/users/?groups_by_pk=` / `GET /core/groups/{uuid}/?include_users=true` | `(groupPk, userPk)` composite string | Query, insert → `add_user`, delete → `remove_user` | The membership association. It supports the generic child-record UI on both user and group. Insert and delete go through the guard, with processes as the preferred UI. |
+| `authentik_role` | `/rbac/roles/` | uuid | Query, get | `managed` roles (`ak-managed-role--*`, `ak-migrated-role--*`) are hidden by default |
+| `authentik_role_assignment` | Virtual over `GET /rbac/roles/?users=` / `?groups=` (`inherited=true` for effective) | composite | Query; insert/delete in phase 4 | `assignedVia`: DIRECT or a group name |
+| `authentik_permission` | `/rbac/permissions/` + `assigned_by_roles` | id | Query | Catalogue and per-role view (read only) |
+| `authentik_application` | `/core/applications/` | slug | Query, get | Read only. Links to bindings. |
+| `authentik_policy_binding` | `/policies/bindings/?target=` | uuid | Query | Read only. Shows the policy, group or user, plus negate, order and expiry. |
+| `authentik_session` | `/core/authenticated_sessions/` | uuid | Query, delete (revoke) | Sensitive |
+| `authentik_mfa_device` | `/authenticators/admin/all/?user=` | `type:id` | Query, delete (reset) | Metadata only. Query requires a `user` criterion. |
+| `authentik_token` | `/core/tokens/?user__username=` | identifier | Query, delete (revoke) | **No key field.** Only `intent`, `expires`, `description`. |
+| `authentik_event` | `/events/events/` | uuid | Query, get | Sensitive. Ordered `-created`. `context` is rendered as JSON. |
+| `authentik_invitation` | `/stages/invitation/invitations/` | uuid | Query; insert via *Invite*; delete (cancel) | |
+| `authentik_blueprint` | `/managed/blueprints/` | uuid | Query | Read only. Used by the drift report. |
 
 **`FilterMapper`** maps QQQ criteria to Authentik query params:
 - `EQUALS` → `field=`
@@ -734,12 +734,12 @@ Unsupported criteria (OR across fields, `NOT_EQUALS`, nested filters) are **reje
 
 | Table | Purpose |
 |---|---|
-| `authentikAdminAction` | **Append-only audit and outbox** of every write the qbit attempts. Columns: id, correlationId, actionName, operator (QQQ user + Authentik username), reason, targetType, targetKey, targetLabel, beforeJson, afterJson, status (`PENDING_APPROVAL`, `RUNNING`, `SUCCEEDED`, `FAILED`, `REFUSED`), errorMessage, authentikEventPk, approver, timestamps. The row is inserted *before* the API call, following the sql-workbench `ExecutionAuditor` pattern; if that insert fails, the call is not made. Insert, update and delete capabilities are removed for everyone. |
-| `authentikApprovalRequest` | Two-person requests: action payload, requester, approver, 24 h expiry, approver ≠ requester. Used for RBAC (phase 4) and, by default, for permission edits that add `identity.*` (§6.3). |
-| `authentikUserMirror` | `MIRROR` feature: pk, uuid, username, email, name, type, isActive, lastLogin, isSuperuser, isProtected, groupNames, effectivePermissions (text), mfaDeviceCount, failedLogins24h, refreshedAt. Unique on username and email. Web Users joins here (`qqq_user_session.user_id` = email in kof22). The mapper falls back to it. |
-| `authentikGroupMirror` | pk, name, parentPks, attributes `qqq.io/*` only, memberCount, isSuperuser (inherited), refreshedAt. Feeds the resolver and the tree widget. |
-| `authentikMembershipMirror` | userPk, groupPk, groupName, refreshedAt |
-| `authentikWebhookInbox` | Received webhook payloads, deduplicated by event pk, with processing status. Retained 30 days. |
+| `authentik_admin_action` | **Append-only audit and outbox** of every write the qbit attempts. Columns: id, correlationId, actionName, operator (QQQ user + Authentik username), reason, targetType, targetKey, targetLabel, beforeJson, afterJson, status (`PENDING_APPROVAL`, `RUNNING`, `SUCCEEDED`, `FAILED`, `REFUSED`), errorMessage, authentikEventPk, approver, timestamps. The row is inserted *before* the API call, following the sql-workbench `ExecutionAuditor` pattern; if that insert fails, the call is not made. Insert, update and delete capabilities are removed for everyone. |
+| `authentik_approval_request` | Two-person requests: action payload, requester, approver, 24 h expiry, approver ≠ requester. Used for RBAC (phase 4) and, by default, for permission edits that add `identity.*` (§6.3). |
+| `authentik_user_mirror` | `MIRROR` feature: pk, uuid, username, email, name, type, isActive, lastLogin, isSuperuser, isProtected, groupNames, effectivePermissions (text), mfaDeviceCount, failedLogins24h, refreshedAt. Unique on username and email. Web Users joins here (`qqq_user_session.user_id` = email in kof22). The mapper falls back to it. |
+| `authentik_group_mirror` | pk, name, parentPks, attributes `qqq.io/*` only, memberCount, isSuperuser (inherited), refreshedAt. Feeds the resolver and the tree widget. |
+| `authentik_membership_mirror` | userPk, groupPk, groupName, refreshedAt |
+| `authentik_webhook_inbox` | Received webhook payloads, deduplicated by event pk, with processing status. Retained 30 days. |
 
 ### 6.3 Processes (table and record actions only, never left nav)
 
@@ -749,26 +749,26 @@ Each process:
 
 | Process | Table / slot | Records | Permission | Default confirmation | Authentik calls |
 |---|---|---|---|---|---|
-| Create user | `authentikUser` query action | 0 | `identity.users.manage` (+ `memberships.manage` if groups given) | CONFIRM | `POST /core/users/` (no password) → `add_user` per group → `recovery_email` |
+| Create user | `authentik_user` query action | 0 | `identity.users.manage` (+ `memberships.manage` if groups given) | CONFIRM | `POST /core/users/` (no password) → `add_user` per group → `recovery_email` |
 | Invite user | same | 0 | `identity.users.manage` | CONFIRM | `POST /stages/invitation/invitations/` + `send_email`; groups applied on `invitation_used` |
-| Edit user | `authentikUser` view action | 1 | `identity.users.manage` | CONFIRM | `PATCH /core/users/{id}/` (name, email, path, type internal/external) |
-| Deactivate | `authentikUser` | 1–25 | `identity.users.manage` | TYPED | `PATCH is_active=false` (deletes sessions) + optional app-password revoke |
+| Edit user | `authentik_user` view action | 1 | `identity.users.manage` | CONFIRM | `PATCH /core/users/{id}/` (name, email, path, type internal/external) |
+| Deactivate | `authentik_user` | 1–25 | `identity.users.manage` | TYPED | `PATCH is_active=false` (deletes sessions) + optional app-password revoke |
 | Reactivate | same | 1–25 | `identity.users.manage` | CONFIRM | `PATCH is_active=true` |
-| Add to groups / Remove from groups | `authentikUser` query + view | 1–100 | `identity.memberships.manage` | CONFIRM (TYPED > 25) | `POST /core/groups/{g}/add_user/` / `remove_user/` |
-| Add members / Remove members | `authentikGroup` view | 1 group + picker | same | same | same |
-| Create group | `authentikGroup` query action | 0 | `identity.groups.manage` (+ `permissions.manage` if permissions given) | CONFIRM | `POST /core/groups/` (name, parents, attributes) |
-| Edit group | `authentikGroup` view | 1 | `identity.groups.manage` | CONFIRM | `PATCH` name, parents and non-reserved attributes (merge-patch) |
-| Edit permissions and app access | `authentikGroup` view | 1 | `identity.permissions.manage` | CONFIRM; **TWO_PERSON** when adding any `identity.*` permission | `PATCH attributes` (`qqq.io/permissions`, `qqq.io/app-access`), re-read first |
-| Check access / Effective permissions | `authentikUser` view | 1 | `identity.users.read` | none | `check_access` per in-scope app; the resolver |
-| Send password reset email | `authentikUser` | 1–25 | `identity.credentials.reset` | CONFIRM | `recovery_email` |
-| Reset MFA | `authentikUser` | 1 | `identity.credentials.reset` | TYPED | per-device `DELETE` |
-| Revoke app passwords | `authentikUser`, `authentikToken` | 1–25 | `identity.credentials.reset` | TYPED | `DELETE /core/tokens/{identifier}/` |
-| Revoke sessions | `authentikUser`, `authentikSession` | 1–100 | `identity.sessions.revoke` | CONFIRM | `bulk_delete` / per-session `DELETE` |
-| Cancel invitation | `authentikInvitation` | 1–25 | `identity.users.manage` | CONFIRM | `DELETE` |
+| Add to groups / Remove from groups | `authentik_user` query + view | 1–100 | `identity.memberships.manage` | CONFIRM (TYPED > 25) | `POST /core/groups/{g}/add_user/` / `remove_user/` |
+| Add members / Remove members | `authentik_group` view | 1 group + picker | same | same | same |
+| Create group | `authentik_group` query action | 0 | `identity.groups.manage` (+ `permissions.manage` if permissions given) | CONFIRM | `POST /core/groups/` (name, parents, attributes) |
+| Edit group | `authentik_group` view | 1 | `identity.groups.manage` | CONFIRM | `PATCH` name, parents and non-reserved attributes (merge-patch) |
+| Edit permissions and app access | `authentik_group` view | 1 | `identity.permissions.manage` | CONFIRM; **TWO_PERSON** when adding any `identity.*` permission | `PATCH attributes` (`qqq.io/permissions`, `qqq.io/app-access`), re-read first |
+| Check access / Effective permissions | `authentik_user` view | 1 | `identity.users.read` | none | `check_access` per in-scope app; the resolver |
+| Send password reset email | `authentik_user` | 1–25 | `identity.credentials.reset` | CONFIRM | `recovery_email` |
+| Reset MFA | `authentik_user` | 1 | `identity.credentials.reset` | TYPED | per-device `DELETE` |
+| Revoke app passwords | `authentik_user`, `authentik_token` | 1–25 | `identity.credentials.reset` | TYPED | `DELETE /core/tokens/{identifier}/` |
+| Revoke sessions | `authentik_user`, `authentik_session` | 1–100 | `identity.sessions.revoke` | CONFIRM | `bulk_delete` / per-session `DELETE` |
+| Cancel invitation | `authentik_invitation` | 1–25 | `identity.users.manage` | CONFIRM | `DELETE` |
 | Assign / unassign role | user / group | 1–25 | `identity.roles.manage` | TWO_PERSON | `/rbac/roles/{r}/add_user/` or group `roles` (phase 4) |
-| Resync mirror | `authentikUserMirror` query | 0 | `identity.admin` | CONFIRM | full reconcile |
-| Export snapshot now | `authentikUserMirror` query | 0 | `identity.admin` | CONFIRM | reads only (§7.3) |
-| View audit trail | every table: view action → filtered `authentikAdminAction` + `authentikEvent?context_model_pk=` | 1 | `identity.audit.read` | none | events query |
+| Resync mirror | `authentik_user_mirror` query | 0 | `identity.admin` | CONFIRM | full reconcile |
+| Export snapshot now | `authentik_user_mirror` query | 0 | `identity.admin` | CONFIRM | reads only (§7.3) |
+| View audit trail | every table: view action → filtered `authentik_admin_action` + `authentik_event?context_model_pk=` | 1 | `identity.audit.read` | none | events query |
 
 **Concurrent edits.** If the Authentik UI changes a user or group after a QQQ preview was built, the stale check fails that record and asks for a re-review. Edits made in the Authentik UI are never overwritten blindly.
 
@@ -794,7 +794,7 @@ These objects are infrastructure in Git (`present`):
 
 `AuthentikWebhookRouteProvider` does the following:
 1. checks the secret with a constant-time compare
-2. inserts into `authentikWebhookInbox`, deduplicating on `eventPk`
+2. inserts into `authentik_webhook_inbox`, deduplicating on `eventPk`
 3. publishes to the ESB destination `authentik.events`, or processes inline
 4. returns 204
 
@@ -823,8 +823,8 @@ Webhooks are hints: delivery is at least once, unordered, and lost if no destina
 
 ### 7.4 Web Users integration (kof22)
 
-- *Web Users* gains Users, Groups and Audit (`authentikUser`, `authentikGroup`, `authentikAdminAction`).
-- `qqq_user_session` gets a join to `authentikUserMirror` on `user_id = email`, adding groups, active, last login, MFA and effective permissions.
+- *Web Users* gains Users, Groups and Audit (`authentik_user`, `authentik_group`, `authentik_admin_action`).
+- `qqq_user_session` gets a join to `authentik_user_mirror` on `user_id = email`, adding groups, active, last login, MFA and effective permissions.
 - The `adminHomeWebUsers` widget replaces its footer link with real counts.
 
 ---
@@ -839,13 +839,13 @@ The qbit produces an app `authentikAdmin` (label **"Identity"**, icon `badge`). 
 
 | Screen | Built from | Contents |
 |---|---|---|
-| Users list | generic query on `authentikUser` | Username, name, email, type, active, last login, groups, protected lock. Saved views: "Inactive 90d", "No MFA", "Service accounts", "Superusers", "Created by QQQ". Bulk actions: Add to groups, Remove from groups, Deactivate, Revoke sessions. Table action: Create user, Invite user. |
+| Users list | generic query on `authentik_user` | Username, name, email, type, active, last login, groups, protected lock. Saved views: "Inactive 90d", "No MFA", "Service accounts", "Superusers", "Created by QQQ". Bulk actions: Add to groups, Remove from groups, Deactivate, Revoke sessions. Table action: Create user, Invite user. |
 | User detail | generic view + child widgets | Badges (protected, superuser, service account). Tabs: Groups, **Effective permissions** (each with the granting group), Access (computed per app from `qqq.io/app-access` and the app's bindings; other expression policies shown as "not evaluated", §0.2 iii), Sessions, MFA devices, App passwords, History (QQQ audit + Authentik events, including UI-made changes with their actor) |
 | Groups | `AUTHENTIK_GROUP_TREE` widget + generic list | Tree over `parents` (many-to-many; shared children marked). Badges: superuser (red, locked), has-permissions, app-access. Member counts. |
 | Group detail | generic view + child widgets | Members (Add/Remove); **Permissions** (own + inherited, with an editor that offers only permissions the operator holds); **App access**; parents and children; roles (read); other attributes (`identity.audit.read`) |
 | Access matrix | `AUTHENTIK_ACCESS_MATRIX` widget | Users in scope × `applicationsInScope`, cells computed by the qbit (not `check_access`, §0.2 iii; cached 5 min, 25 rows per page) |
 | Health | `AUTHENTIK_HEALTH` widget | API reachability and version, token expiry, blueprint instance status, webhook lag, last reconcile, possible blueprint reversions, `bootstrapOperators` in use |
-| Audit | generic query on `authentikAdminAction` + `authentikEvent` | Filter by operator, target, action, status, and source (QQQ vs Authentik UI) |
+| Audit | generic query on `authentik_admin_action` + `authentik_event` | Filter by operator, target, action, status, and source (QQQ vs Authentik UI) |
 
 ### 8.3 Admin-home widgets (standard widget types, from the mirror)
 
@@ -881,7 +881,7 @@ The qbit produces an app `authentikAdmin` (label **"Identity"**, icon `badge`). 
 
 ### 9.2 Audit (both sides)
 
-- **QQQ.** The append-only `authentikAdminAction` (§6.2), plus RECORD-level `QAuditRules` on the mirror tables.
+- **QQQ.** The append-only `authentik_admin_action` (§6.2), plus RECORD-level `QAuditRules` on the mirror tables.
 - **Authentik.**
   - Model events carry `user = qqq-<appKey>-idadmin`.
   - The qbit also posts `custom_qqq_admin_action` with `{correlationId, operator, operatorEmail, reason, action, targets, appKey}` and stores the returned event pk.
@@ -957,7 +957,7 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 |---|---|---|---|
 | **0. Foundations and migration** | See the task list below | Contract tests (b), (c), (d), (h) green; the kof22 migration done in staging; read-only token wired | 2 wk |
 | **1. Read-only + permissions model** | Tables (users, groups, members, roles, applications, bindings, blueprints; sensitive tables behind `audit.read`). `EffectivePermissionResolver` + `AuthentikGroupPermissionMapper` (kof22 cut over, sign-in policy fallback removed). Group tree, Effective permissions and Access tabs. Health widget. Mirror with scheduled reconcile. Admin-home widgets. | kof22 Web Users shows groups, last login and MFA; kof22 permissions come from `qqq.io/permissions`; guard matrix green for reads | 2.5 wk |
-| **2. Memberships and permission editing** | Add/remove (both sides, bulk), the subset rule, the last-admin guard, the group permissions and app-access editor with two-person approval for `identity.*`, `authentikAdminAction` + Authentik custom events, webhook route + ESB trigger + inbox, session re-evaluation marking | Scenarios B and D end to end; safety matrix 100%; webhook latency < 10 s | 2.5 wk |
+| **2. Memberships and permission editing** | Add/remove (both sides, bulk), the subset rule, the last-admin guard, the group permissions and app-access editor with two-person approval for `identity.*`, `authentik_admin_action` + Authentik custom events, webhook route + ESB trigger + inbox, session re-evaluation marking | Scenarios B and D end to end; safety matrix 100%; webhook latency < 10 s | 2.5 wk |
 | **3. Full user lifecycle** | Create user, invite (+ enrollment flow in Git), edit, deactivate/reactivate, recovery email, revoke sessions, reset MFA, revoke app passwords, create and edit groups, cancel invitations; optional snapshot export | Scenarios A and C end to end; contract tests (a), (e), (f), (g) green | 3 wk |
 | **4. RBAC (post-v1)** | Authentik role assignment with two-person approval, access-matrix polish, MHP migration off `AuthentikAdminApiClient` | MHP running on the qbit | 3 wk |
 
@@ -1022,14 +1022,14 @@ The decisions taken on 2026-10-11 are in §0.1. The remaining questions are smal
 
 ---
 
-## Appendix A: Example API mapping (`authentikUser`)
+## Appendix A: Example API mapping (`authentik_user`)
 
 | QQQ | Authentik |
 |---|---|
-| `QueryInput(authentikUser, filter: isActive EQUALS false AND lastLogin LESS_THAN 2026-07-13, orderBy username, limit 50)` | `GET /api/v3/core/users/?is_active=false&last_login__lt=2026-07-13T00:00:00Z&ordering=username&include_groups=true&include_roles=true&type=internal&type=external&type=service_account&page=1&page_size=50` |
-| `GetInput(authentikUser, 42)` | `GET /api/v3/core/users/42/` (the detail endpoint takes no `include_*` parameters and always returns `groups_obj` and `roles_obj`) |
-| `InsertInput(authentikGroupMember, {groupPk: <uuid>, userPk: 42})` | Guard checks, then `POST /api/v3/core/groups/<uuid>/add_user/` with body `{"pk": 42}`, which returns 204 |
-| `DeleteInput(authentikSession, <uuid>)` | Guard checks, then `DELETE /api/v3/core/authenticated_sessions/<uuid>/` |
+| `QueryInput(authentik_user, filter: isActive EQUALS false AND lastLogin LESS_THAN 2026-07-13, orderBy username, limit 50)` | `GET /api/v3/core/users/?is_active=false&last_login__lt=2026-07-13T00:00:00Z&ordering=username&include_groups=true&include_roles=true&type=internal&type=external&type=service_account&page=1&page_size=50` |
+| `GetInput(authentik_user, 42)` | `GET /api/v3/core/users/42/` (the detail endpoint takes no `include_*` parameters and always returns `groups_obj` and `roles_obj`) |
+| `InsertInput(authentik_group_member, {groupPk: <uuid>, userPk: 42})` | Guard checks, then `POST /api/v3/core/groups/<uuid>/add_user/` with body `{"pk": 42}`, which returns 204 |
+| `DeleteInput(authentik_session, <uuid>)` | Guard checks, then `DELETE /api/v3/core/authenticated_sessions/<uuid>/` |
 | Count | `GET …&page_size=1`, reading `pagination.count` |
 
 Response shape: `{"pagination": {"next": 2, "previous": 0, "count": 137, "current": 1, "total_pages": 3, "start_index": 1, "end_index": 50}, "results": [...], "autocomplete": {...}}`.

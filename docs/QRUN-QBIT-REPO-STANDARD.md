@@ -50,7 +50,7 @@ An item is **pass**, **fail**, or **owner-action** (it needs the owner's UI or c
 | # | Item | Standard |
 |---|---|---|
 | C1 | `.circleci/config.yml` | Identical in every reference: `kingsrook/qqq-orb@0.6.8`, the `configure-package-install` pre-step, context `qqq-maven-registry-credentials`, workflows `test_only` (all branches except develop, release/*, hotfix/*), `publish_snapshot` (develop), `publish_release_candidate` (release/*), `publish_release` (`v*` tags), `publish_hotfix_release` (hotfix/*). |
-| C2 | Project followed | The repository is a CircleCI project (`gh/QRun-IO/<repo>`), `oss: true`, `set-github-status`, fork PRs not built. |
+| C2 | Project followed | The repository is a CircleCI project (`gh/QRun-IO/<repo>`), `oss: true`, `set-github-status`, fork PRs not built. Following a project immediately builds the default branch: with `develop` as default that runs `publish_snapshot` and publishes a SNAPSHOT, so follow only once `develop` is ready to publish. |
 | C3 | Checkout key | A **GitHub user key** (preferred) so the orb can push version bumps and tags; a deploy key alone is not enough for releases. **owner-action** (Project Settings, SSH Keys, Add User Key). |
 | C4 | Publishing | Only through the orb: SNAPSHOTs from `develop`, RCs from `release/*`, releases from `v*` tags, to Maven Central. Nobody publishes by hand. |
 

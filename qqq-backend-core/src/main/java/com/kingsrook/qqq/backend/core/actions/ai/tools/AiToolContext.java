@@ -214,6 +214,17 @@ public class AiToolContext
 
 
    /*******************************************************************************
+    ** Whether a meta-data object is visible to the session AND its permission
+    ** check fully allows it (not DENY_HIDE, not DENY_DISABLE).
+    *******************************************************************************/
+   public boolean isAllowed(MetaDataWithPermissionRules object)
+   {
+      return (isVisible(object) && PermissionCheckResult.ALLOW.equals(PermissionsHelper.getPermissionCheckResult(new MetaDataInput(), object)));
+   }
+
+
+
+   /*******************************************************************************
     ** The table as personalized for this session (fields the session may not see
     ** removed by any table personalizer).
     *******************************************************************************/

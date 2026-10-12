@@ -102,7 +102,7 @@ class AiToolKernelRedTeamTest extends BaseTest
       QContext.init(qInstance, new QSession());
       AiKernelTestSupport.insertData();
       QContext.clear();
-      kernel = new AiToolKernel(qInstance, new AiToolKernelSettings());
+      kernel = new AiToolKernel(qInstance, AiKernelTestSupport.settings());
    }
 
 
@@ -500,6 +500,82 @@ class AiToolKernelRedTeamTest extends BaseTest
          assertTrue(result.getOutcome() == AiToolOutcome.INVALID_INPUT || result.getOutcome() == AiToolOutcome.DENIED, () -> call.getName() + " " + call.getInput() + " -> " + result.getOutcome());
          assertThat(result.getModelContent()).startsWith("<qqq_data ").endsWith("</qqq_data>");
          assertThat(result.getRecordRefs()).isEmpty();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** 11: widgets are default-DENY: a widget not explicitly allowed for the
+    ** assistant (e.g., one that renders as a system user) is never rendered or
+    ** named - even though it is NOT_PROTECTED and visible to every user - and
+    ** gets the same answer as a missing one.  A hidden widget overrides an
+    ** allowed one.
+    *******************************************************************************/
+   @Test
+   void testWidgetsAreDefaultDeny()
+   {
+      AiToolResult unmarked = kernel.execute(store1User(), call("render_widget", "name", AiKernelTestSupport.WIDGET_SYSTEM));
+      assertEquals(AiToolOutcome.DENIED, unmarked.getOutcome());
+      assertDeniedLeaksNothing(unmarked);
+      assertThat(unmarked.getModelContent()).doesNotContain("Customers per month");
+      AiToolResult missing = kernel.execute(store1User(), call("render_widget", "name", "noSuchWidget"));
+      assertEquals(unmarked.getModelContent().replace(AiKernelTestSupport.WIDGET_SYSTEM, "X"), missing.getModelContent().replace("noSuchWidget", "X"));
+
+      assertThat(kernel.execute(store1User(), call("search_help", "query", "system stats")).getModelContent()).doesNotContain(AiKernelTestSupport.WIDGET_SYSTEM);
+      assertThat(kernel.buildAppDigest()).doesNotContain(AiKernelTestSupport.WIDGET_SYSTEM);
+      assertThat(kernel.buildUserDigest(store1User())).doesNotContain(AiKernelTestSupport.WIDGET_SYSTEM);
+
+      AiToolKernel explicitKernel = new AiToolKernel(QContext.getQInstance() == null ? kernelInstance() : QContext.getQInstance(), new AiToolKernelSettings().withAllowedWidgetName(AiKernelTestSupport.WIDGET_SYSTEM));
+      assertEquals(AiToolOutcome.OK, explicitKernel.execute(store1User(), call("render_widget", "name", AiKernelTestSupport.WIDGET_SYSTEM)).getOutcome());
+      assertThat(explicitKernel.buildAppDigest()).contains(AiKernelTestSupport.WIDGET_SYSTEM);
+
+      AiToolKernel hiddenKernel = new AiToolKernel(kernelInstance(), new AiToolKernelSettings().withAllowedWidgetName(AiKernelTestSupport.WIDGET_SYSTEM).withHiddenWidgetName(AiKernelTestSupport.WIDGET_SYSTEM));
+      assertEquals(AiToolOutcome.DENIED, hiddenKernel.execute(store1User(), call("render_widget", "name", AiKernelTestSupport.WIDGET_SYSTEM)).getOutcome());
+   }
+
+
+
+   /*******************************************************************************
+    ** 12: the shared app digest names only objects no one can be denied; a
+    ** DENY_HIDE table's name, label and aiDescription appear in neither digest
+    ** for a denied user, and in the user digest for a permitted user.
+    *******************************************************************************/
+   @Test
+   void testDigestsNeverNameRestrictedObjectsToDeniedUsers()
+   {
+      String appDigest = kernel.buildAppDigest();
+      for(String restricted : List.of(TABLE_SECRET, "Secret Thing", AiKernelTestSupport.SENTINEL_SECRET_DESC, TABLE_CUSTOMER, AiKernelTestSupport.PROCESS_NAME, WIDGET_STATS, AiKernelTestSupport.APP_NAME))
+      {
+         assertThat(appDigest).doesNotContain(restricted);
+      }
+      assertThat(appDigest).contains(AiKernelTestSupport.TABLE_PUBLIC).contains("Notes everyone may read.").contains(AiKernelTestSupport.PROCESS_PUBLIC);
+
+      QSession noSecret     = userWithout("secretThing.read", "secretThing.insert", "secretThing.edit", "secretThing.delete");
+      String   deniedDigest = kernel.buildUserDigest(noSecret);
+      assertThat(deniedDigest).doesNotContain(TABLE_SECRET).doesNotContain("Secret Thing").doesNotContain(AiKernelTestSupport.SENTINEL_SECRET_DESC);
+
+      String permittedDigest = kernel.buildUserDigest(store1User());
+      assertThat(permittedDigest).contains("- " + TABLE_SECRET + " (Secret Thing)").contains(AiKernelTestSupport.SENTINEL_SECRET_DESC);
+
+      QSession noProcess = userWithout(AiKernelTestSupport.PROCESS_NAME + ".hasAccess", WIDGET_STATS + ".hasAccess", AiKernelTestSupport.APP_NAME + ".hasAccess");
+      assertThat(kernel.buildUserDigest(noProcess)).doesNotContain(AiKernelTestSupport.PROCESS_NAME).doesNotContain(WIDGET_STATS).doesNotContain("Your apps");
+   }
+
+
+
+   /*******************************************************************************
+    ** A fresh test instance (data is shared via the memory store).
+    *******************************************************************************/
+   private static QInstance kernelInstance()
+   {
+      try
+      {
+         return (AiKernelTestSupport.defineInstance());
+      }
+      catch(QException e)
+      {
+         throw (new RuntimeException(e));
       }
    }
 

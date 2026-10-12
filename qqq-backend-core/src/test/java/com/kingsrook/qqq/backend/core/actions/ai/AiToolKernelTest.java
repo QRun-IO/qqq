@@ -76,7 +76,7 @@ class AiToolKernelTest extends BaseTest
       QContext.init(qInstance, new QSession());
       AiKernelTestSupport.insertData();
       QContext.clear();
-      kernel = new AiToolKernel(qInstance, new AiToolKernelSettings());
+      kernel = new AiToolKernel(qInstance, AiKernelTestSupport.settings());
    }
 
 
@@ -515,7 +515,7 @@ class AiToolKernelTest extends BaseTest
       assertEquals(AiToolOutcome.DENIED, run(store1User(), call("render_widget", "name", "noSuchWidget")).getOutcome());
       assertEquals(AiToolOutcome.INVALID_INPUT, run(store1User(), call("render_widget", "name", WIDGET_STATS, "params", List.of(Map.of("name", "x", "value", "y", "z", "w")))).getOutcome());
 
-      AiToolKernel hidingKernel = new AiToolKernel(kernelInstanceWithData(), new AiToolKernelSettings().withHiddenWidgetName(WIDGET_STATS));
+      AiToolKernel hidingKernel = new AiToolKernel(kernelInstanceWithData(), AiKernelTestSupport.settings().withHiddenWidgetName(WIDGET_STATS));
       assertEquals(AiToolOutcome.DENIED, hidingKernel.execute(store1User(), call("render_widget", "name", WIDGET_STATS)).getOutcome());
 
       ////////////////////////////////////////////////////////////////
@@ -650,11 +650,13 @@ class AiToolKernelTest extends BaseTest
    {
       String appDigest = kernel.buildAppDigest();
       assertEquals(appDigest, kernel.buildAppDigest());
-      assertThat(appDigest).contains("Tables:").contains("- customer: Customer - One row per customer account.").contains("Processes:").contains("- " + PROCESS_NAME).contains("Apps:").contains("Widgets:")
-         .doesNotContain(TABLE_ASSIST);
+      assertThat(appDigest).contains("Tables:").contains("- publicNote: Public Note - Notes everyone may read.").contains("Processes:").contains("- publicProcess: Public Process")
+         .doesNotContain(TABLE_ASSIST).doesNotContain("- customer");
 
       String userDigest = kernel.buildUserDigest(store1User());
-      assertThat(userDigest).contains("User: store1User").contains("Timezone:").contains("- customer (Customer) [insert, edit, delete]").doesNotContain(TABLE_ASSIST);
+      assertThat(userDigest).contains("User: store1User").contains("Timezone:").contains("- customer (Customer) [insert, edit, delete] - One row per customer account.")
+         .contains("Your apps:").contains("- " + APP_NAME + ": CRM").contains("Your processes:").contains("- " + PROCESS_NAME).contains("Your widgets:").contains("- " + WIDGET_STATS)
+         .contains("- publicNote (Public Note) [insert, edit, delete]\n").doesNotContain(TABLE_ASSIST);
 
       String limitedDigest = kernel.buildUserDigest(AiKernelTestSupport.userWithout("customer.read", "customer.edit", "customer.insert", "customer.delete"));
       assertThat(limitedDigest).doesNotContain("- customer ");

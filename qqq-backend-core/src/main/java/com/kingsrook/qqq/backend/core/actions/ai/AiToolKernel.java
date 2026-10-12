@@ -59,6 +59,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -231,9 +234,14 @@ public class AiToolKernel
    /*******************************************************************************
     ** A digest of the application for a (cached, shared) system prompt: the
     ** apps, tables, processes and widgets - names, labels, aiDescriptions and
-    ** help summaries - excluding hidden objects and tables with exposure NONE.
-    ** Permission-neutral (the same for every user) and deterministic (sorted by
-    ** name), so it can sit in a cached prompt prefix.  Contains no data.
+    ** help summaries - that EVERY user may see.  So it only includes objects
+    ** whose permission rules can't deny anyone (level NOT_PROTECTED, no custom
+    ** permission checker - and nothing at all if the instance has a meta-data
+    ** action customizer, which may hide objects per user); permission-restricted
+    ** objects are described per user, in buildUserDigest.  Hidden objects,
+    ** tables with exposure NONE and widgets not allowed for the assistant are
+    ** excluded.  The same for every user and deterministic (sorted by name), so
+    ** it can sit in a cached prompt prefix.  Contains no data.
     *******************************************************************************/
    public String buildAppDigest()
    {
@@ -241,22 +249,52 @@ public class AiToolKernel
       String        name   = qInstance.getBranding() != null && StringUtils.hasContent(qInstance.getBranding().getAppName()) ? qInstance.getBranding().getAppName() : null;
       digest.append("Application").append(name == null ? "" : ": " + name).append('\n');
 
-      appendDigestSection(digest, "Apps", CollectionUtils.nonNullMap(qInstance.getApps()), app -> app.getLabel(), app -> AiHelpText.plain(app.getHelpContent()), app -> true);
-
-      appendDigestSection(digest, "Tables", CollectionUtils.nonNullMap(qInstance.getTables()), QTableMetaData::getLabel, table ->
-      {
-         AiTableMetaData aiTableMetaData = AiTableMetaData.of(table);
-         String          description     = aiTableMetaData == null ? null : aiTableMetaData.getAiDescription();
-         String          help            = AiHelpText.plain(table.getHelpContent());
-         return (description == null ? help : (help == null ? description : description + " " + help));
-      }, table -> !table.getIsHidden() && exposurePolicy.getTableExposure(table) != AiExposure.NONE);
-
-      appendDigestSection(digest, "Processes", CollectionUtils.nonNullMap(qInstance.getProcesses()), QProcessMetaData::getLabel, process -> null, process -> !process.getIsHidden());
-
-      appendDigestSection(digest, "Widgets", CollectionUtils.nonNullMap(qInstance.getWidgets()), QWidgetMetaDataInterface::getLabel, widget -> AiHelpText.clean(widget.getTooltip()),
-         widget -> !CollectionUtils.nonNullCollection(settings.getHiddenWidgetNames()).contains(widget.getName()));
+      appendDigestSection(digest, "Apps", CollectionUtils.nonNullMap(qInstance.getApps()), QAppMetaData::getLabel, app -> AiHelpText.plain(app.getHelpContent()), this::isUnrestricted);
+      appendDigestSection(digest, "Tables", CollectionUtils.nonNullMap(qInstance.getTables()), QTableMetaData::getLabel, AiToolKernel::tableDigestText, table -> isDigestTable(table) && isUnrestricted(table));
+      appendDigestSection(digest, "Processes", CollectionUtils.nonNullMap(qInstance.getProcesses()), QProcessMetaData::getLabel, process -> null, process -> !process.getIsHidden() && isUnrestricted(process));
+      appendDigestSection(digest, "Widgets", CollectionUtils.nonNullMap(qInstance.getWidgets()), QWidgetMetaDataInterface::getLabel, widget -> AiHelpText.clean(widget.getTooltip()), widget -> settings.isWidgetAllowed(widget.getName()) && isUnrestricted(widget));
 
       return (redactor.redact(digest.toString(), null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether an object's permission rules can't deny anyone - so it may be named
+    ** in the shared app digest.
+    *******************************************************************************/
+   private boolean isUnrestricted(MetaDataWithPermissionRules object)
+   {
+      if(qInstance.getMetaDataActionCustomizer() != null)
+      {
+         return (false);
+      }
+
+      QPermissionRules rules = object.getPermissionRules() != null ? object.getPermissionRules() : qInstance.getDefaultPermissionRules();
+      return (rules != null && PermissionLevel.NOT_PROTECTED.equals(rules.getLevel()) && rules.getCustomPermissionChecker() == null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a table may be described in a digest at all (not hidden, exposed).
+    *******************************************************************************/
+   private boolean isDigestTable(QTableMetaData table)
+   {
+      return (!table.getIsHidden() && exposurePolicy.getTableExposure(table) != AiExposure.NONE);
+   }
+
+
+
+   /*******************************************************************************
+    ** The digest text of a table: its aiDescription and help.
+    *******************************************************************************/
+   private static String tableDigestText(QTableMetaData table)
+   {
+      AiTableMetaData aiTableMetaData = AiTableMetaData.of(table);
+      String          description     = aiTableMetaData == null ? null : aiTableMetaData.getAiDescription();
+      String          help            = AiHelpText.plain(table.getHelpContent());
+      return (description == null ? help : (help == null ? description : description + " " + help));
    }
 
 
@@ -293,9 +331,12 @@ public class AiToolKernel
 
 
    /*******************************************************************************
-    ** A digest of the user for a (per-user) prompt section: name, timezone, and
-    ** the tables the user can read through the assistant, with their insert /
-    ** edit / delete permissions.  Sorted by table name.
+    ** A digest of the user for a (per-user) prompt section: name, timezone, the
+    ** tables the user can read through the assistant (with their insert / edit
+    ** / delete permissions) - and descriptions of the permission-restricted
+    ** tables, apps, processes and widgets this user may use (which the shared
+    ** app digest leaves out).  Objects the user can't see (DENY_HIDE) or use are
+    ** never named.  Sorted by name.
     *******************************************************************************/
    public String buildUserDigest(QSession session)
    {
@@ -331,9 +372,17 @@ public class AiToolKernel
                {
                   also.add("delete");
                }
-               digest.append("- ").append(table.getName()).append(" (").append(table.getLabel()).append(")").append(also.isEmpty() ? "" : " [" + String.join(", ", also) + "]").append('\n');
+
+               String text = isDigestTable(table) && !isUnrestricted(table) ? tableDigestText(table) : null;
+               digest.append("- ").append(table.getName()).append(" (").append(table.getLabel()).append(")").append(also.isEmpty() ? "" : " [" + String.join(", ", also) + "]")
+                  .append(text == null ? "" : " - " + AiHelpText.clean(text)).append('\n');
             }
-            return (digest.toString());
+
+            appendDigestSection(digest, "Your apps", CollectionUtils.nonNullMap(qInstance.getApps()), QAppMetaData::getLabel, app -> AiHelpText.plain(app.getHelpContent()), app -> !isUnrestricted(app) && context.isAllowed(app));
+            appendDigestSection(digest, "Your processes", CollectionUtils.nonNullMap(qInstance.getProcesses()), QProcessMetaData::getLabel, process -> null, process -> !process.getIsHidden() && !isUnrestricted(process) && context.isAllowed(process));
+            appendDigestSection(digest, "Your widgets", CollectionUtils.nonNullMap(qInstance.getWidgets()), QWidgetMetaDataInterface::getLabel, widget -> AiHelpText.clean(widget.getTooltip()), widget -> settings.isWidgetAllowed(widget.getName()) && !isUnrestricted(widget) && context.isAllowed(widget));
+
+            return (redactor.redact(digest.toString(), null));
          }));
       }
       catch(Exception e)

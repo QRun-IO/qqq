@@ -39,8 +39,13 @@ import java.util.regex.Pattern;
  **    default (e.g., METADATA_ONLY for a high-sensitivity deployment).
  ** customRedactionPatterns - additional patterns the redactor replaces with
  **    [REDACTED:custom], on top of its built-in secret and PII patterns.
- ** hiddenWidgetNames - widgets the render_widget tool may never render (e.g.,
- **    widgets that render data as a system user).
+ ** allowedWidgetNames - the widgets the assistant may render (render_widget)
+ **    or mention (digests, search_help): widgets are default-DENY, because a
+ **    widget renderer may read data without the user's table permissions (e.g.,
+ **    as a system user) - so only widgets an app developer has reviewed and
+ **    listed here are used.  (QQQ widget meta-data has no supplemental meta-data
+ **    hook, so the opt-in lives in these settings.)
+ ** hiddenWidgetNames - widgets never rendered, even if allowed (an override deny).
  *******************************************************************************/
 public class AiToolKernelSettings
 {
@@ -51,6 +56,7 @@ public class AiToolKernelSettings
    private Integer       maxCellChars            = DEFAULT_MAX_CELL_CHARS;
    private AiExposure    defaultExposure         = AiExposure.VALUES;
    private List<Pattern> customRedactionPatterns = new ArrayList<>();
+   private Set<String>   allowedWidgetNames      = new HashSet<>();
    private Set<String>   hiddenWidgetNames       = new HashSet<>();
 
 
@@ -66,6 +72,33 @@ public class AiToolKernelSettings
       }
       this.customRedactionPatterns.add(pattern);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent method to allow one widget (opt it in to the assistant).
+    *******************************************************************************/
+   public AiToolKernelSettings withAllowedWidgetName(String widgetName)
+   {
+      if(this.allowedWidgetNames == null)
+      {
+         this.allowedWidgetNames = new HashSet<>();
+      }
+      this.allowedWidgetNames.add(widgetName);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the assistant may use a widget: it is allowed, and not hidden.
+    *******************************************************************************/
+   public boolean isWidgetAllowed(String widgetName)
+   {
+      return (widgetName != null
+         && allowedWidgetNames != null && allowedWidgetNames.contains(widgetName)
+         && (hiddenWidgetNames == null || !hiddenWidgetNames.contains(widgetName)));
    }
 
 
@@ -234,6 +267,36 @@ public class AiToolKernelSettings
    public AiToolKernelSettings withHiddenWidgetNames(Set<String> hiddenWidgetNames)
    {
       this.hiddenWidgetNames = hiddenWidgetNames;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for allowedWidgetNames
+    *******************************************************************************/
+   public Set<String> getAllowedWidgetNames()
+   {
+      return (this.allowedWidgetNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for allowedWidgetNames
+    *******************************************************************************/
+   public void setAllowedWidgetNames(Set<String> allowedWidgetNames)
+   {
+      this.allowedWidgetNames = allowedWidgetNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowedWidgetNames
+    *******************************************************************************/
+   public AiToolKernelSettings withAllowedWidgetNames(Set<String> allowedWidgetNames)
+   {
+      this.allowedWidgetNames = allowedWidgetNames;
       return (this);
    }
 }

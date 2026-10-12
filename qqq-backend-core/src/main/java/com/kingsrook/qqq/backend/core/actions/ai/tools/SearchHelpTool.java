@@ -225,7 +225,7 @@ public class SearchHelpTool extends AbstractAiTool
 
       for(QWidgetMetaDataInterface widget : new TreeMap<>(CollectionUtils.nonNullMap(context.getQInstance().getWidgets())).values())
       {
-         if(context.isVisible(widget) && !CollectionUtils.nonNullCollection(context.getSettings().getHiddenWidgetNames()).contains(widget.getName()))
+         if(context.getSettings().isWidgetAllowed(widget.getName()) && context.isVisible(widget))
          {
             candidates.add(new Candidate("widget", widget.getName(), null, widget.getLabel(), join(widget.getTooltip(), AiHelpText.plain(widget.getHelpContent())), null));
          }

@@ -42,16 +42,22 @@ import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 
 /*******************************************************************************
  ** render_widget: render a dashboard widget the current user may see, with the
- ** widget permission check the widget endpoint makes.  Widgets named in the
- ** settings' hiddenWidgetNames (e.g., ones that render as a system user) are
- ** never rendered.  The widget data is redacted and truncated (strings to
- ** maxCellChars, lists to maxRowsToModel) for both the model and the UI.
+ ** widget permission check the widget endpoint makes.
+ **
+ ** Widgets are default-DENY: a widget renderer may read data without the
+ ** user's table permissions (e.g., as a system user), so only widgets listed in
+ ** the settings' allowedWidgetNames (and not in hiddenWidgetNames) are
+ ** rendered.  Any other widget gets the same DENIED answer as a missing or
+ ** unpermitted one.  The widget data is redacted and truncated (strings to
+ ** maxCellChars, lists to maxRowsToModel, the whole tree to MAX_TREE_NODES
+ ** values) for both the model and the UI.
  *******************************************************************************/
 public class RenderWidgetTool extends AbstractAiTool
 {
    public static final String NAME = "render_widget";
 
-   public static final int MAX_DEPTH = 12;
+   public static final int MAX_DEPTH      = 12;
+   public static final int MAX_TREE_NODES = 2000;
 
 
 
@@ -117,7 +123,7 @@ public class RenderWidgetTool extends AbstractAiTool
       context.getResult().setWidgetName(widgetName);
 
       QWidgetMetaDataInterface widget = context.getQInstance().getWidget(widgetName);
-      if(widget == null || !context.isVisible(widget) || CollectionUtils.nonNullCollection(context.getSettings().getHiddenWidgetNames()).contains(widgetName))
+      if(widget == null || !context.getSettings().isWidgetAllowed(widgetName) || !context.isVisible(widget))
       {
          context.getResult().setPermissionCheck("widget:" + widgetName + ":DENIED");
          throw (widgetNotAvailable(widgetName));
@@ -154,7 +160,7 @@ public class RenderWidgetTool extends AbstractAiTool
          try
          {
             Map<String, Object> rawData = JsonUtils.toObject(JsonUtils.toJson(output.getWidgetData()), new TypeReference<>() {});
-            data = sanitizeTree(context, rawData, 0);
+            data = sanitizeTree(context, rawData, 0, new int[] {MAX_TREE_NODES});
          }
          catch(IOException e)
          {
@@ -193,9 +199,11 @@ public class RenderWidgetTool extends AbstractAiTool
 
 
    /*******************************************************************************
-    ** Redact and truncate every string in a JSON tree, and cap lists.
+    ** Redact and truncate every string in a JSON tree, cap each list at
+    ** maxRowsToModel, and cap the whole tree at a budget of values (map
+    ** entries and list elements) - remaining[0] is the budget left.
     *******************************************************************************/
-   static Object sanitizeTree(AiToolContext context, Object node, int depth)
+   static Object sanitizeTree(AiToolContext context, Object node, int depth, int[] remaining)
    {
       if(depth > MAX_DEPTH)
       {
@@ -212,7 +220,12 @@ public class RenderWidgetTool extends AbstractAiTool
          Map<String, Object> rs = new LinkedHashMap<>();
          for(Map.Entry<?, ?> entry : map.entrySet())
          {
-            rs.put(String.valueOf(entry.getKey()), sanitizeTree(context, entry.getValue(), depth + 1));
+            if(remaining[0] <= 0)
+            {
+               break;
+            }
+            remaining[0]--;
+            rs.put(String.valueOf(entry.getKey()), sanitizeTree(context, entry.getValue(), depth + 1, remaining));
          }
          return (rs);
       }
@@ -222,11 +235,12 @@ public class RenderWidgetTool extends AbstractAiTool
          List<Object> rs = new ArrayList<>();
          for(Object element : list)
          {
-            if(rs.size() >= context.getMaxRowsToModel())
+            if(rs.size() >= context.getMaxRowsToModel() || remaining[0] <= 0)
             {
                break;
             }
-            rs.add(sanitizeTree(context, element, depth + 1));
+            remaining[0]--;
+            rs.add(sanitizeTree(context, element, depth + 1, remaining));
          }
          return (rs);
       }

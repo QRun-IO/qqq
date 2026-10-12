@@ -91,6 +91,11 @@ public class AiKernelTestSupport
    public static final String TABLE_DISABLED = "disabledThing";
    public static final String TABLE_ASSIST   = "assistantConversation";
    public static final String WIDGET_STATS   = "customerStats";
+   public static final String WIDGET_SYSTEM  = "systemStats";
+   public static final String TABLE_PUBLIC   = "publicNote";
+   public static final String PROCESS_PUBLIC = "publicProcess";
+
+   public static final String SENTINEL_SECRET_DESC = "SENTINEL_SECRET_DESCRIPTION_4040";
    public static final String PROCESS_NAME   = "recalculateCustomers";
    public static final String APP_NAME       = "crm";
    public static final String SECURITY_STORE = "store";
@@ -154,6 +159,7 @@ public class AiKernelTestSupport
          .withName(TABLE_SECRET)
          .withLabel("Secret Thing")
          .withBackendName(BACKEND)
+         .withSupplementalMetaData(new AiTableMetaData().withAiDescription(SENTINEL_SECRET_DESC))
          .withPrimaryKeyField("id")
          .withSearchFields(List.of("name"))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
@@ -176,6 +182,29 @@ public class AiKernelTestSupport
          .withSearchFields(List.of("title"))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
          .withField(new QFieldMetaData("title", QFieldType.STRING)));
+
+      qInstance.addTable(new QTableMetaData()
+         .withName(TABLE_PUBLIC)
+         .withLabel("Public Note")
+         .withBackendName(BACKEND)
+         .withPrimaryKeyField("id")
+         .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
+         .withSupplementalMetaData(new AiTableMetaData().withAiDescription("Notes everyone may read."))
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("text", QFieldType.STRING)));
+
+      qInstance.addProcess(new QProcessMetaData()
+         .withName(PROCESS_PUBLIC)
+         .withLabel("Public Process")
+         .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
+         .withStep(new QBackendStepMetaData().withName("run").withCode(new QCodeReference(NoopStep.class))));
+
+      qInstance.addWidget(new QWidgetMetaData()
+         .withName(WIDGET_SYSTEM)
+         .withLabel("System Stats")
+         .withType("chart")
+         .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
+         .withCodeReference(new QCodeReference(StatsWidgetRenderer.class)));
 
       new AuditsMetaDataProvider().defineAll(qInstance, BACKEND, null);
 
@@ -358,6 +387,17 @@ public class AiKernelTestSupport
    private static void insert(String tableName, List<QRecord> records) throws QException
    {
       new InsertAction().execute(new InsertInput(tableName).withRecords(records));
+   }
+
+
+
+   /*******************************************************************************
+    ** The kernel settings the tests use: the customerStats widget is allowed
+    ** for the assistant (systemStats is not).
+    *******************************************************************************/
+   public static AiToolKernelSettings settings()
+   {
+      return (new AiToolKernelSettings().withAllowedWidgetName(WIDGET_STATS));
    }
 
 

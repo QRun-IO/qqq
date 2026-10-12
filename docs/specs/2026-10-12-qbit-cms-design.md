@@ -1,6 +1,6 @@
 # QQQ CMS application qbit: Assessment and Design Spec
 
-Status: **Approved** · drafted 2026-10-12, owner decisions 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: **Approved (owner decisions recorded); PR open for merge** · drafted 2026-10-12, owner decisions 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x (4.1.0-RC.4 or later), QQQ Next UI 1.0.x (`v1.0.0-RC.14` or later), proposed new repo `QRun-IO/qbit-cms`
 Source assessed: `KofTwentyTwo/Website-Backend` `origin/main` @ `ec5bb65` (2026-10-12, PR #109) and `KofTwentyTwo/Website-Frontend` `origin/main` @ `d670cc1` (PR #34)
 
@@ -584,7 +584,7 @@ The Site API session is a scoped `FULLY_ANONYMOUS` provider (today "site-api-ano
 |---|---|---|
 | Unit | H2 (PostgreSQL mode) `FreshCmsInstance` with every feature combination that `validate()` allows | PR |
 | Architecture | ArchUnit: no host imports; no raw table-name literals outside `CmsTables`/`CmsSql`; processes have `withTableName` and are not in any app's nav; every table has permission rules | PR |
-| Schema | Testcontainers PostgreSQL: (1) fresh install with `cms_`; (2) fresh install with a namespace; (3) two namespaces in one database; (4) an existing table with the same name halts the install; (6) collision halts; `RDBMSBackendAssessor` clean after each | PR |
+| Schema | Testcontainers PostgreSQL: (1) fresh install with `cms_`; (2) fresh install with a namespace; (3) two namespaces in one database; (4) an existing table with the same name halts the install; (5) collision halts; `RDBMSBackendAssessor` clean after each | PR |
 | Storage | Testcontainers MinIO for `S3CmsStorage` (today S3 is only faked in Website-Backend tests): upload, presign, renditions, metadata extraction | PR |
 | Search | Testcontainers OpenSearch with `qbit-quick-search` (optional profile), plus the no-provider fallback | nightly |
 | ESB | embedded Artemis: publications, media trigger, idempotent redelivery | nightly |
@@ -596,7 +596,7 @@ The Site API session is a scoped `FULLY_ANONYMOUS` provider (today "site-api-ano
 
 ### 7.2 Docs (in `QRun-IO/qbit-cms`)
 
-README (Install, Configuration reference, Features, Permissions, Operational tables, Upgrading), `docs/DESIGN.md` (this spec, trimmed), `docs/ddl/postgres.sql` (generated), `docs/site-api/` (contract, changelog, versioning policy), `docs/MIGRATION-*.md`, `docs/adopting-existing-schema.md`, CHANGELOG with "Schema changes" and "Site API changes" sections, plus `CLAUDE.md`/`AGENTS.md` per qbit convention.
+README (Install, Configuration reference, Features, Permissions, Operational tables, Upgrading), `docs/DESIGN.md` (this spec, trimmed), `docs/ddl/postgres.sql` (generated), `docs/site-api/` (contract, changelog, versioning policy), `docs/MIGRATION-*.md`, CHANGELOG with "Schema changes" and "Site API changes" sections, plus `CLAUDE.md`/`AGENTS.md` per qbit convention.
 
 ### 7.3 Adoption checklist (consumer-neutral; to add to `qqq:docs/adoption-checklist.adoc` when 1.0.0-RC.1 ships)
 
@@ -604,7 +604,7 @@ README (Install, Configuration reference, Features, Permissions, Operational tab
 >
 > 1. **Versions.** QQQ ≥ 4.1.0-RC.4, Next ≥ 1.0.0-RC.14, `qbit-cms` and `qbit-cms-site-api` at the same version. Material is not supported.
 > 2. **Decide names.** Choose `tableNamePrefix` (default `cms_`) and app placement (`parentAppName`). Check for collisions: `validate()` lists them at startup.
-> 3. **Migrations.** Put the qbit jar (or its `qbit-cms/db/changelog/` directory) on your Liquibase classpath. Add the `cms.tablePrefix` and `cms.features` properties and the include. Take a backup, run, and and confirm the baseline changesets ran.
+> 3. **Migrations.** Put the qbit jar (or its `qbit-cms/db/changelog/` directory) on your Liquibase classpath. Add the `cms.tablePrefix` and `cms.features` properties and the include. Take a backup, run the migrations, and confirm the baseline changesets ran.
 > 4. **Register.** Call `CmsQBitProducer` after your backends, scheduler and (optional) ESB provider are defined. Register `qbit-cms-site-api` only if you serve a public site.
 > 5. **Storage.** Configure an S3-compatible bucket (versioning on) or filesystem storage, a public base URL, and rendition widths.
 > 6. **Permissions.** Turn on core permission enforcement. Map your IdP groups to `CmsRole`s in `roleMapping`, and call `CmsSecurity.applySessionPermissions` from your authentication customizer. Grant `ADMIN` to administrators only.
@@ -650,6 +650,7 @@ Total: about **21.5 weeks** after the prerequisites, of which phases 0-4 (16.5 w
 | Licensing of extracted code | Decided (D2): Apache-2.0; proprietary headers are replaced as files move, as for analytics |
 | Data loss at cutover | Publishing stopped and the media queue empty before the backup; CNPG backup plus a restore-tested dump; counts and checksums before and after; rollback = restore + previous images |
 | Release-captain contention on QQQ | No QQQ core changes required; spec PR is docs-only |
+| Phase 4's 1.5 weeks include the Website-Frontend changes (§4.4), but the plan budgets frontend help only from phase 5 | Treat the phase 4 estimate as tight: start the §4.4 changes on a branch during phase 3, and re-estimate phase 4 if they are not ready before the rehearsal |
 
 ### 8.2 Non-goals (1.0)
 
@@ -724,6 +725,16 @@ The owner chose the recommended option **A** for every question except **D3**, w
     - B: a specific second product first.
 
 ---
+
+## 11. Related qbit designs
+
+These specs are separate PRs. Each relates to qbit-cms as follows; this section records the relationships and makes no new decisions.
+
+- **CDN, [#1084](https://github.com/QRun-IO/qqq/pull/1084).** Purges edge caches from the CMS ESB table events (§2.8), turned into canonical tags such as `post:123`.
+- **Web performance, [#1088](https://github.com/QRun-IO/qqq/pull/1088).** Hooks into CMS public URLs through its URL and content resolver SPIs; `qbit-cms` ships the adapters in an optional package, as it does for analytics (§2.2).
+- **Object storage, [#1089](https://github.com/QRun-IO/qqq/pull/1089).** Provides the S3 implementation behind `CmsStorage` (§1.4 R7), per its D10; the CMS keeps the `CmsStorage` SPI.
+- **Alerts, [#1090](https://github.com/QRun-IO/qqq/pull/1090).** Its producer SPI in `qqq-backend-core` is optional for the CMS; without `qbit-alerts` installed, calls are no-ops that log.
+- **Backups, [#1091](https://github.com/QRun-IO/qqq/pull/1091).** Logical backup, restore and verification to S3-compatible storage; an alternative to the CNPG-only backup used for the kof22 cutover (§3.6.3).
 
 ## Appendix A: Research references
 

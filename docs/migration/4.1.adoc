@@ -1,0 +1,180 @@
+= Adopting QQQ 4.1 features
+:toc: left
+:toclevels: 2
+:icons: font
+
+This guide is for an existing QQQ application that wants the features added on the 4.1 release-candidate line:
+record search providers, OAuth2 refresh tokens, the `FILE_PREVIEW` field adornment and the instance home app.
+It lists the versions to use, the configuration and secrets each feature needs, and the upgrade notes from 4.0.
+
+NOTE: 4.1 is still a release candidate. Pin an exact `4.1.0-RC.N` version, read the
+xref:../release/4.1.adoc[4.1 release procedure] for the accepted limitations of each candidate, and keep the stable
+`4.0.0` line for production until 4.1.0 is final.
+
+== Before you start
+
+* *Applications on 0.x* must first follow the xref:4.0.adoc[4.0 migration guide]. 4.1 adds no breaking source
+  changes on top of 4.0; the upgrade notes below cover the runtime changes.
+* *Applications on 4.0.x* can move straight to a 4.1 candidate.
+
+== Versions and coordinates
+
+All QQQ modules use the group `com.kingsrook.qqq` and are published to Maven Central. Import the BOM to align the
+modules and the default dashboard:
+
+[source,xml]
+----
+<dependencyManagement>
+   <dependencies>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-bom-pom</artifactId>
+         <version>4.1.0-RC.3</version>
+         <type>pom</type>
+         <scope>import</scope>
+      </dependency>
+   </dependencies>
+</dependencyManagement>
+----
+
+Which candidate has which feature:
+
+[cols="2,1,3",options="header"]
+|===
+|Feature |First QQQ version |Notes
+
+|Record search provider SPI |`4.1.0-RC.2` |Search-index modules such as `com.kingsrook.qbits:qbit-quick-search` (`1.1.0-RC.x`) plug in here.
+|OAuth2 refresh tokens, encrypted at rest |`4.1.0-RC.2` |Needs a new table and an encryption key.
+|Quartz jobs created on a fresh persistent job store (#1044) |`4.1.0-RC.2` |Fix; no configuration.
+|`FILE_PREVIEW` field adornment |`4.1.0-RC.3` |Rendered by Next `1.0.0-RC.13` or later.
+|Instance home app (`homeAppName`) |`4.1.0-RC.3` |Rendered by Next `1.0.0-RC.13` or later.
+|===
+
+The `4.1.0-RC.3` BOM manages the Next dashboard (`com.kingsrook.qqq:qqq-frontend-next`) at `1.0.0-RC.11`, the
+artifact that candidate was accepted with. Next `1.0.0-RC.11` does not render `FILE_PREVIEW` or the home app.
+To see them on RC.3, override the Next version in your own `dependencyManagement` (for example `1.0.0-RC.13`), and treat
+that pairing as not yet covered by the 4.1 acceptance record. From `4.1.0-RC.4`, the BOM manages Next at `1.0.0-RC.14`. Material Dashboard ignores both features.
+
+== Record search providers
+
+By default, record search (`POST /qqq/v1/search`, the dashboard's quick search) runs a "contains" query over each
+table's `searchFields`. A *record search provider* can search some tables instead, for example from an OpenSearch
+index.
+
+* Register one provider on the instance:
++
+[source,java]
+----
+qInstance.withRecordSearchProvider(new QCodeReference(YourProvider.class));
+----
+* `YourProvider` implements `RecordSearchProviderInterface`: `claimsTable(QTableMetaData)` says which tables it
+  searches, and `search(RecordSearchInput)` returns the hits.
+* Claimed tables still need `searchFields`. Frontends use them to find searchable tables, and they are the fallback.
+* Provider hits are read again through `QueryAction`, so table permissions and record security locks still apply.
+* If the provider fails, its tables fall back to the default search and a warning is logged.
+* Without a provider, search is unchanged.
+
+To use the search-index qbit instead of writing a provider, add `com.kingsrook.qbits:qbit-quick-search` and follow
+its README (https://github.com/QRun-IO/qbit-quick-search). It needs an OpenSearch cluster.
+
+Full contract: `searchFields` and record search providers in the Tables meta-data documentation
+(`docs/metaData/Tables.adoc`).
+
+== OAuth2 refresh tokens
+
+Applies to apps using `OAuth2AuthenticationModule` (OIDC providers such as Authentik or Keycloak). It does not apply
+to `Auth0AuthenticationModule`. Without it, a session ends when its first access token expires.
+
+. *Request a refresh token.* Add `offline_access` to the OAuth2 meta-data `scopes`, and allow that scope on the
+  provider's client (in Authentik, add the `offline_access` scope mapping to the provider).
+. *Add the table.* Defining it is what turns storage on:
++
+[source,java]
+----
+qInstance.addTable(new UserSessionRefreshTokenMetaDataProducer(backendName).produce(qInstance));
+----
++
+For an RDBMS backend, create the table with your own migration tool. The columns and a PostgreSQL example are in
+xref:../misc/OAuth2RefreshTokens.adoc[OAuth2 refresh tokens].
+. *Set the encryption key.* Generate it with `openssl rand -base64 32`, store it in your secret store, pass it in
+  through the environment, and reference it:
++
+[source,java]
+----
+new OAuth2AuthenticationMetaData()
+   // ...
+   .withRefreshTokenEncryptionKey("${env.QQQ_OAUTH2_REFRESH_TOKEN_KEY}");
+----
++
+The environment variable name is your choice. Every replica that shares the session tables needs the same key.
+Instance validation fails when the table is defined and refresh tokens are enabled but no valid key is set.
+
+Optional `OAuth2AuthenticationMetaData` settings:
+
+[cols="2,1,3",options="header"]
+|===
+|Setting |Default |Purpose
+
+|`refreshTokensEnabled` |`true` |Set `false` to keep the old behavior even when the table exists.
+|`refreshTokenSkewSeconds` |`60` |Refresh this many seconds before the access token expires.
+|`maxSessionLifetimeSeconds` |none |Longest a session can be kept alive by refreshing, from login.
+|`refreshTokenTableName` |`userSessionRefreshToken` |Use a different table.
+|`refreshTokenEncryptionKeyId` |`default` |Id stored with each value, for key rotation.
+|`previousRefreshTokenEncryptionKeys` |none |Retired keys by id, used only to decrypt during rotation.
+|`allowPlaintextRefreshTokens` |`false` |Local development only. Never in a deployed environment.
+|===
+
+Do not grant the table's permission, `qqq.internal.userSessionRefreshToken.noAccess.hasAccess`, to any role, and do
+not add API meta-data for the table. Key rotation, failure behavior and provider settings are in
+xref:../misc/OAuth2RefreshTokens.adoc[OAuth2 refresh tokens].
+
+== FILE_PREVIEW field adornment
+
+Shows a field as a thumbnail (images) or a file-type icon (other files) that opens a preview.
+
+[source,java]
+----
+new QFieldMetaData("imageUrl", QFieldType.STRING)
+   .withFieldAdornment(new FieldAdornment(AdornmentType.FILE_PREVIEW)
+      .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "thumbnailUrl")
+      .withValue(AdornmentType.FilePreviewValues.MIME_TYPE_FIELD, "mimeType"));
+----
+
+* Every value is optional. The `...Field` values name other fields of the same record. `QInstanceValidator` checks them.
+* A `BLOB` field also needs a `FILE_DOWNLOAD` adornment, or a `thumbnailUrlField` / `fullSizeUrlField`.
+* URLs must be allowed by the dashboard's Content-Security-Policy. Cross-origin PDFs, video and audio fall back to
+  open/download links.
+
+All value keys: `FILE_PREVIEW` under Field Adornments in the Fields meta-data documentation (`docs/metaData/Fields.adoc`).
+
+== Instance home app
+
+Choose the app whose dashboard the frontend shows as the instance's home page. Next renders it at `/app/` and links
+its logo and breadcrumb root there.
+
+[source,java]
+----
+qInstance.withHomeAppName("home");
+----
+
+* Validation fails unless the name is an app in the instance.
+* The metadata response (`homeAppName`) includes it only for users who may access that app. Other users keep the
+  frontend's default home page.
+
+== Upgrade notes from 4.0
+
+* *Next dashboard at `/`.* `QApplicationJavalinServer` serves `qqq-frontend-next` at `/` when its jar is on the
+  classpath. The BOM manages that artifact; it is not added unless you depend on it. Apps that depend only on
+  `qqq-frontend-material-dashboard` keep serving it unchanged. With both jars present, Next wins unless Material is
+  selected explicitly (`withServeFrontendMaterialDashboard(true)` or JVM property `qqq.javalin.frontend=material`).
+  Deep links differ: Material uses `/<app>/<table>/<id>`, Next uses `/app/<table>/<id>`.
+* *v1 metaData additions.* `GET /qqq/v1/metaData` now includes `branding` and, when set, `homeAppName`. Clients that
+  reject unknown properties need updating.
+* *Refresh-token table from a develop snapshot.* Apps that enabled the `userSessionRefreshToken` table from a
+  pre-RC.2 snapshot must set an encryption key. Existing plaintext rows end at their next refresh, and users log in again.
+* *Quartz on a persistent job store.* Startup now creates missing jobs. Apps that called `setupAllSchedules()` again
+  after `start()` as a workaround can remove that call.
+* *Opt-in features.* Without a search provider, the refresh-token table, `FILE_PREVIEW` adornments or
+  `homeAppName`, behavior is unchanged.
+
+The full list of changes is in the link:../../CHANGELOG.md[changelog].

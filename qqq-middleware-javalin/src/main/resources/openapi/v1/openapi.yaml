@@ -728,8 +728,9 @@ components:
         environmentValues:
           additionalProperties:
             type: "string"
-          description: "Environment values a frontend may use: the analytics settings\
-            \ (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS,\
+          description: "Environment values a frontend may use: Google Picker public\
+            \ browser settings GOOGLE_APP_CLIENT_ID and GOOGLE_APP_API_KEY, and the\
+            \ analytics settings (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS,\
             \ GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED,\
             \ POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other\
             \ ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit\
@@ -781,6 +782,14 @@ components:
             \ (an explicit allow-list - not the supplemental meta-data objects themselves).\
             \  Omitted when the instance defines none of them."
           properties:
+            assistant:
+              additionalProperties: true
+              description: "Present (an object) when the instance has the assistant\
+                \ QBit's `assistant` supplemental meta-data - that is, when the assistant\
+                \ is installed and enabled, so a frontend may probe its routes.  Always\
+                \ has `available: true`, plus the strings, numbers and booleans the\
+                \ QBit publishes for frontends."
+              type: "object"
             materialDashboard:
               description: "Settings from the instance's `materialDashboard` supplemental\
                 \ meta-data, when the instance defines it."
@@ -1579,30 +1588,212 @@ components:
               type: "array"
           type: "object"
       type: "object"
+    RecordDeveloperPanelsResponseV1:
+      properties:
+        panels:
+          description: "The panels that the instance's developer panel providers contribute\
+            \ for this record, sorted by order then title.  Each panel has an id,\
+            \ title, order, optional icon, description and status badge (statusLabel,\
+            \ statusTone: INFO, SUCCESS, WARNING or ERROR), and either an error message\
+            \ (when its provider failed) or a list of blocks.  Each block has a type\
+            \ and a label; KEY_VALUES blocks use items (label, value, monospace, href),\
+            \ TEXT blocks use text and tone, CODE blocks use language and code, TABLE\
+            \ blocks use columns and rows (lists of display strings), LINKS blocks\
+            \ use links (label, href, description, external) and ACTIONS blocks use\
+            \ actions (label, processName, tableName, includeRecordId, description).\
+            \  Hrefs are app-relative (e.g., /app/table/1) or absolute."
+          items:
+            properties:
+              blocks:
+                type: "array"
+              description:
+                type: "string"
+              error:
+                type: "string"
+              icon:
+                type: "string"
+              id:
+                type: "string"
+              order:
+                type: "number"
+              statusLabel:
+                type: "string"
+              statusTone:
+                enum:
+                - "INFO"
+                - "SUCCESS"
+                - "WARNING"
+                - "ERROR"
+                type: "string"
+              title:
+                type: "string"
+            type: "object"
+          type: "array"
+      type: "object"
+    RecordSearchDetailV1:
+      properties:
+        displayValue:
+          description: "Display value of the field."
+          type: "string"
+        fieldLabel:
+          description: "User-facing label of the field."
+          type: "string"
+        fieldName:
+          description: "Name of the field."
+          type: "string"
+      type: "object"
+    RecordSearchHighlightMatchV1:
+      properties:
+        end:
+          description: "Offset just after the last matched character (exclusive)."
+          type: "number"
+        start:
+          description: "Offset of the first matched character in the highlight text."
+          type: "number"
+      type: "object"
+    RecordSearchHighlightV1:
+      properties:
+        fieldLabel:
+          description: "User-facing label of the field."
+          type: "string"
+        fieldName:
+          description: "Name of the field the snippet is from."
+          type: "string"
+        matches:
+          description: "Matched spans in the text: sorted, non-overlapping character\
+            \ offsets (start inclusive, end exclusive)."
+          items:
+            $ref: "#/components/schemas/RecordSearchHighlightMatchV1"
+          type: "array"
+        text:
+          description: "Plain-text snippet of the field value (never markup; an ellipsis\
+            \ marks trimmed ends)."
+          type: "string"
+      type: "object"
+    RecordSearchProviderStatusV1:
+      properties:
+        failureClass:
+          description: "When the provider failed: the simple class name of the root\
+            \ cause (e.g., ConnectException)."
+          type: "string"
+        message:
+          description: "When the provider failed with a user-facing error: its message\
+            \ (one line)."
+          type: "string"
+        status:
+          description: "OK: the provider searched the tables it claimed.  FAILED:\
+            \ it failed, and those tables were searched with the default search. \
+            \ NONE: there is no provider, or it claimed none of the searched tables."
+          enum:
+          - "OK"
+          - "FAILED"
+          - "NONE"
+          type: "string"
+      type: "object"
     RecordSearchResponseV1:
       properties:
+        provider:
+          description: "How the instance's record search provider fared: when its\
+            \ status is FAILED, the tables it claimed were searched with the default\
+            \ search instead (their source is FALLBACK)."
+          properties:
+            failureClass:
+              description: "When the provider failed: the simple class name of the\
+                \ root cause (e.g., ConnectException)."
+              type: "string"
+            message:
+              description: "When the provider failed with a user-facing error: its\
+                \ message (one line)."
+              type: "string"
+            status:
+              description: "OK: the provider searched the tables it claimed.  FAILED:\
+                \ it failed, and those tables were searched with the default search.\
+                \  NONE: there is no provider, or it claimed none of the searched\
+                \ tables."
+              enum:
+              - "OK"
+              - "FAILED"
+              - "NONE"
+              type: "string"
+          type: "object"
         results:
           description: "Records whose search fields match the search term, grouped\
-            \ by table (in instance order) and ordered by primary key within each\
-            \ table."
+            \ by table (in instance order) and, within each table, in the requested\
+            \ order (RELEVANCE: the search provider's order, or by primary key for\
+            \ the default search; RECENT: most recently modified first)."
           items:
             $ref: "#/components/schemas/RecordSearchResultV1"
+          type: "array"
+        tables:
+          description: "A summary of each searched table, in the order of the results:\
+            \ how many results it returned, whether it has more, and what searched\
+            \ it."
+          items:
+            $ref: "#/components/schemas/RecordSearchTableSummaryV1"
           type: "array"
       type: "object"
     RecordSearchResultV1:
       properties:
+        details:
+          description: "Other search field values (not in the record label, and not\
+            \ highlighted) to show under the record label."
+          items:
+            $ref: "#/components/schemas/RecordSearchDetailV1"
+          type: "array"
+        highlights:
+          description: "Plain-text snippets of the fields (other than those in the\
+            \ record label) that match the search term, with the matched spans."
+          items:
+            $ref: "#/components/schemas/RecordSearchHighlightV1"
+          type: "array"
         recordId:
           description: "Primary key of the record, as a string."
           type: "string"
         recordLabel:
           description: "Label to identify the record to a user."
           type: "string"
+        score:
+          description: "Relevance from the record search provider (higher is better);\
+            \ absent for the default search."
+          type: "number"
         tableLabel:
           description: "User-facing label of the table that the record is from."
           type: "string"
         tableName:
           description: "Name of the table that the record is from."
           type: "string"
+        updatedAt:
+          description: "When the record was last modified (ISO-8601 instant), when\
+            \ its table has a last-modified field the user may see."
+          type: "string"
+      type: "object"
+    RecordSearchTableSummaryV1:
+      properties:
+        hasMore:
+          description: "Whether the table has more matches past these results (request\
+            \ them with offset)."
+          type: "boolean"
+        resultCount:
+          description: "Number of results returned from the table."
+          type: "number"
+        source:
+          description: "What searched the table: the record search PROVIDER, the DEFAULT\
+            \ search, or the default search as a FALLBACK because the provider failed."
+          enum:
+          - "PROVIDER"
+          - "DEFAULT"
+          - "FALLBACK"
+          type: "string"
+        tableLabel:
+          description: "User-facing label of the table."
+          type: "string"
+        tableName:
+          description: "Name of the table."
+          type: "string"
+        totalCount:
+          description: "Approximate total number of matches in the table, when the\
+            \ search knows it (records the user may not read can make it high)."
+          type: "number"
       type: "object"
     ReportMetaData:
       properties:
@@ -1625,6 +1816,14 @@ components:
       type: "object"
     SupplementalInstanceMetaData:
       properties:
+        assistant:
+          additionalProperties: true
+          description: "Present (an object) when the instance has the assistant QBit's\
+            \ `assistant` supplemental meta-data - that is, when the assistant is\
+            \ installed and enabled, so a frontend may probe its routes.  Always has\
+            \ `available: true`, plus the strings, numbers and booleans the QBit publishes\
+            \ for frontends."
+          type: "object"
         materialDashboard:
           $ref: "#/components/schemas/MaterialDashboardInstanceSettings"
           description: "Settings from the instance's `materialDashboard` supplemental\
@@ -3076,9 +3275,13 @@ paths:
       description: "Receives logout notifications from the Identity Provider (IdP)\
         \ when a user\nlogs out from the IdP or another application in the SSO ecosystem.\n\
         \nThe IdP sends a POST request with a 'logout_token' JWT parameter containing\n\
-        either a 'sub' (subject) or 'sid' (session ID) claim. QQQ finds and deletes\n\
-        all matching sessions.\n\nThis endpoint should be registered with your IdP\
-        \ as the back-channel logout URI."
+        either a 'sub' (subject) or 'sid' (session ID) claim. QQQ validates the RS256\n\
+        signature against the configured OAuth2 provider's discovered JWKS, issuer,\n\
+        client audience, logout event and timestamps before deleting matching sessions\n\
+        from the configured session table. Both subject and session ID must match\
+        \ when\nboth are present. Invalid tokens or unsupported configuration return\
+        \ HTTP 400.\n\nThis endpoint should be registered with your IdP as the back-channel\
+        \ logout URI."
       responses:
         200:
           content:
@@ -3486,7 +3689,15 @@ paths:
         \ case; integer\nfields match when they equal a numeric term. Only tables\
         \ that the user has permission to read are searched,\nrecord security locks\
         \ apply, and each table returns at most `limitPerTable` records (default 5,\
-        \ maximum 25)."
+        \ maximum 25), after skipping `offset` matches in each table (for paging one\
+        \ table).  An instance may have a record search\nprovider (e.g., a search\
+        \ index) that searches some tables instead; if it fails, those tables are\
+        \ searched with\nthe default search, and the response's `provider` and `tables`\
+        \ say so.\n\nEach result can carry plain-text `highlights` of the fields that\
+        \ match (with the matched spans as character\noffsets - never markup), `details`\
+        \ (other search field values), `updatedAt` and, from a provider, a `score`.\n\
+        Only fields the user may see are used.  All of these, and `tables` and `provider`,\
+        \ are optional: clients must\ntolerate their absence."
       requestBody:
         content:
           application/json:
@@ -3506,6 +3717,19 @@ paths:
                 limitPerTable:
                   description: "Maximum number of records to return from each table."
                   type: "number"
+                offset:
+                  description: "Number of matches to skip in each table, for paging\
+                    \ (default 0, maximum 1000).  Mainly useful with one table in\
+                    \ tableNames."
+                  type: "number"
+                sort:
+                  description: "Order of the results within each table: RELEVANCE\
+                    \ (default) or RECENT (most recently modified first, for tables\
+                    \ with a last-modified field)."
+                  enum:
+                  - "RELEVANCE"
+                  - "RECENT"
+                  type: "string"
               type: "object"
         required: true
       responses:
@@ -3513,17 +3737,40 @@ paths:
           content:
             application/json:
               examples:
-                TODO:
+                Matches in one table:
                   value:
+                    provider:
+                      status: "OK"
                     results:
-                    - recordId: "1"
+                    - details:
+                      - displayValue: "Saint Louis"
+                        fieldLabel: "City"
+                        fieldName: "city"
+                      highlights:
+                      - fieldLabel: "Email"
+                        fieldName: "email"
+                        matches:
+                        - end: 14
+                          start: 6
+                        text: "darin.kelkhoff@example.com"
+                      recordId: "1"
                       recordLabel: "Darin Kelkhoff"
+                      score: 7.25
                       tableLabel: "Person"
                       tableName: "person"
+                      updatedAt: "2026-10-01T14:30:00Z"
                     - recordId: "2"
                       recordLabel: "Tim Kelkhoff"
+                      score: 6.5
                       tableLabel: "Person"
                       tableName: "person"
+                    tables:
+                    - hasMore: true
+                      resultCount: 2
+                      source: "PROVIDER"
+                      tableLabel: "Person"
+                      tableName: "person"
+                      totalCount: 14
               schema:
                 $ref: "#/components/schemas/RecordSearchResponseV1"
           description: "The records matching the search term"
@@ -3908,6 +4155,71 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Get a record's associated scripts (developer mode)"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}/developer/panels:
+    get:
+      description: "Fetch the panels shown on a record's developer view: one per developer\
+        \ panel provider (built in, or\nregistered by modules and qbits in the instance's\
+        \ developerPanels supplemental meta-data) that is available\nfor this table\
+        \ and record for the current user - for example record security, ESB events,\
+        \ quick search\nindexing, or SQL workbench queries.\n\nRequires permission\
+        \ to read records from the table, and the record must be visible under its\
+        \ record\nsecurity locks.  If the record is not found, a 404 is returned.\
+        \  A provider that fails yields a panel\nwith an error message rather than\
+        \ failing the request."
+      parameters:
+      - description: "Name of the table that the record is in."
+        example: "person"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Primary key value of the record."
+        example: "42"
+        in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                Record security:
+                  value:
+                    panels:
+                    - blocks:
+                      - columns:
+                        - "Security key"
+                        - "Field"
+                        - "Scope"
+                        - "Null values"
+                        - "This record's value"
+                        - "Your access"
+                        label: "Locks"
+                        rows:
+                        - - "store"
+                          - "storeId"
+                          - "READ_AND_WRITE"
+                          - "DENY"
+                          - "42"
+                          - "Your session has key value 42"
+                        type: "TABLE"
+                      id: "recordSecurity"
+                      order: 150
+                      statusLabel: "1 lock"
+                      statusTone: "SUCCESS"
+                      title: "Record Security"
+              schema:
+                $ref: "#/components/schemas/RecordDeveloperPanelsResponseV1"
+          description: "The record's developer panels"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get a record's developer panels"
       tags:
       - "Tables"
   /qqq/v1/table/{tableName}/{primaryKey}/developer/associatedScript/{fieldName}:
@@ -4427,8 +4739,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4439,8 +4751,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -4572,8 +4884,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4584,8 +4896,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"
@@ -4682,8 +4994,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       updatedFrontendStepList:
                       - components:
@@ -4694,8 +5006,8 @@ paths:
                           isEditable: true
                           name: "someField"
                           displayFormat: "%s"
-                          isHeavy: false
                           type: "STRING"
+                          isHeavy: false
                           isHidden: false
                       - components:
                         - type: "PROCESS_SUMMARY_RESULTS"

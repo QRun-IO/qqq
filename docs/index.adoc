@@ -28,6 +28,7 @@ include::metaData/SecurtiyKeyTypes.adoc[leveloffset=+1]
 include::metaData/Reports.adoc[leveloffset=+1]
 include::metaData/Icons.adoc[leveloffset=+1]
 include::metaData/PermissionRules.adoc[leveloffset=+1]
+include::misc/CorePermissionEnforcement.adoc[leveloffset=+1]
 
 == Services
 
@@ -83,6 +84,8 @@ include::utilities/RecordLookupHelper.adoc[leveloffset=+1]
 == Migration Guides
 
 * xref:migration/4.0.adoc[Migrating to QQQ 4.0] — step-by-step guide for consumers upgrading from 0.x to 4.0
+* xref:migration/4.1.adoc[Adopting QQQ 4.1 features] — versions, configuration and secrets for record search providers, OAuth2 refresh tokens, `FILE_PREVIEW` and the instance home app, plus upgrade notes from 4.0
+* xref:migration/adoption-checklist.adoc[Adoption checklist for an existing QQQ application] — per-feature checklist for a 0.x app adopting 4.1, Next and the new QBits
 
 == Release Operations
 

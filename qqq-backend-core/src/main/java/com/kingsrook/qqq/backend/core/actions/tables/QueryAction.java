@@ -38,6 +38,9 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.reporting.BufferedRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipeBufferedWrapper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
@@ -89,6 +92,7 @@ public class QueryAction
    private QueryInterface           queryInterface;
    private QPossibleValueTranslator qPossibleValueTranslator;
    private boolean preservePrimaryKeys;
+   private boolean enforcingPermissions = false;
    private final Set<Object> nativePrimaryKeys = new HashSet<>();
 
 
@@ -122,7 +126,31 @@ public class QueryAction
     *******************************************************************************/
    private QueryOutput execute(QueryInput queryInput, boolean preservePrimaryKeys) throws QException
    {
+      boolean enforce = false;
+      if(queryInput.getTableName() != null && queryInput.getTable() != null)
+      {
+         enforce = CorePermissionEnforcer.checkTablePermissions(queryInput, TablePermissionSubType.READ);
+         if(enforce)
+         {
+            CorePermissionEnforcer.checkReadCriteria(queryInput, queryInput.getQueryJoins(), queryInput.getFilter(), queryInput.getFieldNamesToInclude());
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(queryInput, preservePrimaryKeys, enforce));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The query itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private QueryOutput executeInAuthorizedScope(QueryInput queryInput, boolean preservePrimaryKeys, boolean enforce) throws QException
+   {
       this.preservePrimaryKeys = preservePrimaryKeys;
+      this.enforcingPermissions = enforce;
       nativePrimaryKeys.clear();
       ActionHelper.validateSession(queryInput);
 
@@ -136,7 +164,7 @@ public class QueryAction
       {
          throw (new QException("A table named [" + queryInput.getTableName() + "] was not found in the active QInstance"));
       }
-      table = TableMetaDataPersonalizerAction.execute(queryInput);
+      table = TableMetaDataPersonalizerAction.execute(queryInput, enforce);
       if(table == null)
       {
          throw (new QException("Query table is not available"));
@@ -521,6 +549,15 @@ public class QueryAction
             }
             primaryKeys.put(record, record.resolvePrimaryKey(queryInput.getTable()));
          }
+      }
+
+      ////////////////////////////////////////////////////////////////////////////
+      // when enforcing permissions, remove values of fields (incl. joined and  //
+      // associated tables' fields) that a FieldSecurityLock denies the session //
+      ////////////////////////////////////////////////////////////////////////////
+      if(enforcingPermissions)
+      {
+         FieldSecurityLockHelper.removeDeniedValues(queryInput.getTableName(), queryInput.getQueryJoins(), records);
       }
 
       //////////////////////////////

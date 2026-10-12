@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.11` to `1.0.0-RC.14`; the 4.1.0-RC.4
+Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
+
+### Security
+- **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
+  [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
+  `InsertAction`, `UpdateAction`, `DeleteAction`, `ReplaceAction`, `ExportAction`, `RunProcessAction`,
+  `RenderWidgetAction` and `GenerateReportAction` can now check the session's table/process/widget/report permissions
+  themselves (previously only the middlewares did, so MCP servers, assistants, custom routes and scripts skipped them),
+  and `FieldSecurityLock` is now enforced: denied fields are removed from read output and table meta data, and
+  filtering, sorting, grouping on or writing to them is a permission error. Per call, `PermissionEnforcement.ENFORCE`
+  always checks and `withPermissionBypass(reason)` never does; otherwise outermost calls are checked when
+  `QInstance.enforcePermissionsInCoreActions` (or `-Dqqq.enforcePermissionsInCoreActions` /
+  `QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS`) is true. Calls nested inside an action (process steps, customizers, widget
+  renderers, possible-value lookups, async children) stay trusted, and `QSystemUserSession` passes as before; the
+  scheduler, polling automations and SQS poller mark their runs as system bypasses. **Off by default in 4.1.x** (no
+  behavior change unless enabled); planned to default on in 4.2. See
+  [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
+
+### Added
+- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
+  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
+- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
+  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
+  not send their values to a model.
+
+## [4.1.0-RC.3] — candidate (2026-10-12)
+
+Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1/RC.2; see the [release procedure](docs/release/4.1.adoc).
+Next `1.0.0-RC.13` or later renders the two features below. Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
+
+### Added
+- **Record developer panels** — a generic contract for modules and qbits to contribute panels to a record's developer
+  view: implement `DeveloperPanelProviderInterface` (id, title, order, icon, `isAvailable`, `build`) and register it in
+  the new `DeveloperPanelsMetaData` supplemental instance meta-data.  Panels are lists of generic blocks (key/values,
+  text, code, table, links, process actions), served by the new `GET /qqq/v1/table/{table}/{pk}/developer/panels`
+  (table read permission; record security applies; a failing provider yields an error panel, not a failed request).
+  Built in: **Record Security** (each lock, and why the current user can see the record).  `qqq-esb` adds **ESB
+  Events** (CloudEvents type/source/subject, destinations, subscribed triggers with dead letters, a sample event for
+  the record).  See [Record Developer Panels](docs/misc/DeveloperPanels.adoc).
+- **Record search details: highlights, paging, sort, per-table status (`POST /qqq/v1/search`)** — additive and
+  backward compatible. Requests may send `offset` (per table, for paging one table; at most 1000) and `sort`
+  (`RELEVANCE`, the default, or `RECENT`: most recently modified first, by the table's `MODIFY_DATE` field). Each result
+  may now carry `score` (from a record search provider), `updatedAt` (ISO-8601, from the `MODIFY_DATE` field when the
+  user may see it), `highlights` (plain-text snippets of the matching non-label search fields with `matches` as
+  `{start, end}` character offsets - never markup) and `details` (other search field values). The response adds
+  `tables` (`tableName`, `tableLabel`, `resultCount`, `hasMore`, `totalCount`, and `source`: `PROVIDER`, `DEFAULT` or
+  `FALLBACK`) and `provider` (`status` `OK`/`FAILED`/`NONE`, `failureClass` - the simple class name of the root cause -
+  and, for user-facing errors only, `message`), so clients can say when a failed search index left the default search
+  to answer. Highlights, details and dates use only fields the user can see. `RecordSearchProviderInterface` providers
+  receive `offset` and `sort`, and may return `score`, `highlights` (validated, used only for visible fields core found
+  no match in) and `RecordSearchOutput.totalCountByTable`.
+- **`FILE_PREVIEW` field adornment** — `AdornmentType.FILE_PREVIEW`, with value keys in
+  `AdornmentType.FilePreviewValues`, asks frontends to show a field as a thumbnail (images) or a file-type icon (other
+  files) that opens a preview: the full-size image with zoom, a PDF, a video or audio player, or open/download links,
+  with the file's name, type, size and dimensions and arrow-key navigation across the values on screen. Optional values
+  name fields of the same record holding the thumbnail URL (`thumbnailUrlField`), the full-size URL
+  (`fullSizeUrlField`), the file name, MIME type, alt text, caption, width, height and size, plus `defaultMimeType`,
+  `thumbnailMaxSize` (16-512 px, default 40) and `previewable` (default `true`). `QInstanceValidator` checks the field
+  names and values; the adornment is included in v1 table meta-data and the v1 OpenAPI `FieldAdornment.type` enum.
+  Existing adornments are unchanged. See [Field Adornments](docs/metaData/Fields.adoc).
+- **Instance home app ([#1059](https://github.com/QRun-IO/qqq/issues/1059))** — `QInstance.withHomeAppName("home")`
+  designates the app whose dashboard a frontend shows as the instance's home page (Next UI renders it at `/app/` and
+  links its logo and breadcrumb root there). Validation requires the name to be an app in the instance. Metadata
+  (`MetaDataOutput.homeAppName`, v1 `metaData` response `homeAppName`) publishes it only to users who may access that
+  app; otherwise it is omitted and frontends keep their default home page.
+
+## [4.1.0-RC.2] — candidate (2026-10-11)
+
+Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1; see the [release procedure](docs/release/4.1.adoc).
+Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
+
 ### Security
 - **OAuth2 refresh tokens encrypted at rest ([#1048](https://github.com/QRun-IO/qqq/issues/1048))** — refresh tokens
   in the `userSessionRefreshToken` table (#1041) are now encrypted with AES-256-GCM, using a random nonce per value
@@ -22,20 +94,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
 
 ### Added
-- **`FILE_PREVIEW` field adornment** — `AdornmentType.FILE_PREVIEW`, with value keys in
-  `AdornmentType.FilePreviewValues`, asks frontends to show a field as a thumbnail (images) or a file-type icon (other
-  files) that opens a preview: the full-size image with zoom, a PDF, a video or audio player, or open/download links,
-  with the file's name, type, size and dimensions and arrow-key navigation across the values on screen. Optional values
-  name fields of the same record holding the thumbnail URL (`thumbnailUrlField`), the full-size URL
-  (`fullSizeUrlField`), the file name, MIME type, alt text, caption, width, height and size, plus `defaultMimeType`,
-  `thumbnailMaxSize` (16-512 px, default 40) and `previewable` (default `true`). `QInstanceValidator` checks the field
-  names and values; the adornment is included in v1 table meta-data and the v1 OpenAPI `FieldAdornment.type` enum.
-  Existing adornments are unchanged. See [Field Adornments](docs/metaData/Fields.adoc).
-- **Instance home app ([#1059](https://github.com/QRun-IO/qqq/issues/1059))** — `QInstance.withHomeAppName("home")`
-  designates the app whose dashboard a frontend shows as the instance's home page (Next UI renders it at `/app/` and
-  links its logo and breadcrumb root there). Validation requires the name to be an app in the instance. Metadata
-  (`MetaDataOutput.homeAppName`, v1 `metaData` response `homeAppName`) publishes it only to users who may access that
-  app; otherwise it is omitted and frontends keep their default home page.
 - **OAuth2 refresh tokens ([#1041](https://github.com/QRun-IO/qqq/issues/1041))** — `OAuth2AuthenticationModule`
   stores the refresh token from the code exchange (e.g., with the `offline_access` scope) server-side, in the new
   opt-in `userSessionRefreshToken` table (`UserSessionRefreshToken`, `UserSessionRefreshTokenMetaDataProducer`).
@@ -56,6 +114,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QInstanceValidator` checks the code reference. Without a provider, search is unchanged.
 
 ### Fixed
+- **Partial updates under joined record-security locks ([#1073](https://github.com/QRun-IO/qqq/issues/1073))** — an
+  update that did not send the foreign key a joined write lock walks through (for example, editing only a line item's
+  `sku` when the line item is locked through its order) was always denied with "the referenced ... was not found".
+  `UpdateAction` now validates the write locks against each record as it will be after the update: its stored values
+  overlaid with the values being written. Fields that are sent, including nulls, are still validated as written, and
+  rows whose stored values fail the write locks are denied generically, so an error never names a stored lock value.
 - **Quartz schedules on a fresh persistent job store ([#1044](https://github.com/QRun-IO/qqq/issues/1044))** —
   `QScheduleManager.start()` now creates the jobs for every schedulable (processes, queues, table automations,
   scheduled-job records) when Quartz uses a persistent store such as a clustered `JobStoreTX` on PostgreSQL.

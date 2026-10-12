@@ -35,7 +35,10 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QReportingException;
@@ -206,7 +209,23 @@ public class ExportAction
     *******************************************************************************/
    public ExportOutput execute(ExportInput exportInput) throws QException
    {
-      QTableMetaData table = TableMetaDataPersonalizerAction.execute(exportInput);
+      ////////////////////////////////////////////////////////////////////////////
+      // when enforcing permissions: READ on the table, READ on joined tables,  //
+      // and no filter / field reference to fields denied by a security lock.   //
+      // The export's query (run below, in an async job) is told to enforce too //
+      // so the same rules apply to the records it streams.                     //
+      ////////////////////////////////////////////////////////////////////////////
+      boolean enforce = false;
+      if(exportInput.getTableName() != null && exportInput.getTable() != null)
+      {
+         enforce = CorePermissionEnforcer.checkTablePermissions(exportInput, TablePermissionSubType.READ);
+         if(enforce)
+         {
+            CorePermissionEnforcer.checkReadCriteria(exportInput, getQueryJoins(exportInput), exportInput.getQueryFilter(), exportInput.getFieldNames());
+         }
+      }
+
+      QTableMetaData table = TableMetaDataPersonalizerAction.execute(exportInput, enforce);
       exportInput.setTableMetaData(table);
 
       if(!preExecuteRan)
@@ -228,6 +247,10 @@ public class ExportAction
       queryInput.setTableName(exportInput.getTableName());
       queryInput.setFilter(exportInput.getQueryFilter());
       queryInput.setInputSource(exportInput.getInputSource());
+      if(enforce)
+      {
+         queryInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      }
 
       queryInput.setQueryJoins(getQueryJoins(exportInput));
 
@@ -439,6 +462,14 @@ public class ExportAction
          // skip heavy fields.  they aren't fetched, and we generally think we don't want them. //
          /////////////////////////////////////////////////////////////////////////////////////////
          if(field.getIsHeavy())
+         {
+            continue;
+         }
+
+         ///////////////////////////////////////////////////////////////////
+         // skip sensitive fields, unless the input explicitly wants them //
+         ///////////////////////////////////////////////////////////////////
+         if(field.getIsSensitive() && !exportInput.getIncludeSensitiveFields())
          {
             continue;
          }

@@ -1,17 +1,25 @@
 # QQQ Backups qbit: Design Spec
 
-Status: **Draft for owner review.** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: **Draft for owner review. Q7 decided by the owner 2026-10-12; the other questions are open.** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x (a small set of backend-agnostic core hooks, §5) and a new repo, `QRun-IO/qbit-backups` (Apache-2.0). It writes through **`qbit-object-storage`** (#1089, approved) and raises alerts through the **Alerts qbit** (in progress) when that is installed. The first consumer is kof22's Website-Backend: Postgres on CloudNativePG.
 Related specs: object storage (#1089), alerts (in progress), CMS (#1083), CDN (#1084), Authentik (#1065).
 
 > This spec is a design only. Nothing has been built, no repository has been created, and no storage has been provisioned. The owner questions are in §16. Storage goes through the approved object-storage qbit (QRun-IO/qqq#1089, decisions D1–D14), and §6.3 lists five small follow-ups it needs. Alerts go through the Alerts qbit's producer SPI (`docs/specs/2026-10-12-qbit-alerts-design.md`, in progress). §10.4 is reconciled with it once it is published.
+
+## Owner decisions (2026-10-12)
+
+These decisions override anything below that contradicts them. The sections they affect have been updated.
+
+| # | Decision | Effect on the design |
+|---|---|---|
+| D1 (Q7) | **Files referenced by records are part of backups and exports.** Media, photos and any other S3 objects that records point at are copied into the content-addressed, deduplicated store by default. Reference-only stays available as an option. Restore brings files back, and verification checks file checksums. | `fileObjectPolicy` defaults to `COPY` for every scope (§4.1). File copy is a first-class part of the run (§8.5). There is a visible `backupFileObject` table (§4.8). Restore restores files by default (§9.3). Every verify level checks files (§10.1). File copy moves into P1–P3 (§14). |
 
 ## 0. Summary
 
 `qbit-backups` gives any QQQ application **application-level, logical backups** of the data that QQQ manages. A backup can cover one table, a set of tables, an app's or a qbit's tables, or the whole instance. It is written as portable files to any S3-compatible object store, and it can be restored, verified and pruned from inside the app.
 
 1. **Backup plans are records.** A plan says what to back up (tables, apps or qbits, with exclusions and optional filters), how (format, compression, encryption, sensitive-field policy, consistency), where (a storage connection from the object-storage qbit, plus a prefix), when (cron, run by the QQQ scheduler), and how long to keep it (keep N daily, weekly and monthly, with object lock where the provider supports it).
-2. **Runs stream every table** in primary-key order, using keyset paging inside a consistent read snapshot where the backend has one. Each table is written as **JSON Lines** (the default, lossless and restorable), **CSV** (for people and spreadsheets), or later **Parquet**. Files are gzip- or zstd-compressed and optionally encrypted on the client. A **manifest**, written last, records the schema fingerprint of every table, row counts, SHA-256 checksums, content hashes, the QQQ and app versions, and the consistency level actually achieved. If a run has no manifest, it did not complete.
+2. **Runs stream every table, and the files its records reference,** in primary-key order, using keyset paging inside a consistent read snapshot where the backend has one. Each table is written as **JSON Lines** (the default, lossless and restorable), **CSV** (for people and spreadsheets), or later **Parquet**. Files are gzip- or zstd-compressed and optionally encrypted on the client. A **manifest**, written last, records the schema fingerprint of every table, row counts, SHA-256 checksums, content hashes, the QQQ and app versions, and the consistency level actually achieved. If a run has no manifest, it did not complete.
 3. **Restore** is a standard streamed ETL process with a real **Review** step. Review shows per table how many records would be inserted, updated, left unchanged or deleted, any conflicts and any schema mismatches, plus a sample field-level diff. Restore can target a whole backup, selected tables or selected records, in the same instance or table or a different one. The modes are **insert-new**, **upsert** or **replace**, with optional **new-ID mapping**. Sequences are resynced afterwards, and a pre-restore safety backup is taken by default.
 4. **Verification is built in.** *Verify backup* re-reads every object and checks sizes, checksums and row counts. A scheduled **test restore** loads the backup into a scratch backend (for example a throwaway Postgres schema or database), compares counts and content hashes, and drops the scratch copy.
 5. **Missed, failed and unverified backups are loud.** When the **Alerts qbit** is installed, backups raises alerts through its producer SPI, including **heartbeat monitors** that fire when a backup *didn't run*. A bucket-aware SLA checker runs independently of the backup job and compares the catalog with what is really in the bucket. Without the Alerts qbit, the same conditions show on the **Admin → Backups** home and in a `backups` health indicator. Prometheus gauges are an optional, secondary export.
@@ -178,7 +186,8 @@ Process-written tables are read-only in the UI. Multi-tenant apps add the tenant
 | `encryptionKeyRef` | STRING | The *name* of a key in a key provider (§11.2), never the key itself |
 | `sensitiveFieldPolicy` | PVS | `EXCLUDE` (default), `INCLUDE_ENCRYPTED_ONLY`, `INCLUDE` (§11.3) |
 | `heavyFieldPolicy` | PVS | `INLINE` (default; base64 in JSONL), `SEPARATE_OBJECTS`, `EXCLUDE` |
-| `fileObjectPolicy` | PVS | `REFERENCE_ONLY` (default), `COPY` (§8.5) |
+| `fileObjectPolicy` | PVS | **`COPY` (default for every scope, including ad-hoc exports; owner decision D1)**, or `REFERENCE_ONLY` (§8.5) |
+| `fileMissingPolicy` | PVS | `WARN` (default: the run ends `SUCCEEDED_WITH_WARNINGS` and raises an alert), or `FAIL` |
 | `consistency` | PVS | `SNAPSHOT_REQUIRED`, `SNAPSHOT_PREFERRED` (default), `PER_TABLE` (§7) |
 | `useReadReplica` | BOOLEAN | Use `MAY_USE_READ_ONLY_BACKEND` where configured |
 | `incrementalMode` | PVS | `FULL` (default). `CHANGED_SINCE_LAST` is P5 (§8.6). |
@@ -223,7 +232,8 @@ Resolution: start from `scopeType` and `includeRoles`, apply the INCLUDE rows, t
 | `requestedByUserId` | The logged-in user, or `system:scheduler` |
 | `status` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `SUCCEEDED_WITH_WARNINGS`, `FAILED`, `TIMED_OUT`, `CANCELLED`, `ABANDONED` (heartbeat lost) |
 | `startDate`, `endDate`, `durationMs`, `heartbeatDate` | `heartbeatDate` is updated every page |
-| `tablesPlanned`, `tablesDone`, `rowsTotal`, `bytesRaw`, `bytesStored`, `filesCopied`, `fileBytesCopied` | |
+| `tablesPlanned`, `tablesDone`, `rowsTotal`, `bytesRaw`, `bytesStored` | |
+| `filesReferenced`, `filesCopied` (new to the store), `filesDeduplicated` (already present), `filesMissing` (referenced but not found at the source), `fileBytesCopied`, `fileBytesReferenced` | File counts for the run (§8.5) |
 | `consistencyAchieved` | `INSTANCE_SNAPSHOT`, `BACKEND_SNAPSHOT`, `PER_TABLE`, `BEST_EFFORT` |
 | `snapshotId` | For example the Postgres exported snapshot id. Diagnostic only. |
 | `storageBucketAlias`, `runPrefix` | Copied from the plan at run time; they are immutable |
@@ -285,6 +295,7 @@ Indexes: `(backupRunId, tableName, partNumber)` unique; `(tableName)`.
 | `scopeSummary` | The selected tables and filters |
 | `preRestoreBackupRunId` | The safety backup taken first (§9.4) |
 | `rowsInserted`, `rowsUpdated`, `rowsUnchanged`, `rowsDeleted`, `rowsSkipped`, `rowsErrored` | |
+| `filesRestored`, `filesAlreadyPresent`, `filesConflicting`, `filesMissingFromBackup`, `fileBytesRestored` | §9.3 |
 | `sequencesResynced` | Count |
 | `automationsSuppressed`, `esbSuppressed` | BOOLEAN options |
 | `confirmationText` | What the user typed to confirm a REPLACE |
@@ -294,7 +305,25 @@ Indexes: `(backupRunId, tableName, partNumber)` unique; `(tableName)`.
 
 Per-table results: `tableName`, `targetTableName`, the counts above, `schemaStatus` (`MATCH`, `COMPATIBLE`, `MISMATCH`), `unmappedFields`, `sequenceResynced`, `status`.
 
-### 4.8 `backupIdMap` (transient)
+### 4.8 `backupFileObject` (the content-addressed file store)
+
+One row per stored file in `_files/sha256/…`, shared by all runs of the instance. This makes the file store a normal, visible table: searchable by hash, size or type, and linkable from runs and verification results.
+
+| Field | Notes |
+|---|---|
+| `sha256` | Unique. It is also the object key (`_files/sha256/<ab>/<cd>/<sha256>`). |
+| `sizeBytes`, `contentType` | From the source object |
+| `storageBucketAlias`, `objectKey` | Where the copy lives |
+| `encrypted`, `encryptionKeyFingerprint` | Set when the plan encrypts (§8.5) |
+| `firstRunId`, `lastReferencedRunId`, `referenceCount` | `referenceCount` is the number of retained runs whose file index lists the hash. Prune maintains it. |
+| `lastVerifiedDate`, `lastVerifyStatus` | From CONTENT and TEST_RESTORE verification |
+| `lockedUntil`, `deletedDate` | Object lock, and when prune removed it |
+
+Indexes: unique `sha256`; `(referenceCount, deletedDate)` for the prune sweep; `(lastVerifiedDate)`.
+
+The **per-run file index** (`files/index-*.jsonl.gz`, an artifact of type `FILE_OBJECTS_INDEX`) holds one line per reference: table, record pk, field, source bucket alias and key, sha256, size and status (`COPIED`, `DEDUPLICATED`, `MISSING`, `REFERENCE_ONLY`). Index lines are not table rows, because a nightly run can reference hundreds of thousands of files.
+
+### 4.9 `backupIdMap` (transient)
 
 This is used only for `REMAP_NEW_IDS`. Fields: `restoreRunId`, `tableName`, `oldId`, `newId`. Index `(restoreRunId, tableName, oldId)`. Rows are deleted by the restore's final step, or garbage-collected after 7 days by `GarbageCollectorProcessMetaDataProducer`. They are visible while they exist, like every other qbit table.
 
@@ -560,12 +589,18 @@ On Postgres the whole run normally takes one exported snapshot. Tables can then 
   - `EXCLUDE` drops it, and the manifest says so.
 - **Files referenced from records:** QQQ has no "S3 key" field type. Backups reuses the **storage qbit's `StorageReferenceProvider` registrations** (#1089 §6.4, for example `FieldReferenceProvider.keyPrefix("files", "media", "storageKey")`), so an app declares its file references once, for orphan detection, delete protection and backups alike. Storage-backed tables (filesystem or S3 backend tables) are discovered automatically. Only references from tables in the plan's scope (and its filters) are followed.
 
-  With `fileObjectPolicy`:
-  - `REFERENCE_ONLY` records the key, and the size and ETag from a `head`, in `files/index-*.jsonl.gz`. Restore can then report missing objects.
-  - `COPY` also copies each object into the **content-addressed store** `_files/sha256/…`. An object whose hash is already present is not copied again, so nightly runs only copy new media.
-  - Copies are server-side when the source and destination share a connection, and otherwise stream through the app with bounded concurrency (default 4).
-  - Prune keeps a CAS object while any retained run's index references it. Mark-and-sweep runs inside the prune process.
-- Restore can **put copied files back** into the original or a different bucket (option `restoreFiles`).
+  **Files are part of the backup by default (owner decision D1).** With `fileObjectPolicy`:
+  - **`COPY` (default, every scope):** after a table's rows are written, the run walks the references from that table's rows (in the same snapshot) and makes sure each file is in the **content-addressed store** `_files/sha256/…`:
+    1. It looks the source object up with `head`. Where the reference provider already knows the hash (for example a content-addressed key, or a stored checksum column), that is used. Otherwise the object is streamed once and hashed.
+    2. If a `backupFileObject` row with that SHA-256 exists, the file is **deduplicated**. Only the index line is written. So a nightly run copies only new or changed media, and a 10,000-photo library costs one copy, not one per night.
+    3. If not, it copies the object: server-side (`copy`) when the source and the backup bucket share a connection and the plan doesn't encrypt; otherwise it streams `get` into `put`, through the encryptor when the plan encrypts. It re-hashes while streaming and records the hash it actually observed.
+    4. Copies run with bounded concurrency (default 4) within the storage connection's rate limits.
+  - **`REFERENCE_ONLY` (option):** records the key, size and ETag from a `head` in the file index, without copying. Restore can then say which files are missing, but can't bring them back. It suits apps whose files are already protected elsewhere (for example a versioned, replicated, object-locked bucket).
+  - **Missing files** (referenced by a row but gone at the source) are listed in the index with status `MISSING` and counted in `filesMissing`. Under `fileMissingPolicy=WARN` the run ends `SUCCEEDED_WITH_WARNINGS` and raises `backups.files.missing`. They are often a real data bug worth knowing about.
+  - **Consistency:** source files are read after the rows that reference them, so a file replaced between the row read and the copy is captured as it is at copy time. Its hash in the index is what was actually stored. Content-addressed source keys, which most media pipelines use, make this moot.
+  - **Encryption:** when the plan encrypts, file copies are encrypted too, and dedup still works because the store is keyed by the plaintext hash. The hash of each file is therefore visible in the bucket. This is accepted, and documented, because it only proves that a known file is present.
+  - **Prune:** the file store is mark-and-sweep. Prune recomputes `referenceCount` from the indexes of retained runs and permanently deletes (SF3) unreferenced, unlocked objects. So a deleted photo stays restorable for as long as any retained backup references it.
+- **Exports:** the ad-hoc **Back up these records** export and CSV plans copy referenced files the same way, so an export of a table of photos includes the photos.
 
 ### 8.6 Incremental (P5)
 
@@ -659,7 +694,7 @@ All of these are standard `StreamedETLWithFrontendProcess` flows with standard R
   - `REMAP_NEW_IDS`: let the target assign IDs and write `backupIdMap`. Foreign-key fields in later tables (from QQQ joins and PVS references: a field whose PVS or join points at a remapped table) are rewritten through the map, in restore order. Fields that can't be traced through metadata are listed in Review as "unmapped references" so a human can decide.
 - **Options:**
   - `suppressAutomations` (default on), `publishEvents` (default off), `runCustomizers` (default off), `perRecordAudit` (default off)
-  - `restoreFiles` (if the backup copied files)
+  - **`restoreFiles` (default on when the backup copied files).** Target: the original bucket alias and key (default), or another bucket alias and prefix.
   - **`preRestoreBackup` (default on)**
 
 **Review (the preview, with no writes):** For each table the qbit streams the backup rows and the matching target rows (by key, in pages), and computes standard summary lines:
@@ -674,12 +709,14 @@ All of these are standard `StreamedETLWithFrontendProcess` flows with standard R
 
 A **sample diff** widget shows up to 20 changed records per table, field by field (old → new), with sensitive values masked even here. Full validation (`doFullValidation`) is on by default, so Review covers every row, not a sample. For very large tables the user can switch to sampled Review, and the Result then shows the real counts.
 
+**Files in Review:** for each referenced file of the selected rows: "N files will be restored", "N already present with the same checksum (skipped)", "N exist at the target with **different** content" (conflicts: kept unless the mode is `REPLACE`, and listed with record links), and "N are missing from the backup" (they were `MISSING` or `REFERENCE_ONLY` at backup time).
+
 **Execute:**
-1. Pre-restore backup of the target scope (a `backupRun` with `trigger=PRE_RESTORE`, linked on the restore).
+1. Pre-restore backup of the target scope (including its files) (a `backupRun` with `trigger=PRE_RESTORE`, linked on the restore).
 2. Tables in **restore order**, parents first: the manifest's topological order over associations and joins. Cycles are broken by inserting with nullable references unset, then updating them in a second pass.
 3. Restore-mode writes (§5.3) in `page` transactions, so a huge restore doesn't hold one transaction for hours. `REPLACE` deletes and its upserts for a table share one transaction where the backend supports it, so a table is never left half-empty.
 4. Sequence resync.
-5. File restore, if selected.
+5. File restore, if selected. Each file goes from the store back to its target key through the storage API (in a system context tagged with the restore; the storage `RecordSecurityLock` and protection rules still apply to the *target* bucket). It is decrypted if needed, and **re-hashed on write and compared with the SHA-256 from the index**; a mismatch fails that file and is listed in the Result. The storage qbit's `StorageChangeListener` fires as for any write, so for example the CDN qbit purges restored media.
 6. One summary audit per table, plus the `restoreRun` and `restoreRunTable` rows.
 
 **Into a different instance:** the target instance installs the qbit, adds the same storage connection (read-only credentials are fine), and runs **Import backups from storage** (§9.6). It then restores from the imported run. Restore always runs *in* the instance it writes to, so the target's permissions, locks and validation apply.
@@ -724,9 +761,9 @@ The offline CLI (§3.1) can do step 4 without the app if it has to.
 
 | Level | Reads | Proves | Default schedule |
 |---|---|---|---|
-| `STORAGE` | `head` on every object | Every object exists with the expected size. Where the provider stores SHA-256 checksums, they match the manifest. | After every run (cheap) |
-| `CONTENT` | Every byte | Decrypts, decompresses and parses; row counts, `sha256Stored`, `sha256Raw` and `rowsHash` match; `pg_restore --list` succeeds for native dumps | Weekly, or after every run for small plans |
-| `TEST_RESTORE` | Every byte, plus writes to scratch | Restores every table (`PRESERVE` IDs, `INSERT_NEW`) into a **scratch target**, re-reads it in PK order, and compares counts and `rowsHash` per table. Sequences resync. Then drops the scratch. | Weekly (`verifySlaDays=8`) |
+| `STORAGE` | `head` on every object, **including every file-store object the run's file index references** | Every object exists with the expected size. Where the provider stores SHA-256 checksums, they match the manifest. | After every run (cheap) |
+| `CONTENT` | Every byte | Decrypts, decompresses and parses; row counts, `sha256Stored`, `sha256Raw` and `rowsHash` match; `pg_restore --list` succeeds for native dumps. **Every referenced file-store object is decrypted and re-hashed, and must equal its SHA-256 key.** Files already verified in the last `fileReverifyDays` (default 30) are skipped, so the cost stays bounded as the store grows; `backupFileObject.lastVerifiedDate` tracks this. | Weekly, or after every run for small plans |
+| `TEST_RESTORE` | Every byte, plus writes to scratch | Restores every table (`PRESERVE` IDs, `INSERT_NEW`) into a **scratch target**, re-reads it in PK order, and compares counts and `rowsHash` per table. Sequences resync. **Restores the run's files into a scratch prefix** (`qqq-verify/<runKey>/` in the backup bucket, or a configured scratch bucket alias), re-hashes each one, and checks every scratch row's reference resolves to a restored file. `verifyFileSamplePercent` (default 100) can limit this for very large media stores. Then drops the scratch and deletes the scratch files. | Weekly (`verifySlaDays=8`) |
 
 **Scratch targets** (`BackupsQBitConfig.scratchTargets`):
 - **`RDBMS_SCHEMA`:** a configured scratch backend whose dedicated database user may `CREATE SCHEMA`/`DROP SCHEMA` only for `qqq_verify_*`. The qbit:
@@ -774,7 +811,8 @@ The checker also lists the plan's prefix once a day. It reports **orphans** (run
 | `backups.plan.missed` | No successful run within `slaHours` (heartbeat overdue) | The next successful run checks in | error (critical plans: critical) |
 | `backups.run.failed` | A run ends FAILED, TIMED_OUT or ABANDONED | The next successful run of the plan | warning; error after 2 in a row |
 | `backups.run.missing_in_storage` | The catalog says success, but the manifest is gone from the bucket | A later run succeeds and its manifest is present, or an admin acknowledges | critical |
-| `backups.verify.failed` | A verification (any level) fails | A later verification of a run of the same plan passes | error |
+| `backups.files.missing` | A run found referenced files missing at the source | A later run finds none | warning |
+| `backups.verify.failed` | A verification (any level) fails, including any file checksum mismatch | A later verification of a run of the same plan passes | error |
 | `backups.verify.overdue` | No passed verification within `verifySlaDays` | A verification passes | warning |
 | `backups.plan.owner_invalid` | The plan owner no longer exists or lost `backups.admin` (§11.1) | The owner is fixed | warning |
 | `backups.storage.debris` | Prefixes without a manifest older than 24 h, or orphan run prefixes | Prune or import clears them | info |
@@ -930,10 +968,10 @@ Estimates assume one engineer working with Claude.
 | Phase | Scope | Estimate | Exit criteria |
 |---|---|---|---|
 | **P0: core hooks** (QQQ 4.1.x) | §5.1–5.6. The Postgres fetch-size fix ships first, on its own. Table-role declarations for core and first-party qbit tables. | 10–12 d | Merged to `develop` after the RC gate, with the cross-backend Testcontainers suite green |
-| **P1: backup** | Repo from `qbit-template-application`. Tables §4.1–4.5. Scope resolver and roles. JSONL and CSV codecs, gzip. Manifest and checksums. Snapshot and keyset streaming. Plan → scheduledJob sync. Run backup now, Back up these records, Cancel. STORAGE verify. **Admin → Backups shell, with the home and honest empty states.** | 12–14 d | A sample app and kof22 staging run nightly backups to MinIO. The home is readable at 6 widths. |
-| **P2: restore** | Restore with Review (all three modes, PRESERVE and REMAP IDs, match on unique key), restore ordering, sequence resync, pre-restore backup, catalog import, Download, restore tables §4.6–4.8 | 10–12 d | The E2E restore suite is green. A deleted-records restore works on kof22 staging. |
-| **P3: verify, SLA, alerts, retention** | CONTENT and TEST_RESTORE verify (`RDBMS_SCHEMA`, `SEPARATE_DATABASE`, `MEMORY`), the SLA checker (bucket-aware), **`BackupAlertSink` for the Alerts qbit (alerts plus per-plan heartbeat monitors)**, the health indicator, ESB events, GFS prune with object lock and permanent delete (storage SF3), CAS sweep. Optional `/metrics/backups` and example rules. | 8–10 d | Alerts qbit alerts fire in staging for missed, failed, missing-in-storage and unverified, and the home shows the same without the Alerts qbit. A weekly test restore passes. |
-| **P4: encryption, files, CLI** | Tink encryption plus key providers and rotation, sensitive-field policies, file reference/COPY with CAS, `qbit-backups-cli` (verify, decrypt, to-csv) | 6–8 d | An encrypted nightly backup with copied files is verified offline by the CLI |
+| **P1: backup (rows and files)** | Repo from `qbit-template-application`. Tables §4.1–4.5. Scope resolver and roles. JSONL and CSV codecs, gzip. Manifest and checksums. Snapshot and keyset streaming. **Referenced-file copy into the deduplicated store, the file index and `backupFileObject`.** Plan → scheduledJob sync. Run backup now, Back up these records, Cancel. STORAGE verify. **Admin → Backups shell, with the home and honest empty states.** | 13–15 d | A sample app and kof22 staging run nightly backups, with referenced media copied and deduplicated, to MinIO. The home is readable at 6 widths. |
+| **P2: restore** | Restore with Review (all three modes, PRESERVE and REMAP IDs, match on unique key), restore ordering, sequence resync, pre-restore backup, **file restore with checksum check**, catalog import, Download, restore tables §4.6, §4.7 and §4.9 | 10–12 d | The E2E restore suite is green. A deleted-records restore works on kof22 staging. |
+| **P3: verify, SLA, alerts, retention** | CONTENT and TEST_RESTORE verify (`RDBMS_SCHEMA`, `SEPARATE_DATABASE`, `MEMORY`), the SLA checker (bucket-aware), **`BackupAlertSink` for the Alerts qbit (alerts plus per-plan heartbeat monitors)**, the health indicator, ESB events, GFS prune with object lock and permanent delete (storage SF3), the file-store mark-and-sweep, **file checksums at every verify level**. Optional `/metrics/backups` and example rules. | 8–10 d | Alerts qbit alerts fire in staging for missed, failed, missing-in-storage and unverified, and the home shows the same without the Alerts qbit. A weekly test restore passes. |
+| **P4: encryption, CLI** | Tink encryption (data and file-store objects) plus key providers and rotation, sensitive-field policies, `qbit-backups-cli` (verify incl. files, decrypt, to-csv) | 5–7 d | An encrypted nightly backup with copied files is verified offline by the CLI |
 | **P5: optional** | Parquet module, native `pg_dump`, `CHANGED_SINCE_LAST` incrementals with PK lists, zstd, parallel table export | 6–9 d | As needed |
 
 **Total:** about **7–9 weeks** for P0–P4, plus 1.5–2 weeks for P5. P0's fetch-size fix and P1 can overlap once the snapshot and keyset APIs are agreed.
@@ -944,7 +982,7 @@ kof22 is a Postgres-on-CloudNativePG QQQ app that already has physical backups: 
 
 1. **Annotate table roles.** Content, media metadata, users and authors are `DATA`. Audit tables are `AUDIT`. Search indexes and analytics rollups are `DERIVED`. Sessions, idempotency keys, Quartz and upload staging are `EPHEMERAL`. Tokens and salts are `SECRET`.
 2. **Destination.** A **dedicated bucket at a different provider and account** from the CNPG backups, with object lock in GOVERNANCE mode for 14 days, a write-only writer credential, and a separate prune credential.
-3. **Plan "Nightly full".** `INSTANCE` scope, roles `DATA,AUDIT`, JSONL with gzip, `CLIENT_AES256_GCM` (key from the existing secret manager through ESO), `sensitiveFieldPolicy=INCLUDE_ENCRYPTED_ONLY`, `fileObjectPolicy=COPY` for media keys (this also gives media an off-site, deduplicated copy), `SNAPSHOT_REQUIRED`, at 02:00 local time (well clear of the physical base backup window), `slaHours=26`, retention 14 daily, 8 weekly, 12 monthly.
+3. **Plan "Nightly full".** `INSTANCE` scope, roles `DATA,AUDIT`, JSONL with gzip, `CLIENT_AES256_GCM` (key from the existing secret manager through ESO), `sensitiveFieldPolicy=INCLUDE_ENCRYPTED_ONLY`, `fileObjectPolicy=COPY` (the default, per D1) for every referenced media and photo object, which also gives media an off-site, deduplicated copy, `SNAPSHOT_REQUIRED`, at 02:00 local time (well clear of the physical base backup window), `slaHours=26`, retention 14 daily, 8 weekly, 12 monthly.
 4. **Weekly TEST_RESTORE** into a scratch database (§16 Q11). A plain `INSTANCE` restore drill once a quarter, into a staging namespace.
 5. **Alerts.** Install the Alerts qbit and subscribe the owner to the `backups.*` alerts. Heartbeat monitors cover "the nightly backup didn't run". As a cluster-level backstop, optionally enable `/metrics/backups` with one `absent_over_time` rule, and add the physical backups' own age alerts there too. Physical backups have no alert rule today.
 6. **Keep the existing physical backups** unchanged. Use the logical backups for table- and record-level recovery and as the independent second copy.
@@ -965,7 +1003,7 @@ Size at kof22's scale (tens of tables, low millions of rows at most, media in th
 | R6 | Restore order or FK surprises in databases with constraints QQQ doesn't know about | Topological order from metadata, plus a retry pass, plus clear errors. Test restore catches it weekly. |
 | R7 | Schema drift between backup and target | Fingerprints and `SchemaDiff` in Review. Mapping by name. Incompatible types block the restore. |
 | R8 | Restore triggers business side effects (emails, webhooks, ESB events) | Customizers, automations and ESB are suppressed by default (§5.3). Turning them on is explicit and recorded. |
-| R9 | Large BLOBs blow up memory | `SEPARATE_OBJECTS` policy, streaming base64, part rotation |
+| R9 | Large BLOBs or large media libraries blow up memory, time or cost | `SEPARATE_OBJECTS` policy, streaming base64, part rotation. Files are streamed, never buffered. The deduplicated store copies each file once. Bounded re-verification (`fileReverifyDays`) and the TEST_RESTORE sample setting. |
 | R10 | Provider differences (object lock, checksums, copy) | Everything goes through the storage qbit's capability probe. The contract suite runs on MinIO, Garage and LocalStack. |
 | R11 | Release interference | Core hooks land after the RC gate, behind opt-in flags. The fetch-size fix ships on its own. |
 | R12 | The storage follow-ups (§6.3 SF1–SF5) or the Alerts SPI land late, or differ from this spec | SF1–SF5 are small and can land in storage P1–P2. Without them, backups uses role `PRIVATE` plus a protection rule, and lifecycle-based expiry for prune. Without the Alerts qbit, the home and health indicator still show every condition. |
@@ -982,7 +1020,7 @@ Size at kof22's scale (tens of tables, low millions of rows at most, media in th
 | Q4 | **Client-side encryption: required or optional?** | **(a)** Optional in general, but **required** whenever sensitive fields, audit tables or user tables are included, and on by default for new plans. Tink streaming AEAD; keys from the secret manager. **Recommended.**<br>(b) Always required.<br>(c) Rely on provider SSE only. |
 | Q5 | **Incremental backups in v1?** | **(a)** No. Full nightly in v1; `CHANGED_SINCE_LAST` with PK lists in P5. **Recommended.**<br>(b) Ship incrementals in P1. |
 | Q6 | **Audit tables in the nightly plan** | **(a)** Include them (they are the history, and restoring data without them loses provenance). If they dominate size, split them into a second weekly plan. **Recommended.**<br>(b) Exclude by default. |
-| Q7 | **Referenced S3 files** | **(a)** `REFERENCE_ONLY` as the generic default, `COPY` with a content-addressed dedup store where the app has no other off-site media copy (kof22: COPY). **Recommended.**<br>(b) Always copy. |
+| Q7 | **Referenced S3 files** | **Decided (owner, 2026-10-12), D1:** files referenced by records are included in backups and exports. `COPY` into the content-addressed, deduplicated store is the default for every scope (kof22 included). `REFERENCE_ONLY` stays as an option. Restore brings files back, and verification checks file checksums. |
 | Q8 | **Native `pg_dump`** | **(a)** An optional P5 feature, off by default (CNPG apps already have physical backups). **Recommended.**<br>(b) On by default for Postgres. |
 | Q9 | **Parquet** | **(a)** Defer to P5, as a separate module. **Recommended.**<br>(b) Include in P1. |
 | Q10 | **Restore approval** | **(a)** Single user with `backups.restore`, a full Review, a pre-restore backup, and a typed confirmation for REPLACE (which also needs `backups.admin`). **Recommended for v1.**<br>(b) Two-person approval (request, then approve) for REPLACE and whole-instance restores, as a later add-on. |

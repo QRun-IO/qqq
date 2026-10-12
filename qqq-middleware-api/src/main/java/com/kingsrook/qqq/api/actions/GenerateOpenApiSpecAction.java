@@ -67,6 +67,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.Authenticati
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
@@ -824,6 +825,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          String               primaryKeyLabel     = primaryKeyField.getLabel();
          String               primaryKeyApiName   = ApiFieldMetaData.getEffectiveApiFieldName(apiName, primaryKeyField);
          List<QFieldMetaData> tableApiFields      = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput().withTableName(tableName).withVersion(version).withApiName(apiName)).getFields();
+         List<QFieldMetaData> tableOutputFields   = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput().withTableName(tableName).withVersion(version).withApiName(apiName).withIncludeVirtualFields(true)).getFields();
 
          tagList.add(new Tag()
             .withName(tableLabel)
@@ -863,7 +865,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          //////////////////////////////////////
          // build the schemas for this table //
          //////////////////////////////////////
-         Schema tableSchema = buildTableSchema(apiInstanceMetaData, version, table, tableApiFields);
+         Schema tableSchema = buildTableSchema(apiInstanceMetaData, version, table, tableOutputFields);
          componentSchemas.put(tableApiName, tableSchema);
 
          //////////////////////////////////////////////////////////////////////////////
@@ -1664,7 +1666,8 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
                List<QFieldMetaData> tableApiFields = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput()
                   .withTableName(table.getName())
                   .withVersion(version)
-                  .withApiName(apiName)).getFields();
+                  .withApiName(apiName)
+                  .withIncludeVirtualFields(true)).getFields();
 
                componentSchemas.put(tableApiName, buildTableSchema(apiInstanceMetaData, version, table, tableApiFields));
                addedAny = true;
@@ -1698,6 +1701,13 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
          String defaultDescription = fieldLabel + " for the " + table.getLabel() + ".";
          Schema fieldSchema        = getFieldSchema(field, defaultDescription, apiInstanceMetaData);
+         if(field instanceof QVirtualFieldMetaData)
+         {
+            ///////////////////////////////////////////////////////////////
+            // computed by the table: in responses only, never accepted //
+            ///////////////////////////////////////////////////////////////
+            fieldSchema.setReadOnly(true);
+         }
          tableFields.put(fieldName, fieldSchema);
       }
 

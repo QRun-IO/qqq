@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
@@ -81,7 +82,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
    public static Map<String, QFieldMetaData> getTableApiFieldMap(GetTableApiFieldsInput input) throws QException
    {
       String         userId = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
-      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource());
+      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource(), input.getIncludeVirtualFields());
 
       return fieldMapMemoization.getResultThrowing(key, k ->
       {
@@ -118,7 +119,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
    public static List<QFieldMetaData> getTableApiFieldList(GetTableApiFieldsInput input) throws QException
    {
       String         userId = ObjectUtils.tryElse(() -> QContext.getQSession().getUser().getIdReference(), null);
-      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource());
+      MemoizationKey key    = new MemoizationKey(input.getApiName(), input.getVersion(), input.getTableName(), userId, input.getInputSource(), input.getIncludeVirtualFields());
 
       return fieldListMemoization.getResultThrowing(key, k -> (new GetTableApiFieldsAction().execute(input).getFields())).orElse(null);
    }
@@ -129,7 +130,7 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
     * memoization key.  Adds both userId and inputSource, as those are the
     * expected "keys" that would be used within a table personalizer.
     ***************************************************************************/
-   private record MemoizationKey(String apiName, String apiVersion, String tableName, String userId, InputSource inputSource)
+   private record MemoizationKey(String apiName, String apiVersion, String tableName, String userId, InputSource inputSource, boolean includeVirtualFields)
    {
 
    }
@@ -180,6 +181,23 @@ public class GetTableApiFieldsAction extends AbstractQActionFunction<GetTableApi
          if(ApiFieldUtils.isIncluded(input.getApiName(), field) && ApiFieldUtils.getApiVersionRangeForRemovedField(input.getApiName(), field).includes(version))
          {
             fields.add(field);
+         }
+      }
+
+      //////////////////////////////////////////////////////////////////////////////
+      // virtual fields, when asked for: only those explicitly given api field   //
+      // meta data for this api (see ApiFieldUtils.isVirtualFieldIncluded), and //
+      // in this version. Their values come from the records (e.g. a post-query  //
+      // customizer); they are output-only.                                      //
+      //////////////////////////////////////////////////////////////////////////////
+      if(input.getIncludeVirtualFields())
+      {
+         for(QVirtualFieldMetaData field : CollectionUtils.nonNullMap(table.getVirtualFields()).values())
+         {
+            if(ApiFieldUtils.isVirtualFieldIncluded(input.getApiName(), field) && ApiFieldUtils.getApiVersionRange(input.getApiName(), field).includes(version))
+            {
+               fields.add(field);
+            }
          }
       }
 

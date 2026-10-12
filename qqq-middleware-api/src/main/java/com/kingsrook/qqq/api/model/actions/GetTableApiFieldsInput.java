@@ -39,6 +39,13 @@ public class GetTableApiFieldsInput extends AbstractTableActionInput
    /////////////////////////////////////////////////////////////////////////////////////
    private Boolean doCheckTableApiVersion = true;
 
+   //////////////////////////////////////////////////////////////////////////////////
+   // virtual fields (computed by the table, e.g. in a POST_QUERY_RECORD customizer) //
+   // are output-only: they are listed only when the caller asks (record output and  //
+   // response schemas), never for input, filtering or sorting.                      //
+   //////////////////////////////////////////////////////////////////////////////////
+   private boolean includeVirtualFields = false;
+
 
 
    /*******************************************************************************
@@ -140,6 +147,38 @@ public class GetTableApiFieldsInput extends AbstractTableActionInput
    public GetTableApiFieldsInput withDoCheckTableApiVersion(Boolean doCheckTableApiVersion)
    {
       this.doCheckTableApiVersion = doCheckTableApiVersion;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for includeVirtualFields
+    *******************************************************************************/
+   public boolean getIncludeVirtualFields()
+   {
+      return (this.includeVirtualFields);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for includeVirtualFields
+    *******************************************************************************/
+   public void setIncludeVirtualFields(boolean includeVirtualFields)
+   {
+      this.includeVirtualFields = includeVirtualFields;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for includeVirtualFields: also list the table's virtual fields
+    ** that have explicit api field meta data for this api (output-only).
+    *******************************************************************************/
+   public GetTableApiFieldsInput withIncludeVirtualFields(boolean includeVirtualFields)
+   {
+      this.includeVirtualFields = includeVirtualFields;
       return (this);
    }
 

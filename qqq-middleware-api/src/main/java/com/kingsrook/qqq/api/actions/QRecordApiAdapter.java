@@ -152,7 +152,8 @@ public class QRecordApiAdapter
    {
       Map<String, ApiFieldCustomValueMapper> fieldValueMappers = new HashMap<>();
 
-      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName));
+      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName)
+         .withIncludeVirtualFields(true));
       for(QFieldMetaData field : tableApiFields)
       {
          ApiFieldMetaData apiFieldMetaData = ObjectUtils.tryAndRequireNonNullElse(() -> ApiFieldMetaDataContainer.of(field).getApiFieldMetaData(apiName), new ApiFieldMetaData());
@@ -196,7 +197,8 @@ public class QRecordApiAdapter
       String apiName    = input.getApiName();
       String tableName  = input.getTableName();
 
-      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName));
+      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName)
+         .withIncludeVirtualFields(true));
       if(fieldValueMappers == null)
       {
          fieldValueMappers = new HashMap<>();

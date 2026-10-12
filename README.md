@@ -22,9 +22,9 @@ Write Java for custom behavior while sharing metadata across the configured back
 - **Multiple interfaces** - REST API, CLI, Lambda handlers from same codebase
 - **Extensible** - Custom actions, widgets, and integrations when needed
 
-## Quick Start — 4.1 RC1
+## Quick Start — 4.1 RC
 
-This branch targets QQQ **4.1.0-RC.1** with Next **1.0.0-RC.11**. Confirm availability in the [RC1 release](https://github.com/QRun-IO/qqq/releases/tag/v4.1.0-RC.1) before installing. This is a prerelease with [known Next limitations](https://github.com/QRun-IO/qqq-frontend-next/releases/tag/v1.0.0-RC.11), including browser and feature parity gaps. For the stable release, use the [4.0.0 instructions](https://github.com/QRun-IO/qqq/blob/v4.0.0/README.md).
+The newest 4.1 candidate is QQQ **4.1.0-RC.3** with Next **1.0.0-RC.11** (tag [`v4.1.0-RC.3`](https://github.com/QRun-IO/qqq/tree/v4.1.0-RC.3)). The quickstart below still uses the RC.1 sample ref, `quickstart-4.1.0-RC.1`, which compiles against 4.1.0-RC.1; an RC.3 quickstart ref has not been cut. This is a prerelease with [known Next limitations](https://github.com/QRun-IO/qqq-frontend-next/releases/tag/v1.0.0-RC.11), including browser and feature parity gaps. For the stable release, use the [4.0.0 instructions](https://github.com/QRun-IO/qqq/blob/v4.0.0/README.md).
 
 **Prerequisites:** JDK 21+, Git, curl and unzip; Bash on macOS, Linux, or Windows WSL. Maven is downloaded automatically by the checked-in Maven Wrapper. No Node.js or Docker is needed.
 
@@ -35,7 +35,7 @@ bash quickstart.sh
 
 The script checks prerequisites, clones editable sample source into `qqq-sample`, compiles it against published QQQ 4.1.0-RC.1, and opens the Next dashboard at <http://localhost:8000/app/person>. One Java process serves both the API and the dashboard; port 8000 must be free. Seeded H2 data needs no external database or account. Press Ctrl+C to stop; edit the Java source and run `./quickstart.sh` inside the checkout to rebuild and restart. Data resets on restart. Run `QQQ_FRONTEND=material bash quickstart.sh` to open the Material Dashboard instead. See the [sample instructions](qqq-sample-project/README.md) for the walkthrough and logs.
 
-Use the 4.1.0-RC.1 BOM below to align modules, including the default dashboard, in your own application. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc).
+Use the 4.1.0-RC.3 BOM below to align modules, including the default dashboard, in your own application. Migrating an existing application requires the [4.0 migration guide](docs/migration/4.0.adoc); for the 4.1 features, see [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
 
 ```xml
 <dependencyManagement>
@@ -43,7 +43,7 @@ Use the 4.1.0-RC.1 BOM below to align modules, including the default dashboard, 
         <dependency>
             <groupId>com.kingsrook.qqq</groupId>
             <artifactId>qqq-bom-pom</artifactId>
-            <version>4.1.0-RC.1</version>
+            <version>4.1.0-RC.3</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>

@@ -37,7 +37,7 @@ mvn verify
 
 **Before submitting this PR, please ensure:**
 
-- [ ] **Code Style**: Follows QQQ's [Code Review Standards](https://github.com/Kingsrook/qqq/wiki/Code-Review-Standards)
+- [ ] **Code Style**: Follows QQQ's [Code Review Standards](https://github.com/QRun-IO/qqq/wiki/Code-Review-Standards)
 - [ ] **Tests**: All tests pass with required coverage
 - [ ] **Documentation**: Updated relevant wiki pages and code comments
 - [ ] **Breaking Changes**: Documented any breaking changes
@@ -47,10 +47,10 @@ mvn verify
 ## 🔗 Related Resources
 
 **Documentation:**
-- **📖 [Complete Documentation Wiki](https://github.com/Kingsrook/qqq/wiki)** - Start here for comprehensive guides
-- **🔍 [Code Review Standards](https://github.com/Kingsrook/qqq/wiki/Code-Review-Standards)** - QQQ's coding standards
-- **🧪 [Testing Guide](https://github.com/Kingsrook/qqq/wiki/Testing)** - Testing requirements and strategy
-- **🔧 [Feature Development](https://github.com/Kingsrook/qqq/wiki/Feature-Development)** - How to extend QQQ
+- **📖 [Complete Documentation Wiki](https://github.com/QRun-IO/qqq/wiki)** - Start here for comprehensive guides
+- **🔍 [Code Review Standards](https://github.com/QRun-IO/qqq/wiki/Code-Review-Standards)** - QQQ's coding standards
+- **🧪 [Testing Guide](https://github.com/QRun-IO/qqq/wiki/Testing)** - Testing requirements and strategy
+- **🔧 [Feature Development](https://github.com/QRun-IO/qqq/wiki/Feature-Development)** - How to extend QQQ
 
 ## 📊 Additional Information
 

@@ -11,6 +11,8 @@ The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.
 Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
 
 ### Security
+- Upgrade jsoup from 1.23.1 to 1.23.2 for GHSA-65r4-943x-97jj, and manage RabbitMQ AMQP client at 5.37.0
+  (previously 5.35.0 via RabbitMQ JMS 3.9.0) for GHSA-7822-rcf6-97fx and GHSA-cqgh-8p3p-mx4m.
 - **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
   [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
   `InsertAction`, `UpdateAction`, `DeleteAction`, `ReplaceAction`, `ExportAction`, `RunProcessAction`,

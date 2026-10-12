@@ -123,6 +123,7 @@ The [Material Dashboard](https://github.com/QRun-IO/qqq-frontend-material-dashbo
 - **Coordinates:** group `com.kingsrook.qqq` on Maven Central. Import `qqq-bom-pom` and omit module versions. Stable is `4.0.0`; the newest 4.1 candidate is `4.1.0-RC.3`. Pin an exact version.
 - **From 0.x:** follow the [4.0 migration guide](docs/migration/4.0.adoc) first.
 - **4.1 features:** [Adopting QQQ 4.1 features](docs/migration/4.1.adoc) covers record search providers, OAuth2 refresh tokens (new table and encryption-key secret), the `FILE_PREVIEW` adornment, the instance home app and the upgrade notes from 4.0.
+- **Checklist:** the [adoption checklist](docs/migration/adoption-checklist.adoc) walks an existing 0.x app through adopting 4.1, Next and the new QBits, one feature at a time.
 - **Limitations:** 4.1 candidates carry the accepted limitations in the [4.1 release procedure](docs/release/4.1.adoc).
 
 ## Project Status

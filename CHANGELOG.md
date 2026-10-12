@@ -7,6 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-RC.5] — candidate (2026-10-12)
+
+Same Next pairing as RC.4 (`1.0.0-RC.14`, BOM-managed). **Breaking for code that touches AWS SDK types:** the S3 backend
+moves to AWS SDK for Java v2 (see Changed and [Adopting QQQ 4.1 features](docs/migration/4.1.adoc)).
+
+### Security
+- **System sessions no longer lose their all-access keys ([#1101](https://github.com/QRun-IO/qqq/pull/1101))** — `QSystemUserSession`
+  cached the all-access key names JVM-wide on first use; a system session created against a keyless example instance at
+  Javalin startup could prime it empty, after which system writes to record-locked tables failed. Keys are now computed
+  from the intended instance per session; new `QSystemUserSession(QInstance)` constructor; schedulers install the
+  instance before creating sessions.
+- Upgrade jsoup from 1.23.1 to 1.23.2 for GHSA-65r4-943x-97jj, and manage RabbitMQ AMQP client at 5.37.0
+  (previously 5.35.0 via RabbitMQ JMS 3.9.0) for GHSA-7822-rcf6-97fx and GHSA-cqgh-8p3p-mx4m.
+
+### Changed
+- **Create/Modify Date fields are non-editable by default ([#1103](https://github.com/QRun-IO/qqq/pull/1103))** — `QInstanceEnricher` marks table
+  fields with the `CREATE_DATE`/`MODIFY_DATE` dynamic default behavior `isEditable=false`;
+  `withConfigMakeSystemDateFieldsNonEditable(false)` restores the old behavior. Server-side writes are unaffected.
+- **S3 backend moves to AWS SDK for Java v2 (breaking for code that touches SDK types)** — AWS SDK for Java v1 reached
+  end of support on 2025-12-31, so `qqq-backend-module-filesystem` now uses `software.amazon.awssdk:s3` (v2, via the
+  same `2.41.10` BOM as core) and no longer depends on `com.amazonaws:aws-java-sdk-s3`. Public type changes:
+  `S3Utils.getAmazonS3()`/`setAmazonS3(AmazonS3)` are replaced by `getS3Client()`/`setS3Client(S3Client)`;
+  `AbstractS3Action.buildAmazonS3ClientFromBackendMetaData` is now `buildS3ClientFromBackendMetaData` (returns a shared,
+  cached `S3Client` — do not close it); the S3 "file" type (`AbstractBaseFilesystemAction<FILE>`, `listFiles`,
+  `listObjectsInBucketMatchingGlob`, `getObjectAsInputStream`) is now QQQ's own
+  `com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary` (same getters, but `getLastModified()` returns
+  an `Instant`); `S3UploadOutputStream` takes an `S3Client`; SDK exceptions surface as v2 types (`S3Exception`,
+  `SdkClientException`) instead of `AmazonS3Exception` / `AmazonClientException`. Apps that only declare
+  `S3BackendMetaData` and use QQQ actions need no code change; apps that relied on the v1 SDK arriving transitively
+  must now declare it themselves.
+- **S3-compatible stores** — `S3BackendMetaData` gains `endpoint`, `pathStyleAccess`, `checksumMode`, `tlsVerify`,
+  `caCertificatesPem`, `connectTimeoutMillis`, `socketTimeoutMillis` and `maxListedObjects`, so the backend works with
+  MinIO, Garage, Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, Ceph RGW and others, not only AWS. With an
+  `endpoint` set, `checksumMode` defaults to `WHEN_REQUIRED`, because the SDK v2 2.30+ default (`WHEN_SUPPORTED`,
+  trailing CRC32 checksums) breaks several S3-compatible stores. Clients are built and cached per distinct settings by
+  the new `S3ClientFactory`. Timeouts default to 10 s connect / 50 s socket (the v1 defaults).
+- **Capped S3 listings** — a listing that matches more than `maxListedObjects` objects (default 100,000) now fails with
+  a clear `FilesystemException` instead of loading the whole result into memory. Raise the value on the backend, or set
+  zero or a negative number to disable the cap.
+- **`S3StorageAction.makePublic`** still uses an object ACL, but its error now says to use a bucket policy where the
+  bucket or store does not support object ACLs (new AWS buckets, R2, Garage).
+- **Tests** — the S3 module's tests run against MinIO (Testcontainers) instead of LocalStack.
+
+### Added
+- **API virtual fields ([#1092](https://github.com/QRun-IO/qqq/pull/1092))** — a virtual (computed) field with explicit api field meta data
+  (and an `initialVersion`) is now emitted in API record output and as a `readOnly` property in the OpenAPI schema. It
+  never appears in request bodies, filters, `orderBy` or counts. Opt in per lookup with
+  `GetTableApiFieldsInput.withIncludeVirtualFields(true)`; existing callers are unchanged.
+- **Record picker for large possible value sources ([#1099](https://github.com/QRun-IO/qqq/pull/1099))** — `QPossibleValuePicker` on a
+  table-type `QPossibleValueSource` declares a searchable, filterable, paged picker; `SearchPossibleValueSourceAction`
+  serves picker requests; the v1 possible-values body accepts a `picker` object and the response adds `values`,
+  `displayValues` and `hasMore`; v1 field metadata carries `picker` and `pickerTableName`. See
+  [Record Picker](docs/misc/RecordPicker.adoc). Next UI renders it from the RC.16 line.
+- **Too-long behavior and rejecting value ranges for frontends ([#1100](https://github.com/QRun-IO/qqq/pull/1100))** — `ValueTooLongBehavior`
+  is listed in a field's frontend `behaviors`, and frontend/v1 field metadata gain `minValue`/`maxValue` from a
+  `ValueRangeBehavior` whose bound rejects (`ERROR`) and is inclusive.
+- **Audit record screens, opt-in ([#1103](https://github.com/QRun-IO/qqq/pull/1103))** — `AuditsMetaDataProvider.withDefineRecordScreens(true)`
+  (or `defineStandardAuditScreens` after `defineAll`) gives audit records named sections, Table/User labels and a Field
+  Changes child list.
+- **AI tool registry ([#1096](https://github.com/QRun-IO/qqq/pull/1096))** — `AiToolRegistry` supplemental meta-data lets qbits register
+  `READ` and `NAVIGATION` `AbstractAiTool`s that every `AiToolKernel` over the instance offers next to the built-ins, on
+  the same permission-checked path. `WRITE_PROPOSAL` tools and names shadowing built-ins are refused.
+- **`StartOfPeriod` filter expression ([#1115](https://github.com/QRun-IO/qqq/pull/1115))** — the start of the current period (day, week,
+  month, quarter, year) in the session's time zone, for date filters and presets.
+- **Public-internet APIs (`qqq-middleware-api`)** — `ApiInstanceMetaData.httpPolicy` (`ApiHttpPolicy`): anonymous
+  `GET`/`HEAD` 200s get shared-cache headers (`Cache-Control` with `s-maxage`, `stale-while-revalidate`,
+  `stale-if-error`; RFC 9213 `CDN-Cache-Control`), a weak `ETag` and `304` on `If-None-Match`; everything else is
+  `private, no-store`. CORS: public reads `Access-Control-Allow-Origin: *` without credentials or `Vary`, other requests
+  only for the allowed origins; preflights answer 204. `publicPath` (spec paths, docs page and its assets when a proxy
+  maps the mount path), `semanticVersions` (spec `info.version`, `versions.json`), `allowsAnonymousAccess` (optional
+  security in the spec). Instances without a policy behave as before.
+- **Scoped authentication modules** — `QAuthenticationMetaData.moduleCodeReference` names the module class for a
+  provider (new type `CUSTOM` requires one), so an API scope can use an application's module;
+  `QAuthenticationModuleInterface.createSession(instance, metaData, context)` receives the resolved provider.
+- **API processes** — `HttpApiResponse.headers`; request metadata (`ApiProcessUtils.REQUEST_REMOTE_ADDRESS`,
+  `REQUEST_FORWARDED_FOR`, `REQUEST_USER_AGENT`) in every API process run's values.
+- **Alerts producer SPI ([#1108](https://github.com/QRun-IO/qqq/pull/1108); design #1090)** — `QAlerts.raise` / `resolve` /
+  `heartbeat` let any qbit or app report "a person should do something" with no dependency beyond core.
+  `QAlertTypeMetaData` declares alert types (validated, stored in the supplemental `AlertsInstanceMetaData`), and
+  `AlertProcessMetaData` gives any process "alert when this fails" and "alert when this didn't run" by meta-data. Calls
+  never throw into the caller, are deferred until the transaction commits (dropped on rollback), and go to a
+  rate-limited `LoggingAlertSink` unless an alerts implementation (such as `qbit-alerts`) registers its sink. See
+  [Alerts](docs/misc/Alerts.adoc).
+- **Webhook signing and an SSRF-safe HTTP client ([#1109](https://github.com/QRun-IO/qqq/pull/1109))** — `utils.webhooks`
+  signs and verifies in the Standard Webhooks format (`webhook-id`/`-timestamp`/`-signature`, HMAC-SHA256, multi-secret
+  rotation, 5-minute tolerance, constant-time compare). `utils.http.SafeHttpClient` sends to user-entered URLs: HTTPS
+  only by default, private/loopback/link-local/metadata and other reserved ranges refused (every DNS answer checked and
+  the connection pinned to them), redirects never followed, TLS 1.2+, timeouts and a response size cap, with an
+  admin-only allowlist. Shared by qbit-webhooks, alerts and CDN (qbit-webhooks design D2). See
+  [Webhook Signing and Safe HTTP](docs/utilities/WebhookSigningAndSafeHttp.adoc). httpclient 4.5.14 / httpcore 4.4.16
+  are declared explicitly.
+
+### Fixed
+- **Table sync ([#1097](https://github.com/QRun-IO/qqq/pull/1097))** — overriding `SYNC_TABLE_PERFORM_UPDATES_KEY` no longer replaces
+  `performInserts`, and records skipped because inserts or updates are disabled are counted on the right summary line.
+- **`ThisOrLastPeriod` across DST ([#1115](https://github.com/QRun-IO/qqq/pull/1115))** — period boundaries no longer shift by an hour
+  when the range crosses a daylight-saving change.
+- OpenAPI: insert/update operation flags were swapped; field-security-locked fields were dropped from the published
+  model; processes without an output threw; the schema closure never ended when an association child had its own API
+  table name (the spec request hung). Required fields are noted in descriptions.
+- API: an empty association array (`"lines": []`) on update now clears the child list; process input values were lost
+  for fields with a `backendName`; an empty process body is no values and a non-object body a `400`; JSON responses
+  carry `Content-Type: application/json`; the `POST_RUN` process customizer declared the wrong interface.
+
+## [4.1.0-RC.4] — candidate (2026-10-12)
+
+
 The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.11` to `1.0.0-RC.14`; the 4.1.0-RC.4
 Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
 

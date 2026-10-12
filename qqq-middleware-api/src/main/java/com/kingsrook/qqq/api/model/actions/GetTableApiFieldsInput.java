@@ -39,6 +39,19 @@ public class GetTableApiFieldsInput extends AbstractTableActionInput
    /////////////////////////////////////////////////////////////////////////////////////
    private Boolean doCheckTableApiVersion = true;
 
+   //////////////////////////////////////////////////////////////////////////////////
+   // virtual fields (computed by the table, e.g. in a POST_QUERY_RECORD customizer) //
+   // are output-only: they are listed only when the caller asks (record output and  //
+   // response schemas), never for input, filtering or sorting.                      //
+   //////////////////////////////////////////////////////////////////////////////////
+   private boolean includeVirtualFields = false;
+
+   ///////////////////////////////////////////////////////////////////////////
+   // building the published spec: list every field of the model, including //
+   // ones a field security lock hides from some sessions.                   //
+   ///////////////////////////////////////////////////////////////////////////
+   private boolean forSpecification = false;
+
 
 
    /*******************************************************************************
@@ -145,6 +158,38 @@ public class GetTableApiFieldsInput extends AbstractTableActionInput
 
 
 
+   /*******************************************************************************
+    ** Getter for includeVirtualFields
+    *******************************************************************************/
+   public boolean getIncludeVirtualFields()
+   {
+      return (this.includeVirtualFields);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for includeVirtualFields
+    *******************************************************************************/
+   public void setIncludeVirtualFields(boolean includeVirtualFields)
+   {
+      this.includeVirtualFields = includeVirtualFields;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for includeVirtualFields: also list the table's virtual fields
+    ** that have explicit api field meta data for this api (output-only).
+    *******************************************************************************/
+   public GetTableApiFieldsInput withIncludeVirtualFields(boolean includeVirtualFields)
+   {
+      this.includeVirtualFields = includeVirtualFields;
+      return (this);
+   }
+
+
+
    /***************************************************************************
     *
     ***************************************************************************/
@@ -152,6 +197,38 @@ public class GetTableApiFieldsInput extends AbstractTableActionInput
    public GetTableApiFieldsInput withInputSource(InputSource inputSource)
    {
       super.withInputSource(inputSource);
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for forSpecification
+    *******************************************************************************/
+   public boolean getForSpecification()
+   {
+      return (this.forSpecification);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for forSpecification
+    *******************************************************************************/
+   public void setForSpecification(boolean forSpecification)
+   {
+      this.forSpecification = forSpecification;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for forSpecification: list the fields of the model for the
+    ** published spec, without removing fields a field security lock denies to
+    ** the current (often absent) session.
+    *******************************************************************************/
+   public GetTableApiFieldsInput withForSpecification(boolean forSpecification)
+   {
+      this.forSpecification = forSpecification;
       return (this);
    }
 }

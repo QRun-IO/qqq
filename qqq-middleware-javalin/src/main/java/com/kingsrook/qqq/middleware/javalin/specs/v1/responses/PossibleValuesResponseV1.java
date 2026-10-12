@@ -21,7 +21,9 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 
 
+import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.middleware.javalin.executors.io.PossibleValuesOutputInterface;
@@ -39,6 +41,9 @@ public class PossibleValuesResponseV1 implements PossibleValuesOutputInterface, 
    @OpenAPIDescription("List of possible value options matching the search request")
    @OpenAPIListItems(value = PossibleValueOption.class, useRef = true)
    private List<PossibleValueOption> options;
+
+   @OpenAPIDescription("For a picker request: whether another page of options follows (the picker never counts)")
+   private Boolean hasMore;
 
 
 
@@ -79,4 +84,43 @@ public class PossibleValuesResponseV1 implements PossibleValuesOutputInterface, 
       return (this.options);
    }
 
+
+
+   /*******************************************************************************
+    ** Attach picker display values to the options, by id.
+    *******************************************************************************/
+   @Override
+   public void setPickerValues(Map<Serializable, Map<String, Serializable>> values, Map<Serializable, Map<String, String>> displayValues)
+   {
+      if(options == null)
+      {
+         return;
+      }
+      for(PossibleValueOption option : options)
+      {
+         option.setValues(values == null ? null : values.get(option.getId()));
+         option.setDisplayValues(displayValues == null ? null : displayValues.get(option.getId()));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hasMore
+    *******************************************************************************/
+   @Override
+   public void setHasMore(Boolean hasMore)
+   {
+      this.hasMore = hasMore;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hasMore
+    *******************************************************************************/
+   public Boolean getHasMore()
+   {
+      return (this.hasMore);
+   }
 }

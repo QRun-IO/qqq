@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
@@ -51,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemRunPro
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubList;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
@@ -317,9 +319,10 @@ class TableMetaDataSpecV1Test extends SpecTestBase
          assertEquals(12, field.getInt("gridColumns"));
 
          /////////////////////////////////////////////////////////////////////////////
-         // only behaviors a frontend applies are listed (not the backend-only ones) //
+         // only behaviors a frontend uses are listed (not the backend-only ones); the //
+         // too-long behavior is one, so a form can cap typing or note trimming        //
          /////////////////////////////////////////////////////////////////////////////
-         assertThat(field.getJSONArray("behaviors").toList()).containsExactlyInAnyOrder("TO_UPPER_CASE", "TRIM");
+         assertThat(field.getJSONArray("behaviors").toList()).containsExactlyInAnyOrder("TO_UPPER_CASE", "TRIM", "TRUNCATE");
 
          assertFalse(fields.getJSONObject("lastName").has("gridColumns"));
          assertFalse(fields.getJSONObject("lastName").has("behaviors"));
@@ -327,6 +330,34 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          firstName.setGridColumns(originalGridColumns);
+         firstName.setBehaviors(originalBehaviors);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** a number field's range is published (as plain digits) only when its value
+    ** range behavior rejects values outside it, so a form can say so up front.
+    *******************************************************************************/
+   @Test
+   void testFieldValueRange()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Set<FieldBehavior<?>> originalBehaviors = firstName.getBehaviors();
+      try
+      {
+         firstName.setBehaviors(new LinkedHashSet<>(List.of(new ValueRangeBehavior().withMinValue(1).withMaxValue(120).withMaxBehavior(ValueRangeBehavior.Behavior.CLIP))));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         assertEquals("1", fields.getJSONObject("firstName").getString("minValue"));
+         assertFalse(fields.getJSONObject("firstName").has("maxValue"));
+         assertFalse(fields.getJSONObject("lastName").has("minValue"));
+      }
+      finally
+      {
          firstName.setBehaviors(originalBehaviors);
       }
    }
@@ -493,6 +524,34 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          TestUtils.TablePersonalizer.unregister(serverQInstance);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A field whose possible value source declares a picker carries the picker
+    ** and its table in table meta data; other fields carry neither.
+    *******************************************************************************/
+   @Test
+   void testFieldPicker()
+   {
+      QPossibleValueSource source = serverQInstance.getPossibleValueSource(TestUtils.TABLE_NAME_PERSON);
+      source.setPicker(new QPossibleValuePicker().withThumbnailField("email").withSort("Newest", "id", false));
+      try
+      {
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields  = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONObject partner = fields.getJSONObject("partnerPersonId");
+         assertEquals("email", partner.getJSONObject("picker").getString("thumbnailField"));
+         assertEquals("Newest", partner.getJSONObject("picker").getJSONArray("sorts").getJSONObject(0).getString("label"));
+         assertEquals("person", partner.getString("pickerTableName"));
+         assertFalse(fields.getJSONObject("firstName").has("picker"));
+      }
+      finally
+      {
+         source.setPicker(null);
       }
    }
 }

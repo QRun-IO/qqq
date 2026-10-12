@@ -398,4 +398,24 @@ class QRecordApiAdapterTest extends BaseTest
       assertThat(apiVersionedRecordsWithExtrinsicsAndLinesOlderVersion).allMatch(r -> r.getValue(TestUtils.TABLE_NAME_LINE_ITEM + ".lineNumber") == null);
    }
 
+
+
+   /*******************************************************************************
+    ** An empty association array names the association (an update then clears
+    ** the child list); an omitted key does not.
+    *******************************************************************************/
+   @Test
+   void emptyAssociationArrayIsKept() throws QException
+   {
+      QRecord cleared = QRecordApiAdapter.apiJsonObjectToQRecord(new JSONObject("""
+         {"orderNo": "ORD1", "orderLines": []}
+         """), TestUtils.TABLE_NAME_ORDER, TestUtils.API_NAME, TestUtils.V2023_Q1, false);
+      assertTrue(cleared.getAssociatedRecords().containsKey("orderLines"));
+      assertTrue(cleared.getAssociatedRecords().get("orderLines").isEmpty());
+
+      QRecord untouched = QRecordApiAdapter.apiJsonObjectToQRecord(new JSONObject("""
+         {"orderNo": "ORD1"}
+         """), TestUtils.TABLE_NAME_ORDER, TestUtils.API_NAME, TestUtils.V2023_Q1, false);
+      assertTrue(untouched.getAssociatedRecords() == null || !untouched.getAssociatedRecords().containsKey("orderLines"));
+   }
 }

@@ -176,6 +176,7 @@ public class TablePossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleValu
          input.setSearchTerm(PossibleValuesSpecUtils.extractStringField(requestBody, "searchTerm"));
          input.setIdList(PossibleValuesSpecUtils.extractIdList(requestBody));
          input.setLabelList(PossibleValuesSpecUtils.extractLabelList(requestBody));
+         PossibleValuesSpecUtils.applyPickerRequest(requestBody, input);
       }
 
       input.setPathParams(context.pathParamMap());

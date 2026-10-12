@@ -255,7 +255,7 @@ public abstract class AbstractTableSyncTransformStep extends AbstractTransformSt
       if(runBackendStepInput.getValueString(SYNC_TABLE_PERFORM_UPDATES_KEY) != null)
       {
          boolean performUpdates = Boolean.parseBoolean(runBackendStepInput.getValueString(SYNC_TABLE_PERFORM_UPDATES_KEY));
-         config = new SyncProcessConfig(config.sourceTable, config.sourceTableKeyField, config.destinationTable, config.destinationTableForeignKey, config.performUpdates, performUpdates);
+         config = new SyncProcessConfig(config.sourceTable, config.sourceTableKeyField, config.destinationTable, config.destinationTableForeignKey, config.performInserts, performUpdates);
       }
       String sourceTableKeyField             = config.sourceTableKeyField;
       String destinationTableForeignKeyField = config.destinationTableForeignKey;
@@ -356,12 +356,12 @@ public abstract class AbstractTableSyncTransformStep extends AbstractTransformSt
                if(existingRecord != null)
                {
                   LOG.debug("Skipping storing existing record because this sync process is set to not perform updates");
-                  willNotInsert.incrementCountAndAddPrimaryKey(sourcePrimaryKey);
+                  willNotUpdate.incrementCountAndAddPrimaryKey(sourcePrimaryKey);
                }
                else
                {
                   LOG.debug("Skipping storing new record because this sync process is set to not perform inserts");
-                  willNotUpdate.incrementCountAndAddPrimaryKey(sourcePrimaryKey);
+                  willNotInsert.incrementCountAndAddPrimaryKey(sourcePrimaryKey);
                }
                continue;
             }

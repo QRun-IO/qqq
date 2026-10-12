@@ -27,7 +27,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.actions.ai.exposure.AiExposurePolicy;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiDataEnvelope;
@@ -78,8 +80,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  **
  ** The tool set is generic and stable (list_tables, describe_table,
  ** query_records, count_records, get_record, search_records,
- ** get_record_history, render_widget, search_help, navigate): the same
- ** definitions for every user, so they cache well.  Permissions are applied
+ ** get_record_history, render_widget, search_help, navigate), plus any READ
+ ** or NAVIGATION tools that qbits contribute through {@link AiToolRegistry}:
+ ** the same definitions for every user, so they cache well.  Permissions are applied
  ** when a tool runs, as the requesting user - never a system session:
  **
  ** 1. QContext is set up for the user's session (and the caller's context is
@@ -127,12 +130,58 @@ public class AiToolKernel
       this.redactor = new AiRedactor(this.settings.getCustomRedactionPatterns());
 
       Map<String, AbstractAiTool> tools = new TreeMap<>();
-      for(AbstractAiTool tool : List.of(new ListTablesTool(), new DescribeTableTool(), new QueryRecordsTool(), new CountRecordsTool(), new GetRecordTool(),
-         new SearchRecordsTool(), new GetRecordHistoryTool(), new RenderWidgetTool(), new SearchHelpTool(), new NavigateTool()))
+      for(AbstractAiTool tool : builtInTools())
       {
          tools.put(tool.getName(), tool);
       }
+
+      //////////////////////////////////////////////////////////////////////
+      // tools contributed by qbits / the application (AiToolRegistry).   //
+      // registration already restricts them to READ and NAVIGATION; a    //
+      // contributed tool never replaces a built-in one (the validator    //
+      // reports such a collision as an instance error).                  //
+      //////////////////////////////////////////////////////////////////////
+      AiToolRegistry registry = qInstance == null ? null : AiToolRegistry.of(qInstance);
+      if(registry != null)
+      {
+         for(Map.Entry<String, AbstractAiTool> entry : registry.getTools().entrySet())
+         {
+            if(tools.containsKey(entry.getKey()))
+            {
+               LOG.warn("Ignoring contributed AI tool with a built-in tool's name", logPair("toolName", entry.getKey()));
+               continue;
+            }
+            tools.put(entry.getKey(), entry.getValue());
+         }
+      }
       this.toolsByName = Collections.unmodifiableMap(tools);
+   }
+
+
+
+   /*******************************************************************************
+    ** New instances of the built-in tools.
+    *******************************************************************************/
+   private static List<AbstractAiTool> builtInTools()
+   {
+      return (List.of(new ListTablesTool(), new DescribeTableTool(), new QueryRecordsTool(), new CountRecordsTool(), new GetRecordTool(),
+         new SearchRecordsTool(), new GetRecordHistoryTool(), new RenderWidgetTool(), new SearchHelpTool(), new NavigateTool()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The names of the built-in tools (sorted).  Contributed tools
+    ** (AiToolRegistry) may not use them.
+    *******************************************************************************/
+   public static Set<String> getBuiltInToolNames()
+   {
+      Set<String> names = new TreeSet<>();
+      for(AbstractAiTool tool : builtInTools())
+      {
+         names.add(tool.getName());
+      }
+      return (Collections.unmodifiableSet(names));
    }
 
 

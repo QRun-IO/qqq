@@ -155,6 +155,7 @@ public class StandalonePossibleValuesSpecV1 extends AbstractEndpointSpec<Possibl
          input.setSearchTerm(PossibleValuesSpecUtils.extractStringField(requestBody, "searchTerm"));
          input.setIdList(PossibleValuesSpecUtils.extractIdList(requestBody));
          input.setLabelList(PossibleValuesSpecUtils.extractLabelList(requestBody));
+         PossibleValuesSpecUtils.applyPickerRequest(requestBody, input);
       }
 
       input.setPathParams(context.pathParamMap());

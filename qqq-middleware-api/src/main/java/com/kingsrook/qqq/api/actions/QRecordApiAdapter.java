@@ -152,7 +152,8 @@ public class QRecordApiAdapter
    {
       Map<String, ApiFieldCustomValueMapper> fieldValueMappers = new HashMap<>();
 
-      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName));
+      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName)
+         .withIncludeVirtualFields(true));
       for(QFieldMetaData field : tableApiFields)
       {
          ApiFieldMetaData apiFieldMetaData = ObjectUtils.tryAndRequireNonNullElse(() -> ApiFieldMetaDataContainer.of(field).getApiFieldMetaData(apiName), new ApiFieldMetaData());
@@ -196,7 +197,8 @@ public class QRecordApiAdapter
       String apiName    = input.getApiName();
       String tableName  = input.getTableName();
 
-      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName));
+      List<QFieldMetaData> tableApiFields = GetTableApiFieldsAction.getTableApiFieldList(new GetTableApiFieldsInput().withApiName(apiName).withVersion(apiVersion).withTableName(tableName)
+         .withIncludeVirtualFields(true));
       if(fieldValueMappers == null)
       {
          fieldValueMappers = new HashMap<>();
@@ -446,6 +448,15 @@ public class QRecordApiAdapter
             Object      value       = jsonObject.get(jsonKey);
             if(value instanceof JSONArray jsonArray)
             {
+               ///////////////////////////////////////////////////////////////////////
+               // an empty array still names the association: on update it clears  //
+               // the child list (an omitted key leaves the children untouched)     //
+               ///////////////////////////////////////////////////////////////////////
+               if(qRecord.getAssociatedRecords() == null || !qRecord.getAssociatedRecords().containsKey(association.getName()))
+               {
+                  qRecord.withAssociatedRecords(association.getName(), new ArrayList<>());
+               }
+
                for(Object subObject : jsonArray)
                {
                   if(subObject instanceof JSONObject subJsonObject)

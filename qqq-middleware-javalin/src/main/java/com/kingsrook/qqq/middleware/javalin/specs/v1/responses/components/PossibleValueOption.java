@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.io.Serializable;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
@@ -37,6 +38,12 @@ public class PossibleValueOption implements ToSchema
 
    @OpenAPIDescription("Human-readable label for this possible value option")
    private String label;
+
+   @OpenAPIDescription("For a picker request: the option's picker display values (thumbnail, preview, subtitle and detail fields), raw")
+   private Map<String, Serializable> values;
+
+   @OpenAPIDescription("For a picker request: formatted or translated display values, where they differ from the raw values")
+   private Map<String, String> displayValues;
 
 
 
@@ -122,4 +129,65 @@ public class PossibleValueOption implements ToSchema
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for values
+    *******************************************************************************/
+   public Map<String, Serializable> getValues()
+   {
+      return (values);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for values
+    *******************************************************************************/
+   public void setValues(Map<String, Serializable> values)
+   {
+      this.values = values;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for values
+    *******************************************************************************/
+   public PossibleValueOption withValues(Map<String, Serializable> values)
+   {
+      this.values = values;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for displayValues
+    *******************************************************************************/
+   public Map<String, String> getDisplayValues()
+   {
+      return (displayValues);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for displayValues
+    *******************************************************************************/
+   public void setDisplayValues(Map<String, String> displayValues)
+   {
+      this.displayValues = displayValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for displayValues
+    *******************************************************************************/
+   public PossibleValueOption withDisplayValues(Map<String, String> displayValues)
+   {
+      this.displayValues = displayValues;
+      return (this);
+   }
 }

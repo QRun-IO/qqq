@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -33,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
@@ -204,6 +206,46 @@ public class FieldMetaData implements ToSchema
    // todo - PVS filter!!
 
    /***************************************************************************
+    ** The record picker declared by this field's possible value source, if any.
+    ***************************************************************************/
+   @OpenAPIDescription("When this field's possible value source declares a record picker (for sources over large tables), its configuration: thumbnail, preview, subtitle and detail fields, filter fields, search fields, sorts and page size.  Frontends offer a searchable, paged picker dialog.")
+   public QPossibleValuePicker getPicker()
+   {
+      QPossibleValueSource source = pickerSource();
+      return (source == null ? null : source.getPicker());
+   }
+
+
+
+   /***************************************************************************
+    ** The table behind this field's picker (for its field labels and types).
+    ***************************************************************************/
+   @OpenAPIDescription("When this field has a picker, the table its possible value source reads, whose metadata describes the picker's fields.")
+   public String getPickerTableName()
+   {
+      QPossibleValueSource source = pickerSource();
+      return (source == null ? null : source.getTableName());
+   }
+
+
+
+   /***************************************************************************
+    ** This field's possible value source, when it declares a picker.
+    ***************************************************************************/
+   private QPossibleValueSource pickerSource()
+   {
+      String name = getPossibleValueSourceName();
+      if(name == null || QContext.getQInstance() == null)
+      {
+         return (null);
+      }
+      QPossibleValueSource source = QContext.getQInstance().getPossibleValueSource(name);
+      return (source == null || source.getPicker() == null ? null : source);
+   }
+
+
+
+   /***************************************************************************
     ** Inline possible values declared on a field, as in frontend metadata.
     ***************************************************************************/
    @OpenAPIDescription("Inline possible-value source for this field; enumValues supply choices without a separate lookup.")
@@ -223,6 +265,40 @@ public class FieldMetaData implements ToSchema
       return (this.wrappedFull != null ? this.wrappedFull.getMaxLength() : this.wrappedFrontend.getMaxLength());
    }
 
+
+
+
+   /***************************************************************************
+    ** The smallest value a field accepts, when its value range rejects smaller
+    ** ones, so a form can say so before the user saves.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the smallest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMinValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMinValue() : this.wrappedFrontend.getMinValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** The largest value a field accepts, when its value range rejects larger
+    ** ones.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the largest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMaxValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMaxValue() : this.wrappedFrontend.getMaxValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** a bound as plain digits (a string, so a long or decimal keeps its exact value).
+    ***************************************************************************/
+   private static String rangeBound(Number bound)
+   {
+      return (bound == null ? null : new java.math.BigDecimal(bound.toString()).toPlainString());
+   }
 
 
 

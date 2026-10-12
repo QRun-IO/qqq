@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.amazonaws.regions.Regions;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.QuickSightChartRenderer;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -369,7 +368,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
          .withSecretKey(secretKey)
          .withUserArn(userArn)
          .withDashboardId("9e452e78-8509-4c81-bb7f-967abfc356da")
-         .withRegion(Regions.US_EAST_2.getName())
+         .withRegion("us-east-2")
          .withName(QuickSightChartRenderer.class.getSimpleName())
          .withLabel("Example Quicksight Chart")
          .withCodeReference(new QCodeReference(QuickSightChartRenderer.class));

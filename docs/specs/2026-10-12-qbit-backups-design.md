@@ -165,7 +165,7 @@ All tables:
 - are in the app's configured backend (`getDefaultBackendNameForTables`)
 - are role `BACKUPS`.
 
-**Naming (owner rule, 2026-10-12).** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table in this qbit is `backups_<name>` in lowercase snake_case, including the restore tables (`backups_restore_run`, `backups_restore_run_table`); the QQQ table name and the backend (SQL) name are identical, and possible-value sources take the table name. Other qbits' tables are referenced by their prefixed names (`object_storage_*`, `alerts_*`, `cdn_*`). Field, process, permission and Java class names are unchanged.
+**Naming (owner rule, 2026-10-12).** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table in this qbit is `backups_<name>` in lowercase snake_case, including the restore tables (`backups_restore_run`, `backups_restore_run_table`); the QQQ table name and the backend (SQL) name are identical, and possible-value sources take the table name. Other qbits' tables are referenced by their prefixed names (`object_storage_*`, `alerts_*`, `cdn_*`). Permissions use the full qbit name (`backups.*`, already compliant), and storage permissions are referenced as `object_storage.*` (owner, 2026-10-12). Field, process and Java class names are unchanged.
 
 Process-written tables are read-only in the UI. Multi-tenant apps add the tenant key and a `RecordSecurityLock` to every table (§11.4). **No table ever stores a key, password or credential.** Tables hold only references, such as a key name or a storage connection name.
 
@@ -494,8 +494,8 @@ Storage D4 soft-deletes by default: a delete marker when the bucket is versioned
 
 ### 6.5 Permissions across the two qbits
 
-- **Backups permissions gate backups actions** (§11.4). Backups then calls storage in a **system context tagged with the run** (SF5), so a backups operator does not also need `s3.write` on the backup bucket, and `object_storage_operation` shows "system: backups run 1234 by user X".
-- **Backup buckets are not browsable by ordinary storage users.** The storage qbit's per-bucket `RecordSecurityLock` (storage D7) gives the `BACKUP` bucket rows a key only backups admins hold. Otherwise anyone with `s3.view` could download full data dumps from Admin → Storage.
+- **Backups permissions gate backups actions** (§11.4). Backups then calls storage in a **system context tagged with the run** (SF5), so a backups operator does not also need `object_storage.write` on the backup bucket, and `object_storage_operation` shows "system: backups run 1234 by user X".
+- **Backup buckets are not browsable by ordinary storage users.** The storage qbit's per-bucket `RecordSecurityLock` (storage D7) gives the `BACKUP` bucket rows a key only backups admins hold. Otherwise anyone with `object_storage.view` could download full data dumps from Admin → Storage.
 - A **storage protection rule** (`NO_DELETE` on the backups prefix, storage §6.7) blocks deletes from Admin → Storage. Only the backups Prune action, through SF3, removes backup objects.
 - **Admin → Storage owns** bucket size, usage trend, connection health and capabilities for the backup bucket. Admin → Backups links to it and does not repeat those numbers (§12).
 

@@ -1672,20 +1672,24 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
          addedAny = false;
          for(String neededTableSchema : neededTableSchemas)
          {
-            if(!componentSchemas.containsKey(neededTableSchema))
+            QTableMetaData            table                     = QContext.getQInstance().getTable(neededTableSchema);
+            ApiTableMetaDataContainer apiTableMetaDataContainer = ApiTableMetaDataContainer.of(table);
+            ApiTableMetaData          apiTableMetaData          = apiTableMetaDataContainer == null ? null : apiTableMetaDataContainer.getApiTableMetaData(apiName);
+
+            //////////////////////////////////////////////////////////////////////
+            // schemas are keyed by the table's API name (not its table name), //
+            // or an association child with an apiTableName would loop forever //
+            //////////////////////////////////////////////////////////////////////
+            String tableApiName = apiTableMetaData != null && StringUtils.hasContent(apiTableMetaData.getApiTableName()) ? apiTableMetaData.getApiTableName() : table.getName();
+            if(!componentSchemas.containsKey(tableApiName))
             {
                LOG.debug("Adding needed schema: " + neededTableSchema);
-               QTableMetaData table = QContext.getQInstance().getTable(neededTableSchema);
-
-               ApiTableMetaDataContainer apiTableMetaDataContainer = ApiTableMetaDataContainer.of(table);
-               ApiTableMetaData          apiTableMetaData          = apiTableMetaDataContainer.getApiTableMetaData(apiName);
-
-               String tableApiName = StringUtils.hasContent(apiTableMetaData.getApiTableName()) ? apiTableMetaData.getApiTableName() : table.getName();
 
                List<QFieldMetaData> tableApiFields = new GetTableApiFieldsAction().execute(new GetTableApiFieldsInput()
                   .withTableName(table.getName())
                   .withVersion(version)
-                  .withApiName(apiName)).getFields();
+                  .withApiName(apiName)
+                  .withForSpecification(true)).getFields();
 
                componentSchemas.put(tableApiName, buildTableSchema(apiInstanceMetaData, version, table, tableApiFields));
                addedAny = true;

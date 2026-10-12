@@ -304,4 +304,25 @@ class GenerateOpenApiSpecActionTest extends BaseTest
 
       assertThat(paths.get("/api/" + TestUtils.CURRENT_API_VERSION + "/noOutputProcess").getPost().getResponses()).containsKey(204);
    }
+
+
+   /*******************************************************************************
+    ** An association child with its own API table name gets one schema under
+    ** that name (the schema closure used to loop forever on it).
+    *******************************************************************************/
+   @Test
+   void associationChildWithApiTableName() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      ApiTableMetaDataContainer.of(qInstance.getTable(TestUtils.TABLE_NAME_LINE_ITEM)).getApiTableMetaData(TestUtils.API_NAME).withApiTableName("lineItem");
+      new QInstanceEnricher(qInstance).enrich();
+
+      com.kingsrook.qqq.backend.core.context.CapturedContext context = QContext.capture();
+      GenerateOpenApiSpecOutput output = org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(30), () ->
+      {
+         QContext.init(context);
+         return new GenerateOpenApiSpecAction().execute(new GenerateOpenApiSpecInput().withVersion(TestUtils.CURRENT_API_VERSION).withApiName(TestUtils.API_NAME));
+      });
+      assertThat(output.getOpenAPI().getComponents().getSchemas()).containsKey("lineItem").doesNotContainKey(TestUtils.TABLE_NAME_LINE_ITEM);
+   }
 }

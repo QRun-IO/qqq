@@ -59,6 +59,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableDeleteSpecV1());
 
       list.add(new RecordDeveloperModeSpecV1());
+      list.add(new RecordDeveloperPanelsSpecV1());
       list.add(new RecordAssociatedScriptStoreSpecV1());
       list.add(new RecordAssociatedScriptLogsSpecV1());
 

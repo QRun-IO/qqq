@@ -29,16 +29,30 @@ import com.kingsrook.qqq.api.actions.ApiImplementation;
 import com.kingsrook.qqq.api.model.metadata.ApiHttpPolicy;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessInput;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessInputFieldsContainer;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessMetaData;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessMetaDataContainer;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessObjectOutput;
+import com.kingsrook.qqq.api.model.metadata.processes.ApiProcessUtils;
+import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.openapi.model.HttpMethod;
 import com.kingsrook.qqq.openapi.model.SecurityScheme;
 import com.kingsrook.qqq.openapi.model.SecuritySchemeType;
 import io.javalin.apibuilder.EndpointGroup;
@@ -107,6 +121,25 @@ class QJavalinApiHttpPolicyTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Echoes request metadata and a body value.
+    *******************************************************************************/
+   public static class EchoStep implements BackendStep
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void run(RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput)
+      {
+         runBackendStepOutput.addValue("userAgent", runBackendStepInput.getValueString(ApiProcessUtils.REQUEST_USER_AGENT));
+         runBackendStepOutput.addValue("remoteAddress", runBackendStepInput.getValueString(ApiProcessUtils.REQUEST_REMOTE_ADDRESS));
+         runBackendStepOutput.addValue("message", runBackendStepInput.getValueString("message"));
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @BeforeAll
@@ -122,6 +155,17 @@ class QJavalinApiHttpPolicyTest extends BaseTest
       instance.registerAuthenticationProvider(AuthScope.api(api), new QAuthenticationMetaData()
          .withName("test-bearer").withType(QAuthenticationType.CUSTOM)
          .withModuleCodeReference(new QCodeReference(TestBearerModule.class)));
+
+      instance.addProcess(new QProcessMetaData()
+         .withName("echo")
+         .withStep(new QBackendStepMetaData().withName("run").withCode(new QCodeReference(EchoStep.class)))
+         .withSupplementalMetaData(new ApiProcessMetaDataContainer().withApiProcessMetaData(TestUtils.ALTERNATIVE_API_NAME, new ApiProcessMetaData()
+            .withInitialVersion(TestUtils.V2022_Q4)
+            .withMethod(HttpMethod.POST)
+            .withAsyncMode(ApiProcessMetaData.AsyncMode.NEVER)
+            .withInput(new ApiProcessInput().withRecordBodyParams(new ApiProcessInputFieldsContainer().withField(new QFieldMetaData("message", QFieldType.STRING))))
+            .withOutput(new ApiProcessObjectOutput().withOutputFields(List.of(new QFieldMetaData("userAgent", QFieldType.STRING),
+               new QFieldMetaData("remoteAddress", QFieldType.STRING), new QFieldMetaData("message", QFieldType.STRING)))))));
 
       qJavalinImplementation = new QJavalinImplementation(instance);
       qJavalinImplementation.clearJavalinRoutes();
@@ -281,5 +325,42 @@ class QJavalinApiHttpPolicyTest extends BaseTest
       assertThat(ApiHttpPolicyHandler.plainPublicMaxAge("public, max-age=300")).isEqualTo(300);
       assertThat(ApiHttpPolicyHandler.plainPublicMaxAge("public, max-age=300, immutable")).isNull();
       assertThat(new ApiHttpPolicy().withStaleIfErrorSeconds(null).withStaleWhileRevalidateSeconds(null).publicCacheControl(5)).isEqualTo("public, max-age=5, s-maxage=5");
+   }
+
+
+   /*******************************************************************************
+    ** Processes see the request's metadata (never a caller-supplied value), an
+    ** empty JSON body is no values, and a malformed one is a 400.
+    *******************************************************************************/
+   @Test
+   void processesSeeRequestMetadata()
+   {
+      String url = BASE_URL + TestUtils.ALTERNATIVE_API_PATH + TestUtils.V2023_Q1 + "/echo";
+      JSONObject output = new JSONObject(Unirest.post(url).header("User-Agent", "probe/1.0").header("Content-Type", "application/json")
+         .body("{\"message\":\"hi\",\"apiRequest.userAgent\":\"spoofed\"}").asString().getBody());
+      assertThat(output.getString("userAgent")).isEqualTo("probe/1.0");
+      assertThat(output.getString("remoteAddress")).isNotBlank();
+      assertThat(output.getString("message")).isEqualTo("hi");
+
+      assertThat(Unirest.post(url).asString().getStatus()).isEqualTo(200);
+      assertThat(Unirest.post(url).body("not json").asString().getStatus()).isEqualTo(400);
+   }
+
+
+   /*******************************************************************************
+    ** Behind a path-mapping proxy the docs page links its spec and assets by the
+    ** public path, and the assets are served under the API's own path.
+    *******************************************************************************/
+   @Test
+   void docsPageUsesPublicPath()
+   {
+      String html = Unirest.get(BASE_URL + TestUtils.ALTERNATIVE_API_PATH).asString().getBody();
+      assertThat(html).contains("spec-url=\"/" + TestUtils.V2023_Q1 + "/openapi.json\"");
+      assertThat(html).contains("src=\"/" + QJavalinApiHandler.DOCS_ASSETS_PATH + "js/rapidoc.min.js\"");
+      assertThat(html).doesNotContain(TestUtils.ALTERNATIVE_API_PATH + TestUtils.V2023_Q1);
+
+      HttpResponse<String> script = Unirest.get(BASE_URL + TestUtils.ALTERNATIVE_API_PATH + QJavalinApiHandler.DOCS_ASSETS_PATH + "js/rapidoc.min.js").asString();
+      assertThat(script.getStatus()).isEqualTo(200);
+      assertThat(Unirest.get(BASE_URL + TestUtils.ALTERNATIVE_API_PATH + QJavalinApiHandler.DOCS_ASSETS_PATH + "css/qqq-api-styles.css").asString().getStatus()).isEqualTo(200);
    }
 }

@@ -271,10 +271,38 @@ public final class AddressRules
     *******************************************************************************/
    private static void validateHostName(String name, String raw)
    {
-      if(name.isEmpty() || !name.matches("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*"))
+      boolean valid = !name.isEmpty() && name.length() <= 253;
+      for(String label : name.split("\\.", -1))
+      {
+         valid &= isHostLabel(label);
+      }
+      if(!valid)
       {
          throw (new IllegalArgumentException("Not a CIDR block, address, host name or .suffix: " + raw));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** One DNS label: 1-63 of a-z, 0-9 and '-', not starting or ending with '-'.
+    ** (A plain loop rather than a regex, so no input can make it backtrack.)
+    *******************************************************************************/
+   private static boolean isHostLabel(String label)
+   {
+      if(label.isEmpty() || label.length() > 63 || label.charAt(0) == '-' || label.charAt(label.length() - 1) == '-')
+      {
+         return (false);
+      }
+      for(int i = 0; i < label.length(); i++)
+      {
+         char c = label.charAt(i);
+         if(!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'))
+         {
+            return (false);
+         }
+      }
+      return (true);
    }
 
 
@@ -327,7 +355,7 @@ public final class AddressRules
          }
          catch(UnknownHostException | NumberFormatException e)
          {
-            throw (new IllegalArgumentException("Not a CIDR block: " + text));
+            throw (new IllegalArgumentException("Not a CIDR block: " + text, e));
          }
       }
 

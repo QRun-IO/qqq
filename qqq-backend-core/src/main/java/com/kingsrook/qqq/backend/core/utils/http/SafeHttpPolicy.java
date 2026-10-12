@@ -157,7 +157,7 @@ public final class SafeHttpPolicy
     *******************************************************************************/
    public List<String> getInternalAllowlist()
    {
-      return (internalAllowlist);
+      return (java.util.Collections.unmodifiableList(internalAllowlist));
    }
 
 

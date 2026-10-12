@@ -27,6 +27,8 @@ package com.kingsrook.qqq.backend.core.utils.http;
  *******************************************************************************/
 public class SafeHttpException extends Exception
 {
+   private static final long serialVersionUID = 1L;
+
    /*******************************************************************************
     ** What went wrong. The first three are policy refusals (no connection was
     ** attempted); the rest are network failures.

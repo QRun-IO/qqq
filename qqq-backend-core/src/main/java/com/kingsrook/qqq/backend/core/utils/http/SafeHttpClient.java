@@ -373,7 +373,7 @@ public final class SafeHttpClient implements AutoCloseable
       }
       catch(URISyntaxException e)
       {
-         throw (new SafeHttpException(SafeHttpException.Reason.INVALID_URL, "Not a valid URL"));
+         throw (new SafeHttpException(SafeHttpException.Reason.INVALID_URL, "Not a valid URL", e));
       }
       String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
       if(!"https".equals(scheme) && !("http".equals(scheme) && policy.isAllowPlainHttp()))
@@ -429,7 +429,7 @@ public final class SafeHttpClient implements AutoCloseable
       }
       catch(UnknownHostException e)
       {
-         throw (new SafeHttpException(SafeHttpException.Reason.DNS_FAILURE, "Could not resolve " + host));
+         throw (new SafeHttpException(SafeHttpException.Reason.DNS_FAILURE, "Could not resolve " + host, e));
       }
       if(addresses == null || addresses.length == 0)
       {

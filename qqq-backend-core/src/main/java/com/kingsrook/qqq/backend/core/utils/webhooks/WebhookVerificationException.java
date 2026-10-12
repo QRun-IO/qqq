@@ -27,6 +27,8 @@ package com.kingsrook.qqq.backend.core.utils.webhooks;
  *******************************************************************************/
 public class WebhookVerificationException extends Exception
 {
+   private static final long serialVersionUID = 1L;
+
    /*******************************************************************************
     ** Why verification failed.
     *******************************************************************************/

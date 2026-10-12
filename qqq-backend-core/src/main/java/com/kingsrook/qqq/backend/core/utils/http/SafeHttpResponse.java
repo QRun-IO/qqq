@@ -22,6 +22,9 @@ package com.kingsrook.qqq.backend.core.utils.http;
 
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -34,6 +37,28 @@ import java.util.Map;
  *******************************************************************************/
 public record SafeHttpResponse(int statusCode, Map<String, String> headers, byte[] body, boolean truncated, String remoteAddress, long durationMillis)
 {
+   /*******************************************************************************
+    ** Defensive copies: the response is immutable.
+    *******************************************************************************/
+   public SafeHttpResponse
+   {
+      headers = headers == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(headers));
+      body = body == null ? new byte[0] : Arrays.copyOf(body, body.length);
+   }
+
+
+
+   /*******************************************************************************
+    ** The body bytes read (a copy).
+    *******************************************************************************/
+   @Override
+   public byte[] body()
+   {
+      return (Arrays.copyOf(body, body.length));
+   }
+
+
+
    /*******************************************************************************
     ** True for a 2xx status.
     *******************************************************************************/

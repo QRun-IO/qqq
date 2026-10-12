@@ -41,6 +41,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 
@@ -415,6 +416,27 @@ class SafeHttpClientTest extends BaseTest
       assertThat(defaults.cacheKey()).isNotEqualTo(SafeHttpPolicy.defaults().withInternalAllowlist(List.of("10.0.0.0/8")).cacheKey());
       assertThat(SafeHttpPolicy.defaults().withInternalAllowlist(null).getInternalAllowlist()).isEmpty();
       assertThat(SafeHttpPolicy.defaults().withUserAgent("x/1").getUserAgent()).isEqualTo("x/1");
+   }
+
+
+
+   /*******************************************************************************
+    ** Responses and policies cannot be changed through what they return.
+    *******************************************************************************/
+   @Test
+   void testResponseAndPolicyAreImmutable()
+   {
+      byte[]                       body    = "abc".getBytes(StandardCharsets.UTF_8);
+      java.util.Map<String, String> headers = new java.util.HashMap<>(Map.of("a", "1"));
+      SafeHttpResponse             response = new SafeHttpResponse(200, headers, body, false, null, 1L);
+      body[0] = 'z';
+      headers.put("b", "2");
+      response.body()[1] = 'z';
+      assertThat(response.bodyExcerpt(10)).isEqualTo("abc");
+      assertThat(response.headers()).containsOnlyKeys("a");
+      assertThat(new SafeHttpResponse(204, null, null, false, null, 0L).body()).isEmpty();
+      assertThatThrownBy(() -> response.headers().put("c", "3")).isInstanceOf(UnsupportedOperationException.class);
+      assertThatThrownBy(() -> localPolicy().getInternalAllowlist().add("10.0.0.0/8")).isInstanceOf(UnsupportedOperationException.class);
    }
 
 

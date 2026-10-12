@@ -99,7 +99,7 @@ public final class WebhookSecret
          }
          catch(IllegalArgumentException e)
          {
-            throw (new IllegalArgumentException("A " + PREFIX + " secret must be base64 after the prefix"));
+            throw (new IllegalArgumentException("A " + PREFIX + " secret must be base64 after the prefix", e));
          }
       }
       return (new WebhookSecret(trimmed.getBytes(StandardCharsets.UTF_8)));

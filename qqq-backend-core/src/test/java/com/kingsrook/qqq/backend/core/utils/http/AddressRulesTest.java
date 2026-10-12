@@ -95,6 +95,7 @@ class AddressRulesTest extends BaseTest
       assertThat(rules.check("any", InetAddress.getByName("fd00:2::5"))).isNotNull();
       assertThat(rules.check("any", InetAddress.getByName("8.8.8.8"))).isNull();
 
+      assertThat(new AddressRules(List.of("a-1.b2.example", "x".repeat(63) + ".example")).hasAllowlist()).isTrue();
       assertThat(AddressRules.defaults().hasAllowlist()).isFalse();
       assertThat(new AddressRules(null).hasAllowlist()).isFalse();
    }
@@ -123,7 +124,7 @@ class AddressRulesTest extends BaseTest
    @Test
    void testBadAllowlistEntries()
    {
-      for(String bad : List.of("10.0.0.0/33", "10.0.0.0/x", "not a host", "-bad.example", "exa_mple.com", ".", "http://x", "999.1.1.1/8"))
+      for(String bad : List.of("10.0.0.0/33", "10.0.0.0/x", "not a host", "-bad.example", "exa_mple.com", ".", "http://x", "999.1.1.1/8", "999.1.1.1", "a..b", "trailing.dot.", "x".repeat(64) + ".example", "bad-.example"))
       {
          assertThatThrownBy(() -> new AddressRules(List.of(bad))).as(bad).isInstanceOf(IllegalArgumentException.class);
       }

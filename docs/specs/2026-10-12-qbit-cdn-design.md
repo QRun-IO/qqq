@@ -30,6 +30,7 @@ These decisions override anything below that contradicts them. The sections they
 | D14 | **When a purge fails:** 5 retries with backoff, then DEAD plus a Data Health issue and an alert. Content corrects itself when the edge TTL expires. | §4.5. |
 | D15 | **kof22 only for now.** Decide on qrun.io and Benchfinity after Phase 4. | §8.5. |
 | D16 | **A full Admin → CDN sub-app** (like Quick Search and ESB), shown only when the qbit is installed and enabled. Its home is the single dashboard for CDN data. Admin → Health shows only a status card that links to it. | §4.9. The app shell and home, with honest empty states, ship in P1. Live data arrives from P2. |
+| D17 | **Alerts through the Alerts qbit when installed.** Dead/failed purges, invalidation budget near/over, connection test failures, config drift and secret rotation due are raised through the Alerts / Manage-by-Exception qbit's producer SPI. Without it, the CDN qbit works unchanged. | §4.9.1. |
 
 ## 0. Summary
 
@@ -384,6 +385,20 @@ A sub-app under Admin, like Quick Search and ESB. It exists only when the qbit i
 New rules:
 - `operations.cdn-credential-age`: over 75 days
 - `operations.cdn-drift`: any open finding
+
+### 4.9.1 Alerts (optional integration)
+
+When the generic Alerts / Manage-by-Exception qbit is installed (QRun-IO/qqq `docs/specs/2026-10-12-qbit-alerts-design.md`, in design), the CDN qbit raises its conditions through that qbit's **producer SPI**. Monitors, subscriptions and channels (including the optional Slack channel) then belong to the Alerts qbit. The CDN qbit only produces events, each with a stable key so repeats update one open alert, and a link to the record or filtered list behind it:
+
+| Alert | Raised when | Cleared when | Links to |
+|---|---|---|---|
+| Purge failed / dead | A `cdnPurgeRequest` turns FAILED after its last retry, or DEAD | A later purge for the same provider succeeds, or the row is retried successfully | The `cdnPurgeRequest` record(s) |
+| Invalidation budget near / over | Month-to-date billable paths pass the soft limit (warning) or the hard limit (error), or a purge is DEFERRED_BUDGET | The month rolls over | The CDN home budget card / filtered `cdnPurgeRequest` list |
+| Connection test failed | Test connection (manual or scheduled) fails | The next test succeeds | The `cdnProvider` record |
+| Config drift | A `cdnDriftFinding` is opened | All findings for the provider are resolved | The `cdnDriftFinding` list |
+| Secret rotation due | `credentialRotatedDate` is older than 75 days (warning) or 90 days (error) | The key is rotated and the date updated | The `cdnProvider` record |
+
+**The CDN qbit works without it.** The integration is discovered at startup: if the Alerts qbit is installed and enabled, the producer is used; otherwise these conditions show only on the CDN home, in the Health status card and as the Data Health rules above. Nothing else changes. The dependency is optional (no compile-time requirement on the Alerts qbit beyond its SPI module, if it publishes one; otherwise a small adapter is added when that spec settles). The exact SPI names are taken from the Alerts spec when its PR lands.
 
 ### 4.10 URL building and signing
 

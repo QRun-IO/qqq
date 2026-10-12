@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.11` to `1.0.0-RC.14`; the 4.1.0-RC.4
+Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
+
 ### Security
 - **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
   [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
@@ -36,6 +39,26 @@ Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1/RC.2; see the [
 Next `1.0.0-RC.13` or later renders the two features below. Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
 
 ### Added
+- **Record developer panels** — a generic contract for modules and qbits to contribute panels to a record's developer
+  view: implement `DeveloperPanelProviderInterface` (id, title, order, icon, `isAvailable`, `build`) and register it in
+  the new `DeveloperPanelsMetaData` supplemental instance meta-data.  Panels are lists of generic blocks (key/values,
+  text, code, table, links, process actions), served by the new `GET /qqq/v1/table/{table}/{pk}/developer/panels`
+  (table read permission; record security applies; a failing provider yields an error panel, not a failed request).
+  Built in: **Record Security** (each lock, and why the current user can see the record).  `qqq-esb` adds **ESB
+  Events** (CloudEvents type/source/subject, destinations, subscribed triggers with dead letters, a sample event for
+  the record).  See [Record Developer Panels](docs/misc/DeveloperPanels.adoc).
+- **Record search details: highlights, paging, sort, per-table status (`POST /qqq/v1/search`)** — additive and
+  backward compatible. Requests may send `offset` (per table, for paging one table; at most 1000) and `sort`
+  (`RELEVANCE`, the default, or `RECENT`: most recently modified first, by the table's `MODIFY_DATE` field). Each result
+  may now carry `score` (from a record search provider), `updatedAt` (ISO-8601, from the `MODIFY_DATE` field when the
+  user may see it), `highlights` (plain-text snippets of the matching non-label search fields with `matches` as
+  `{start, end}` character offsets - never markup) and `details` (other search field values). The response adds
+  `tables` (`tableName`, `tableLabel`, `resultCount`, `hasMore`, `totalCount`, and `source`: `PROVIDER`, `DEFAULT` or
+  `FALLBACK`) and `provider` (`status` `OK`/`FAILED`/`NONE`, `failureClass` - the simple class name of the root cause -
+  and, for user-facing errors only, `message`), so clients can say when a failed search index left the default search
+  to answer. Highlights, details and dates use only fields the user can see. `RecordSearchProviderInterface` providers
+  receive `offset` and `sort`, and may return `score`, `highlights` (validated, used only for visible fields core found
+  no match in) and `RecordSearchOutput.totalCountByTable`.
 - **`FILE_PREVIEW` field adornment** — `AdornmentType.FILE_PREVIEW`, with value keys in
   `AdornmentType.FilePreviewValues`, asks frontends to show a field as a thumbnail (images) or a file-type icon (other
   files) that opens a preview: the full-size image with zoom, a PDF, a video or audio player, or open/download links,
@@ -91,6 +114,12 @@ Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
   `QInstanceValidator` checks the code reference. Without a provider, search is unchanged.
 
 ### Fixed
+- **Partial updates under joined record-security locks ([#1073](https://github.com/QRun-IO/qqq/issues/1073))** — an
+  update that did not send the foreign key a joined write lock walks through (for example, editing only a line item's
+  `sku` when the line item is locked through its order) was always denied with "the referenced ... was not found".
+  `UpdateAction` now validates the write locks against each record as it will be after the update: its stored values
+  overlaid with the values being written. Fields that are sent, including nulls, are still validated as written, and
+  rows whose stored values fail the write locks are denied generically, so an error never names a stored lock value.
 - **Quartz schedules on a fresh persistent job store ([#1044](https://github.com/QRun-IO/qqq/issues/1044))** —
   `QScheduleManager.start()` now creates the jobs for every schedulable (processes, queues, table automations,
   scheduled-job records) when Quartz uses a persistent store such as a clustered `JobStoreTX` on PostgreSQL.

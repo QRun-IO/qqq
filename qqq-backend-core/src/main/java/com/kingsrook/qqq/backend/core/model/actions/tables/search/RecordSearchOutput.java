@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.model.actions.tables.search;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
 
 
@@ -32,7 +33,10 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
  *******************************************************************************/
 public class RecordSearchOutput extends AbstractActionOutput
 {
-   private List<RecordSearchResult> results = new ArrayList<>();
+   private List<RecordSearchResult>       results           = new ArrayList<>();
+   private List<RecordSearchTableSummary> tables            = new ArrayList<>();
+   private RecordSearchProviderStatus     providerStatus;
+   private Map<String, Integer>           totalCountByTable;
 
 
 
@@ -62,6 +66,99 @@ public class RecordSearchOutput extends AbstractActionOutput
    public RecordSearchOutput withResults(List<RecordSearchResult> results)
    {
       this.results = results;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tables
+    *******************************************************************************/
+   public List<RecordSearchTableSummary> getTables()
+   {
+      return (this.tables);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tables
+    *******************************************************************************/
+   public void setTables(List<RecordSearchTableSummary> tables)
+   {
+      this.tables = tables;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tables - a summary per searched table, in output order
+    *******************************************************************************/
+   public RecordSearchOutput withTables(List<RecordSearchTableSummary> tables)
+   {
+      this.tables = tables;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for providerStatus
+    *******************************************************************************/
+   public RecordSearchProviderStatus getProviderStatus()
+   {
+      return (this.providerStatus);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for providerStatus
+    *******************************************************************************/
+   public void setProviderStatus(RecordSearchProviderStatus providerStatus)
+   {
+      this.providerStatus = providerStatus;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for providerStatus - how the record search provider fared (set by RecordSearchAction)
+    *******************************************************************************/
+   public RecordSearchOutput withProviderStatus(RecordSearchProviderStatus providerStatus)
+   {
+      this.providerStatus = providerStatus;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for totalCountByTable
+    *******************************************************************************/
+   public Map<String, Integer> getTotalCountByTable()
+   {
+      return (this.totalCountByTable);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for totalCountByTable
+    *******************************************************************************/
+   public void setTotalCountByTable(Map<String, Integer> totalCountByTable)
+   {
+      this.totalCountByTable = totalCountByTable;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for totalCountByTable - for providers: approximate total matches per table, when known
+    *******************************************************************************/
+   public RecordSearchOutput withTotalCountByTable(Map<String, Integer> totalCountByTable)
+   {
+      this.totalCountByTable = totalCountByTable;
       return (this);
    }
 

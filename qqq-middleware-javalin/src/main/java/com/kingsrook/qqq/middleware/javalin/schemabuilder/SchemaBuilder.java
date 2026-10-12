@@ -147,7 +147,7 @@ public class SchemaBuilder
       {
          schema.withType(Type.STRING);
       }
-      else if(c.equals(Integer.class) || c.equals(Long.class) || c.equals(BigDecimal.class))
+      else if(c.equals(Integer.class) || c.equals(Long.class) || c.equals(BigDecimal.class) || c.equals(Double.class))
       {
          schema.withType(Type.NUMBER);
       }

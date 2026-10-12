@@ -56,6 +56,24 @@
       ],
       "rationale": "Release owner approved QQQ4.1.0-RC.3 and waives the Next acceptance-receipt gate for it, paired with the unchanged published NextRC11 artifact already accepted for RC1 and RC2 (same source SHA and JAR hash). The QQQ changes since RC2 are #1057 (FILE_PREVIEW field adornment) and #1060 (instance homeAppName); the RC11 browser/parity/visual limitations are retained. Full successor certification remains pending; source and public compatibility checks remain required. This does not certify any missing or failed test, a newer Next artifact, or general availability.",
       "target_release": "Next 1.0.0-RC.13 (which needs QQQ4.1.0-RC.3 for previews and the home app) pairs with a later QQQ4.1 RC under its own receipts or an explicit updated acceptance decision; full certification at Next 1.0 final."
+    },
+    {
+      "qqq_version": "4.1.0-RC.4",
+      "next_version": "1.0.0-RC.14",
+      "next_sha": "03e7415aa22445ba5b5dc45ae133f7ae704ea90e",
+      "jar_sha256": "df7eb6706859820346adf870397163d44efe60d6e288d5b6c022d24f7d880952",
+      "owner_approval": "https://github.com/QRun-IO/qqq/issues/798#issuecomment-6125729475",
+      "features": [
+        "core.widget.data_bag_viewer",
+        "core.widget.pivot_table_setup",
+        "core.widget.filter_and_columns_setup",
+        "core.widget.row_builder",
+        "core.widget.script_viewer",
+        "core.widget.blocks",
+        "dashboard.acceptance"
+      ],
+      "rationale": "Release owner approved QQQ4.1.0-RC.4 with the BOM and sample moved to the published NextRC14 artifact, and waives the Next acceptance-receipt gate for that pair (exact tag commit and Central JAR hash above; this supersedes the earlier RC4/RC11 waiver). The QQQ changes since RC3 are #1075 (opt-in core-action permission enforcement and FieldSecurityLock enforcement, closing #1061/#1062, plus dryRun and isSensitive), documentation (#1067, #1069) and this Next pin. No reviewed native Next receipt exists for NextRC14 yet; the browser/parity/visual limitations retained for RC11 remain. Full successor certification remains pending; source and public compatibility checks remain required. This does not certify any missing or failed test or general availability.",
+      "target_release": "A later Next RC pairs with a later QQQ4.1 RC under its own receipts or an explicit updated acceptance decision; full certification at Next 1.0 final."
     }
   ]
 }

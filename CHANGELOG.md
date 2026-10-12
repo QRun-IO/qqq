@@ -26,6 +26,32 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   behavior change unless enabled); planned to default on in 4.2. See
   [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
+### Changed
+- **S3 backend moves to AWS SDK for Java v2 (breaking for code that touches SDK types)** — AWS SDK for Java v1 reached
+  end of support on 2025-12-31, so `qqq-backend-module-filesystem` now uses `software.amazon.awssdk:s3` (v2, via the
+  same `2.41.10` BOM as core) and no longer depends on `com.amazonaws:aws-java-sdk-s3`. Public type changes:
+  `S3Utils.getAmazonS3()`/`setAmazonS3(AmazonS3)` are replaced by `getS3Client()`/`setS3Client(S3Client)`;
+  `AbstractS3Action.buildAmazonS3ClientFromBackendMetaData` is now `buildS3ClientFromBackendMetaData` (returns a shared,
+  cached `S3Client` — do not close it); the S3 "file" type (`AbstractBaseFilesystemAction<FILE>`, `listFiles`,
+  `listObjectsInBucketMatchingGlob`, `getObjectAsInputStream`) is now QQQ's own
+  `com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary` (same getters, but `getLastModified()` returns
+  an `Instant`); `S3UploadOutputStream` takes an `S3Client`; SDK exceptions surface as v2 types (`S3Exception`,
+  `SdkClientException`) instead of `AmazonS3Exception` / `AmazonClientException`. Apps that only declare
+  `S3BackendMetaData` and use QQQ actions need no code change; apps that relied on the v1 SDK arriving transitively
+  must now declare it themselves.
+- **S3-compatible stores** — `S3BackendMetaData` gains `endpoint`, `pathStyleAccess`, `checksumMode`, `tlsVerify`,
+  `caCertificatesPem`, `connectTimeoutMillis`, `socketTimeoutMillis` and `maxListedObjects`, so the backend works with
+  MinIO, Garage, Cloudflare R2, Backblaze B2, Wasabi, DigitalOcean Spaces, Ceph RGW and others, not only AWS. With an
+  `endpoint` set, `checksumMode` defaults to `WHEN_REQUIRED`, because the SDK v2 2.30+ default (`WHEN_SUPPORTED`,
+  trailing CRC32 checksums) breaks several S3-compatible stores. Clients are built and cached per distinct settings by
+  the new `S3ClientFactory`. Timeouts default to 10 s connect / 50 s socket (the v1 defaults).
+- **Capped S3 listings** — a listing that matches more than `maxListedObjects` objects (default 100,000) now fails with
+  a clear `FilesystemException` instead of loading the whole result into memory. Raise the value on the backend, or set
+  zero or a negative number to disable the cap.
+- **`S3StorageAction.makePublic`** still uses an object ACL, but its error now says to use a bucket policy where the
+  bucket or store does not support object ACLs (new AWS buckets, R2, Garage).
+- **Tests** — the S3 module's tests run against MinIO (Testcontainers) instead of LocalStack.
+
 ### Added
 - **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
   validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.

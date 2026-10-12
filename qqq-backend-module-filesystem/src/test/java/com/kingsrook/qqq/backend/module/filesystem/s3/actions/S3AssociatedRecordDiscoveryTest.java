@@ -93,7 +93,7 @@ public class S3AssociatedRecordDiscoveryTest extends BaseS3Test
       {
          S3QueryAction action = new S3QueryAction();
          S3Utils utils = new S3Utils();
-         utils.setAmazonS3(cloud.localstack.awssdkv1.TestUtils.getClientS3());
+         utils.setS3Client(BaseS3Test.getTestS3Client());
          action.setS3Utils(utils);
          return action;
       }

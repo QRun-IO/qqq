@@ -52,8 +52,8 @@ Which candidate has which feature:
 
 The `4.1.0-RC.3` BOM manages the Next dashboard (`com.kingsrook.qqq:qqq-frontend-next`) at `1.0.0-RC.11`, the
 artifact that candidate was accepted with. Next `1.0.0-RC.11` does not render `FILE_PREVIEW` or the home app.
-To see them, override the Next version in your own `dependencyManagement` (for example `1.0.0-RC.13`), and treat
-that pairing as not yet covered by the 4.1 acceptance record. Material Dashboard ignores both features.
+To see them on RC.3, override the Next version in your own `dependencyManagement` (for example `1.0.0-RC.13`), and treat
+that pairing as not yet covered by the 4.1 acceptance record. From `4.1.0-RC.4`, the BOM manages Next at `1.0.0-RC.14`. Material Dashboard ignores both features.
 
 == Record search providers
 

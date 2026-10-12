@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.11` to `1.0.0-RC.14`; the 4.1.0-RC.4
+Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
+
 ### Security
 - **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
   [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,

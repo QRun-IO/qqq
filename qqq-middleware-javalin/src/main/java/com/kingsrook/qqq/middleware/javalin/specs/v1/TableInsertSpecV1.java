@@ -30,7 +30,9 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.TableCapabilities;
 import com.kingsrook.qqq.middleware.javalin.executors.TableInsertExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableInsertInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -149,6 +151,7 @@ public class TableInsertSpecV1 extends AbstractEndpointSpec<TableInsertInput, Ta
 
       InsertInput insertInput = new InsertInput(tableName).withInputSource(QInputSource.USER);
       PermissionsHelper.checkTablePermissionThrowing(insertInput, TablePermissionSubType.INSERT);
+      TableCapabilities.checkCapabilityThrowing(tableName, Capability.TABLE_INSERT);
 
       QRecord record = new QRecord();
       record.setTableName(tableName);

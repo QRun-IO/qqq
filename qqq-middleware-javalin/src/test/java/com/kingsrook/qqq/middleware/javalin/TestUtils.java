@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.RawHTML;
 import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.data.QRecordEnum;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -96,6 +97,8 @@ import com.kingsrook.qqq.backend.core.model.savedviews.SavedViewsMetaDataProvide
 import com.kingsrook.qqq.backend.core.model.scripts.ScriptsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QWarningMessage;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.enumeration.EnumerationBackendModule;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.enumeration.EnumerationTableBackendDetails;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryModuleBackendVariantSetting;
 import com.kingsrook.qqq.backend.core.processes.implementations.mock.MockBackendStep;
@@ -116,9 +119,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 public class TestUtils
 {
    public static final String BACKEND_NAME_MEMORY = "memory";
+   public static final String BACKEND_NAME_ENUM   = "enum";
 
    public static final String TABLE_NAME_PERSON = "person";
    public static final String TABLE_NAME_PET    = "pet";
+
+   public static final String TABLE_NAME_STATE_ENUM = "stateEnum";
 
    public static final String MEMORY_BACKEND_WITH_VARIANTS_NAME = "memoryWithVariants";
    public static final String TABLE_NAME_MEMORY_VARIANT_OPTIONS = "memoryVariantOptions";
@@ -395,6 +401,29 @@ public class TestUtils
       return new QBackendMetaData()
          .withBackendType(MemoryBackendModule.class)
          .withName(BACKEND_NAME_MEMORY);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add an enumeration-backed table.  The enricher takes the insert, update and
+    ** delete capabilities away from it (its module cannot write), and its rules
+    ** are NOT_PROTECTED, so nothing but those capabilities stops a write to it.
+    *******************************************************************************/
+   public static void addStateEnumTable(QInstance qInstance)
+   {
+      qInstance.addBackend(new QBackendMetaData()
+         .withBackendType(EnumerationBackendModule.class)
+         .withName(BACKEND_NAME_ENUM));
+
+      qInstance.addTable(new QTableMetaData()
+         .withName(TABLE_NAME_STATE_ENUM)
+         .withBackendName(BACKEND_NAME_ENUM)
+         .withPrimaryKeyField("id")
+         .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED))
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+         .withField(new QFieldMetaData("name", QFieldType.STRING))
+         .withBackendDetails(new EnumerationTableBackendDetails().withEnumClass(State.class)));
    }
 
 
@@ -920,6 +949,51 @@ public class TestUtils
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
          .withField(new QFieldMetaData("name", QFieldType.STRING))
       );
+   }
+
+
+
+   /*******************************************************************************
+    ** Records of the enumeration-backed table (see addStateEnumTable).
+    *******************************************************************************/
+   public enum State implements QRecordEnum
+   {
+      MO(1, "Missouri"),
+      IL(2, "Illinois");
+
+      private final Integer id;
+      private final String  name;
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      State(Integer id, String name)
+      {
+         this.id = id;
+         this.name = name;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for id
+       *******************************************************************************/
+      public Integer getId()
+      {
+         return (id);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for name
+       *******************************************************************************/
+      public String getName()
+      {
+         return (name);
+      }
    }
 
 

@@ -33,10 +33,12 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.middleware.javalin.AssociatedWritePermissions;
+import com.kingsrook.qqq.middleware.javalin.TableCapabilities;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableInsertInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableInsertOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.executors.utils.TableWriteUtils;
@@ -66,6 +68,7 @@ public class TableInsertExecutor extends AbstractMiddlewareExecutor<TableInsertI
          insertInput.setInputSource(QInputSource.USER);
 
          PermissionsHelper.checkTablePermissionThrowing(insertInput, TablePermissionSubType.INSERT);
+         TableCapabilities.checkCapabilityThrowing(input.getTableName(), Capability.TABLE_INSERT);
 
          QRecord record = TableWriteUtils.recordToWrite(input.getTableName(), input.getRecord(), input.getRecordValues());
          insertInput.setRecords(new ArrayList<>(List.of(record)));

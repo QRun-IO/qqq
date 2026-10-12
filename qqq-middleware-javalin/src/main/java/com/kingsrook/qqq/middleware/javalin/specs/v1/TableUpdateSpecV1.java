@@ -30,7 +30,9 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.TableCapabilities;
 import com.kingsrook.qqq.middleware.javalin.executors.TableUpdateExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableUpdateInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -157,6 +159,7 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
 
       UpdateInput updateInput = new UpdateInput(tableName).withInputSource(QInputSource.USER);
       PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
+      TableCapabilities.checkCapabilityThrowing(tableName, Capability.TABLE_UPDATE);
 
       QRecord record = new QRecord();
       record.setTableName(tableName);

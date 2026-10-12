@@ -30,8 +30,11 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 /*******************************************************************************
  ** HTTP requests may only use the capabilities a table declares, in the same
- ** way frontends only offer them: a table without TABLE_COUNT cannot be counted
- ** and a table without TABLE_EXPORT cannot be exported, over any route.
+ ** way frontends only offer them: a table without TABLE_COUNT cannot be counted,
+ ** a table without TABLE_EXPORT cannot be exported, and a table without
+ ** TABLE_INSERT, TABLE_UPDATE or TABLE_DELETE refuses that write, over any
+ ** route.  Only HTTP requests are checked; internal callers of the actions are
+ ** not limited by these capabilities.
  *******************************************************************************/
 public final class TableCapabilities
 {

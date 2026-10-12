@@ -34,11 +34,13 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.QStatusMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.middleware.javalin.AssociatedWritePermissions;
+import com.kingsrook.qqq.middleware.javalin.TableCapabilities;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableUpdateInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableUpdateOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.executors.utils.TableWriteUtils;
@@ -68,6 +70,7 @@ public class TableUpdateExecutor extends AbstractMiddlewareExecutor<TableUpdateI
          updateInput.setInputSource(QInputSource.USER);
 
          PermissionsHelper.checkTablePermissionThrowing(updateInput, TablePermissionSubType.EDIT);
+         TableCapabilities.checkCapabilityThrowing(input.getTableName(), Capability.TABLE_UPDATE);
 
          QTableMetaData tableMetaData = QContext.getQInstance().getTable(input.getTableName());
          QRecord        record        = TableWriteUtils.recordToWrite(input.getTableName(), input.getRecord(), input.getRecordValues());

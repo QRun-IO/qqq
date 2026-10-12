@@ -54,7 +54,7 @@ A core SPI makes all three trivial and removes the reflection-based detection ea
 | Actions use the standard streamed ETL flow | Every action is `StreamedETLWithFrontendProcess`: record input, then standard Review summary lines, then Result summary lines. "Test monitor" is the standard Review step of "Run check now", not a custom dry-run form. |
 | One home per app, no duplicate dashboards | The Alerts home owns every open-alert widget. The Admin home "Needs Attention", the Dashboard and other qbit homes get link-only summaries that use the owner's loader (§6.5). Every app home stays useful on its own. |
 | Readable at all widths, no double scrollbars | Tables of 3+ columns are full width with at most 4 columns. There are no declared column widths and no inner scroll; "View all" links are used instead. Cards stack below 900 px. The bell popover and record panel are single-column below 640 px. Screenshots at 6 widths are a P3 exit criterion. |
-| Real data only | Every count, trend and age comes from `alert` and `alertEvent` rows. Empty states say why ("No monitors yet", "No open alerts"). There are no sample alerts and no placeholder numbers. A "Send test notification" goes through the real pipeline and is labelled TEST. |
+| Real data only | Every count, trend and age comes from `alerts_alert` and `alerts_event` rows. Empty states say why ("No monitors yet", "No open alerts"). There are no sample alerts and no placeholder numbers. A "Send test notification" goes through the real pipeline and is labelled TEST. |
 | Permissions follow the logged-in user | Lists, counts, the bell and notifications are all filtered by what the *recipient* can see (§7.2). Monitors are evaluated by a trusted runner, but nothing they find is shown or sent to a user who cannot read the underlying record. |
 | Kernel pieces in core 4.1.x, UI in qbits | Core gets only the SPI, the type metadata and the validator (§3). Everything else is in `qbit-alerts` and Next UI. |
 | Public Apache-2.0 under QRun-IO; host internals stay private | Nothing here depends on, or names, a host's private hostnames, channels, groups or credentials. |
@@ -69,35 +69,35 @@ A core SPI makes all three trivial and removes the reflection-based detection ea
 ```
               producers                                         qbit-alerts                                       people
  ┌────────────────────────────────┐          ┌───────────────────────────────────────────────────────┐    ┌─────────────────────┐
- │ any qbit / app code            │ raise /  │  alertType ◄─ sync from QAlertTypeMetaData (startup)  │    │ Alerts home         │
+ │ any qbit / app code            │ raise /  │  alerts_type ◄─ sync from QAlertTypeMetaData (startup)│    │ Alerts home         │
  │   QAlerts.raise/resolve/beat ──┼─resolve─►│      │                                                │    │ bell (inbox)        │
  │ (core SPI, no-op w/o the qbit) │          │      ▼                                                │    │ record panels       │
- │                                │          │  alert ──► alertRecordRef, alertEvent (timeline)      │───►│ email / Slack /     │
- │ monitors (data in alertMonitor)│ evaluate │   ▲  dedup · reopen · flapping · auto-resolve         │    │ Teams / webhook /   │
+ │                                │          │  alerts_alert ──► alerts_record_ref, alerts_event     │───►│ email / Slack /     │
+ │ monitors (alerts_monitor data) │ evaluate │   ▲  dedup · reopen · flapping · auto-resolve         │    │ Teams / webhook /   │
  │   table query · aggregate ·    ├─────────►│   │                                                   │    │ PagerDuty /         │
  │   heartbeat · process failed · │          │   │  subscriptions + mutes + quiet hours + digests    │    │ Alertmanager        │
  │   ESB event · code check       │          │   │          │                                        │    └─────────────────────┘
  │                                │          │   │          ▼                                        │
- │ Alertmanager webhook (ingest) ─┼─────────►│   │   alertNotification (log) ──► channel SPI ─► send │
+ │ Alertmanager webhook (ingest) ─┼─────────►│   │   alerts_notification ──► channel SPI ─► send       │
  └────────────────────────────────┘          └───────────────────────────────────────────────────────┘
 ```
 
 | Concept | What it is | Table |
 |---|---|---|
-| **Alert type** | A kind of problem a source can report, e.g. `cdn.purge.dead`. It is declared in metadata by the qbit that produces it and synced into a table so admins can see and tune every type that every installed qbit can raise. | `alertType` |
-| **Monitor** | A configured check that raises alerts of a type: table query, aggregate threshold, heartbeat, process failure, ESB event pattern, or code check. Some monitors are seeded by qbits and some are created by admins. | `alertMonitor` |
-| **Alert** | One open (or closed) problem, identified by `(alertType, dedupKey)`. Repeats update it; they never duplicate it. | `alert` |
-| **Alert record ref** | The records the alert is about (zero to many). These drive the record panel and visibility. | `alertRecordRef` |
-| **Alert event** | The alert's timeline: raised, repeated, acknowledged, snoozed, resolved, reopened, notified, comment and so on. It also feeds the trend charts. | `alertEvent` |
-| **Group** | A category such as "Backups", "CDN" or "Content quality", optionally nested. Every type belongs to one. | `alertGroup` |
-| **Subscription** | Who hears about what: a user, a team or a channel target, scoped to all alerts, a group, a type, a monitor, a table or one record, with a minimum severity and a delivery mode. | `alertSubscription` |
-| **Preference** | Per-user quiet hours, digest time, time zone and default destinations | `alertUserPreference` |
-| **Team** | A named set of users (optionally resolved from roles or IdP groups) | `alertTeam`, `alertTeamMember` |
-| **Channel** | A configured destination: an email list, a Slack webhook, a PagerDuty service and so on. It holds settings and a *reference* to its secret. | `alertChannel` |
-| **Mute** | A maintenance window or mute rule that suppresses notifications (and optionally new alerts) for a scope and a time | `alertMute` |
-| **Notification** | One delivery attempt record: who, which channel, status, retries and error | `alertNotification` |
-| **Inbox item** | One alert in one user's bell | `alertInboxItem` |
-| **Escalation policy** (later phase) | Steps such as "after 15 min unacknowledged, notify team X" | `alertEscalationPolicy`, `alertEscalationStep` |
+| **Alert type** | A kind of problem a source can report, e.g. `cdn.purge.dead`. It is declared in metadata by the qbit that produces it and synced into a table so admins can see and tune every type that every installed qbit can raise. | `alerts_type` |
+| **Monitor** | A configured check that raises alerts of a type: table query, aggregate threshold, heartbeat, process failure, ESB event pattern, or code check. Some monitors are seeded by qbits and some are created by admins. | `alerts_monitor` |
+| **Alert** | One open (or closed) problem, identified by `(alerts_type, dedupKey)`. Repeats update it; they never duplicate it. | `alerts_alert` |
+| **Alert record ref** | The records the alert is about (zero to many). These drive the record panel and visibility. | `alerts_record_ref` |
+| **Alert event** | The alert's timeline: raised, repeated, acknowledged, snoozed, resolved, reopened, notified, comment and so on. It also feeds the trend charts. | `alerts_event` |
+| **Group** | A category such as "Backups", "CDN" or "Content quality", optionally nested. Every type belongs to one. | `alerts_group` |
+| **Subscription** | Who hears about what: a user, a team or a channel target, scoped to all alerts, a group, a type, a monitor, a table or one record, with a minimum severity and a delivery mode. | `alerts_subscription` |
+| **Preference** | Per-user quiet hours, digest time, time zone and default destinations | `alerts_user_preference` |
+| **Team** | A named set of users (optionally resolved from roles or IdP groups) | `alerts_team`, `alerts_team_member` |
+| **Channel** | A configured destination: an email list, a Slack webhook, a PagerDuty service and so on. It holds settings and a *reference* to its secret. | `alerts_channel` |
+| **Mute** | A maintenance window or mute rule that suppresses notifications (and optionally new alerts) for a scope and a time | `alerts_mute` |
+| **Notification** | One delivery attempt record: who, which channel, status, retries and error | `alerts_notification` |
+| **Inbox item** | One alert in one user's bell | `alerts_inbox_item` |
+| **Escalation policy** (later phase) | Steps such as "after 15 min unacknowledged, notify team X" | `alerts_escalation_policy`, `alerts_escalation_step` |
 
 ---
 
@@ -115,8 +115,8 @@ QAlerts.raise(new AlertSignal("cdn.purge.dead")
    .withTitle("3 CDN purges failed after retries")        // external-safe text (§7.4)
    .withSummary("Content will correct itself when the edge TTL expires.") // external-safe
    .withDetails(detailsText)                              // in-app only, never sent to external channels
-   .withRecordRefs(AlertRecordRef.of("cdnPurgeRequest", ids))  // the offending records
-   .withLink(AlertLink.toTable("cdnPurgeRequest", filter, "Failed purges"))
+   .withRecordRefs(AlertRecordRef.of("cdn_purge_request", ids))  // the offending records
+   .withLink(AlertLink.toTable("cdn_purge_request", filter, "Failed purges"))
    .withAttribute("provider", providerName));             // routing labels, not displayed by default
 
 // Resolve it (no-op if it is not open).
@@ -151,7 +151,7 @@ public interface AlertSinkInterface
 
 - It is registered through a supplemental instance metadata, `AlertsInstanceMetaData.ofOrWithNew(qInstance).withSink(new QCodeReference(...))`, following the `DeveloperPanelsMetaData` pattern.
 - **The default is `LoggingAlertSink`.** It logs at INFO (WARNING and above at WARN), rate-limited per `(type, dedupKey)`. Production code paths are then identical with and without the qbit.
-- `qbit-alerts` registers `QbitAlertsSink`. It writes the signal to an in-memory bounded queue drained by a virtual thread into the `alert` tables (§5.1), so the caller never waits on the database. If the queue overflows, the signal is dropped and counted, and `alerts.sink.overflow` is raised once.
+- `qbit-alerts` registers `QbitAlertsSink`. It writes the signal to an in-memory bounded queue drained by a virtual thread into the `alerts_*` tables (§5.1), so the caller never waits on the database. If the queue overflows, the signal is dropped and counted, and `alerts.sink.overflow` is raised once.
 
 ### 3.3 Declaring alert types (so the system "knows about" every source)
 
@@ -164,7 +164,7 @@ qInstance.add(new QAlertTypeMetaData()
    .withDefaultSeverity(AlertSeverity.ERROR)
    .withDescription("A purge failed after its last retry or was marked DEAD.")
    .withHowToFix("Open the failed purge and choose Retry purge. Content corrects itself when the TTL expires.")
-   .withSubjectTableName("cdnPurgeRequest")            // optional; drives visibility (§7.2) and the record panel
+   .withSubjectTableName("cdn_purge_request")            // optional; drives visibility (§7.2) and the record panel
    .withVisibilityPermission("cdn.view")               // optional extra gate
    .withResolveMode(ResolveMode.PRODUCER)              // PRODUCER | MONITOR | QUIET_PERIOD(Duration) | MANUAL
    .withDefaultMonitor(...)                            // optional seeded monitor (§5.3), e.g. a heartbeat
@@ -174,7 +174,7 @@ qInstance.add(new QAlertTypeMetaData()
 - **Where it lives.** It is a supplemental instance metadata (`AlertsInstanceMetaData.alertTypes`), not a new top-level `QInstance` collection, so core's public surface barely changes. A `QAlertTypeMetaData.of(qInstance, name)` helper reads it.
 - **Validation** (`AlertsInstanceMetaData.validate`): unique names matching `^[a-z0-9]+(\.[a-z0-9-]+)+$`, the subject table exists, the visibility permission is non-blank, and a heartbeat default monitor has an interval.
 - **Process failures without code.** A new `AlertProcessMetaData` (a `QSupplementalProcessMetaData`) has `alertOnFailure` (a severity) and `expectedEvery` (a `Duration`, for a heartbeat). Core's existing `ProcessLifecycleListenerInterface` feeds both. That gives any process "tell me when this fails" and "tell me when this didn't run" by metadata alone (§5.3).
-- **Discovery.** At startup, `qbit-alerts` upserts every declared type into the `alertType` table (`installed = true`, metadata fields refreshed) and marks types no longer declared as `installed = false`. They are never deleted, so history keeps its labels. An admin therefore sees, in an ordinary table, every alert type every installed qbit can produce, with its source, description, how-to-fix, default severity and seeded monitors.
+- **Discovery.** At startup, `qbit-alerts` upserts every declared type into the `alerts_type` table (`installed = true`, metadata fields refreshed) and marks types no longer declared as `installed = false`. They are never deleted, so history keeps its labels. An admin therefore sees, in an ordinary table, every alert type every installed qbit can produce, with its source, description, how-to-fix, default severity and seeded monitors.
 
 ### 3.4 Other core changes (small)
 
@@ -190,26 +190,30 @@ Total core work is about 1.5 engineer-weeks with tests (§11).
 
 ## 4. Tables
 
-Default table prefix `alert`, configurable with `QBitConfig.namespace` (the quick-search pattern). Every table has `id`, `createDate` and `modifyDate`. Audit is on (FIELD level) for tables people edit: types, monitors, alerts, subscriptions, channels, mutes, teams and policies. `alertEvent`, `alertNotification` and `alertInboxItem` are written by the qbit and are read-only in the UI.
+Default table prefix `alerts_` (namespace `alerts`), configurable with `QBitConfig.namespace` (the quick-search pattern). Table names are lowercase snake_case and the backend (SQL) names are identical; possible-value sources take the table's name.
+
+**Naming (owner rule, 2026-10-12).** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". So every table is `alerts_<name>` (the main table is `alerts_alert`), never `alert` or `alertType`; process and widget names use the full `alerts` prefix too (for example `alertsEvaluateMonitors`). Java class names stay CamelCase.
+
+Every table has `id`, `createDate` and `modifyDate`. Audit is on (FIELD level) for tables people edit: types, monitors, alerts, subscriptions, channels, mutes, teams and policies. `alerts_event`, `alerts_notification` and `alerts_inbox_item` are written by the qbit and are read-only in the UI.
 
 | # | Table (label) | Key fields | Indexes / notes |
 |---|---|---|---|
-| 1 | `alertType` (Alert Types) | `name` (unique), `label`, `sourceName`, `groupId`, `defaultSeverity`, `severityOverride`, `enabled`, `installed`, `description`, `howToFix`, `subjectTableName`, `visibilityPermission`, `resolveMode`, `quietPeriodMinutes`, `externalDetailCeiling`, `notify` (admin switch: alerts are recorded but never sent), `lastRaisedAt`, `openCount` (denormalized) | Metadata fields are refreshed at boot. Admin fields (`enabled`, `severityOverride`, `groupId`, `notify`) are kept. |
-| 2 | `alertGroup` (Alert Groups) | `name` (unique), `label`, `parentGroupId`, `icon`, `sortOrder`, `description`, `ownerTeamId` | Groups are seeded by qbits from `groupName` and editable. |
-| 3 | `alertMonitor` (Monitors) | `name`, `alertTypeId`, `kind` (TABLE_QUERY / AGGREGATE / HEARTBEAT / PROCESS_FAILED / ESB_EVENT / CODE / EXTERNAL), `enabled`, `seeded`, `sourceName`, `definition` (JSON, by kind, §5.3), `perRecord` (one alert per matching record, or one aggregate alert), `severity`, `scheduleSeconds` or `cronExpression`, `nextRunAt`, `claimedBy`, `claimedUntil`, `lastRunAt`, `lastStatus` (OK / FIRING / CHECK_FAILED / SKIPPED_MUTED), `lastValue`, `lastError`, `lastElapsedMs`, `consecutiveFailures`, `forMinutes` (must hold this long before it fires) | (`enabled`, `nextRunAt`). Seeded monitors may be disabled or have thresholds tuned, but not deleted. |
-| 4 | `alert` (Alerts) | `alertTypeId`, `monitorId`, `groupId`, `dedupKey`, `openDedupKey` (= type + key while not RESOLVED, null after; **unique**), `status` (OPEN / ACKNOWLEDGED / SNOOZED / RESOLVED), `severity`, `title`, `summary`, `details`, `subjectTableName`, `subjectRecordId`, `recordRefCount`, `itemCount`, `links` (JSON), `attributes` (JSON), `sourceName`, `firstRaisedAt`, `lastRaisedAt`, `occurrenceCount`, `reopenCount`, `flapping`, `acknowledgedByUserId`, `acknowledgedAt`, `snoozedUntil`, `assignedUserId`, `assignedTeamId`, `resolvedAt`, `resolvedByUserId`, `resolution` (PRODUCER / MONITOR / QUIET_PERIOD / MANUAL / EXPIRED), `resolutionNote`, `muted`, `lastNotifiedAt`, `escalationLevel`, plus the mirrored lock columns (§7.2) | unique (`openDedupKey`); (`status`, `severity`); (`alertTypeId`, `status`); (`subjectTableName`, `subjectRecordId`); (`assignedUserId`, `status`); (`lastRaisedAt`) |
-| 5 | `alertRecordRef` (Alert Records) | `alertId`, `tableName`, `recordId`, `label`, `active` (still part of the current occurrence) | (`tableName`, `recordId`, `active`); (`alertId`) |
-| 6 | `alertEvent` (Alert Timeline) | `alertId`, `eventType` (RAISED / REPEATED / SEVERITY_CHANGED / ACKNOWLEDGED / SNOOZED / UNSNOOZED / ASSIGNED / COMMENTED / ESCALATED / NOTIFIED / MUTED / FLAPPING_STARTED / FLAPPING_ENDED / RESOLVED / REOPENED), `at`, `userId` (null for system), `fromValue`, `toValue`, `note` | (`alertId`, `at`); (`eventType`, `at`). It feeds the trend charts and MTTA/MTTR. |
-| 7 | `alertSubscription` (Subscriptions) | `subscriberType` (USER / TEAM / CHANNEL), `userId`, `teamId`, `channelId`, `scopeType` (ALL / GROUP / ALERT_TYPE / MONITOR / TABLE / RECORD / ATTRIBUTE), `scopeValue`, `scopeRecordId`, `minSeverity`, `events` (RAISED, ESCALATED, REMINDER, RESOLVED), `deliveryMode` (IMMEDIATE / DIGEST_HOURLY / DIGEST_DAILY), `channelOverrideIds` (the user's destinations for this subscription; default: their preferences), `enabled`, `createdByUserId` | Record-locked on `userId` for USER subscriptions (§7.1). Unique (subscriber, scope). |
-| 8 | `alertUserPreference` (My Alert Settings) | `userId` (unique), `timeZone`, `quietHoursStart`, `quietHoursEnd`, `quietDays`, `quietBypassSeverity` (default CRITICAL), `digestHour`, `defaultChannelIds`, `emailEnabled`, `inAppEnabled`, `pausedUntil` (vacation) | Record-locked on `userId`. Created lazily with defaults. |
-| 9 | `alertTeam` / `alertTeamMember` (Teams) | team: `name`, `label`, `memberSource` (MANUAL / ROLE / IDP_GROUP), `memberSourceValue`; member: `teamId`, `userId`, `role` (MEMBER / LEAD) | Members come from the table, or are resolved at send time by `AlertAudienceResolver` (§5.6). |
-| 10 | `alertChannel` (Channels) | `name`, `label`, `channelType` (IN_APP / EMAIL / EMAIL_LIST / SLACK / TEAMS / WEBHOOK / PAGERDUTY / ALERTMANAGER / OPSGENIE / SMS), `enabled`, `settings` (JSON, non-secret), `secretRef` (**the name** of an env var or secret key, never the value), `detailLevel` (MINIMAL / STANDARD / FULL), `minSeverity`, `rateLimitPerHour`, `healthStatus` (HEALTHY / PROBATION / UNHEALTHY, the qbit-webhooks model), `lastSuccessAt`, `lastFailureAt`, `consecutiveFailures` | Admin only (§7.1). |
-| 11 | `alertMute` (Mutes and Maintenance) | `name`, `reason`, `scopeType` and `scopeValue` (as subscriptions), `matchAttributes` (JSON), `startsAt`, `endsAt`, `recurrenceCron`, `recurrenceDurationMinutes`, `effect` (SILENCE_NOTIFICATIONS / SUPPRESS_ALERTS), `createdByUserId` | (`startsAt`, `endsAt`) |
-| 12 | `alertNotification` (Notification Log) | `alertId`, `alertEventId`, `subscriptionId`, `channelId`, `recipientUserId`, `recipientLabel` (masked, e.g. `j***@example.com`), `kind` (RAISED / ESCALATED / REMINDER / RESOLVED / DIGEST / TEST), `digestKey`, `status` (PENDING / SENDING / SENT / RETRYING / FAILED / DEAD / SUPPRESSED), `suppressedReason` (QUIET_HOURS / MUTED / FLAPPING / RATE_LIMITED / NOT_VISIBLE / CHANNEL_DISABLED / DUPLICATE / USER_PAUSED), `attempts`, `nextAttemptAt`, `claimedUntil`, `sentAt`, `providerMessageId`, `lastError` (truncated and redacted), `payloadHash` | (`status`, `nextAttemptAt`); (`alertId`); (`channelId`, `status`) |
-| 13 | `alertInboxItem` (My Alerts Inbox) | `userId`, `alertId`, `notificationId`, `deliveredAt`, `readAt`, `archivedAt` | Record-locked on `userId`. (`userId`, `readAt`) |
-| 14 | `alertEscalationPolicy` / `alertEscalationStep` (P6) | policy: `name`, `repeatAfterMinutes`, `maxRepeats`; step: `policyId`, `afterMinutes`, `targetType` (USER / TEAM / CHANNEL), `targetId`, `onlyIfStatus` (OPEN) | Attached to groups or types (`escalationPolicyId`) |
+| 1 | `alerts_type` (Alert Types) | `name` (unique), `label`, `sourceName`, `groupId`, `defaultSeverity`, `severityOverride`, `enabled`, `installed`, `description`, `howToFix`, `subjectTableName`, `visibilityPermission`, `resolveMode`, `quietPeriodMinutes`, `externalDetailCeiling`, `notify` (admin switch: alerts are recorded but never sent), `lastRaisedAt`, `openCount` (denormalized) | Metadata fields are refreshed at boot. Admin fields (`enabled`, `severityOverride`, `groupId`, `notify`) are kept. |
+| 2 | `alerts_group` (Alert Groups) | `name` (unique), `label`, `parentGroupId`, `icon`, `sortOrder`, `description`, `ownerTeamId` | Groups are seeded by qbits from `groupName` and editable. |
+| 3 | `alerts_monitor` (Monitors) | `name`, `alertTypeId`, `kind` (TABLE_QUERY / AGGREGATE / HEARTBEAT / PROCESS_FAILED / ESB_EVENT / CODE / EXTERNAL), `enabled`, `seeded`, `sourceName`, `definition` (JSON, by kind, §5.3), `perRecord` (one alert per matching record, or one aggregate alert), `severity`, `scheduleSeconds` or `cronExpression`, `nextRunAt`, `claimedBy`, `claimedUntil`, `lastRunAt`, `lastStatus` (OK / FIRING / CHECK_FAILED / SKIPPED_MUTED), `lastValue`, `lastError`, `lastElapsedMs`, `consecutiveFailures`, `forMinutes` (must hold this long before it fires) | (`enabled`, `nextRunAt`). Seeded monitors may be disabled or have thresholds tuned, but not deleted. |
+| 4 | `alerts_alert` (Alerts) | `alertTypeId`, `monitorId`, `groupId`, `dedupKey`, `openDedupKey` (= type + key while not RESOLVED, null after; **unique**), `status` (OPEN / ACKNOWLEDGED / SNOOZED / RESOLVED), `severity`, `title`, `summary`, `details`, `subjectTableName`, `subjectRecordId`, `recordRefCount`, `itemCount`, `links` (JSON), `attributes` (JSON), `sourceName`, `firstRaisedAt`, `lastRaisedAt`, `occurrenceCount`, `reopenCount`, `flapping`, `acknowledgedByUserId`, `acknowledgedAt`, `snoozedUntil`, `assignedUserId`, `assignedTeamId`, `resolvedAt`, `resolvedByUserId`, `resolution` (PRODUCER / MONITOR / QUIET_PERIOD / MANUAL / EXPIRED), `resolutionNote`, `muted`, `lastNotifiedAt`, `escalationLevel`, plus the mirrored lock columns (§7.2) | unique (`openDedupKey`); (`status`, `severity`); (`alertTypeId`, `status`); (`subjectTableName`, `subjectRecordId`); (`assignedUserId`, `status`); (`lastRaisedAt`) |
+| 5 | `alerts_record_ref` (Alert Records) | `alertId`, `tableName`, `recordId`, `label`, `active` (still part of the current occurrence) | (`tableName`, `recordId`, `active`); (`alertId`) |
+| 6 | `alerts_event` (Alert Timeline) | `alertId`, `eventType` (RAISED / REPEATED / SEVERITY_CHANGED / ACKNOWLEDGED / SNOOZED / UNSNOOZED / ASSIGNED / COMMENTED / ESCALATED / NOTIFIED / MUTED / FLAPPING_STARTED / FLAPPING_ENDED / RESOLVED / REOPENED), `at`, `userId` (null for system), `fromValue`, `toValue`, `note` | (`alertId`, `at`); (`eventType`, `at`). It feeds the trend charts and MTTA/MTTR. |
+| 7 | `alerts_subscription` (Subscriptions) | `subscriberType` (USER / TEAM / CHANNEL), `userId`, `teamId`, `channelId`, `scopeType` (ALL / GROUP / ALERT_TYPE / MONITOR / TABLE / RECORD / ATTRIBUTE), `scopeValue`, `scopeRecordId`, `minSeverity`, `events` (RAISED, ESCALATED, REMINDER, RESOLVED), `deliveryMode` (IMMEDIATE / DIGEST_HOURLY / DIGEST_DAILY), `channelOverrideIds` (the user's destinations for this subscription; default: their preferences), `enabled`, `createdByUserId` | Record-locked on `userId` for USER subscriptions (§7.1). Unique (subscriber, scope). |
+| 8 | `alerts_user_preference` (My Alert Settings) | `userId` (unique), `timeZone`, `quietHoursStart`, `quietHoursEnd`, `quietDays`, `quietBypassSeverity` (default CRITICAL), `digestHour`, `defaultChannelIds`, `emailEnabled`, `inAppEnabled`, `pausedUntil` (vacation) | Record-locked on `userId`. Created lazily with defaults. |
+| 9 | `alerts_team` / `alerts_team_member` (Teams) | team: `name`, `label`, `memberSource` (MANUAL / ROLE / IDP_GROUP), `memberSourceValue`; member: `teamId`, `userId`, `role` (MEMBER / LEAD) | Members come from the table, or are resolved at send time by `AlertAudienceResolver` (§5.6). |
+| 10 | `alerts_channel` (Channels) | `name`, `label`, `channelType` (IN_APP / EMAIL / EMAIL_LIST / SLACK / TEAMS / WEBHOOK / PAGERDUTY / ALERTMANAGER / OPSGENIE / SMS), `enabled`, `settings` (JSON, non-secret), `secretRef` (**the name** of an env var or secret key, never the value), `detailLevel` (MINIMAL / STANDARD / FULL), `minSeverity`, `rateLimitPerHour`, `healthStatus` (HEALTHY / PROBATION / UNHEALTHY, the qbit-webhooks model), `lastSuccessAt`, `lastFailureAt`, `consecutiveFailures` | Admin only (§7.1). |
+| 11 | `alerts_mute` (Mutes and Maintenance) | `name`, `reason`, `scopeType` and `scopeValue` (as subscriptions), `matchAttributes` (JSON), `startsAt`, `endsAt`, `recurrenceCron`, `recurrenceDurationMinutes`, `effect` (SILENCE_NOTIFICATIONS / SUPPRESS_ALERTS), `createdByUserId` | (`startsAt`, `endsAt`) |
+| 12 | `alerts_notification` (Notification Log) | `alertId`, `alertEventId`, `subscriptionId`, `channelId`, `recipientUserId`, `recipientLabel` (masked, e.g. `j***@example.com`), `kind` (RAISED / ESCALATED / REMINDER / RESOLVED / DIGEST / TEST), `digestKey`, `status` (PENDING / SENDING / SENT / RETRYING / FAILED / DEAD / SUPPRESSED), `suppressedReason` (QUIET_HOURS / MUTED / FLAPPING / RATE_LIMITED / NOT_VISIBLE / CHANNEL_DISABLED / DUPLICATE / USER_PAUSED), `attempts`, `nextAttemptAt`, `claimedUntil`, `sentAt`, `providerMessageId`, `lastError` (truncated and redacted), `payloadHash` | (`status`, `nextAttemptAt`); (`alertId`); (`channelId`, `status`) |
+| 13 | `alerts_inbox_item` (My Alerts Inbox) | `userId`, `alertId`, `notificationId`, `deliveredAt`, `readAt`, `archivedAt` | Record-locked on `userId`. (`userId`, `readAt`) |
+| 14 | `alerts_escalation_policy` / `alerts_escalation_step` (P6) | policy: `name`, `repeatAfterMinutes`, `maxRepeats`; step: `policyId`, `afterMinutes`, `targetType` (USER / TEAM / CHANNEL), `targetId`, `onlyIfStatus` (OPEN) | Attached to groups or types (`escalationPolicyId`) |
 
-**Retention defaults** (configurable): alerts, record refs and events are kept forever (a few thousand rows a year for a typical app). Notifications are kept 365 days and inbox items 90 days after they are read or archived. A daily hidden `alertPurge` process enforces this.
+**Retention defaults** (configurable): alerts, record refs and events are kept forever (a few thousand rows a year for a typical app). Notifications are kept 365 days and inbox items 90 days after they are read or archived. A daily hidden `alertsPurge` process enforces this.
 
 **Liquibase.** One prefix-parameterized changelog, included by the host (the quick-search and webperf pattern), plus a `startupMode` schema check (`FAIL_FAST` / `WARN`).
 
@@ -235,20 +239,20 @@ Default table prefix `alert`, configurable with `QBitConfig.namespace` (the quic
 - **`forMinutes` on monitors** (default 0): a condition must hold across evaluations for that long before an alert opens. This is the Alertmanager `for:` idea and stops one bad sample from paging.
 - **Auto-resolve modes** come from the type: `PRODUCER` (a `resolve` call), `MONITOR` (the next evaluation is clean), `QUIET_PERIOD` (no raise for N minutes, e.g. storage's "24 h with no new failures"), or `MANUAL`. Any mode also allows a manual Resolve with a note.
 - **Acknowledge** stops reminders and escalation, but the alert stays visible until resolved. **Snooze** hides it from "needs action" lists and stops notifications until a time; it returns early if the severity rises.
-- **Concurrency.** The unique `openDedupKey` makes "insert, or update the open one" safe across replicas: on a duplicate-key error, re-read and update. Every transition writes its `alertEvent` in the same transaction.
+- **Concurrency.** The unique `openDedupKey` makes "insert, or update the open one" safe across replicas: on a duplicate-key error, re-read and update. Every transition writes its `alerts_event` in the same transaction.
 
 ### 5.2 Grouping
 
 There are two kinds of grouping, kept apart on purpose:
-- **Categories** (`alertGroup`) are for people: the home groups by them, subscriptions target them, and the Needs Attention summary counts by them.
+- **Categories** (`alerts_group`) are for people: the home groups by them, subscriptions target them, and the Needs Attention summary counts by them.
 - **Aggregation** is for noise. A monitor in aggregate mode (`perRecord = false`) raises *one* alert ("37 published pages have no excerpt") with up to 100 record refs, an `itemCount` and a filter link. Per-record mode (one alert per record) is for problems that people fix one record at a time, such as "backup job X failed". The default is aggregate, and per-record mode is capped (default 50 open alerts per monitor; beyond the cap it falls back to one aggregate alert and says so).
 - **Notification batching:** IMMEDIATE notifications that arrive within a 60-second window for the same recipient and channel are sent as one message ("3 new alerts in CDN"). Digests (§5.5) do this hourly or daily.
 
 ### 5.3 Monitors
 
-All monitors run in one hidden scheduled process, `alertEvaluateMonitors` (every 30 s). It claims due monitors with a conditional update (`claimedUntil < now`), so any number of replicas share the work with no Quartz clustering required. Each evaluation has a timeout (default 15 s) and a row-scan cap. A monitor that throws gets `lastStatus = CHECK_FAILED`, and after 3 consecutive failures it raises the meta-alert `alerts.monitor.failing`. A broken check is itself an exception to manage.
+All monitors run in one hidden scheduled process, `alertsEvaluateMonitors` (every 30 s). It claims due monitors with a conditional update (`claimedUntil < now`), so any number of replicas share the work with no Quartz clustering required. Each evaluation has a timeout (default 15 s) and a row-scan cap. A monitor that throws gets `lastStatus = CHECK_FAILED`, and after 3 consecutive failures it raises the meta-alert `alerts.monitor.failing`. A broken check is itself an exception to manage.
 
-| Kind | Definition (JSON in `alertMonitor.definition`) | Fires when | Typical use |
+| Kind | Definition (JSON in `alerts_monitor.definition`) | Fires when | Typical use |
 |---|---|---|---|
 | `TABLE_QUERY` | `tableName`, `filter` (a standard `QQueryFilter`), `threshold` (default > 0), `labelField` | The count of matching rows passes the threshold. In per-record mode, each matching row is an alert. | Data Health `FilterCheck` rules ("published posts without an excerpt"), "orders stuck in PENDING > 2 h" |
 | `AGGREGATE` | `tableName`, `filter`, `aggregate` (COUNT / SUM / AVG / MIN / MAX over a field, optional group-by field), `comparator`, `warningThreshold`, `errorThreshold`, `criticalThreshold` | The value crosses a band. Group-by gives one alert per group value. | Invalidation budget, storage bytes against a quota, failed logins in 24 h |
@@ -277,16 +281,16 @@ When an alert event is notifiable (RAISED, REOPENED, SEVERITY_CHANGED upward, ES
 2. **Expands** TEAM subscriptions to users (through `AlertAudienceResolver`), and keeps CHANNEL subscriptions (e.g. "everything ERROR+ in Backups goes to the ops email list") as they are.
 3. **Filters each user recipient** for visibility (§7.2). A recipient who cannot see the alert gets nothing, logged as `SUPPRESSED / NOT_VISIBLE`. Channel subscriptions are not per-person, so they are gated by the channel's `detailLevel` (§7.4) and by the subscription creator's own visibility at creation time (only `alerts.admin` can create CHANNEL subscriptions).
 4. **Applies, in order:** the type's `notify` switch, mutes, flapping, the user's `pausedUntil`, quiet hours (CRITICAL breaks through by default), the channel's `minSeverity` and rate limit, and dedup (same alert, channel, recipient and kind within 10 min). Every suppression is still written as a `SUPPRESSED` row with its reason, so "why didn't I get paged?" is answered by a table.
-5. **Writes `alertNotification` rows** (PENDING), plus an `alertInboxItem` for every in-app recipient.
+5. **Writes `alerts_notification` rows** (PENDING), plus an `alerts_inbox_item` for every in-app recipient.
 
 **Defaults that keep it calm:** with no subscriptions configured, a fresh install notifies nobody. Every alert still appears on the Alerts home and in the bell of users subscribed by the bootstrap rule. The bootstrap rule is `alerts.admin` holders, ERROR and above, in-app only. INFO is never sent to external channels unless a subscription asks for it.
 
 ### 5.5 Delivery, retries, digests
 
-- **`alertDeliverNotifications`** (hidden, every 15 s) claims PENDING and due RETRYING rows, groups them by (recipient, channel) for the 60-second batch window, renders them (§7.4) and calls the channel.
+- **`alertsDeliverNotifications`** (hidden, every 15 s) claims PENDING and due RETRYING rows, groups them by (recipient, channel) for the 60-second batch window, renders them (§7.4) and calls the channel.
 - **Retries:** 1 min, 5 min, 15 min, 1 h, 4 h, then DEAD (6 attempts, configurable per channel). A 4xx that the channel reports as permanent (bad webhook URL, unknown address) goes straight to FAILED.
 - **Channel health** follows the qbit-webhooks model (HEALTHY / PROBATION / UNHEALTHY). Three consecutive DEAD deliveries mark a channel UNHEALTHY and raise `alerts.channel.failing`. That alert is routed **in-app only**, to `alerts.admin`, so a broken channel can never loop.
-- **Digests:** `alertSendDigests` (hidden, hourly) groups DIGEST_* notifications per user into one message: open alerts by severity, new since the last digest and resolved since the last digest, each with a link. An empty digest is not sent.
+- **Digests:** `alertsSendDigests` (hidden, hourly) groups DIGEST_* notifications per user into one message: open alerts by severity, new since the last digest and resolved since the last digest, each with a link. An empty digest is not sent.
 - **Reminders:** an OPEN alert that has not been acknowledged sends a REMINDER every `reminderIntervalMinutes` (per type, default off; 60 for CRITICAL).
 - **ESB (optional):** if `esbDestinationName` is set, alert lifecycle changes are also published as CloudEvents `qqq.alert.raised|acknowledged|resolved|reopened|escalated`, so other systems can react. It is off by default.
 
@@ -308,7 +312,7 @@ public interface AlertChannelInterface
 
 | Channel | Phase | How | Notes |
 |---|---|---|---|
-| **In-app (bell)** | P1 | `alertInboxItem` rows | Always available. Required, and cannot be disabled globally. |
+| **In-app (bell)** | P1 | `alerts_inbox_item` rows | Always available. Required, and cannot be disabled globally. |
 | **Email** (to a user) | P1 | Core `SendMessageAction` through a configured `QMessagingProviderMetaData`: `EmailMessagingProviderMetaData` (SMTP) or SES | Plain-text plus simple HTML. `Message-ID`/`In-Reply-To` are derived from the alert id, so RESOLVED threads under RAISED in mail clients. `List-Id` and a footer link to the user's subscription record ("Change or stop these emails"). |
 | **Email list** | P1 | Same, to a fixed address list in `settings` | For distribution lists. Addresses are masked in the log. |
 | **Generic webhook** | P4 | HTTPS POST of a documented JSON body, HMAC-SHA256 signature header with a timestamp (qbit-webhooks' signing scheme), 10 s timeout | When qbit-webhooks is installed, this channel may delegate to it (optional; decided in P4). |
@@ -358,14 +362,14 @@ Top to bottom. Every widget is full width, uses real data, and has an honest emp
 | **My alerts** | TABLE, 12, 4 columns | Alerts assigned to me or matching my subscriptions, unacknowledged first: Alert (title, linked), Severity, Age, Status. "View all" opens the "My alerts" saved view. Empty: "Nothing needs you. You are subscribed to 3 groups. [Manage subscriptions]". |
 | **Needs action** | TABLE, 12, 4 columns | All visible OPEN, unacknowledged and unsnoozed alerts, ordered by severity then age: Alert, Severity, Age, Owner (assignee, team or "Unassigned"). The 10 newest; "View all". |
 | **By group** | TABLE, 12, 4 columns | Group, Open, Oldest, Trend (7-day sparkline of opened alerts), each linking to the group's filtered list. This is the manage-by-exception overview. |
-| **Trend** | LINE_CHART, 12 | 30 days of alerts opened and resolved per day, with mean time to acknowledge and mean time to resolve shown as numbers beside the chart (from `alertEvent`). The chart starts at the first recorded day. |
+| **Trend** | LINE_CHART, 12 | 30 days of alerts opened and resolved per day, with mean time to acknowledge and mean time to resolve shown as numbers beside the chart (from `alerts_event`). The chart starts at the first recorded day. |
 | **Noisy monitors** | TABLE, 12, 4 columns | The top 10 types or monitors in the last 7 days by occurrences + reopens + flapping: Monitor, Opened, Reopened, Flapping. A row links to the monitor, where "Mute", "Edit threshold" and "Disable" are record actions. |
 | **Delivery health** (`alerts.admin`) | TABLE, 12, 4 columns | Channels that are not HEALTHY, plus DEAD/FAILED counts for the last 24 h, linking to the Notification Log. Shown only when there is something to show; otherwise one line: "All 4 channels delivered normally in the last 24 h." |
 | **Recently resolved** | TABLE, 12, 3 columns | The newest 5: Alert, Resolved (how and by whom), Duration |
 
 ### 6.3 Record panel: "Open alerts" on any record
 
-- **What it is.** A `RecordPanelProviderInterface` (§3.4) registered by the qbit for every table that is a `subjectTableName` of some type, or that has `alertRecordRef` rows (cached).
+- **What it is.** A `RecordPanelProviderInterface` (§3.4) registered by the qbit for every table that is a `subjectTableName` of some type, or that has `alerts_record_ref` rows (cached).
 - **What it shows** on the normal record view (not the Developer view):
   - each open, visible alert that references this record: severity dot, title (linked), age, status
   - the actions "Acknowledge" and "Snooze", as links to the record actions on the alert
@@ -396,19 +400,19 @@ Top to bottom. Every widget is full width, uses real data, and has an honest emp
 
 | Action (label) | On | Permission | Review → Result |
 |---|---|---|---|
-| Acknowledge | `alert` (bulk) | `alerts.manage` | "Will acknowledge 4 alerts (1 already acknowledged, skipped)" → done |
-| Snooze | `alert` (bulk) | `alerts.manage` | Input: until (a date/time, or 1 h / 4 h / tomorrow 09:00). Review lists the alerts. |
-| Resolve | `alert` (bulk) | `alerts.manage` | A note is required. Review warns when the monitor is still firing ("will reopen at the next check"). |
-| Reopen | `alert` | `alerts.manage` | |
-| Assign | `alert` (bulk) | `alerts.manage` | Input: a user or team |
-| Add comment | `alert` | `alerts.view` (only on alerts the user can see) | Writes a COMMENTED event |
-| Subscribe me | `alertType`, `alertGroup`, `alertMonitor` (records); "Watch alerts for this record" from the panel | `alerts.view` | Input: minimum severity and delivery mode. Creates the user's own subscription. |
-| Run check now | `alertMonitor` | `alerts.admin` | Review is the evaluation preview (would open / update / resolve). Result applies it. |
-| Enable / Disable monitor | `alertMonitor` (bulk) | `alerts.admin` | |
-| Mute | `alertType`, `alertGroup`, `alertMonitor`, `alert` | `alerts.manage` | Input: duration and reason. Creates an `alertMute`. |
-| Send test notification | `alertChannel` | `alerts.admin` | Sends a TEST message through the real pipeline and logs it |
-| Retry delivery | `alertNotification` (bulk, FAILED/DEAD) | `alerts.admin` | Requeues them |
-| Create monitor from type | `alertType` | `alerts.admin` | Prefilled from the type's defaults |
+| Acknowledge | `alerts_alert` (bulk) | `alerts.manage` | "Will acknowledge 4 alerts (1 already acknowledged, skipped)" → done |
+| Snooze | `alerts_alert` (bulk) | `alerts.manage` | Input: until (a date/time, or 1 h / 4 h / tomorrow 09:00). Review lists the alerts. |
+| Resolve | `alerts_alert` (bulk) | `alerts.manage` | A note is required. Review warns when the monitor is still firing ("will reopen at the next check"). |
+| Reopen | `alerts_alert` | `alerts.manage` | |
+| Assign | `alerts_alert` (bulk) | `alerts.manage` | Input: a user or team |
+| Add comment | `alerts_alert` | `alerts.view` (only on alerts the user can see) | Writes a COMMENTED event |
+| Subscribe me | `alerts_type`, `alerts_group`, `alerts_monitor` (records); "Watch alerts for this record" from the panel | `alerts.view` | Input: minimum severity and delivery mode. Creates the user's own subscription. |
+| Run check now | `alerts_monitor` | `alerts.admin` | Review is the evaluation preview (would open / update / resolve). Result applies it. |
+| Enable / Disable monitor | `alerts_monitor` (bulk) | `alerts.admin` | |
+| Mute | `alerts_type`, `alerts_group`, `alerts_monitor`, `alerts_alert` | `alerts.manage` | Input: duration and reason. Creates an `alerts_mute`. |
+| Send test notification | `alerts_channel` | `alerts.admin` | Sends a TEST message through the real pipeline and logs it |
+| Retry delivery | `alerts_notification` (bulk, FAILED/DEAD) | `alerts.admin` | Requeues them |
+| Create monitor from type | `alerts_type` | `alerts.admin` | Prefilled from the type's defaults |
 
 ---
 
@@ -423,7 +427,7 @@ Top to bottom. Every widget is full width, uses real data, and has an honest emp
 | `alerts.admin` | Monitors, types (overrides), groups, teams, channels, escalation, every subscription, the full notification log, channel subscriptions, retries |
 
 - **They follow the session** (the #1061/#1075 rules). Every action re-checks permissions in its first step. API endpoints check server-side, and the UI only hides what the server denies.
-- **Record locks on personal rows.** `alertSubscription` (USER rows), `alertUserPreference` and `alertInboxItem` have a record security lock on `userId`, keyed on the session user, so a user only sees and edits their own. `alerts.admin` gets an all-access key.
+- **Record locks on personal rows.** `alerts_subscription` (USER rows), `alerts_user_preference` and `alerts_inbox_item` have a record security lock on `userId`, keyed on the session user, so a user only sees and edits their own. `alerts.admin` gets an all-access key.
 - **The host maps its roles.** Nothing is granted by default.
 
 ### 7.2 Alert visibility follows the underlying record
@@ -435,14 +439,14 @@ A user sees an alert only if **all** of these hold:
 4. if the alert has a subject record, that record is visible to them under the table's record security locks
 
 **How each check is enforced:**
-- **Checks 1–3 run in the query.** A pre-query customizer on `alert` (and on `alertRecordRef`, `alertEvent`, `alertInboxItem` and `alertNotification` through their joins) adds `visibilityPermission IN (<the session's permissions>) OR NULL` and `subjectTableName IN (<tables the session can READ>) OR NULL`. Counts, paging and widgets are therefore correct.
-- **Check 4: mirrored lock values.** At raise time the engine reads the subject record's values for each `RecordSecurityLock` on its table and copies them into mirrored lock columns on `alert` (one nullable column per security key type listed in `AlertsQBitConfig.mirroredSecurityKeyTypes`, e.g. a multi-site host's site key). The `alert` table then declares ordinary `RecordSecurityLock`s on those columns with `nullValueBehavior = ALLOW`, so QQQ enforces them natively in every query and count. Single-tenant hosts configure none.
+- **Checks 1–3 run in the query.** A pre-query customizer on `alerts_alert` (and on `alerts_record_ref`, `alerts_event`, `alerts_inbox_item` and `alerts_notification` through their joins) adds `visibilityPermission IN (<the session's permissions>) OR NULL` and `subjectTableName IN (<tables the session can READ>) OR NULL`. Counts, paging and widgets are therefore correct.
+- **Check 4: mirrored lock values.** At raise time the engine reads the subject record's values for each `RecordSecurityLock` on its table and copies them into mirrored lock columns on `alerts_alert` (one nullable column per security key type listed in `AlertsQBitConfig.mirroredSecurityKeyTypes`, e.g. a multi-site host's site key). The `alerts_alert` table then declares ordinary `RecordSecurityLock`s on those columns with `nullValueBehavior = ALLOW`, so QQQ enforces them natively in every query and count. Single-tenant hosts configure none.
 - **Defense in depth at render and at send.** Record refs shown on screens, and every user recipient at fan-out (§5.4), are re-checked with `RecordAccessHelper.visibleKeys`. Refs the user cannot see are simply not shown. There is no "3 hidden" hint, because that would leak that they exist. Aggregate alerts show the count the *monitor* found only when the type does not declare a `subjectTableName`. Otherwise the panel shows the visible refs and the title, and titles are written to be count-safe (§7.4).
 - **System-evaluated alerts** (CODE checks over SQL, broker counters) carry no subject records and are gated by checks 1–2 only. This matches the assistant spec's "system-evaluated, admin only" rule.
 
 ### 7.3 Secrets
 
-- **Channel secrets are references.** `alertChannel.secretRef` holds a *name* resolved by `QMetaDataVariableInterpreter` (`${env.NAME}`, which also covers Kubernetes secrets injected by External Secrets / Infisical / Vault, `.env`, or AWS Secrets Manager through `SecretsManagerUtils`). The SMTP password, Slack webhook URL, PagerDuty routing key, Teams Workflows URL, webhook HMAC key and the Alertmanager ingest token are never stored in a table, a log, an audit or an error message.
+- **Channel secrets are references.** `alerts_channel.secretRef` holds a *name* resolved by `QMetaDataVariableInterpreter` (`${env.NAME}`, which also covers Kubernetes secrets injected by External Secrets / Infisical / Vault, `.env`, or AWS Secrets Manager through `SecretsManagerUtils`). The SMTP password, Slack webhook URL, PagerDuty routing key, Teams Workflows URL, webhook HMAC key and the Alertmanager ingest token are never stored in a table, a log, an audit or an error message.
 - **Display.** `toString()` redacts them, and the channel record shows "Secret: present / missing", never the value.
 - **Gap noted.** Core has no general secret-provider SPI today (only env, prop, `.env` and AWS Secrets Manager). The env-var path is enough for v1. If the object-storage spec's `${file.PATH}` reference lands (its §8.2), mounted-file secrets work too.
 - **Webhook URLs are secrets.** Slack and Teams URLs grant posting rights, so they are treated as secrets, not settings.
@@ -473,7 +477,7 @@ A user sees an alert only if **all** of these hold:
 | Setting | Default | Meaning |
 |---|---|---|
 | `backendName` | required | RDBMS backend for all tables |
-| `namespace` | `alert` | Table, process, widget and permission prefix |
+| `namespace` | `alerts` | Table (`alerts_`), process, widget and permission prefix |
 | `appName`, `appLabel`, `parentAppName` | `alerts`, `Alerts`, none | Top-level by default (Q4) |
 | `schedulerName` | required for monitors | Without it, producer signals still work but monitors and delivery do not run, and the home says so |
 | `messagingProviderName` | none | A `QMessagingProviderMetaData` for email. Without it, email channels are disabled with an explanation. |
@@ -499,7 +503,7 @@ Every producer depends **only on `qqq-backend-core`** (the SPI, §3). Each decla
 | Spec | Alert types (declared by the producing qbit) | Monitor kind | Resolves | Links to |
 |---|---|---|---|---|
 | **Web performance #1088** | `webperf.regression.confirmed` (per target/strategy/metric; WARNING or CRITICAL from the budget), `webperf.runner.stale`, `webperf.runs.failing` (quota or errors), `webperf.rum.band-worse` | push for regressions; HEARTBEAT on `webperfRunQueuedTests`; AGGREGATE over `webperf_lab_run` failures | regression auto-resolve rule (its §6.4 step 6) or dismiss → `resolve`; next successful run | the `webperf_regression` record and the Performance home |
-| **CDN #1084** | `cdn.purge.dead`, `cdn.budget.near` / `cdn.budget.over`, `cdn.connection.failed`, `cdn.config.drift`, `cdn.secret.rotation-due` (its §4.9.1 table, unchanged) | push from the dispatcher; AGGREGATE for the budget; CODE for rotation age | as in its §4.9.1 | `cdnPurgeRequest`, `cdnProvider`, `cdnDriftFinding` |
+| **CDN #1084** | `cdn.purge.dead`, `cdn.budget.near` / `cdn.budget.over`, `cdn.connection.failed`, `cdn.config.drift`, `cdn.secret.rotation-due` (its §4.9.1 table, unchanged) | push from the dispatcher; AGGREGATE for the budget; CODE for rotation age | as in its §4.9.1 | `cdn_purge_request`, `cdnProvider`, `cdnDriftFinding` |
 | **Object storage #1089** | `storage.objects.missing`, `storage.objects.orphaned`, `storage.operation.failed` (QUIET_PERIOD 24 h), `storage.quota.near`, `storage.connection.failed`, `storage.scan.stale` (its §9.3 table, unchanged) | push from scans and operations; HEARTBEAT for scans | as in its §9.3 | filtered `storageObject` / `storageObjectReference`, `storageBucket` |
 | **Backups** (spec in progress) | `backups.job.missed` (HEARTBEAT per job: expected interval + grace), `backups.job.failed` (ERROR), `backups.verify.failed` (CRITICAL: a restore test failed or a checksum mismatched), `backups.offsite.lagging`, `backups.retention.violated`, `backups.target.near-full` | HEARTBEAT, PROCESS_FAILED, AGGREGATE | next successful run or verify | the backup job / run record |
 | **CMS #1083** | Its Data Health rules (D10) ship as **monitors** through `QAlertTypeMetaData.withDefaultMonitor` (TABLE_QUERY for filter rules, CODE for SQL rules), group `content`; plus `cms.publish.failed`, `cms.revalidation.failing` (the revalidation notifier's 3 attempts failed), `cms.schedule.missed` (a scheduled publish time passed without a publish) | TABLE_QUERY, CODE, push | MONITOR (the next clean check) or the next success | the content record(s) |
@@ -521,7 +525,7 @@ Every producer depends **only on `qqq-backend-core`** (the SPI, §3). Each decla
 
 | Feature (first host) | Today | Becomes |
 |---|---|---|
-| **Data Health** (~140 rules: `FilterCheck`, `SqlCheck`, `JsonReferenceCheck`, `ParentCycleCheck`, `InvalidRegexCheck`, `EsbCounterCheck`, Quartz rules; computed on demand as the system user, cached 5 min per replica, no storage, no ack) | A rule list in host code | **Step 1 (adapter):** `DataHealthMonitorProvider` registers each rule as an alert type `datahealth.<ruleId>` (group = its area, severity mapped, `whyItMatters` → description, `howToFix` → how-to-fix) with a CODE monitor that calls the existing check. The drill-down filter becomes the link, and the sample ids become record refs. **Step 2 (native):** `FilterCheck` rules become TABLE_QUERY monitors (plain data an admin can edit). The other check kinds stay CODE. **Step 3:** the 5-minute in-memory cache and the per-area widgets are retired; the evaluated state lives in `alert`. The CMS rules then ship inside `qbit-cms` as seeded monitors (CMS D10's rule-provider interface *is* this mechanism), so no `qbit-data-health` is needed. |
+| **Data Health** (~140 rules: `FilterCheck`, `SqlCheck`, `JsonReferenceCheck`, `ParentCycleCheck`, `InvalidRegexCheck`, `EsbCounterCheck`, Quartz rules; computed on demand as the system user, cached 5 min per replica, no storage, no ack) | A rule list in host code | **Step 1 (adapter):** `DataHealthMonitorProvider` registers each rule as an alert type `datahealth.<ruleId>` (group = its area, severity mapped, `whyItMatters` → description, `howToFix` → how-to-fix) with a CODE monitor that calls the existing check. The drill-down filter becomes the link, and the sample ids become record refs. **Step 2 (native):** `FilterCheck` rules become TABLE_QUERY monitors (plain data an admin can edit). The other check kinds stay CODE. **Step 3:** the 5-minute in-memory cache and the per-area widgets are retired; the evaluated state lives in `alerts_alert`. The CMS rules then ship inside `qbit-cms` as seeded monitors (CMS D10's rule-provider interface *is* this mechanism), so no `qbit-data-health` is needed. |
 | **ESB health views** (the qqq-esb overview, the host's broker probes, two `EsbCounterCheck` rules) | Live widgets | The ESB app keeps its home (the owner of ESB data). The ESB alert adapter (§9) raises dead letters, publish failures and broker reachability, and the host's ESB rules are dropped in favor of it. |
 | **Quick Search validation runs** (`quickSearchValidationRun` rows, scheduled daily) | Stored runs, no notification | `ValidateIndexStep` raises or resolves `search.validation.failed`, plus a HEARTBEAT. The runs table stays the evidence. |
 | **Admin home "Needs Attention"** (the top 5 Data Health problems plus content inventory lines) and the **Health home `healthAlerts`** subsystem pills | Host widgets that query Data Health directly | Become link-only summaries through `AlertSummaryLoader` (§6.5). The content-inventory lines ("drafts", "going live this week") are *work lists*, not exceptions, so they stay as they are. |
@@ -617,8 +621,8 @@ Next UI (P3) ◄────────────┘ (bell + record panel; bo
 
 ## 13. Owner questions (with recommendations)
 
-1. **Name and shape.** Repo `QRun-IO/qbit-alerts`, package `com.kingsrook.qbits.alerts`, table prefix `alert`, app label "Alerts"?
-   *Recommendation:* yes. "Manage by exception" is the principle, and "Alerts" is the label people understand. Creating the public repo still needs your explicit go-ahead.
+1. **Name and shape.** Repo `QRun-IO/qbit-alerts`, package `com.kingsrook.qbits.alerts`, table prefix `alerts_`, app label "Alerts"?
+   *Recommendation:* yes, with the table prefix `alerts_` (was `alert`), per the owner naming rule of 2026-10-12 (§4): tables are lowercase snake_case and prefixed with the qbit's full name. "Manage by exception" is the principle, and "Alerts" is the label people understand. Creating the public repo still needs your explicit go-ahead.
 2. **Where the producer SPI lives.** In `qqq-backend-core` 4.1.x (option A), or in a separate `qbit-alerts-api` jar (B)?
    *Recommendation:* A. It is about 10 small classes with no dependencies, and it is what makes every other qbit's integration optional without reflection.
 3. **Data Health's future.** Absorb its framework into `qbit-alerts` as monitor kinds, or build a separate `qbit-data-health` that produces alerts?
@@ -638,7 +642,7 @@ Next UI (P3) ◄────────────┘ (bell + record panel; bo
 10. **External detail level.**
     *Recommendation:* MINIMAL by default for every external channel (title, severity, group, age, link). STANDARD is per-channel opt-in, and FULL needs `alerts.admin` and shows a warning. Producers must write titles without personal data. This is a review checklist item for every producer.
 11. **Teams and audiences.**
-    *Recommendation:* the qbit's own `alertTeam` table (MANUAL members) in P1. ROLE and IDP_GROUP resolvers (user-role-permissions, the Authentik mirror) come in P4, so "notify the publishers group" tracks group membership automatically.
+    *Recommendation:* the qbit's own `alerts_team` table (MANUAL members) in P1. ROLE and IDP_GROUP resolvers (user-role-permissions, the Authentik mirror) come in P4, so "notify the publishers group" tracks group membership automatically.
 12. **Bell transport.**
     *Recommendation:* polling every 60 s while the tab is visible in v1. Server-sent events are a P6 option if the latency matters.
 13. **Escalation and on-call.**

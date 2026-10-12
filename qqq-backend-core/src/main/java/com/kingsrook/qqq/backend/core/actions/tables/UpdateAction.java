@@ -43,6 +43,9 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -139,10 +142,26 @@ public class UpdateAction
     *******************************************************************************/
    UpdateOutput execute(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
    {
-      QContext.pushAction(updateInput);
-      try
+      boolean enforce = false;
+      if(StringUtils.hasContent(updateInput.getTableName()) && updateInput.getTable() != null)
       {
-         return executeInternal(updateInput, failOnRecordErrors);
+         enforce = CorePermissionEnforcer.checkTablePermissions(updateInput, TablePermissionSubType.EDIT);
+         if(enforce)
+         {
+            FieldSecurityLockHelper.assertWritesAccessible(updateInput.getTable(), updateInput.getRecords());
+            CorePermissionEnforcer.checkAssociatedWrites(updateInput);
+         }
+      }
+
+      QContext.pushAction(updateInput);
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         UpdateOutput updateOutput = executeInternal(updateInput, failOnRecordErrors);
+         if(enforce)
+         {
+            FieldSecurityLockHelper.removeDeniedValues(updateInput.getTableName(), null, updateOutput.getRecords());
+         }
+         return (updateOutput);
       }
       finally
       {
@@ -196,7 +215,12 @@ public class UpdateAction
          setAutomationStatusField(updateInput, oldRecordList);
       }
 
-      performValidations(updateInput, oldRecordList, false);
+      performValidations(updateInput, oldRecordList, updateInput.getDryRun());
+      if(updateInput.getDryRun())
+      {
+         return (buildDryRunOutput(updateInput, table, oldRecordList));
+      }
+
       Map<QRecord, AssociatedRecordUpdate.Values> associationValues = AssociatedRecordUpdate.prepare(table, updateInput.getRecords(), updateInput.getTransaction());
       deleteOmittedAssociations(updateInput, associationValues);
 
@@ -274,6 +298,38 @@ public class UpdateAction
       }
 
       return updateOutput;
+   }
+
+
+
+   /***************************************************************************
+    ** for a dry run: the would-be records after the update - each input record's
+    ** values overlaid on its old record (when old records could be fetched),
+    ** keeping the input record's errors and warnings.
+    ***************************************************************************/
+   private static UpdateOutput buildDryRunOutput(UpdateInput updateInput, QTableMetaData table, Optional<List<QRecord>> oldRecordList)
+   {
+      Map<Serializable, QRecord> oldRecordsByPrimaryKey = new HashMap<>();
+      for(QRecord oldRecord : oldRecordList.orElse(List.of()))
+      {
+         oldRecordsByPrimaryKey.put(ValueUtils.getValueAsString(oldRecord.getValue(table.getPrimaryKeyField())), oldRecord);
+      }
+
+      List<QRecord> outputRecords = new ArrayList<>();
+      for(QRecord inputRecord : CollectionUtils.nonNullList(updateInput.getRecords()))
+      {
+         QRecord oldRecord = oldRecordsByPrimaryKey.get(ValueUtils.getValueAsString(inputRecord.getValue(table.getPrimaryKeyField())));
+         QRecord wouldBe   = oldRecord == null ? new QRecord() : new QRecord(oldRecord);
+         wouldBe.setTableName(table.getName());
+         wouldBe.getValues().putAll(inputRecord.getValues());
+         wouldBe.setErrors(new ArrayList<>(CollectionUtils.nonNullList(inputRecord.getErrors())));
+         wouldBe.setWarnings(new ArrayList<>(CollectionUtils.nonNullList(inputRecord.getWarnings())));
+         outputRecords.add(wouldBe);
+      }
+
+      UpdateOutput updateOutput = new UpdateOutput();
+      updateOutput.setRecords(outputRecords);
+      return (updateOutput);
    }
 
 

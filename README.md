@@ -118,6 +118,14 @@ Add the Next dashboard jar. `QApplicationJavalinServer` serves it at `/`, on the
 
 The [Material Dashboard](https://github.com/QRun-IO/qqq-frontend-material-dashboard) remains available. Applications that depend only on its jar keep serving it, unchanged. With both jars present, choose Material with `withServeFrontendMaterialDashboard(true)` or `-Dqqq.javalin.frontend=material` (`next` and `none` are the other values). To serve both, host Material at another path with `withFrontendMaterialDashboardHostedPath("/material")`.
 
+## Adopting in another app
+
+- **Coordinates:** group `com.kingsrook.qqq` on Maven Central. Import `qqq-bom-pom` and omit module versions. Stable is `4.0.0`; the newest 4.1 candidate is `4.1.0-RC.3`. Pin an exact version.
+- **From 0.x:** follow the [4.0 migration guide](docs/migration/4.0.adoc) first.
+- **4.1 features:** [Adopting QQQ 4.1 features](docs/migration/4.1.adoc) covers record search providers, OAuth2 refresh tokens (new table and encryption-key secret), the `FILE_PREVIEW` adornment, the instance home app and the upgrade notes from 4.0.
+- **Checklist:** the [adoption checklist](docs/migration/adoption-checklist.adoc) walks an existing 0.x app through adopting 4.1, Next and the new QBits, one feature at a time.
+- **Limitations:** 4.1 candidates carry the accepted limitations in the [4.1 release procedure](docs/release/4.1.adoc).
+
 ## Project Status
 
 QQQ 4.0 establishes the semver contract. Major-version migration includes package renames and API removals; consult the [migration guide](docs/migration/4.0.adoc) and [release notes](CHANGELOG.md). QQQ 4.1 makes the [Next dashboard](https://github.com/QRun-IO/qqq-frontend-next) the default; the Material Dashboard (0.42.0-RC.2) remains supported as an explicit option. Comprehensive sample coverage and other deferred work are tracked in [#534](https://github.com/QRun-IO/qqq/issues/534).

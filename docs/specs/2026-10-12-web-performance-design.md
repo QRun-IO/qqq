@@ -20,7 +20,7 @@ The owner accepted every recommendation on 2026-10-12 ("accept all pagespeed rec
 | D6 | Daily KEY + weekly full + on publish + after deploy, cap 500/day | §6.2 |
 | D7 | Build-id probe (`/api/build`, backend version at startup) | §6.3 |
 | D8 | Keep all Lighthouse reports forever in PostgreSQL | §4.3 |
-| D9 | Prometheus → existing Slack routes + Data Health | §8.3 |
+| D9 | **Amended by the owner (2026-10-12): Slack is optional.** Regressions are raised through the generic Alerts qbit's producer SPI (`docs/specs/2026-10-12-qbit-alerts-design.md`) when it is installed, and its channels (in-app, email, Slack, webhook, ...) deliver them. Without it they still show on the Performance home, the Dashboard line and in Data Health. Prometheus metrics are an optional extra, not the alerting design. | §8.3 |
 | D10 | One key for PSI + CrUX, Infisical write-only seed with `-target`; the owner creates the key and names the 1Password item | §8.2 |
 | D11 | RUM attributed to the landing URL (no soft navigations) | §7.1 |
 | D12 | Seed Google's "good" thresholds as budgets | §4.2 |
@@ -42,7 +42,7 @@ The owner asked: *"could we design and integrate a Google PageSpeed like app or 
 2. **Real-user data** (RUM): Core Web Vitals (LCP, INP, CLS, FCP, TTFB) measured in visitors' browsers by the `web-vitals` v6 attribution build. They go through the **existing** consent-gated analytics beacon (`/api/e` → `/analytics/v1/collect`) into analytics tables, with p75 computed the way CrUX computes it.
 3. **Google field data (CrUX)**, recorded honestly. kof22 gets about 44 pageviews a day, so it is almost certainly below CrUX's popularity threshold. The CrUX check is still scheduled, and its result is stored as **"no CrUX data"** until Google publishes some. Our own RUM is the field truth in the meantime.
 
-Package it as a separate, reusable **`qbit-web-performance`** (prefix `webperf_`). It installs into any QQQ site, and the CMS plugs in through two small SPIs (URL source, content resolver). Its single home is a **Performance** sub-app under the CMS. Everything else (the CMS home, the Dashboard, the record screens, the Health home) only shows a compact summary or a per-record panel that links there. Tests run on a schedule (daily for key pages, weekly for the whole sitemap), on publish (via `kof22.cms.*` ESB events), after deploys (a build-id probe) and around CDN stage changes. Regressions are confirmed with extra runs before they alert through Prometheus and Alertmanager to the existing Slack routes.
+Package it as a separate, reusable **`qbit-web-performance`** (prefix `webperf_`). It installs into any QQQ site, and the CMS plugs in through two small SPIs (URL source, content resolver). Its single home is a **Performance** sub-app under the CMS. Everything else (the CMS home, the Dashboard, the record screens, the Health home) only shows a compact summary or a per-record panel that links there. Tests run on a schedule (daily for key pages, weekly for the whole sitemap), on publish (via `kof22.cms.*` ESB events), after deploys (a build-id probe) and around CDN stage changes. Regressions are confirmed with extra runs before they are raised as alerts through the generic Alerts qbit (when installed), whose subscriptions and channels (in-app, email, Slack, webhook, ...) decide who hears about them. Without that qbit they still show on the Performance home and in Data Health.
 
 **Cost:** $0 a month in API fees. PSI and CrUX are free; the only resource is one Google Cloud API key stored in Infisical. Storage is about 2–4 GB a year if full Lighthouse reports are kept forever.
 **Effort:** about **4–5 engineer-weeks** (one engineer with Claude) over six phases. Lab data, the first phase that delivers value, is about 1.5 weeks after the API key exists (§11).
@@ -163,6 +163,7 @@ These restate the owner's standing rules. Every later section was checked agains
 | `DeployProbe` | `HttpBuildIdProbe` (frontend), `SelfVersionProbe` (backend) | none |
 | `RumSource` | `AnalyticsRumSource` (`qbit-cms-analytics`) | none: the RUM sections say "install qbit-cms-analytics" |
 | `ChangeEventSource` | `CdnStageChangeSource` when `qbit-cdn` is present | none |
+| Alerts producer (consumed, not defined here) | The Alerts qbit's producer SPI (`raise` / `resolve` with a dedup key, severity and record links) | Not installed: regressions stay in-app and in Data Health |
 
 ---
 
@@ -218,7 +219,8 @@ The same statement applies to `webperf_regression` and `analytics_vital`. It run
 | Record screen of each content table | A "Performance" section (T2, like the analytics "Views" section) for **that record only** (§5.3) | Owner of per-record detail (the same pattern as "Views") |
 | CMS home | One compact `cmsHomePerformance` summary: 4 tiles (mobile Performance median of KEY pages, site LCP p75 (RUM, 28 d), open regressions, last full audit), each linking to the Performance home. **No chart and no list.** | Summary only, using the owner's loader |
 | Dashboard | One "Needs Attention" line: *"2 confirmed performance regressions"* → the Regressions list. Shown only when there is at least one. | Summary only |
-| Health home | Nothing new as a widget. Data Health rules (`operations.webperf-runner-stale`, `operations.webperf-quota`, `operations.webperf-errors`) flow into the existing Health alerts and pills. | n/a |
+| Health home | Nothing new as a widget. Data Health rules (`operations.webperf-regressions`, `operations.webperf-runner-stale`, `operations.webperf-quota`, `operations.webperf-errors`) flow into the existing Health alerts and pills. | n/a |
+| Alerts qbit (when installed) | Confirmed regressions and operational problems are raised and resolved through its producer SPI (§8.3), and its own inbox and channels present them. They are alerts that link back here, not a copy of the Performance widgets. | Owner of alert delivery |
 | Analytics app | Nothing. Traffic stays there; vitals are presented only on the Performance home, even though they are stored in analytics tables (§7). | n/a |
 
 The trend chart and the regressions list deliberately stay only on the Performance home. The CMS home's summary links to them. That is the rule, so the summary is not a second copy.
@@ -423,26 +425,37 @@ The existing analytics rollup (every 300 s for today and yesterday, under an adv
 - **Cluster:** a `GO:tenants/kof22/website/externalsecret-pagespeed.yaml` ExternalSecret maps it to `WEBPERF_GOOGLE_API_KEY` in the backend Deployment. The config reads `${env.WEBPERF_GOOGLE_API_KEY}`, and `toString()` redacts it. No table stores the key.
 - **Rotation:** bump `kof22_pagespeed_api_key_version` and re-apply with the same `-target` set. ESO picks it up on refresh.
 
-### 8.3 Alerts (Prometheus / Alertmanager)
+### 8.3 Alerts (through the Alerts qbit; Slack optional)
 
-- **Micrometer gauges and counters** on the backend's existing `/metrics` (`J/metadata/autoload/metrics/JavalinMetricsRouteProvider.java`), with bounded cardinality:
-  - `webperf_open_regressions{severity,source}`
-  - `webperf_lab_score{tier="KEY",strategy,category}` (about 8 series)
-  - `webperf_rum_p75{metric}` (site-wide)
-  - `webperf_lab_runs_total{status}`
-  - `webperf_runs_today`
-  - `webperf_last_success_timestamp_seconds`
-- **Scraping is not wired for kof22 today.** Add the `monitored-app` component (`GO:platform/_components/monitored-app/`) to `tenants/kof22/website`, label the backend Service `monitoring: enabled`, and give it a port named `metrics`. This is a small, reversible gitops change.
-- **PrometheusRules** in `GO:tenants/kof22/website/` route through the existing Alertmanager Slack config (warning → `#alerts-warning`, critical → `#alerts-critical`, as described in `GO:platform/monitoring-baseline/prometheusrule-baseline.yaml`):
+**Owner direction (D9, amended 2026-10-12):** Slack is optional. Alerting goes through the generic Alerts / Manage-by-Exception qbit (`docs/specs/2026-10-12-qbit-alerts-design.md`, PR pending). That qbit provides monitors, alerts, subscriptions and pluggable channels (in-app, email, Slack, webhook, ...). This qbit only *produces* alerts and never chooses a channel.
 
-| Alert | Expression (sketch) | Severity |
-|---|---|---|
-| `WebPerfRegressionConfirmed` | `webperf_open_regressions{severity="WARNING"} > 0` for 15 m | warning |
-| `WebPerfBudgetCritical` | `webperf_open_regressions{severity="CRITICAL"} > 0` | critical |
-| `WebPerfRunnerStale` | `time() - webperf_last_success_timestamp_seconds > 172800` | warning |
-| `WebPerfRunErrors` | `increase(webperf_lab_runs_total{status=~"FAILED\|SKIPPED_QUOTA"}[6h]) > 10` | warning |
+**Producer integration (when the Alerts qbit is installed).** The regression engine (§6.4) and the operational checks call the Alerts qbit's producer SPI:
 
-Each alert's annotation links to the Regressions list or the Lab Runs list. The data is the QQQ records; Prometheus only signals.
+| Event | Call | Dedup key | Severity | Record links |
+|---|---|---|---|---|
+| A regression is CONFIRMED (lab, after the median of 3), or a category score drops | `raise` | `webperf:regression:<target_id>:<source>:<strategy>:<metric>` | The regression's `severity`: WARNING, or CRITICAL for KEY pages below their critical budget | The `webperf_regression` record, the target, the content record (`content_table` / `content_id`), the confirming runs |
+| RUM drifts into a worse band (§6.4 step 5) | `raise` | `webperf:rum:<scope>:<metric>` | WARNING | The regression record, and the content record when the drift is page-level |
+| A regression is RESOLVED automatically, or the user runs Dismiss or Mark resolved | `resolve` | The same key | n/a | The regression record (with its resolution note) |
+| The runner is stale (no successful run in 48 h) | `raise` / `resolve` | `webperf:runner-stale` | WARNING | The Lab Runs list |
+| A spike of run errors or SKIPPED_QUOTA (more than 10 in 6 h) | `raise` / `resolve` | `webperf:run-errors` | WARNING | The filtered Lab Runs list |
+
+Raises are keyed. A regression that stays open is one alert, not one alert per evaluation, and resolving the regression clears its alert. Who is notified, by which channel, and any quiet hours or escalation are all configured in the Alerts qbit's subscriptions and channels, not here. For example, a kof22 subscription that sends WARNING and CRITICAL web-performance alerts to Slack is one possible channel choice, and it is made in the Alerts qbit.
+
+**Without the Alerts qbit, nothing is lost.**
+- Regressions remain `webperf_regression` records.
+- The Performance home's Open Regressions widget and the Dashboard "Needs Attention" line show them.
+- The Data Health rules (`operations.webperf-regressions`, `operations.webperf-runner-stale`, `operations.webperf-quota`, `operations.webperf-errors`) feed the Health home.
+
+The producer integration is compiled against the Alerts qbit's API and activated only when that qbit is on the classpath. This is the same optional-dependency pattern as `qbit-cdn`.
+
+**Optional: Prometheus metrics (feature `ALERT_METRICS`, off by default).** Some hosts want Grafana graphs or cluster-level alert rules. For them, the backend's existing `/metrics` (`J/metadata/autoload/metrics/JavalinMetricsRouteProvider.java`) can expose these gauges, with bounded cardinality:
+- `webperf_open_regressions{severity,source}`
+- `webperf_lab_score{tier="KEY",strategy,category}`
+- `webperf_rum_p75{metric}`
+- `webperf_lab_runs_total{status}`
+- `webperf_last_success_timestamp_seconds`
+
+kof22's backend is not scraped today. Enabling scraping means adding the `monitored-app` component (`GO:platform/_components/monitored-app/`) to `tenants/kof22/website`. PrometheusRules routed by Alertmanager are then one more optional channel, and alerting does not need them.
 
 ---
 
@@ -457,7 +470,7 @@ Each alert's annotation links to the Regressions list or the Lab Runs list. The 
 
 **Where RUM lives (D4).** Vitals are analytics *events*: same beacon, same gate, same visit, same retention, same rollup machinery. Storing them in the analytics module means one collection pipeline and one privacy story. The Performance app *presents* them, so presentation stays in one home. Until #98 extracts `qbit-cms-analytics`, the vitals changes land in `J/cms/analytics/**` in Website-Backend and move with the module.
 
-**Feature flags (following #1083).** `WebPerfFeature`: `LAB` (PSI), `FIELD_CRUX`, `RUM_VIEW` (needs a `RumSource`), `TRIGGERS_ESB`, `DEPLOY_PROBES`, `CDN_COMPARE` (needs `qbit-cdn`), `ALERT_METRICS`. A disabled feature produces no metadata, and its changesets are skipped by context.
+**Feature flags (following #1083).** `WebPerfFeature`: `LAB` (PSI), `FIELD_CRUX`, `RUM_VIEW` (needs a `RumSource`), `TRIGGERS_ESB`, `DEPLOY_PROBES`, `CDN_COMPARE` (needs `qbit-cdn`), `ALERTS` (raises alerts through the Alerts qbit when it is installed), `ALERT_METRICS` (optional Prometheus gauges, off by default). A disabled feature produces no metadata, and its changesets are skipped by context.
 
 ---
 
@@ -480,7 +493,7 @@ Each alert's annotation links to the Regressions list or the Lab Runs list. The 
 |---|---|---|---|
 | **P0: key and secret** (owner plus 0.5 d) | The owner creates the Cloud project key (PSI and CrUX only). Praetor write-only Infisical seed with `-target`. ExternalSecret and env var. One manual PSI and CrUX call to confirm, including the **real** CrUX answer for kof22. | 0.5–1 d | The backend pod has `WEBPERF_GOOGLE_API_KEY`; a manual call succeeds. |
 | **P1: lab core** | `QRun-IO/qbit-web-performance` from qbit-template. Tables 1–4 and 6–7. PSI runner, queue worker, sitemap sync, daily and weekly schedules. Actions: Test page speed, Run site audit, Sync, Retry. Performance home (Site Scores, Slowest Pages, Top Opportunities, Recent Runs, Trend). Record Performance panel (lab part). kof22 wiring (`ContentResolver` adapter, `contentTables`). Seeded budgets. | 7–9 d | A full audit of 87 pages is recorded; record panels show real scores. |
-| **P2: triggers, regressions, alerts** | ESB publish trigger plus the fallback sweep. `/api/build` and the deploy probes, and `webperf_change_event`. Regression engine with confirmation. Regressions widget, CMS home summary, Dashboard line. Micrometer, ServiceMonitor wiring, PrometheusRules, Data Health rules. | 4–5 d | A publish leads to a re-test within ~4 min. A deploy leads to KEY re-tests. A forced regression reaches Slack. |
+| **P2: triggers, regressions, alerts** | ESB publish trigger plus the fallback sweep. `/api/build` and the deploy probes, and `webperf_change_event`. Regression engine with confirmation. Regressions widget, CMS home summary, Dashboard line, Data Health rules. Alerts qbit producer integration (raise and resolve with dedup keys) once that qbit is available. Optional Prometheus gauges. | 4–5 d | A publish leads to a re-test within ~4 min. A deploy leads to KEY re-tests. A forced regression appears on the Performance home and in Data Health. With the Alerts qbit installed, it is raised once and resolved when it clears. |
 | **P3: RUM** | The analytics `vitals` event, `analytics_vital` and `analytics_vital_stat`, the rollup extension. Frontend `web-vitals` v6 beacon and privacy-page sentence. Core Web Vitals widget, panel field section, RUM drift. | 5–7 d | Real vitals with *n* on the home and per page; DNT/GPC verified to send nothing. |
 | **P4: CrUX** | `webperf_field_snapshot`, daily refresh, PSI `loadingExperience` capture, the honest NO_DATA path, History backfill if eligible. | 1.5–2 d | The Field Data Status widget shows the real CrUX status. |
 | **P5: CDN before and after** (after #1084 P2/P3) | `CdnStageChangeSource`, `webperfCompareChange`, `webperf_comparison`, country-segmented RUM. | 2–3 d | The `s3` / `www` cutovers each have a recorded comparison. |
@@ -491,6 +504,7 @@ Each alert's annotation links to the Regressions list or the Lab Runs list. The 
 - P0–P2 do not depend on #1083 or #98.
 - P3 touches the analytics module, so do it before #98's extraction or right after it, not during.
 - P5 waits for #1084 P2/P3.
+- **The P2 alert integration depends on the Alerts qbit** (`docs/specs/2026-10-12-qbit-alerts-design.md`) shipping its producer SPI. P2 can ship before then: regressions show in-app and in Data Health only until the Alerts qbit is installed, which switches on the producer calls with no schema change.
 - If the #1083 cutover happens after P1, its rename script gains the §4.4 statements.
 
 ### 11.1 Risks
@@ -518,7 +532,7 @@ Each alert's annotation links to the Regressions list or the Lab Runs list. The 
 | **D6** | Schedule and run budget | A) daily KEY tier + weekly full audit + on publish + after deploy, cap 500 a day · B) daily full audit (~174 a day) · C) on demand only | **A.** About 50–70 runs a day; fresh where it matters, complete weekly. B is affordable too if the owner wants daily per-page trends. |
 | **D7** | How deploys are detected | A) build-id probe (`/api/build` on the frontend, the backend version at startup) · B) enable ArgoCD notifications with a webhook · C) Munitor post-deploy call | **A.** No infra change, works on any host, and records the build on every run. ArgoCD notifications are disabled today. |
 | **D8** | Lighthouse report retention | A) keep everything forever in PostgreSQL (~2–4 GB a year) · B) full reports 400 days, summaries and findings forever · C) reports in MinIO | **A**, which fits "retain forever" and keeps reports as a visible, downloadable QQQ table. Revisit B if the database size becomes a concern. |
-| **D9** | Alerts | A) Prometheus to the existing Slack routes (warning = confirmed regression, critical = KEY page below 50) plus Data Health; this needs the small `monitored-app` gitops change · B) in-app only (the Regressions list and Dashboard line) | **A.** It reuses the cluster's alerting, and the data stays in QQQ. |
+| **D9** | Alerts | A) Prometheus to the existing Slack routes, plus Data Health · B) in-app only (the Regressions list and Dashboard line) · C) raise and resolve through the generic Alerts qbit's producer SPI when it is installed, and in-app plus Data Health otherwise; Slack and Prometheus are optional channels | **C (owner amendment, 2026-10-12: Slack must be optional).** A was the original recommendation; the owner replaced it with the Alerts qbit approach (§8.3). |
 | **D10** | Google API key | A) one key, restricted to the PSI and CrUX APIs, in a Cloud project the owner picks; Infisical write-only seed with `-target` (the Anthropic-key pattern) · B) separate keys per API | **A.** The owner names the Cloud project and the 1Password item. Nothing has been created. |
 | **D11** | RUM on client-side navigations | A) landing URL only (CrUX parity, stable) · B) experimental soft-navigation reporting (`reportSoftNavs`) | **A** now; revisit B when Chrome ships Soft Navigations as stable. |
 | **D12** | Default budgets | A) seed Google's "good" thresholds (LCP 2.5 s, INP 200 ms, CLS 0.1, FCP 1.8 s, TTFB 0.8 s) and category scores ≥ 90 (WARNING), Performance < 50 on KEY pages (CRITICAL) · B) no seeded budgets; owner-defined only | **A.** These are editable records, so the owner can tighten them after seeing real baselines. |

@@ -119,6 +119,13 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
 ### Added
+- **Alerts producer SPI ([#1090](https://github.com/QRun-IO/qqq/pull/1090))** — `QAlerts.raise` / `resolve` /
+  `heartbeat` let any qbit or app report "a person should do something" with no dependency beyond core.
+  `QAlertTypeMetaData` declares alert types (validated, stored in the supplemental `AlertsInstanceMetaData`), and
+  `AlertProcessMetaData` gives any process "alert when this fails" and "alert when this didn't run" by meta-data. Calls
+  never throw into the caller, are deferred until the transaction commits (dropped on rollback), and go to a
+  rate-limited `LoggingAlertSink` unless an alerts implementation (such as `qbit-alerts`) registers its sink. See
+  [Alerts](docs/misc/Alerts.adoc).
 - **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
   validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
 - **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless

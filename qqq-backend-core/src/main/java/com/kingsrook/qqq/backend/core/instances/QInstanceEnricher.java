@@ -166,6 +166,17 @@ public class QInstanceEnricher
 
 
    /*******************************************************************************
+    ** The instance being enriched - for supplemental meta-data whose enrich
+    ** needs to add to the instance (e.g. AlertProcessMetaData declaring types).
+    *******************************************************************************/
+   public QInstance getQInstance()
+   {
+      return (this.qInstance);
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public void enrich()

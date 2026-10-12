@@ -83,7 +83,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
 
     # (candidate, index in release-deferrals.json, source revision the orb turns into that candidate)
     ACCEPTED_CANDIDATES = (('4.1.0-RC.1', 0, '4.1.0-SNAPSHOT'), ('4.1.0-RC.2', 1, '4.1.0-RC.1'),
-                           ('4.1.0-RC.3', 2, '4.1.0-RC.2'))
+                           ('4.1.0-RC.3', 2, '4.1.0-RC.2'), ('4.1.0-RC.4', 3, '4.1.0-RC.3'))
 
     def configure_accepted_next(self, revision='4.1.0-SNAPSHOT'):
         shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
@@ -112,8 +112,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
                 self.assertTrue(result['next_acceptance']['problems'])
                 self.assertEqual(1, self.run_gate(stage='source', candidate_version=candidate,
                                                  required='core.widget.row_builder')[0])
-                for version in ('4.1.0', '4.1.0-RC.4', '4.2.0-RC.1', '4.1.0-rc.2', ' 4.1.0-RC.2',
-                                '4.1.0-rc.3', '4.1.0-RC.3 ', '4.1.0-RC3'):
+                for version in ('4.1.0', '4.1.0-RC.5', '4.2.0-RC.1', '4.1.0-rc.2', ' 4.1.0-RC.2',
+                                '4.1.0-rc.3', '4.1.0-RC.3 ', '4.1.0-RC3', '4.1.0-rc.4', '4.1.0-RC4'):
                     self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=version)[0])
         # Each candidate only accepts its own source revisions: RC.2 on the pre-RC1 snapshot and RC.3 on the
         # snapshot or the RC.1 revision are rejected.
@@ -122,6 +122,9 @@ class FeatureCoverageGateTest(unittest.TestCase):
         self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
         self.configure_accepted_next('4.1.0-RC.1')
         self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
+        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
+        self.configure_accepted_next('4.1.0-RC.2')
+        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
 
     def test_accepted_next_cannot_hide_framework_failures_or_public_gaps(self):
         for candidate, _, revision in self.ACCEPTED_CANDIDATES:
@@ -161,9 +164,10 @@ class FeatureCoverageGateTest(unittest.TestCase):
             # The coverage verifier runs after publication too, so it also accepts the orb's bump commit revision.
             allowed_after_publish = {'4.1.0-RC.1': ('4.1.0-SNAPSHOT', '4.1.0-RC.1'),
                                      '4.1.0-RC.2': ('4.1.0-RC.1', '4.1.0-RC.2'),
-                                     '4.1.0-RC.3': ('4.1.0-RC.2', '4.1.0-RC.3')}[candidate]
+                                     '4.1.0-RC.3': ('4.1.0-RC.2', '4.1.0-RC.3'),
+                                     '4.1.0-RC.4': ('4.1.0-RC.3', '4.1.0-RC.4')}[candidate]
             for revision in ('4.1.0', '4.1.0-SNAPSHOT', '4.1.0-RC.1', '4.1.0-RC.2', '4.1.0-RC.3', '4.1.0-RC.4',
-                             '4.2.0-SNAPSHOT'):
+                             '4.1.0-RC.5', '4.2.0-SNAPSHOT'):
                 with self.subTest(candidate=candidate, revision=revision):
                     root_pom.write_text(root_content.replace(base_revision, revision))
                     code = self.run_gate(stage='source', candidate_version=candidate)[0]
@@ -180,24 +184,24 @@ class FeatureCoverageGateTest(unittest.TestCase):
     def test_accepted_next_policy_list_is_closed_and_unambiguous(self):
         path = self.sample / 'release-deferrals.json'
         original = json.loads(Path(__file__).with_name('release-deferrals.json').read_text())
-        rc1, rc2, rc3 = original['accepted_next_release']
-        rc4 = dict(rc3, qqq_version='4.1.0-RC.4')
-        for candidate, revision in (('4.1.0-RC.2', '4.1.0-RC.1'), ('4.1.0-RC.3', '4.1.0-RC.2')):
+        rc1, rc2, rc3, rc4 = original['accepted_next_release']
+        rc5 = dict(rc4, qqq_version='4.1.0-RC.5')
+        for candidate, revision in (('4.1.0-RC.2', '4.1.0-RC.1'), ('4.1.0-RC.3', '4.1.0-RC.2'), ('4.1.0-RC.4', '4.1.0-RC.3')):
             self.configure_accepted_next(revision)
             self.assertEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-            own = next(entry for entry in (rc1, rc2, rc3) if entry['qqq_version'] == candidate)
-            others = [entry for entry in (rc1, rc2, rc3) if entry is not own]
+            own = next(entry for entry in (rc1, rc2, rc3, rc4) if entry['qqq_version'] == candidate)
+            others = [entry for entry in (rc1, rc2, rc3, rc4) if entry is not own]
             for label, policy in (('legacy object', own), ('empty', []), ('missing own entry', others),
-                                  ('duplicate own entry', [rc1, rc2, rc3, own]),
-                                  ('unapproved RC.4', [rc1, rc2, rc3, rc4]),
-                                  ('non-object entry', [rc1, rc2, rc3, candidate])):
+                                  ('duplicate own entry', [rc1, rc2, rc3, rc4, own]),
+                                  ('unapproved RC.5', [rc1, rc2, rc3, rc4, rc5]),
+                                  ('non-object entry', [rc1, rc2, rc3, rc4, candidate])):
                 with self.subTest(candidate=candidate, policy=label):
                     path.write_text(json.dumps(dict(original, accepted_next_release=policy)))
                     self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
             path.write_text(json.dumps(original))
-        self.configure_accepted_next('4.1.0-RC.3')
-        path.write_text(json.dumps(dict(original, accepted_next_release=[rc1, rc2, rc3, rc4])))
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
+        self.configure_accepted_next('4.1.0-RC.4')
+        path.write_text(json.dumps(dict(original, accepted_next_release=[rc1, rc2, rc3, rc4, rc5])))
+        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.5')[0])
 
     def test_reviewed_passing_test_is_required(self):
         code, result = self.run_gate()

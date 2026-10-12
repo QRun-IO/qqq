@@ -34,6 +34,7 @@ The owner decided all fifteen questions on 2026-10-12, and added a direction for
 | D14 | **Sequencing (A):** #107 (needs RC.4) and #98 finish first, then phase 0. | §8 |
 | D15 | **Acceptance target (A):** a blank `qqq-app-starter` app in CI (phase 1), plus a real second adopter in phase 6. | §8 |
 | D16 | **kof22 cutover is a planned outage (owner direction, 2026-10-12).** "This is my personal blog site for now. We can be down and we don't need migrations; just make it all work, don't lose any data, and make proper changes to the frontend (no hacks or bandaids)." | §3.6 becomes a simple outage: stop, backup plus a restore-tested dump, a one-shot kof22 rename script, deploy the new backend and frontend together, reindex, verify (row counts, checksums, before/after crawl, golden Site API diff), and roll back by restoring the backup. Removed: compatibility views, the watch and redirect periods, reversible-migration and round-trip tooling, and the qbit's adoption and rename tooling. Frontend changes are in §4.4. Phase 4 shrinks from 3 to 1.5 weeks. |
+| D17 | **S3 storage comes from the object-storage qbit ([#1089](https://github.com/QRun-IO/qqq/pull/1089) D10).** The CMS keeps its narrow `CmsStorage` SPI (R7). Its S3 implementation is `ObjectStorageCmsStorage`, shipped by `qbit-object-storage` on that qbit's `ObjectStorage` service. The CMS ships no S3 client of its own. `FilesystemCmsStorage` stays for installs without S3. The CMS registers `FieldReferenceProvider`s for its media and photo tables, so storage can show orphans and missing objects and block deletes of referenced objects. | R7, §2.x config, dependencies, tests. Object Cache-Control comes from storage's header policy and its Apply header policy action, not from CMS code. |
 
 ## 0. Summary
 
@@ -162,7 +163,7 @@ Each item is a small behaviour-preserving PR against Website-Backend, the same a
 | R4 | `CmsSiteApiConfig`: API name, internal path, public base URL, website base URL, contact, default authoring blog, CORS origins, auth issuer/audience/scope/claim/groups, iOS app ids, SMTP. Env lookups move to the host's config builder (`withEnvironment(env)` as in `CmsAnalyticsConfig`). | hosts/URLs, auth names, mail | 2 d |
 | R5 | `CmsSiteResolver` SPI replacing `PUBLIC_WEBSITE_SITE_ID` (§2.6); `FixedSiteResolver(1)` keeps today's behaviour. | site identity | 2 d |
 | R6 | `CmsUrlScheme`: URL patterns per content kind (`post: /blogs/{blog}/{slug}`, ...). Used by content-path resolution, URL migration, sitemap and feeds. The `content_stream` view keeps its columns but takes URLs from a `url_path` computed in Java at publish time and stored on the row, or the view is regenerated from the scheme by a changeset (decide in phase 2; storing is simpler and indexable). | URL shapes | 4 d |
-| R7 | `CmsStorage` SPI (`put`, `presignPut`, `publicUrl`, `delete`) with `S3CmsStorage` and `FilesystemCmsStorage`; buckets, key layouts and rendition widths in `CmsMediaConfig`. Replaces the three direct `AmazonS3` clients. | storage | 3 d |
+| R7 | `CmsStorage` SPI (`put`, `presignPut`, `publicUrl`, `delete`) with `FilesystemCmsStorage` in the CMS. The S3 implementation is `ObjectStorageCmsStorage`, provided by `qbit-object-storage` (D17). Key layouts and rendition widths are in `CmsMediaConfig`; buckets are storage bucket aliases. It replaces the three direct `AmazonS3` clients. | storage | 2 d |
 | R8 | `CmsRoleMapping` + `CmsSecurity.applySessionPermissions(session, groups)`; the host's Authentik customizer calls it. Publisher verifier reads groups/issuer/audience from config. | auth names | 2 d |
 | R9 | ESB destination names, provider name, scheduler name and search index name injected from config. | infra names | 1 d |
 | R10 | Land #107 (core permission enforcement) and fold `CmsTablePermissionChecker` into the producer (§6). | permissions | (in #107) |
@@ -274,7 +275,7 @@ new CmsQBitProducer()
       .withSiteResolver(new FixedSiteResolver(env("PUBLIC_WEBSITE_SITE_ID", 1)))
       .withUrlScheme(Kof22Cms.URL_SCHEME)                          // /blogs/{blog}/{slug}, /personal/...
       .withPublicWebsiteBaseUrl("https://www.kof22.com")
-      .withMedia(new CmsMediaConfig().withStorage(S3CmsStorage.fromEnv(env)) ...)
+      .withMedia(new CmsMediaConfig().withStorage(new ObjectStorageCmsStorage("files", "incoming")) ...)  // D17: qbit-object-storage bucket aliases
       .withSchedulerName("kof22Scheduler")
       .withEsbProviderName("kof22Artemis").withEsbDestinationPrefix("kof22")
       .withPublisher(Kof22Cms.publisherConfig(env))
@@ -533,7 +534,7 @@ Website-Frontend (`WF:` at `d670cc1`) must keep working end to end against the q
 | `qqq-backend-core`, `qqq-backend-module-rdbms` (+ postgres) | required | everything | n/a |
 | `qqq-middleware-javalin` | required for publisher routes; optional otherwise | publisher token routes | publishing via the UI only |
 | `qqq-middleware-api` | required by `qbit-cms-site-api` only | Site API | no public API (admin CMS still works) |
-| S3 SDK | required when MEDIA uses `S3CmsStorage` | storage | filesystem storage |
+| `qbit-object-storage` (#1089) | required when MEDIA uses S3 (`ObjectStorageCmsStorage`, D17) | S3-compatible media storage, header policy, references | filesystem storage |
 | `qqq-esb` | optional | change events, async media ETL, durable revalidation | scheduled sweep / synchronous ETL; after-commit revalidation |
 | `qbit-quick-search` | optional | full-text search in admin and `/v1/search` | core `searchFields` search; SQL fallback in the API |
 | `qbit-cms-analytics` | optional | Views widgets, top content, traffic tiles on the CMS home | those widgets are not produced (not shown empty) |
@@ -585,7 +586,7 @@ The Site API session is a scoped `FULLY_ANONYMOUS` provider (today "site-api-ano
 | Unit | H2 (PostgreSQL mode) `FreshCmsInstance` with every feature combination that `validate()` allows | PR |
 | Architecture | ArchUnit: no host imports; no raw table-name literals outside `CmsTables`/`CmsSql`; processes have `withTableName` and are not in any app's nav; every table has permission rules | PR |
 | Schema | Testcontainers PostgreSQL: (1) fresh install with `cms_`; (2) fresh install with a namespace; (3) two namespaces in one database; (4) an existing table with the same name halts the install; (5) collision halts; `RDBMSBackendAssessor` clean after each | PR |
-| Storage | Testcontainers MinIO for `S3CmsStorage` (today S3 is only faked in Website-Backend tests): upload, presign, renditions, metadata extraction | PR |
+| Storage | Testcontainers MinIO through `ObjectStorageCmsStorage` (D17; today S3 is only faked in Website-Backend tests): upload, presign, renditions, metadata extraction. Provider conformance is the storage qbit's suite. | PR |
 | Search | Testcontainers OpenSearch with `qbit-quick-search` (optional profile), plus the no-provider fallback | nightly |
 | ESB | embedded Artemis: publications, media trigger, idempotent redelivery | nightly |
 | Site API contract | (1) OpenAPI snapshot diff: a breaking diff fails unless the major version changes; (2) golden JSON responses (curated fields, envelope, headers, CORS, cache headers) migrated from `T/siteapi/SiteApiPublicIntegrationTest.java` (13), `SiteApiAuthoringIntegrationTest` (9), `SiteApiUnitTest` (12); (3) consumer contract: `@qrun-io/cms-next` fixtures replayed against the API | PR |

@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
 
 ### Added
+- **Record developer panels** — a generic contract for modules and qbits to contribute panels to a record's developer
+  view: implement `DeveloperPanelProviderInterface` (id, title, order, icon, `isAvailable`, `build`) and register it in
+  the new `DeveloperPanelsMetaData` supplemental instance meta-data.  Panels are lists of generic blocks (key/values,
+  text, code, table, links, process actions), served by the new `GET /qqq/v1/table/{table}/{pk}/developer/panels`
+  (table read permission; record security applies; a failing provider yields an error panel, not a failed request).
+  Built in: **Record Security** (each lock, and why the current user can see the record).  `qqq-esb` adds **ESB
+  Events** (CloudEvents type/source/subject, destinations, subscribed triggers with dead letters, a sample event for
+  the record).  See [Record Developer Panels](docs/misc/DeveloperPanels.adoc).
 - **`FILE_PREVIEW` field adornment** — `AdornmentType.FILE_PREVIEW`, with value keys in
   `AdornmentType.FilePreviewValues`, asks frontends to show a field as a thumbnail (images) or a file-type icon (other
   files) that opens a preview: the full-size image with zoom, a PDF, a video or audio player, or open/download links,

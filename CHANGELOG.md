@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
+  [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
+  `InsertAction`, `UpdateAction`, `DeleteAction`, `ReplaceAction`, `ExportAction`, `RunProcessAction`,
+  `RenderWidgetAction` and `GenerateReportAction` can now check the session's table/process/widget/report permissions
+  themselves (previously only the middlewares did, so MCP servers, assistants, custom routes and scripts skipped them),
+  and `FieldSecurityLock` is now enforced: denied fields are removed from read output and table meta data, and
+  filtering, sorting, grouping on or writing to them is a permission error. Per call, `PermissionEnforcement.ENFORCE`
+  always checks and `withPermissionBypass(reason)` never does; otherwise outermost calls are checked when
+  `QInstance.enforcePermissionsInCoreActions` (or `-Dqqq.enforcePermissionsInCoreActions` /
+  `QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS`) is true. Calls nested inside an action (process steps, customizers, widget
+  renderers, possible-value lookups, async children) stay trusted, and `QSystemUserSession` passes as before; the
+  scheduler, polling automations and SQS poller mark their runs as system bypasses. **Off by default in 4.1.x** (no
+  behavior change unless enabled); planned to default on in 4.2. See
+  [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
+
+### Added
+- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
+  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
+- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
+  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
+  not send their values to a model.
+
 ## [4.1.0-RC.3] — candidate (2026-10-12)
 
 Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1/RC.2; see the [release procedure](docs/release/4.1.adoc).

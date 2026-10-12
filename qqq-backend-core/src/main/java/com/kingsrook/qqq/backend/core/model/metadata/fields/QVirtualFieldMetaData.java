@@ -296,6 +296,18 @@ public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
     **
     *******************************************************************************/
    @Override
+   public QVirtualFieldMetaData withIsSensitive(boolean isSensitive)
+   {
+      super.withIsSensitive(isSensitive);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
    public QVirtualFieldMetaData withPossibleValueSourceFilter(QQueryFilter possibleValueSourceFilter)
    {
       super.withPossibleValueSourceFilter(possibleValueSourceFilter);

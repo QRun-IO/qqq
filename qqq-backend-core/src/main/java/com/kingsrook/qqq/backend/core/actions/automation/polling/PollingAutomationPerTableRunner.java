@@ -37,6 +37,7 @@ import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationStatusU
 import com.kingsrook.qqq.backend.core.actions.automation.RunCustomTableTriggerRecordAutomationHandler;
 import com.kingsrook.qqq.backend.core.actions.automation.RunRecordScriptAutomationHandler;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
@@ -260,7 +261,14 @@ public class PollingAutomationPerTableRunner implements Runnable
 
       try
       {
-         processTableInsertOrUpdate(instance.getTable(tableActions.tableName()), tableActions.status());
+         /////////////////////////////////////////////////////////////////////////
+         // automations are framework-internal work - not a user's direct call //
+         /////////////////////////////////////////////////////////////////////////
+         CorePermissionEnforcer.runTrusted("polling automation runner", () ->
+         {
+            processTableInsertOrUpdate(instance.getTable(tableActions.tableName()), tableActions.status());
+            return (null);
+         });
       }
       catch(Exception e)
       {
@@ -645,6 +653,7 @@ public class PollingAutomationPerTableRunner implements Runnable
 
          try
          {
+            runProcessInput.withPermissionBypass("record automation process");
             QContext.pushAction(runProcessInput);
 
             RunProcessAction runProcessAction = new RunProcessAction();

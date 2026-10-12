@@ -28,6 +28,8 @@ import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.SelectionValidationHelper;
@@ -65,6 +67,29 @@ public class AggregateAction
     *******************************************************************************/
    public AggregateOutput execute(AggregateInput aggregateInput) throws QException
    {
+      boolean enforce = false;
+      if(aggregateInput.getTableName() != null && aggregateInput.getTable() != null)
+      {
+         enforce = CorePermissionEnforcer.checkTablePermissions(aggregateInput, TablePermissionSubType.READ);
+         if(enforce)
+         {
+            CorePermissionEnforcer.checkReadCriteria(aggregateInput, aggregateInput.getQueryJoins(), aggregateInput.getFilter(), getAggregateAndGroupByFieldNames(aggregateInput));
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(aggregateInput, enforce));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The aggregate itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private AggregateOutput executeInAuthorizedScope(AggregateInput aggregateInput, boolean enforce) throws QException
+   {
       ActionHelper.validateSession(aggregateInput);
 
       if(aggregateInput.getTableName() == null)
@@ -78,7 +103,7 @@ public class AggregateAction
          throw (new QException("A table named [" + aggregateInput.getTableName() + "] was not found in the active QInstance"));
       }
 
-      table = TableMetaDataPersonalizerAction.execute(aggregateInput);
+      table = TableMetaDataPersonalizerAction.execute(aggregateInput, enforce);
       if(table == null)
       {
          throw (new QException("Table is not available for aggregate input"));
@@ -124,6 +149,25 @@ public class AggregateAction
     ***************************************************************************/
    private static void validateFieldNames(AggregateInput aggregateInput) throws QException
    {
+      Set<String> inputFieldNames = getAggregateAndGroupByFieldNames(aggregateInput);
+
+      if(CollectionUtils.nullSafeHasContents(inputFieldNames))
+      {
+         List<String> unrecognizedFieldNames = SelectionValidationHelper.getUnrecognizedFieldNames(aggregateInput, inputFieldNames);
+         if(CollectionUtils.nullSafeHasContents(unrecognizedFieldNames))
+         {
+            throw (new QException("AggregateInput contained " + unrecognizedFieldNames.size() + " unrecognized field name" + StringUtils.plural(unrecognizedFieldNames) + ": " + StringUtils.join(",", unrecognizedFieldNames)));
+         }
+      }
+   }
+
+
+
+   /***************************************************************************
+    * the field names used by the input's aggregates and group-bys.
+    ***************************************************************************/
+   private static Set<String> getAggregateAndGroupByFieldNames(AggregateInput aggregateInput)
+   {
       Set<String> inputFieldNames = new LinkedHashSet<>();
       for(Aggregate aggregate : CollectionUtils.nonNullList(aggregateInput.getAggregates()))
       {
@@ -134,15 +178,7 @@ public class AggregateAction
       {
          CollectionUtils.addIfNotNull(inputFieldNames, groupBy.getFieldName());
       }
-
-      if(CollectionUtils.nullSafeHasContents(inputFieldNames))
-      {
-         List<String> unrecognizedFieldNames = SelectionValidationHelper.getUnrecognizedFieldNames(aggregateInput, inputFieldNames);
-         if(CollectionUtils.nullSafeHasContents(unrecognizedFieldNames))
-         {
-            throw (new QException("AggregateInput contained " + unrecognizedFieldNames.size() + " unrecognized field name" + StringUtils.plural(unrecognizedFieldNames) + ": " + StringUtils.join(",", unrecognizedFieldNames)));
-         }
-      }
+      return (inputFieldNames);
    }
 
 

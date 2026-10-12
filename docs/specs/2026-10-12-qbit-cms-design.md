@@ -1,10 +1,10 @@
 # QQQ CMS application qbit: Assessment and Design Spec
 
-Status: **Draft, awaiting owner decisions** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: **Approved** · drafted 2026-10-12, owner decisions 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x (4.1.0-RC.4 or later), QQQ Next UI 1.0.x (`v1.0.0-RC.14` or later), proposed new repo `QRun-IO/qbit-cms`
 Source assessed: `KofTwentyTwo/Website-Backend` `origin/main` @ `ec5bb65` (2026-10-12, PR #109) and `KofTwentyTwo/Website-Frontend` `origin/main` @ `d670cc1` (PR #34)
 
-Scope: this document is **assessment and design only**. It changes no code, no schema and no live system. Nothing here is decided until the owner answers §10.
+Scope: this document is **assessment and design only**. It changes no code, no schema and no live system. The owner decided all open questions on 2026-10-12 (table below, log in §10).
 
 Path conventions used below:
 
@@ -12,16 +12,27 @@ Path conventions used below:
 - `WF:` is the Website-Frontend repo root.
 - `qqq:` is this repo (`origin/develop`). Other qbits are named by repo.
 
-## Owner decisions (pending)
+## Owner decisions (2026-10-12)
 
-The decision list with options and recommendations is §10. The table fills in as the owner answers; answered decisions override anything below that contradicts them.
+The owner decided all fifteen questions on 2026-10-12. These decisions override anything below that contradicts them, and the sections they touch have been updated. §10 is now the decision log.
 
-| # | Decision | Answer |
+| # | Decision | Effect on the design |
 |---|---|---|
-| D1 | Packaging: one qbit with feature flags vs sub-qbits | pending (recommend: one `qbit-cms` artifact with `CmsFeature` flags, plus a separate `qbit-cms-site-api` artifact; analytics stays `qbit-cms-analytics`) |
-| D2 | License / visibility of the extracted CMS code | pending (recommend: relicense extracted code Apache-2.0, public `QRun-IO/qbit-cms`, as already decided for analytics) |
-| D3 | kof22 table names after cutover | pending (recommend: keep today's unprefixed names forever via `tableNamePrefix=""` adoption mode) |
-| D4-D15 | see §10 | pending |
+| D1 | **Packaging (A):** one `qbit-cms` artifact with `CmsFeature` flags, plus a separate `qbit-cms-site-api` artifact. Analytics stays its own qbit, `qbit-cms-analytics` (#98). | §2.3 |
+| D2 | **License (A):** the extracted CMS code is relicensed **Apache-2.0** and developed in public at `QRun-IO/qbit-cms`. kof22-specific code stays proprietary in Website-Backend. | Clears the license blocker before any code moves (§8). |
+| D3 | **kof22 table names (B): rename to the `cms_` prefix at cutover.** This overrides the original recommendation to keep the names. | §3.6 is redesigned around a reversible, transactional rename migration, rehearsed on a production snapshot, run in a booked maintenance window, with compatibility views and a reverse migration for rollback. Phase 4 grows from 1.5 to 3 weeks. |
+| D4 | **Default prefix (A):** `cms_`, the same as kof22 after D3, so kof22 runs the standard schema with no legacy mappings. | §2.4 |
+| D5 | **Schema ownership (A):** the qbit ships a prefix-parameterized changelog that the host includes and runs, plus generated reference DDL. | §3.2 |
+| D6 | **Site API in the qbit (A):** a separate `qbit-cms-site-api` artifact with configurable name, path, hosts and auth. The v1 contract is frozen and kof22 keeps `api.kof22.com` unchanged. | §2.7. Public resource names are pinned (R14), so the D3 rename cannot change `/v1`. |
+| D7 | **Multi-site (A):** `FixedSiteResolver` by default; host-based resolution and admin site scoping arrive in phase 6. | §2.6 |
+| D8 | **Frontend (A):** headless contract now; `@qrun-io/cms-next` package and starter in phase 5, with Website-Frontend as the first consumer. | §4.1 |
+| D9 | **Preview and revalidation (A):** signed one-record preview tokens and HMAC revalidation webhooks, both opt-in. kof22 stays `force-dynamic`. | §4.2, §4.3 |
+| D10 | **Data Health (A):** CMS rules ship in the qbit behind a rule-provider interface; the framework stays in the host. | §1.2 |
+| D11 | **Authoring, contact and app association (A):** opt-in features of the API artifact. | §2.7 |
+| D12 | **Publisher token auth (A):** a generic, config-driven verifier in the publishing feature. | §2.4, §3.6 (the publisher CLI is updated for the renamed tables and processes) |
+| D13 | **Deprecated `/public-api/` (A):** not migrated. It stays in the host until its 2027-01-31 sunset, with its API table names pinned to the old names so the rename does not change it. | §3.6 |
+| D14 | **Sequencing (A):** #107 (needs RC.4) and #98 finish first, then phase 0. | §8 |
+| D15 | **Acceptance target (A):** a blank `qqq-app-starter` app in CI (phase 1), plus a real second adopter in phase 6. | §8 |
 
 ## 0. Summary
 
@@ -29,7 +40,7 @@ The kof22 CMS is a substantial, working QQQ application: about 38 CMS tables, 2 
 
 One module, CMS analytics (`J/cms/analytics/**`), has already been reshaped into a qbit: a `QBitMetaDataProducer<CmsAnalyticsConfig>`, a prefix-parameterized Liquibase changelog, and SPIs for host-specific behaviour (`docs/design/cms-analytics-module.md`, Website-Backend#98). **This design generalizes that proven pattern to the whole CMS.**
 
-What it takes, in one paragraph: about **3 weeks of in-repo refactoring** in Website-Backend to remove kof22 constants and raw table names behind a config object and five SPIs (§1.4), then **~10 weeks** to stand up `QRun-IO/qbit-cms` (core, media, blog, pages, menus, projects, photos, publishing) and `qbit-cms-site-api`, a **~1.5 week zero-DDL cutover** of kof22 that keeps every table name and row in place (§3.6), and **~5 weeks** for the optional frontend package, preview and revalidation, and multi-site host resolution. Total about **19.5 engineer-weeks** (one senior engineer with AI assistance), sequenced after #107 (core permission enforcement) and #98 (analytics extraction).
+What it takes, in one paragraph: about **3.5 weeks of in-repo refactoring** in Website-Backend to remove kof22 constants and raw table names behind a config object and five SPIs (§1.4), then **~10 weeks** to stand up `QRun-IO/qbit-cms` (core, media, blog, pages, menus, projects, photos, publishing) and `qbit-cms-site-api`, a **~3 week cutover** of kof22 that renames its tables to `cms_` in one reversible, rehearsed transaction with no data copies (§3.6, D3), and **~5 weeks** for the optional frontend package, preview and revalidation, and multi-site host resolution. Total about **21.5 engineer-weeks** (one senior engineer with AI assistance), sequenced after #107 (core permission enforcement) and #98 (analytics extraction).
 
 Design rules (these restate the owner's standing rules and the qbit conventions found in §2.1):
 
@@ -38,7 +49,7 @@ Design rules (these restate the owner's standing rules and the qbit conventions 
 3. **One landing page, no duplicated widgets.** The qbit produces one CMS app with one home and one home per sub-app. It never sets the instance `homeAppName`; the host owns its landing page.
 4. **Readable at every width; real data only.** Widgets follow the readable-widget rules (`qqq:docs/adoption-checklist.adoc` §6). Production installs get no seeded or sample content; demo data is a separate opt-in Liquibase context.
 5. **The host owns the database.** The qbit ships a prefix-parameterized changelog that the host includes and runs (the QQQ qbit convention). It never runs DDL at startup.
-6. **Install, upgrade and uninstall never lose data.** The qbit adopts existing tables (`MARK_RAN` preconditions) instead of recreating them, appends changesets only, and has no automatic drop.
+6. **Install, upgrade and uninstall never lose data.** The qbit never recreates existing tables (`MARK_RAN` preconditions), brings an existing schema to the standard prefix by renaming in place rather than copying, appends changesets only, and has no automatic drop.
 7. **Headless first.** The Site API is the product contract (semver, `/v1`). A Next.js package and starter are optional conveniences on top of it.
 
 ---
@@ -65,7 +76,7 @@ Design rules (these restate the owner's standing rules and the qbit conventions 
 | Schema | `LB/changelog.yaml`, `LB/changesets/` (22 files, 152 changesets), `LB/datasets/` (26), `LB/cms-analytics/` (13) | all host-owned |
 | Deprecated public API | `J/metadata/autoload/api/PublicApiMetaDataProvider.java` (`/public-api/`, sunset 2027-01-31) | not migrated (D13) |
 
-Stack: QQQ BOM `4.1.0-RC.3`, Next `1.0.0-RC.14` (`WB:pom.xml:47-48`), `qbit-quick-search 1.1.0-RC.1`, `qbit-sql-workbench 1.0.0-RC.1`, `qqq-esb` on Artemis, Liquibase 4.33, Java 21. 217 main and 79 test Java files. License: proprietary, "All Rights Reserved" (`WB:LICENSE`), with only `cms/analytics/**` relicensed Apache-2.0 for extraction (`docs/design/cms-analytics-module.md` §"License decision (2026-10-12)").
+Stack: QQQ BOM `4.1.0-RC.3`, Next `1.0.0-RC.14` (`WB:pom.xml:47-48`), `qbit-quick-search 1.1.0-RC.1`, `qbit-sql-workbench 1.0.0-RC.1` (both qbits on Maven Central), `qqq-esb` on Artemis, Liquibase 4.33, Java 21. 217 main and 79 test Java files. License: proprietary, "All Rights Reserved" (`WB:LICENSE`), with only `cms/analytics/**` relicensed Apache-2.0 for extraction (`docs/design/cms-analytics-module.md` §"License decision (2026-10-12)").
 
 ### 1.2 Classification
 
@@ -82,7 +93,7 @@ Legend: **(a)** generic CMS, moves into the qbit · **(b)** kof22-specific, stay
 | Menus | `menu`, `menu_item` | (a) | Self-join exposed join is commented out with a TODO (`J/model/cms/MenuItem.java`); fix on the way. |
 | Media | `media`, `media_type` | (a) | Rendition URL columns (`thumbnailUrl`, `galleryUrl`, `slideshowUrl`) stay. |
 | Photos | `photo`, `photo_album`, `photo_album_folder`, `photo_tag`, `photo_tag_int` | (a) | EXIF fields generic. Photo "scores" UI is frontend-only (b). |
-| Projects | `project`, `project_category`, `project_update` | (a) | `ProjectSection` enum (`SOFTWARE`/`PERSONAL`) is kof22 IA: generalize to a free `section` code with a host-seeded PVS (refactor R15). |
+| Projects | `project`, `project_category`, `project_update` | (a) | `ProjectSection` enum (`SOFTWARE`/`PERSONAL`) is kof22 IA: generalize to a free `section` code with a host-seeded PVS (refactor R12). |
 | Stream | `content_stream` (SQL view) | (a) | The view computes public URLs in SQL with kof22 URL shapes (`LB/changesets/0009-content-stream.sql:75-121`); see R6. |
 | Publishing | `blog_publication`, `blog_publication_receipt`, `project_publication`, `project_publication_receipt` | (a) | Built as explicit `QTableMetaData` (`J/model/publishing/*`). |
 | Site API support | `site_api_idempotency`, `site_api_upload`, `contact_message` | (a) | Site API artifact (D6). |
@@ -157,6 +168,8 @@ Each item is a small behaviour-preserving PR against Website-Backend, the same a
 | R11 | Finish #98 prep: `WidgetHtml`/`DashboardHtml` out of the analytics module, host JDBC helper, `CmsSectionWidgets:230` via analytics runtime API, rollup process name via runtime. | reverse coupling | (in #98) |
 | R12 | `ProjectSection` enum → seeded PVS table or code field; `kof.content-config.v1` → namespaced `cms.content-config.v1` with the old name accepted as an alias. | kof22 IA | 1 d |
 | R13 | Test fixture split: `FreshCmsInstance` (no host classes) vs host integration tests. | tests | 2 d |
+| R14 | Pin public API names: every Site API resource and nested schema gets an explicit public name (today a null `apiName` defaults to the table name, `J/siteapi/SiteApiResources.java:73`), and the deprecated `/public-api/` gets explicit API table names, so the D3 rename cannot change either API. | API names coupled to table names | 1 d |
+| R15 | Names in config and data: generate the publisher route allow-list from `CmsTables`; the publisher CLI reads table and process names from `publishing.yaml`; a `CmsRenamePlan` lists every table, constraint, index, sequence, view and name-as-data column (§3.6.1) that the rename changelog generator uses. | rename preparation | 1.5 d |
 
 Incidental findings to fix on the way (not blockers): `versions.json` "released" reads the oldest changelog entry (`J/siteapi/http/SiteApiRouteProvider.java:674` uses `CHANGELOG.get(size-1)` while the list is newest-first); `docs/publisher-authentication.md` lists a narrower bearer allow-list than `PublisherTokenRouteProvider.java:91-99`; `docs/configuration.md` says `AUTH_MODE` defaults to `dev_local` but `J/Server.java:80` defaults to `dev`; `docs/database/liquibase-startup-migrations.md` says `Server.main()` runs migrations but nothing calls `LiquibaseRunner`; the implementation plan names `ESB_ARTEMIS_MGMT_URL` but code reads `ESB_ARTEMIS_MANAGEMENT_URL`.
 
@@ -208,11 +221,11 @@ Per `qbit-template/QBIT_TYPE_TAXONOMY.md`, an *application* qbit installs a comp
 | Runtime | `CmsRuntime` (storage client, URL scheme, site resolver), transient on the config, rebuilt in `postProduceActions` |
 | SPI implementations for other qbits | `CmsSiteResolver`/`CmsContentResolver` adapters for `qbit-cms-analytics` |
 
-### 2.3 Packaging recommendation (D1)
+### 2.3 Packaging (D1: option A decided)
 
 | Option | Shape | For | Against |
 |---|---|---|---|
-| **A (recommended)** | Repo `QRun-IO/qbit-cms`, Maven multi-module: `qbit-cms` (core + media + blog + pages + menus + projects + photos + publishing, switched by `CmsFeature` flags), `qbit-cms-site-api` (API, authoring, contact; brings `qqq-middleware-api`, `nimbus-jose-jwt`), `qbit-cms-test-support`. Analytics stays its own repo `qbit-cms-analytics` (#98). | The features are entangled at the schema level: `featuredMediaId` on 7 tables, `blog_post_version` FKs to post/project/update, `photo_album` FKs to project/update, the stream view across all kinds. One artifact keeps FKs, PVS references and the changelog coherent. Flags (the `AuthentikFeature` pattern) still let a host install only pages + media. Heavy optional deps are isolated in the API artifact. | One release train for all content features. |
+| **A (decided, D1)** | Repo `QRun-IO/qbit-cms`, Maven multi-module: `qbit-cms` (core + media + blog + pages + menus + projects + photos + publishing, switched by `CmsFeature` flags), `qbit-cms-site-api` (API, authoring, contact; brings `qqq-middleware-api`, `nimbus-jose-jwt`), `qbit-cms-test-support`. Analytics stays its own repo `qbit-cms-analytics` (#98). | The features are entangled at the schema level: `featuredMediaId` on 7 tables, `blog_post_version` FKs to post/project/update, `photo_album` FKs to project/update, the stream view across all kinds. One artifact keeps FKs, PVS references and the changelog coherent. Flags (the `AuthentikFeature` pattern) still let a host install only pages + media. Heavy optional deps are isolated in the API artifact. | One release train for all content features. |
 | B | Eight sub-qbits (`cms-core`, `cms-media`, `cms-blog`, `cms-projects`, `cms-photos`, `cms-publishing`, `cms-site-api`, `cms-analytics`) | Fine-grained install | Cross-qbit FKs and PVS references need inter-qbit config plumbing; eight changelogs whose order the host must get right; eight version matrices. High cost for little real benefit. |
 | C | One jar including the Site API | Simplest | Forces API middleware and JWT libraries on hosts that only want admin CMS. |
 
@@ -223,9 +236,10 @@ Per `qbit-template/QBIT_TYPE_TAXONOMY.md`, an *application* qbit installs a comp
 | Setting | Default | Meaning |
 |---|---|---|
 | `backendName` | required | RDBMS backend for all CMS tables (one backend: the stream view and joins need one database) |
-| `tableNamePrefix` | `cms_` (D4) | SQL and QQQ name prefix. A namespace becomes the prefix if unset. `""` is allowed only with `adoptExistingSchema=true` (kof22, D3). Must equal the changelog property `cms.tablePrefix`. |
-| `adoptExistingSchema` | `false` | Install over existing CMS tables (baseline changesets `MARK_RAN`). |
-| `fieldNameMapping` | `SNAKE_CASE` | Column mapping (`SNAKE_CASE` matches kof22 and the qbit DDL). Legacy columns `createdate`/`modifydate` are an explicit `LEGACY_KOF22` timestamp mapping used only with `adoptExistingSchema`. |
+| `tableNamePrefix` | `cms_` (D4) | SQL and QQQ table name prefix. A namespace becomes the prefix if unset. Must equal the changelog property `cms.tablePrefix`. kof22 uses `cms_` after the D3 rename. |
+| `namePrefix` | `cms` | Prefix for process, widget, security-key-type and permission names (`cmsPublishBlogPost`, `cms.<table>.edit`) |
+| `adoptExistingSchema` | `false` | Install over existing tables that already match the qbit baseline exactly (baseline changesets `MARK_RAN`). kof22 doesn't need it: its rename (§3.6) produces the baseline shape. |
+| `fieldNameMapping` | `SNAKE_CASE` | Column mapping. The D3 rename also renames kof22's `createdate`/`modifydate` to `create_date`/`modify_date`, so there is no legacy mapping. |
 | `features` | all | `Set<CmsFeature>` (§2.3) |
 | `appName`, `appLabel`, `parentAppName` | `cms`, `CMS`, none | The top app and where it nests |
 | `permissionBaseName` | `cms` | Permission names `<base>.<table>.read/insert/edit/delete`, `<base>.publish`, `<base>.admin` (§6) |
@@ -255,8 +269,7 @@ Host registration (kof22, after cutover):
 new CmsQBitProducer()
    .withQBitConfig(new CmsQBitConfig()
       .withBackendName("postgres")
-      .withTableNamePrefix("").withAdoptExistingSchema(true)       // D3
-      .withFieldNameMapping(CmsFieldNameMapping.LEGACY_KOF22)
+      .withTableNamePrefix("cms_")                                  // D3 + D4: renamed at cutover (§3.6)
       .withAppName("Content").withAppLabel("CMS")
       .withSiteResolver(new FixedSiteResolver(env("PUBLIC_WEBSITE_SITE_ID", 1)))
       .withUrlScheme(Kof22Cms.URL_SCHEME)                          // /blogs/{blog}/{slug}, /personal/...
@@ -327,7 +340,7 @@ The Site API is already a real QQQ `ApiInstanceMetaData` (`J/metadata/autoload/s
 
 **Contract.** The `/v1` resource set, field names, error envelope (`J/siteapi/http/ApiProblem.java`), cache headers (`public, max-age=60` for anonymous GETs; `no-store` on `/v1/me/*`), `X-API-Version`, `versions.json` and the OpenAPI document are the qbit's public contract under semver. A breaking change is `/v2`. The qbit owns `info.version`; the host can append its own resources only under a host-chosen extension prefix (`x-host-...` in OpenAPI), so a host addition cannot collide with a future qbit minor.
 
-**kof22 compatibility.** The kof22 instance keeps `apiName=kof22SiteApi`, `/site-api/`, `api.kof22.com` and the iOS app's OpenAPI contract (`src/main/resources/site-api/openapi-extensions.yaml`, the swift-openapi-generator input) byte-compatible. Contract tests run the current golden responses against the qbit build (§7).
+**kof22 compatibility.** The kof22 instance keeps `apiName=kof22SiteApi`, `/site-api/`, `api.kof22.com` and the iOS app's OpenAPI contract (`src/main/resources/site-api/openapi-extensions.yaml`, the swift-openapi-generator input) byte-compatible. Contract tests run the current golden responses against the qbit build (§7). Resource names are pinned explicitly (R14), so the D3 table rename changes nothing under `/v1`.
 
 ### 2.8 Events, search and schedules
 
@@ -373,14 +386,14 @@ Host include:
   - include:  { file: qbit-cms/db/changelog/qbit-cms.changelog.yaml }   # from the qbit jar on the migrations classpath
 ```
 
-kof22 runs migrations in a separate image (`WB:docker/Dockerfile.migrations`, Liquibase CLI), so the qbit jar (or an extracted copy of its changelog directory, as sql-workbench hosts do) must be on that image's classpath. Phase 1 verifies that a Liquibase property with an **empty** value (`cms.tablePrefix=""`) substitutes cleanly. If it does not, the fallback is a generated host changelog (the `qbit-template-data` `ExampleLiquibaseGenerator` approach).
+kof22 runs migrations in a separate image (`WB:docker/Dockerfile.migrations`, Liquibase CLI), so the qbit jar (or an extracted copy of its changelog directory, as sql-workbench hosts do) must be on that image's classpath. The rename changelog (§3.6) takes the source prefix as a property. Phase 1 verifies that an empty source prefix (kof22) substitutes cleanly. If it does not, the fallback is a generated changelog (the `qbit-template-data` `ExampleLiquibaseGenerator` approach).
 
 Why not let the qbit run DDL at startup: every QQQ host already has its own migration pipeline and backup discipline (kof22: migrations job + CNPG backups), and multiple app replicas racing DDL is a known foot-gun. Startup only **checks**.
 
 ### 3.3 Name collisions, namespaces, multiple installs, multiple backends
 
 - **QQQ names.** Tables, PVS, processes, apps, widgets, security key types and permission names are all prefixed (Next routes are a flat `/app/{name}` namespace, so this is required, not cosmetic). `validate()` checks every name it will produce against the instance before producing and fails with a list of collisions and the setting to change.
-- **Database names.** In non-adopt mode, a baseline precondition that finds an existing table without the expected `databasechangelog` row **halts** with "table `<x>` exists but was not created by qbit-cms; set a different `cms.tablePrefix` or use adoptExistingSchema". It never overwrites.
+- **Database names.** In non-adopt mode, a baseline precondition that finds an existing table without the expected `databasechangelog` row **halts** with "table `<x>` exists but was not created by qbit-cms; set a different `cms.tablePrefix`, use adoptExistingSchema (exact baseline shape only), or rename with the `adopt/rename-to-prefix` changelog". It never overwrites.
 - **Two installs in one instance** (e.g. two independent CMSs) need two namespaces (`QInstance.addQBit()` rejects a duplicate `groupId:artifactId`), which become two prefixes, two apps and two permission bases. Supported but not a design goal; multi-site within one install is the normal way to run several sites.
 - **Multiple backends.** All CMS tables live in one backend (`backendName`); FKs, join locks and the stream view require it. Analytics can live elsewhere. A separate PostgreSQL schema is possible by giving the CMS its own RDBMS backend whose connection sets `currentSchema`; the RDBMS module has no per-table schema setting today.
 
@@ -394,21 +407,80 @@ On `postProduceActions`, `CmsRuntime` runs a cheap schema check: the latest expe
 - **Version skew.** The app refuses (FAIL_FAST) to run against a schema older than its baseline + required changesets; it tolerates a *newer* schema (additive) so rolling deploys work.
 - **Uninstall.** Removing the producer call removes all metadata; data stays. The qbit ships an opt-in `qbit-cms-uninstall.changelog.yaml` (drops, behind a context the host must name explicitly), documented with a backup step. Never automatic.
 
-### 3.6 kof22 migration: in-app CMS → qbit, zero data loss
+### 3.6 kof22 migration: in-app CMS → qbit, renamed to `cms_` (D3)
 
-Principle: **no table renames, no data copies, no object-store moves.** The qbit adopts the existing schema in place (D3). The cutover is a code change whose database effect is a set of `MARK_RAN` rows.
+D3 decided that kof22's CMS tables are renamed to the standard `cms_` prefix at cutover. Afterwards kof22 runs exactly the schema every other install runs, with no adoption or legacy mappings. Principles:
+
+- **No data copies and no object-store moves.** Every change is a metadata rename or a small `UPDATE` of a column that stores a table name.
+- **One transaction.** PostgreSQL DDL is transactional, so the whole forward migration commits or rolls back as a unit.
+- **Every step has a written reverse**, and the reverse is rehearsed.
+- **The Site API does not change.**
+
+#### 3.6.1 What the rename touches
+
+| Object | Forward change | Reverse | Notes |
+|---|---|---|---|
+| CMS tables (~38: every (a) table in §1.2 except analytics) | Liquibase `renameTable` `<name>` → `cms_<name>` | rename back | Metadata-only in PostgreSQL. Each needs a brief `ACCESS EXCLUSIVE` lock (milliseconds). Foreign keys, indexes, constraints, grants, identity columns and dependent views follow by OID. |
+| Timestamp columns | `createdate`/`modifydate` → `create_date`/`modify_date` (`renameColumn`) | rename back | Aligns kof22 with the qbit's standard snake_case mapping, so no `LEGACY_KOF22` mapping is needed. kof22 maps them explicitly today. |
+| Constraint and index names | `pk_<t>`, `uq_*`, `fk_*`, `idx_*` → `cms_` forms (about 117 named constraints and 75 indexes across `LB/changesets/0001`-`0020`) via generated `ALTER TABLE ... RENAME CONSTRAINT` / `ALTER INDEX ... RENAME` | rename back | Cosmetic to PostgreSQL, but required so the renamed schema equals the qbit baseline exactly (§3.6.2 step 1), and so later qbit changesets can reference names predictably. |
+| Identity sequences | `<t>_id_seq` → `cms_<t>_id_seq` (`ALTER SEQUENCE ... RENAME`) | rename back | Values are unchanged. The generic resync in `LB/changesets/0016-sequence-resync.sql` uses `pg_get_serial_sequence` and keeps working. |
+| `content_stream` view | drop it, then create `cms_content_stream` from the qbit's changeset | drop the new view, recreate the old one from `0020-gallery-stream-scope.sql` | PostgreSQL would keep the old view working through OIDs, but its name and definition must match the qbit. |
+| Columns that store table names as data | `UPDATE ... SET x = 'cms_' \|\| x WHERE x IN (<renamed tables>)` on `audit_table.name` (`LB/changesets/0008-audits.sql`), `quick_search_index.table_name`, `quick_search_failed_event.table_name` (`0007-quick-search.sql:7,52`), `analytics_pageview.content_table`, `analytics_daily_stat.content_table` (`0010-analytics.sql:75,99`) | `UPDATE` stripping the prefix, limited to the same set | Audit history stays attached: audits reference `audit_table` by id, and only the name changes. Analytics raw pageviews are the largest set (400-day retention), so the rehearsal times this step and batches it if needed. |
+| QQQ metadata | Table names become `cms_<name>`, equal to their backend names (SNAKE_CASE mapping, no `backendDetails` override). Security key types, permission names (`cms.<table>.*`), join names and record-lock join paths all come from `CmsTables` (R2). | previous image | No permissions, keys or locks are stored as data: they are computed per session from groups, so nothing persisted needs migrating. |
+| Process names | Processes take the qbit's name prefix (`cmsPublishBlogPost`, `cmsPublishScheduledPosts`, ...). Scheduled jobs register under the new names at startup. The migration deletes the old Quartz job and trigger rows (`qrtz_*` for `siteApiPublishScheduledPosts`). | the previous image recreates its jobs at startup | Avoids collisions in other hosts. The publisher CLI is updated (next row). |
+| Publisher CLI | The machine-token route allow-list (today `PublisherTokenRouteProvider.java:91-99`) is generated from `CmsTables`. A new CLI release reads table and process names from `publishing.yaml`, which is updated for the new names. | previous CLI and config | Publishing is frozen during the window. Both CLI versions are kept until the watch period ends. |
+| Next admin deep links | `/app/blog_post/123` → `/app/cms_blog_post/123`. App and sub-app names don't change (`appName=Content`, `cmsSites`, ...). The admin Traefik ingress gets a temporary redirect middleware for the old table paths, kept for 90 days. | remove the middleware | Bookmarks and links in notes keep working. |
+| Quick Search | Documents are keyed by table name, so a full reindex of `kof22-content` runs right after deploy. | full reindex | Admin search falls back to core search until the reindex completes (minutes at kof22 volume, measured in rehearsal). |
+| ESB | CloudEvent types change (`qqq.table.blog_post.updated` → `qqq.table.cms_blog_post.updated`). Destination names (`kof22.cms.tables`, ...) don't change. The in-app media trigger is metadata and updates itself. Drain `kof22.media.ingest` before the window (queued messages carry the old names). | previous image | No external consumers are known (open question in the 4.1 implementation plan, L333). The change is announced in the CHANGELOG anyway. |
+| Data Health rules | SQL is written with `CmsSql` placeholders (R3), so it resolves to the new names with no data change. Cached results are cleared and a run is triggered after deploy. | previous image | |
+| Analytics SQL | `SLUG_QUERIES` (`Kof22Analytics.java:64-69`), `CmsSectionWidgets.java:230` and the content-path resolver's table list come from `CmsTables` (R2, R3, #98), plus the `content_table` data update above. | previous image | |
+| Site API v1 | **No change.** Every resource's public name is pinned explicitly (R14), because today a null `apiName` defaults to the table name (`J/siteapi/SiteApiResources.java:73`). | n/a | Proven byte-identical by the golden-response and OpenAPI diffs. The iOS app is unaffected. |
+| Deprecated `/public-api/` | Its API table names are pinned to the old names (D13), because it auto-exposes tables by table name (`PublicApiMetaDataProvider.java`). | n/a | Deleted at the 2027-01-31 sunset. |
+| SQL Workbench notebooks | Not rewritten automatically. A pre-window inventory query (`sql_workbench_cell` text matching old table names) lists the notebooks, which are fixed by hand. The compatibility views keep them running meanwhile. | n/a | |
+| Compatibility views | In the same transaction, create one view per renamed table under the **old** name: `CREATE VIEW blog_post AS SELECT ..., create_date AS createdate, modify_date AS modifydate FROM cms_blog_post`. Single-table views are automatically updatable in PostgreSQL. | dropped by the reverse | They let the previous image and existing notebooks keep working against the renamed schema, which shrinks public downtime and makes rollback a redeploy. They are dropped by a follow-up changeset after the watch period. **To verify in rehearsal:** inserts through the views apply the base tables' identity defaults, and QQQ's `RETURNING id` works through them. If not, the views are read-only for the old image, and the plan uses the downtime fallback in §3.6.3. |
+
+The rename ships **in the qbit** as a generic, reusable changelog, `qbit-cms/db/changelog/adopt/rename-to-prefix.yaml`, parameterized by the source prefix (`""` for kof22), the target prefix and the feature set. It includes explicit `rollback` blocks for every change: Liquibase auto-generates rollbacks for renames, but not for `UPDATE`s. The host runs it once, before the qbit changelog. The qbit's baseline changesets then find the `cms_` tables and are `MARK_RAN`.
+
+**Permissions at cutover.** The role mapping reproduces today's effective access: admins get everything, the publisher/drafter token semantics are unchanged, and iOS authors get #107's `SITE_API_AUTHOR_PERMISSIONS`. kof22 sets `openReads=true`. The permission red-team suite (§7) runs against every rehearsal database.
+
+#### 3.6.2 Runbook
 
 | Step | What | Verification |
 |---|---|---|
-| 0 | Phase 0 refactors (R1-R13) ship in Website-Backend as normal releases, behaviour-identical. | Full test suite; Site API golden responses unchanged; production soak. |
-| 1 | Freeze: the qbit's baseline is generated from kof22's schema at the last host changeset touching CMS tables (today `0020-gallery-stream-scope.sql`). CI asserts the baseline DDL equals a schema-only dump of those tables (normalized). | Schema diff = 0 |
-| 2 | Backups: CNPG on-demand backup + verified PITR window; `pg_dump --format=custom` of all CMS tables; S3 bucket versioning on `kof22-website-files` and `kof22-website-incoming` confirmed (no objects move, but this guards the upload paths). | Restore of the dump into a scratch database succeeds; row counts recorded |
-| 3 | Rehearsal on a production snapshot: restore into an ephemeral database (CNPG clone or Testcontainers from the dump), run the host changelog + qbit changelog with `cms.tablePrefix=""`. | Every baseline changeset `MARK_RAN`, **zero DDL executed** (Liquibase `updateSQL` output reviewed); `RDBMSBackendAssessor` clean; per-table row counts and `md5(string_agg(...))` checksums identical before/after; Site API golden-response suite = 0 diffs; publisher CLI `PLAN` against the rehearsal succeeds; Data Health run shows no new failures |
-| 4 | Cutover release: Website-Backend depends on `qbit-cms` + `qbit-cms-site-api`, registers them with the kof22 config (§2.4), deletes the moved in-app code. Migrations job runs (no-op DDL), then the app deploys. | Smoke: CMS home, each sub-app home, edit + publish a draft post via the publisher CLI, iOS authoring `GET /v1/me`, Site API `/v1/post/query`, sitemap, feeds, media upload + metadata ETL via ESB, Quick Search hit, analytics Views widget |
-| 5 | Rollback: redeploy the previous image. No schema changed, so no down-migration exists or is needed. The `MARK_RAN` rows are harmless to the old build (it never reads them). | Rehearsed in step 3 |
-| 6 | Optional, later, separate decision (D3 option B/C): rename to `cms_` with a qbit-provided `rename-to-prefix` changelog (`ALTER TABLE ... RENAME`, sequence renames, view recreate) in a maintenance window. Recommendation: don't. Unprefixed names are harmless in a database that only kof22 owns. | n/a |
+| 0 | **Prep refactors** R1-R15 (§1.4) ship in Website-Backend as normal releases, reading every name from `CmsTables` with prefix `""`. Behaviour is identical. | Full test suite. Site API golden responses unchanged. One week of production soak. |
+| 1 | **Rename changelog + round trip in CI.** Take a schema-only dump of production CMS tables, apply the forward rename, assert it equals the qbit's `cms_` baseline (normalized `pg_dump --schema-only` diff = 0), apply the reverse, and assert it equals the original. | Diff = 0 in both directions |
+| 2 | **Rehearsal on a production snapshot, at least twice.** Clone production into a scratch CNPG cluster. Before: record per-table row counts and `md5(string_agg(row::text, '\|' ORDER BY id))` checksums (name-as-data columns compared after mapping). Run forward + qbit changelog + the new image. | Counts and checksums equal. Name-as-data columns mapped exactly. `RDBMSBackendAssessor` clean. Baseline `MARK_RAN` with **zero DDL** beyond the rename (reviewed `updateSQL`). Site API golden-response suite and OpenAPI diff: **0 diffs**. Publisher CLI (new release) `PLAN`, `SAVE_DRAFT` and `PUBLISH` against the rehearsal. iOS authoring `GET /v1/me`. Media upload → ESB → metadata ETL. Quick Search full reindex (timed). Data Health run with no new failures. Old deep link redirects. Compatibility-view write test (§3.6.1). Forward-migration duration recorded. |
+| 2r | **Rollback rehearsal** on the same clone: reverse migration + previous image. | Counts and checksums equal to the "before" values. Previous image's smoke tests pass. |
+| 3 | **Pre-window (T-1 day).** Announce. Stage the notebook fixes. Merge the Traefik redirect middleware (inactive). Confirm CNPG continuous backup and the PITR window are healthy. Confirm versioning is on for `kof22-website-files` and `kof22-website-incoming`. | Checklist signed off |
+| 4 | **Window** (§3.6.3). | Smoke checklist in §3.6.3 |
+| 5 | **Watch, 7 days.** Data Health daily, ESB dead letters, Quick Search status, analytics ingestion, publisher receipts. | No regressions |
+| 6 | **Cleanup.** A follow-up changeset drops the compatibility views (after 7 days). The redirect middleware is removed after 90 days. The old CLI version is retired. | |
 
-Permissions at cutover: the role mapping reproduces today's effective access (admins all; publisher/drafter token semantics; iOS author permissions from #107's `SITE_API_AUTHOR_PERMISSIONS`). A permission red-team test (§7) runs against the rehearsal.
+#### 3.6.3 Maintenance window
+
+| T | Action | Duration (est.) |
+|---|---|---|
+| T-60 min | Freeze publishing: disable the publisher token client in Authentik, and enable the iOS authoring maintenance flag (`503` with `Retry-After`). Drain `kof22.media.ingest`. | 5 min |
+| T-55 min | CNPG on-demand backup, plus `pg_dump --format=custom` of the CMS tables and the name-as-data tables. Test-restore the dump into scratch. | 15-20 min |
+| T0 | Run the migrations job: the rename changelog (one transaction, timed in rehearsal; expected seconds, or up to a few minutes if the analytics `UPDATE` is large), then the qbit changelog (`MARK_RAN`). | 1-5 min |
+| T+5 | Rolling deploy of the new image (old pods keep serving through the compatibility views). Activate the redirect middleware. | 3-5 min |
+| T+10 | Start the Quick Search full reindex. Trigger a Data Health run. | runs in background |
+| T+10 | Smoke: CMS home and each sub-app home; edit and publish a draft through the new CLI; `GET /v1/me`; `/v1/post/query`, `/v1/page/query`, sitemap and feeds compared with golden responses; media upload → renditions → metadata ETL; old deep link redirects; analytics Views widget; Quick Search once the reindex finishes. | 15 min |
+| T+25 | Unfreeze publishing. | 2 min |
+
+- **Window to book:** 60 minutes after the freeze. **Expected:** 30-45 minutes end to end.
+- **Public-site impact:** the target is **none** (the old image serves through the compatibility views until it is replaced). If rehearsal shows the views can't take the old image's queries, the fallback is to scale the backend to 0 for T0 to T+5, giving about **10-15 minutes** of public downtime. The frontend is `force-dynamic` and has no stale cache to fall back on.
+- **Admin writes and publishing:** frozen for about 45 minutes.
+- **Site search:** degraded to core search until the reindex finishes.
+
+#### 3.6.4 Rollback
+
+| When | How | Data impact |
+|---|---|---|
+| During T0 (migration fails) | Automatic: the transaction rolls back. Unfreeze, investigate. | none |
+| Within the watch period, app-level problem | Redeploy the previous image. It runs against the compatibility views. Remove the redirect middleware and reindex Quick Search. | none |
+| Within the watch period, schema-level problem | Scale down. Run the reverse migration (one transaction: drop the compatibility views, reverse renames and `UPDATE`s, recreate the old `content_stream`, delete the qbit's `databasechangelog` rows by its `logicalFilePath`). Deploy the previous image, reindex, then restore the previous CLI and config. | none (writes made after cutover are kept, since rows are renamed, not copied) |
+| Last resort | CNPG point-in-time restore to the T-55 backup | loses writes made after the backup (publishing was frozen, so only edits made after the unfreeze) |
 
 ### 3.7 Compatibility matrix
 
@@ -514,14 +586,14 @@ The Site API session is a scoped `FULLY_ANONYMOUS` provider (today "site-api-ano
 |---|---|---|
 | Unit | H2 (PostgreSQL mode) `FreshCmsInstance` with every feature combination that `validate()` allows | PR |
 | Architecture | ArchUnit: no host imports; no raw table-name literals outside `CmsTables`/`CmsSql`; processes have `withTableName` and are not in any app's nav; every table has permission rules | PR |
-| Schema | Testcontainers PostgreSQL: (1) fresh install with `cms_`; (2) fresh install with a namespace; (3) two namespaces in one database; (4) adopt-existing over a kof22-shaped baseline → zero DDL; (5) upgrade from every released version's schema to head; (6) collision halts; `RDBMSBackendAssessor` clean after each | PR |
+| Schema | Testcontainers PostgreSQL: (1) fresh install with `cms_`; (2) fresh install with a namespace; (3) two namespaces in one database; (4) rename round trip: a kof22-shaped schema → `adopt/rename-to-prefix` → equals the `cms_` baseline → reverse → equals the original, plus compatibility-view reads and writes; (5) upgrade from every released version's schema to head; (6) collision halts; `RDBMSBackendAssessor` clean after each | PR |
 | Storage | Testcontainers MinIO for `S3CmsStorage` (today S3 is only faked in Website-Backend tests): upload, presign, renditions, metadata extraction | PR |
 | Search | Testcontainers OpenSearch with `qbit-quick-search` (optional profile), plus the no-provider fallback | nightly |
 | ESB | embedded Artemis: publications, media trigger, idempotent redelivery | nightly |
 | Site API contract | (1) OpenAPI snapshot diff: a breaking diff fails unless the major version changes; (2) golden JSON responses (curated fields, envelope, headers, CORS, cache headers) migrated from `T/siteapi/SiteApiPublicIntegrationTest.java` (13), `SiteApiAuthoringIntegrationTest` (9), `SiteApiUnitTest` (12); (3) consumer contract: `@qrun-io/cms-next` fixtures replayed against the API | PR |
 | Permissions red team | with enforcement ENFORCE: anonymous cannot read drafts/unlisted/other sites; editor cannot publish; drafter cannot `PUBLISH`; preview token reads only its record and expires; site-scoped admin cannot cross sites; publisher token cannot call routes outside its allow-list or mix cookies + bearer | release |
 | Next UI | Playwright: CMS home and each sub-app home at 360/768/1280 widths (readability rules), FILE_PREVIEW thumbnails, actions present, no processes in nav | release |
-| Migration rehearsal | the §3.6 step 3 runbook against a fresh production snapshot, scripted, before kof22 cutover and before every qbit major | per cutover |
+| Migration rehearsal | the §3.6.2 steps 2 and 2r (forward and rollback) against a fresh production snapshot, scripted, before kof22 cutover and before every qbit major | per cutover |
 | Publisher CLI | the opt-in `-Dkof.publisher.jar` contract tests (`T/metadata/BlogPrivacyIntegrationTest.java:342-490`) become a generic `-Dcms.publisher.jar` profile | release |
 
 ### 7.2 Docs (in `QRun-IO/qbit-cms`)
@@ -553,15 +625,15 @@ Estimates assume one senior engineer with AI assistance, plus about 25% of a fro
 | Phase | Scope | Where | Exit criteria | Est. |
 |---|---|---|---|---|
 | **Pre** | #107 (core permission enforcement, needs QQQ 4.1.0-RC.4) and #98 (analytics extraction) complete | Website-Backend, `qbit-cms-analytics` | both merged and deployed | (existing work) |
-| **0. Prep refactors** | R1-R13 (§1.4) inside Website-Backend, behaviour-identical; incidental doc/bug fixes | Website-Backend | `CmsModuleBoundaryTest` green; Site API golden responses unchanged; production soak 1 week | 3 wk |
+| **0. Prep refactors** | R1-R15 (§1.4) inside Website-Backend, behaviour-identical; incidental doc/bug fixes | Website-Backend | `CmsModuleBoundaryTest` green; Site API golden responses unchanged; production soak 1 week | 3.5 wk |
 | **1. qbit-cms core** | Repo from the qbit template (multi-module); `CmsQBitProducer`/`Config`/`Runtime`/`CmsTables`; CORE + MEDIA + BLOG features; storage SPI with S3/filesystem; permissions + roles; CMS home + sub-app homes; prefix-parameterized changelog + baseline; install doctor; Testcontainers Postgres/MinIO matrix | `qbit-cms` | 1.0.0-RC.1 published; installs cleanly into a blank `qqq-app-starter` app (the "any running QQQ system" acceptance test) with `cms_` | 4 wk |
 | **2. Remaining features** | PROJECTS, PHOTOS, PUBLISHING (processes, receipts, related versions, URL migration, publisher token auth), STREAM (view + URL scheme), ESB publications + media trigger + no-ESB fallback, developer panel | `qbit-cms` | RC.2; publisher CLI contract profile green; ESB nightly green | 3 wk |
 | **3. Site API artifact** | `qbit-cms-site-api`: resources, routes, OpenAPI shaping, docs page, feeds, sitemap, search, contact, authoring, AASA, `CmsSiteApiConfig`; contract test suite | `qbit-cms` (module) | kof22 golden responses replay with 0 diffs; OpenAPI snapshot gate in CI | 3 wk |
-| **4. kof22 cutover** | Rehearsal on prod snapshot (§3.6 step 3), cutover release, smoke, 1-week watch; delete moved code from Website-Backend | Website-Backend, cluster-gitops (no infra change expected) | zero DDL in prod; all smoke checks; no Data Health regressions | 1.5 wk |
+| **4. kof22 cutover (rename to `cms_`, D3)** | `adopt/rename-to-prefix` changelog with explicit rollbacks and compatibility views; CI round trip; publisher CLI release and config; admin Traefik redirect middleware; notebook inventory; two production-snapshot rehearsals plus a rollback rehearsal; the maintenance window (§3.6.3); 7-day watch; cleanup changeset; delete the moved code from Website-Backend | `qbit-cms`, Website-Backend, publisher CLI, cluster-gitops (redirect middleware) | Rehearsals green (counts and checksums equal, 0 Site API diffs, CLI publish works, rollback restores the original); window completed inside the booked 60 min; no Data Health regressions after 7 days | 3 wk |
 | **5. Frontend package + preview + ISR** | `@qrun-io/cms-next` (client, fetchers, section registry, route factories), `create-qqq-cms-site` starter, preview tokens (backend + package), revalidation notifier; Website-Frontend adopts the package | new npm package repo, `qbit-cms`, Website-Frontend | starter renders a fresh install end to end; Website-Frontend on the package with no visual change | 3 wk |
 | **6. Multi-site + second adopter** | `HostSiteResolver`, `adminSiteScoping`, site grants, multi-site tests; adoption checklist into qqq docs; a second consumer (blank starter app or another QQQ app) adopts | `qbit-cms`, `qqq` docs | two sites served from one install with isolation red team green | 2 wk |
 
-Total: about **19.5 weeks** after the prerequisites, of which phases 0-4 (14.5 weeks) deliver "kof22 runs on the qbit and a blank QQQ app can install it".
+Total: about **21.5 weeks** after the prerequisites, of which phases 0-4 (16.5 weeks) deliver "kof22 runs on the qbit and a blank QQQ app can install it".
 
 **Release coordination.** The release captain owns QQQ RCs; this work needs no QQQ core change beyond what RC.4 ships (optional upstreaming of widget helpers and API error envelopes would be separate, later QQQ PRs). `qbit-cms` uses the qbit release-branch flow. The npm package has its own semver.
 
@@ -570,13 +642,17 @@ Total: about **19.5 weeks** after the prerequisites, of which phases 0-4 (14.5 w
 | Risk | Mitigation |
 |---|---|
 | The baseline drifts from kof22's real schema (hand edits, out-of-order changesets: two `0006` and two `0009` files in `LB/changesets/`) | Generate the baseline from a schema-only dump of production, diff in CI, rehearse on a snapshot |
-| Liquibase empty-property substitution for `cms.tablePrefix=""` misbehaves | Verify in phase 1; fallback: generated host changelog |
+| The rename misses an object (a constraint, a sequence, a column that stores a table name, raw SQL in a notebook) | `CmsRenamePlan` generated from the catalog, not by hand; CI round trip asserts schema equality both ways; two production-snapshot rehearsals; compatibility views for anything still using old names |
+| The rename takes too long (large analytics `UPDATE`) or blocks on locks | Timed in rehearsal; batch the analytics update before the window if needed; `lock_timeout` on the migration so it fails fast instead of queueing behind long transactions; publishing frozen |
+| Compatibility views can't serve the old image's inserts (identity defaults, `RETURNING id`) | Verified in rehearsal; fallback is 10-15 min of planned public downtime (§3.6.3) |
+| Old admin links, notebooks or external ESB consumers depend on old names | 90-day redirect middleware; notebook inventory and fixes before the window; CHANGELOG notice of the new CloudEvent types |
+| Liquibase empty source-prefix substitution in the rename changelog misbehaves | Verify in phase 1; fallback: a generated changelog |
 | Raw SQL in 126 Data Health rules and the stream view resists prefixing | `CmsSql` placeholders + tests that run every rule against a `cms_`-prefixed schema |
 | The iOS app's OpenAPI contract breaks | Byte-compare `openapi-extensions.yaml` output; contract tests; semver gate |
 | Permission regressions when rules become non-open for generic installs | kof22 keeps `openReads=true`; red-team suite on the rehearsal database |
 | Scope creep into a general page builder | Non-goals: no WYSIWYG page builder, no multi-language content in 1.0 (the early sketch's `default_language` is deferred), no renderer in Java |
 | Next has no plugin system for custom widgets | CMS homes use generic HTML/`block` widgets only; no custom widget types in 1.0 |
-| Licensing of extracted code | Owner decision D2 before any code moves (same as #98 blocker 1) |
+| Licensing of extracted code | Decided (D2): Apache-2.0; proprietary headers are replaced as files move, as for analytics |
 | Release-captain contention on QQQ | No QQQ core changes required; spec PR is docs-only |
 
 ### 8.2 Non-goals (1.0)
@@ -589,64 +665,66 @@ WYSIWYG or block editor beyond today's section JSON; localization/multi-language
 
 - **What:** turn the kof22 CMS into `QRun-IO/qbit-cms` (+ `qbit-cms-site-api`), installable into any QQQ 4.1 app with Next, with `qbit-cms-analytics` (already in flight) as an optional companion.
 - **How:** generalize the analytics module's proven pattern: one typed config, a QBit producer, prefixed standard QQQ tables, a host-included prefix-parameterized Liquibase changelog, and SPIs for site resolution, storage, URL scheme, role mapping and mail.
-- **Biggest work items:** 13 in-repo refactors to remove kof22 constants and raw table names (3 wk); the qbit itself (7 wk: core 4 + remaining features 3); the Site API artifact (3 wk); a zero-DDL kof22 cutover (1.5 wk); optional frontend package, preview and ISR (3 wk); multi-site (2 wk).
-- **kof22 data:** never moves. Tables keep their names; baseline changesets are `MARK_RAN`; rollback is a redeploy.
+- **Biggest work items:** 15 in-repo refactors to remove kof22 constants and raw table names (3.5 wk); the qbit itself (7 wk: core 4 + remaining features 3); the Site API artifact (3 wk); the kof22 cutover with a reversible rename to `cms_` (3 wk); optional frontend package, preview and ISR (3 wk); multi-site (2 wk).
+- **kof22 data:** never copied. Tables, constraints and sequences are renamed to `cms_` in one transaction, with name-as-data columns updated and compatibility views under the old names. It is rehearsed twice on a production snapshot (counts, checksums, golden Site API diffs, publisher CLI). The window is 60 minutes booked and 30-45 expected, with the public-site impact target being none. Rollback is the previous image (via the compatibility views) or the reverse migration. The Site API doesn't change.
 - **Security:** core permission enforcement on; per-table rules; IdP-neutral role mapping; public reads filtered by record locks per resolved site; preview tokens scoped to one record.
 - **Frontend:** headless Site API contract first; `@qrun-io/cms-next` package + starter later; Website-Frontend becomes the first consumer.
-- **Gate:** owner decisions D1-D15 (§10), then #107 and #98, then phase 0.
+- **Gate:** owner decisions made 2026-10-12 (§10); #107 and #98, then phase 0.
 
-## 10. Owner decisions (prioritized; recommendation first)
+## 10. Owner decisions (decision log, 2026-10-12)
+
+The owner chose the recommended option **A** for every question except **D3**, where the owner chose **B** (rename). Options are kept for the record.
 
 1. **D2 License and visibility** (blocks any code move)
-   - **A (recommended):** relicense the extracted CMS code Apache-2.0 and develop in public `QRun-IO/qbit-cms`, as already decided for analytics. kof22-specific code stays proprietary in Website-Backend.
+   - **A (recommended, chosen):** relicense the extracted CMS code Apache-2.0 and develop in public `QRun-IO/qbit-cms`, as already decided for analytics. kof22-specific code stays proprietary in Website-Backend.
    - B: private `KofTwentyTwo/qbit-cms`, proprietary, private Maven registry. Fewer adopters; QRun-IO docs can't reference it.
    - C: dual license (AGPL/commercial).
 2. **D1 Packaging**
-   - **A (recommended):** one repo, `qbit-cms` with `CmsFeature` flags + separate `qbit-cms-site-api` artifact; analytics stays `qbit-cms-analytics`.
+   - **A (recommended, chosen):** one repo, `qbit-cms` with `CmsFeature` flags + separate `qbit-cms-site-api` artifact; analytics stays `qbit-cms-analytics`.
    - B: eight sub-qbits.
    - C: one jar including the API.
 3. **D3 kof22 table names**
-   - **A (recommended):** keep today's unprefixed names permanently (adoption mode, zero DDL).
-   - B: rename to `cms_` during the cutover window.
+   - A (recommended, declined): keep today's unprefixed names permanently (adoption mode, zero DDL).
+   - **B (chosen by the owner, overriding the recommendation):** rename to `cms_` during the cutover window (§3.6).
    - C: keep now, rename later in a separate window.
 4. **D14 Sequencing**
-   - **A (recommended):** finish #107 (RC.4) and #98 first, then phase 0.
+   - **A (recommended, chosen):** finish #107 (RC.4) and #98 first, then phase 0.
    - B: run phase 0 in parallel with #98 (more merge conflicts in `cmshome/` and `WidgetHtml`).
 5. **D5 Schema ownership**
-   - **A (recommended):** the qbit ships a prefix-parameterized changelog that the host includes and runs; generated reference DDL for non-Liquibase hosts.
+   - **A (recommended, chosen):** the qbit ships a prefix-parameterized changelog that the host includes and runs; generated reference DDL for non-Liquibase hosts.
    - B: reference DDL only (sql-workbench style); hosts write their own changesets.
    - C: the qbit runs DDL at startup.
 6. **D6 Site API in the qbit**
-   - **A (recommended):** yes, as `qbit-cms-site-api` with configurable name, path, hosts and auth; v1 contract frozen; kof22 keeps `api.kof22.com` unchanged.
+   - **A (recommended, chosen):** yes, as `qbit-cms-site-api` with configurable name, path, hosts and auth; v1 contract frozen; kof22 keeps `api.kof22.com` unchanged.
    - B: the Site API stays in the host; the qbit is admin-only.
 7. **D4 Default prefix for new installs**
-   - **A (recommended):** `cms_`.
+   - **A (recommended, chosen):** `cms_`.
    - B: no prefix.
 8. **D11 iOS authoring, contact form, app association**
-   - **A (recommended):** in the API artifact as opt-in features, IdP-neutral config.
+   - **A (recommended, chosen):** in the API artifact as opt-in features, IdP-neutral config.
    - B: host-only extensions.
 9. **D12 Machine publisher token auth**
-   - **A (recommended):** generic config-driven verifier in the publishing feature (issuer, audience, introspection, groups, generated route allow-list).
+   - **A (recommended, chosen):** generic config-driven verifier in the publishing feature (issuer, audience, introspection, groups, generated route allow-list).
    - B: host-only; the qbit exposes processes and the host secures them.
 10. **D10 Data Health rules**
-    - **A (recommended):** ship the CMS rules as data in the qbit behind a small rule-provider interface, registered only when the host has a Data Health framework; the framework itself stays in Website-Backend until a `qbit-data-health` (or the assistant spec's `DataIssueProvider` SPI) exists.
+    - **A (recommended, chosen):** ship the CMS rules as data in the qbit behind a small rule-provider interface, registered only when the host has a Data Health framework; the framework itself stays in Website-Backend until a `qbit-data-health` (or the assistant spec's `DataIssueProvider` SPI) exists.
     - B: build `qbit-data-health` first.
     - C: rules stay in the host.
 11. **D8 Frontend**
-    - **A (recommended):** headless contract now; `@qrun-io/cms-next` package + starter in phase 5; Website-Frontend first consumer.
+    - **A (recommended, chosen):** headless contract now; `@qrun-io/cms-next` package + starter in phase 5; Website-Frontend first consumer.
     - B: headless only, no package.
     - C: extract Website-Frontend as a template repo.
 12. **D9 Preview and revalidation**
-    - **A (recommended):** signed one-record preview tokens + HMAC revalidation webhooks, both opt-in; kof22 stays `force-dynamic` until it wants caching.
+    - **A (recommended, chosen):** signed one-record preview tokens + HMAC revalidation webhooks, both opt-in; kof22 stays `force-dynamic` until it wants caching.
     - B: defer both past 1.0.
 13. **D7 Multi-site default**
-    - **A (recommended):** `FixedSiteResolver` default; `HostSiteResolver` and admin site scoping in phase 6.
+    - **A (recommended, chosen):** `FixedSiteResolver` default; `HostSiteResolver` and admin site scoping in phase 6.
     - B: host-based resolution required from 1.0.
 14. **D13 Deprecated `/public-api/`**
-    - **A (recommended):** not migrated; stays in the host until its 2027-01-31 sunset, then deleted.
+    - **A (recommended, chosen):** not migrated; stays in the host until its 2027-01-31 sunset, then deleted.
     - B: delete before cutover.
 15. **D15 "Any running QQQ system" acceptance target**
-    - **A (recommended):** a blank `qqq-app-starter` app in CI (phase 1), plus a real second adopter in phase 6.
+    - **A (recommended, chosen):** a blank `qqq-app-starter` app in CI (phase 1), plus a real second adopter in phase 6.
     - B: a specific second product first.
 
 ---

@@ -39,6 +39,10 @@ Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1/RC.2; see the [
 Next `1.0.0-RC.13` or later renders the two features below. Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
 
 ### Added
+- **Assistant developer panel** — `AiDeveloperPanelProvider` shows, on a record's developer view, what the QQQ
+  Assistant may read and propose for that record under the current user's permissions (table and field exposure, tool
+  applicability and reasons, from `AiToolKernel.describeAccess`) with an "Ask the assistant about this record" deep
+  link.  Not registered by core: the assistant qbit registers it (spec QRun-IO/qqq#1054 §5.7).
 - **Record developer panels** — a generic contract for modules and qbits to contribute panels to a record's developer
   view: implement `DeveloperPanelProviderInterface` (id, title, order, icon, `isAvailable`, `build`) and register it in
   the new `DeveloperPanelsMetaData` supplemental instance meta-data.  Panels are lists of generic blocks (key/values,

@@ -4,7 +4,7 @@ Status: **Approved** · drafted 2026-10-12, owner decisions 2026-10-12 · Author
 Targets: QQQ 4.1.x, QQQ Next UI 1.0.x, proposed new repo `QRun-IO/qbit-web-performance`; first host `KofTwentyTwo/Website-Backend` + `KofTwentyTwo/Website-Frontend` (www.kof22.com)
 Related: [`2026-10-12-qbit-cms-design.md`](https://github.com/QRun-IO/qqq/pull/1083) (#1083), [`2026-10-12-qbit-cdn-design.md`](https://github.com/QRun-IO/qqq/pull/1084) (#1084), [`2026-10-11-qqq-assistant-qbit-design.md`](./2026-10-11-qqq-assistant-qbit-design.md) (#1054), [`2026-09-25-qqq-esb-design.md`](./2026-09-25-qqq-esb-design.md)
 
-Scope: **design only.** Nothing was built or deployed, and no cloud resource or API key was created.
+Scope: **design.** Implementation status (2026-10-12): the owner created the Google API key, and it is seeded write-only in Infisical (Praetor #29, applied). The ExternalSecret (cluster-gitops #87) is open and waits in the deploy queue. RUM collection is in Website-Backend #115 and Website-Frontend #42 (open). The qbit P1 is built locally; its GitHub repo waits for the owner's OK.
 
 ## Owner decisions (2026-10-12)
 
@@ -20,13 +20,13 @@ The owner accepted every recommendation on 2026-10-12 ("accept all pagespeed rec
 | D6 | Daily KEY + weekly full + on publish + after deploy, cap 500/day | §6.2 |
 | D7 | Build-id probe (`/api/build`, backend version at startup) | §6.3 |
 | D8 | Keep all Lighthouse reports forever in PostgreSQL | §4.3 |
-| D9 | **Amended by the owner (2026-10-12): Slack is optional.** Regressions are raised through the generic Alerts qbit's producer SPI (`docs/specs/2026-10-12-qbit-alerts-design.md`) when it is installed, and its channels (in-app, email, Slack, webhook, ...) deliver them. Without it they still show on the Performance home, the Dashboard line and in Data Health. Prometheus metrics are an optional extra, not the alerting design. | §8.3 |
+| D9 | **Amended by the owner (2026-10-12): Slack is optional.** Regressions are raised through the generic Alerts qbit's producer SPI (`docs/specs/2026-10-12-qbit-alerts-design.md`, #1090) when it is installed, and its channels (in-app, email, Slack, webhook, ...) deliver them. Without it they still show on the Performance home, the Dashboard line and in Data Health. Prometheus metrics are an optional extra, not the alerting design. | §8.3 |
 | D10 | One key for PSI + CrUX, Infisical write-only seed with `-target`; the owner creates the key and names the 1Password item | §8.2 |
 | D11 | RUM attributed to the landing URL (no soft navigations) | §7.1 |
 | D12 | Seed Google's "good" thresholds as budgets | §4.2 |
 | D13 | All four categories on every run | §6 |
 
-Work that does not need the API key (RUM collection, the `analytics_vital*` tables and p75 rollup, `/api/build`, a local qbit skeleton) starts now; the key, the Infisical seed and P1's PSI runner wait for the owner.
+Work that does not need the API key started first: RUM collection, the `analytics_vital*` tables and the p75 rollup, `/api/build`, and the local qbit skeleton. The key now exists and is seeded in Infisical (Praetor #29). P1, with the PSI and CrUX runners, is built against it, and the P0 manual call runs once the ExternalSecret (cluster-gitops #87) is live.
 
 Path conventions: `WB:` is Website-Backend (`origin/main` @ `7760c80`), `WF:` is Website-Frontend (`origin/main` @ `199e8f8`), `GO:` is `KofTwentyTwo/cluster-gitops`, `PR:` is `KofTwentyTwo/Praetor`. `J/` is `WB:src/main/java/com/kof22/website/`.
 
@@ -179,7 +179,7 @@ The SQL prefix is `webperf_` and the QQQ table names equal the SQL names, follow
 |---|---|---|---|---|
 | 1 | `webperf_target` (Tested Pages) | One public URL under test | `site_key`, `url`, `path`, `source` (SITEMAP / MANUAL / CONTENT), `content_table`, `content_id`, `label`, `tier` (KEY / STANDARD), `enabled`, `in_sitemap`, `last_seen_in_sitemap_at`, plus the denormalized latest values for list sorting: `latest_mobile_performance`, `latest_desktop_performance`, `latest_accessibility`, `latest_tested_at`, `open_regression_count` | unique (`site_key`, `url`); (`content_table`, `content_id`); (`enabled`, `tier`) |
 | 2 | `webperf_lab_run` (Lab Runs) | One Lighthouse run of one URL and strategy | `target_id`, `url`, `final_url`, `strategy`, `runner` (PSI / LOCAL), `trigger` (SCHEDULE / PUBLISH / DEPLOY / MANUAL / SITE_AUDIT / CONFIRM / CHANGE_COMPARE), `trigger_ref`, `batch_id`, `status` (QUEUED / RUNNING / SUCCEEDED / RUNTIME_ERROR / FAILED / SKIPPED_QUOTA / MERGED), `not_before`, `queued_at`, `started_at`, `completed_at`, `attempts`, `http_status`, `error_message`, `lighthouse_version`, `chrome_user_agent`, `benchmark_index`, `score_performance`, `score_accessibility`, `score_best_practices`, `score_seo` (0–100, null when the category was not run), `fcp_ms`, `lcp_ms`, `tbt_ms`, `cls`, `speed_index_ms`, `lcp_element` (selector), `run_warnings`, `deployment_id` (frontend build at run time), `cdn_stage` | (`target_id`, `strategy`, `completed_at`); (`status`, `not_before`); (`batch_id`); (`completed_at`) |
-| 3 | `webperf_lab_finding` (Findings) | Each non-passing or informative audit of a run | `run_id`, `target_id`, `strategy`, `category`, `audit_id`, `lighthouse_version`, `kind` (INSIGHT / OPPORTUNITY / DIAGNOSTIC / FAILED_AUDIT), `title`, `score`, `display_value`, `savings_ms`, `savings_bytes`, `metric_savings` (JSON: LCP / FCP / CLS / TBT / INP), `top_items` (JSON, first 5 URLs or selectors, truncated) | (`run_id`); (`audit_id`, `completed_date`); (`target_id`, `audit_id`) |
+| 3 | `webperf_lab_finding` (Findings) | Each non-passing or informative audit of a run | `run_id`, `target_id`, `strategy`, `category`, `audit_id`, `lighthouse_version`, `kind` (INSIGHT / OPPORTUNITY / DIAGNOSTIC / FAILED_AUDIT), `title`, `score`, `display_value`, `savings_ms`, `savings_bytes`, `metric_savings` (JSON: LCP / FCP / CLS / TBT / INP), `top_items` (JSON, first 5 URLs or selectors, truncated) | (`run_id`); (`audit_id`, `create_date`); (`target_id`, `audit_id`) |
 | 4 | `webperf_lab_report` (Lighthouse Reports) | The complete PSI response, gzip-compressed, one row per run | `run_id` (unique), `content` (BLOB, gzip JSON), `bytes`, `sha256`. File-download adornment: "Download report (.json)", which opens in the Lighthouse Viewer. | unique (`run_id`) |
 | 5 | `webperf_field_snapshot` (Google Field Data) | A CrUX or PSI `loadingExperience` result | `source` (CRUX_API / CRUX_HISTORY / PSI), `scope` (URL / ORIGIN), `scope_key`, `form_factor` (ALL / PHONE / DESKTOP / TABLET), `status` (OK / NO_DATA / ERROR), `period_start`, `period_end`, `p75_lcp_ms`, `p75_inp_ms`, `p75_cls`, `p75_fcp_ms`, `p75_ttfb_ms`, `distributions` (JSON good / NI / poor per metric), `last_checked_at` | unique (`source`, `scope`, `scope_key`, `form_factor`, `period_end`) |
 | 6 | `webperf_budget` (Budgets) | Thresholds that define a regression | `name`, `scope` (SITE / TIER / TARGET / CONTENT_TABLE / PATH_PREFIX), `scope_value`, `source` (LAB / RUM / CRUX), `strategy`, `metric` (PERFORMANCE_SCORE, ACCESSIBILITY_SCORE, BEST_PRACTICES_SCORE, SEO_SCORE, LCP, INP, CLS, FCP, TTFB, TBT), `comparator`, `threshold`, `severity` (WARNING / CRITICAL), `enabled`, `seeded` | (`enabled`, `source`) |
@@ -267,7 +267,7 @@ The "Test page speed" action is in the record's action menu (§6.1), not inside 
 | `webperfRunSiteAudit` **Run site audit** | Table action on `webperf_target` | `webperf.test` | "87 pages × 2 = 174 runs; about 45 minutes at 2 at a time" · quota line | "Queued 174 runs as audit #12", with a link |
 | `webperfSyncTargets` **Sync pages from sitemap** | Table action on `webperf_target`; also scheduled daily | `webperf.admin` | "4 new pages, 83 unchanged, 1 no longer in the sitemap (kept, marked not in sitemap, history kept)" | Counts with links |
 | `webperfRetryRuns` **Retry** | Record and bulk action on `webperf_lab_run` (FAILED, RUNTIME_ERROR, SKIPPED_QUOTA) | `webperf.test` | "2 runs will be queued again" | |
-| `webperfRefreshFieldData` **Refresh Google field data** | Table action on `webperf_field_snapshot`; also scheduled daily at 06:00 UTC | `webperf.admin` | "Will check the origin and 87 URLs × 3 form factors (~262 CrUX queries, under 150 a minute)" | "Origin: no CrUX data. 0 URLs with data." |
+| `webperfRefreshFieldData` **Refresh Google field data** | Table action on `webperf_field_snapshot`; also scheduled daily at 06:00 UTC | `webperf.admin` | "264 Google field data queries will be made" (the origin plus 87 URLs = 88 keys × 3 form factors; paced to at most 150 a minute, so about 2 minutes) | "Origin: no CrUX data. 0 URLs with data." |
 | `webperfCompareChange` **Compare before and after** | Record action on `webperf_change_event` | `webperf.view` | "Lab: 9 KEY pages, 3 runs each before and after already recorded (or N to queue)" · "Field: 28 days before vs since (412 vs 96 LCP samples)" | Rows in `webperf_comparison`, with a link |
 | `webperfDismissRegressions` **Dismiss** / `webperfResolveRegressions` **Mark resolved** | Record and bulk action on `webperf_regression` | `webperf.manage` | "2 regressions will be dismissed" (a note is required as a process input field) | |
 
@@ -414,8 +414,9 @@ The existing analytics rollup (every 300 s for today and yesterday, under an adv
 - Multi-site hosts add `site_key` with a record security lock (the CMS qbit's `<prefix>Site` key type), so each site sees only its own targets.
 - Core permission enforcement (#1061) applies to every action. Scheduled work runs under `CorePermissionEnforcer.runTrusted("webperf scheduler", …)`.
 
-### 8.2 The Google API key (owner action; nothing has been created)
+### 8.2 The Google API key (created by the owner; seeded 2026-10-12)
 
+- **Status:** the owner created the key (1Password `KOF22_GOOGLE_PAGE_SPEED_API`). It was seeded write-only into Infisical by Praetor #29 with one `op read` and a `-target` apply on the folder and secret only; nothing else in the state changed. The ExternalSecret (cluster-gitops #87) is open and waits in the deploy queue, because merging it restarts the backend.
 - **One key** in a Google Cloud project the owner chooses, with the *PageSpeed Insights API* and the *Chrome UX Report API* enabled and the key restricted to those two APIs. Both are free; no billing account is needed for the default quota.
 - **Why a key is required:** on 2026-10-12, a keyless PSI request from this network got `429 … quota_limit_value: "0" … defaultPerDayPerProject` on the shared anonymous project.
 - **Storage:** Infisical, seeded write-only from Praetor in exactly the pattern used for the kof22 Anthropic key (`PR:terraform/infisical-config/main.tf`, commit `23c9faf`):
@@ -427,7 +428,7 @@ The existing analytics rollup (every 300 s for today and yesterday, under an adv
 
 ### 8.3 Alerts (through the Alerts qbit; Slack optional)
 
-**Owner direction (D9, amended 2026-10-12):** Slack is optional. Alerting goes through the generic Alerts / Manage-by-Exception qbit (`docs/specs/2026-10-12-qbit-alerts-design.md`, PR pending). That qbit provides monitors, alerts, subscriptions and pluggable channels (in-app, email, Slack, webhook, ...). This qbit only *produces* alerts and never chooses a channel.
+**Owner direction (D9, amended 2026-10-12):** Slack is optional. Alerting goes through the generic Alerts / Manage-by-Exception qbit (`docs/specs/2026-10-12-qbit-alerts-design.md`, #1090). That qbit provides monitors, alerts, subscriptions and pluggable channels (in-app, email, Slack, webhook, ...). This qbit only *produces* alerts and never chooses a channel.
 
 **Producer integration (when the Alerts qbit is installed).** The regression engine (§6.4) and the operational checks call the Alerts qbit's producer SPI:
 
@@ -491,11 +492,11 @@ kof22's backend is not scraped today. Enabling scraping means adding the `monito
 
 | Phase | Scope | Estimate | Exit criteria |
 |---|---|---|---|
-| **P0: key and secret** (owner plus 0.5 d) | The owner creates the Cloud project key (PSI and CrUX only). Praetor write-only Infisical seed with `-target`. ExternalSecret and env var. One manual PSI and CrUX call to confirm, including the **real** CrUX answer for kof22. | 0.5–1 d | The backend pod has `WEBPERF_GOOGLE_API_KEY`; a manual call succeeds. |
-| **P1: lab core** | `QRun-IO/qbit-web-performance` from qbit-template. Tables 1–4 and 6–7. PSI runner, queue worker, sitemap sync, daily and weekly schedules. Actions: Test page speed, Run site audit, Sync, Retry. Performance home (Site Scores, Slowest Pages, Top Opportunities, Recent Runs, Trend). Record Performance panel (lab part). kof22 wiring (`ContentResolver` adapter, `contentTables`). Seeded budgets. | 7–9 d | A full audit of 87 pages is recorded; record panels show real scores. |
+| **P0: key and secret** (owner plus 0.5 d) | The owner creates the Cloud project key (PSI and CrUX only). **Done:** the key exists and the Praetor write-only Infisical seed with `-target` is applied (#29). **Open:** the ExternalSecret and env var (cluster-gitops #87), then one manual PSI and CrUX call to confirm, including the **real** CrUX answer for kof22. | 0.5–1 d | The backend pod has `WEBPERF_GOOGLE_API_KEY`; a manual call succeeds. |
+| **P1: lab core** | `QRun-IO/qbit-web-performance` from qbit-template. Tables 1–4 and 6–7. PSI runner, **CrUX runner** (`webperf_field_snapshot`, the daily refresh and the honest NO_DATA path, moved here from P4), queue worker, sitemap sync, daily and weekly schedules. Actions: Test page speed, Run site audit, Sync, Retry. Performance home (Site Scores, Slowest Pages, Top Opportunities, Recent Runs, Trend). Record Performance panel (lab part). kof22 wiring (`ContentResolver` adapter, `contentTables`). Seeded budgets. | 8–10 d | A full audit of 87 pages is recorded; record panels show real scores. |
 | **P2: triggers, regressions, alerts** | ESB publish trigger plus the fallback sweep. `/api/build` and the deploy probes, and `webperf_change_event`. Regression engine with confirmation. Regressions widget, CMS home summary, Dashboard line, Data Health rules. Alerts qbit producer integration (raise and resolve with dedup keys) once that qbit is available. Optional Prometheus gauges. | 4–5 d | A publish leads to a re-test within ~4 min. A deploy leads to KEY re-tests. A forced regression appears on the Performance home and in Data Health. With the Alerts qbit installed, it is raised once and resolved when it clears. |
 | **P3: RUM** | The analytics `vitals` event, `analytics_vital` and `analytics_vital_stat`, the rollup extension. Frontend `web-vitals` v6 beacon and privacy-page sentence. Core Web Vitals widget, panel field section, RUM drift. | 5–7 d | Real vitals with *n* on the home and per page; DNT/GPC verified to send nothing. |
-| **P4: CrUX** | `webperf_field_snapshot`, daily refresh, PSI `loadingExperience` capture, the honest NO_DATA path, History backfill if eligible. | 1.5–2 d | The Field Data Status widget shows the real CrUX status. |
+| **P4: CrUX history** | The CrUX runner and NO_DATA path moved into P1. What remains: storing PSI `loadingExperience` per run, and a one-time CrUX History backfill (up to 40 weeks) if kof22 ever becomes eligible. | 0.5–1 d | The Field Data Status widget shows the real CrUX status. |
 | **P5: CDN before and after** (after #1084 P2/P3) | `CdnStageChangeSource`, `webperfCompareChange`, `webperf_comparison`, country-segmented RUM. | 2–3 d | The `s3` / `www` cutovers each have a recorded comparison. |
 | **P6 (optional): self-hosted runner** | `LocalLighthouseLabRunner` as a k8s Job (Lighthouse 13, Node 22.19), median of 5. Useful for pre-production URLs PSI cannot reach. | 3–4 d | The same tables, `runner = LOCAL`. |
 
@@ -504,7 +505,7 @@ kof22's backend is not scraped today. Enabling scraping means adding the `monito
 - P0–P2 do not depend on #1083 or #98.
 - P3 touches the analytics module, so do it before #98's extraction or right after it, not during.
 - P5 waits for #1084 P2/P3.
-- **The P2 alert integration depends on the Alerts qbit** (`docs/specs/2026-10-12-qbit-alerts-design.md`) shipping its producer SPI. P2 can ship before then: regressions show in-app and in Data Health only until the Alerts qbit is installed, which switches on the producer calls with no schema change.
+- **The P2 alert integration depends on the Alerts qbit** (`docs/specs/2026-10-12-qbit-alerts-design.md`, #1090) shipping its producer SPI. P2 can ship before then: regressions show in-app and in Data Health only until the Alerts qbit is installed, which switches on the producer calls with no schema change.
 - If the #1083 cutover happens after P1, its rename script gains the §4.4 statements.
 
 ### 11.1 Risks
@@ -515,7 +516,7 @@ kof22's backend is not scraped today. Enabling scraping means adding the `monito
 | Lab noise causes false alerts | Confirmation (median of 3), thresholds that need both a relative and an absolute change, and severity bands. |
 | CrUX never covers kof22 | Designed for: RUM is the field truth, and NO_DATA is stated. |
 | RUM samples too small per page | Show *n*; minimum samples before any p75 or alert. |
-| The quota changes or the key is revoked | Daily cap, SKIPPED_QUOTA rows, the `WebPerfRunErrors` alert, and the Health rule. |
+| The quota changes or the key is revoked | Daily cap, SKIPPED_QUOTA rows, the `webperf:run-errors` alert raised through the Alerts qbit (§8.3, D9), and the Health rule. |
 | The beacon slows the page | Dynamic import after load or on idle; a single `sendBeacon` on hide. Measured by this very system (its own lab runs). |
 
 ---
@@ -533,7 +534,7 @@ kof22's backend is not scraped today. Enabling scraping means adding the `monito
 | **D7** | How deploys are detected | A) build-id probe (`/api/build` on the frontend, the backend version at startup) · B) enable ArgoCD notifications with a webhook · C) Munitor post-deploy call | **A.** No infra change, works on any host, and records the build on every run. ArgoCD notifications are disabled today. |
 | **D8** | Lighthouse report retention | A) keep everything forever in PostgreSQL (~2–4 GB a year) · B) full reports 400 days, summaries and findings forever · C) reports in MinIO | **A**, which fits "retain forever" and keeps reports as a visible, downloadable QQQ table. Revisit B if the database size becomes a concern. |
 | **D9** | Alerts | A) Prometheus to the existing Slack routes, plus Data Health · B) in-app only (the Regressions list and Dashboard line) · C) raise and resolve through the generic Alerts qbit's producer SPI when it is installed, and in-app plus Data Health otherwise; Slack and Prometheus are optional channels | **C (owner amendment, 2026-10-12: Slack must be optional).** A was the original recommendation; the owner replaced it with the Alerts qbit approach (§8.3). |
-| **D10** | Google API key | A) one key, restricted to the PSI and CrUX APIs, in a Cloud project the owner picks; Infisical write-only seed with `-target` (the Anthropic-key pattern) · B) separate keys per API | **A.** The owner names the Cloud project and the 1Password item. Nothing has been created. |
+| **D10** | Google API key | A) one key, restricted to the PSI and CrUX APIs, in a Cloud project the owner picks; Infisical write-only seed with `-target` (the Anthropic-key pattern) · B) separate keys per API | **A.** The owner created the key (1Password `KOF22_GOOGLE_PAGE_SPEED_API`); it is seeded in Infisical (Praetor #29). |
 | **D11** | RUM on client-side navigations | A) landing URL only (CrUX parity, stable) · B) experimental soft-navigation reporting (`reportSoftNavs`) | **A** now; revisit B when Chrome ships Soft Navigations as stable. |
 | **D12** | Default budgets | A) seed Google's "good" thresholds (LCP 2.5 s, INP 200 ms, CLS 0.1, FCP 1.8 s, TTFB 0.8 s) and category scores ≥ 90 (WARNING), Performance < 50 on KEY pages (CRITICAL) · B) no seeded budgets; owner-defined only | **A.** These are editable records, so the owner can tighten them after seeing real baselines. |
 | **D13** | Lighthouse categories per run | A) all four on every run · B) Performance only, the others weekly | **A.** It costs nothing extra (one call), and accessibility and SEO regressions are often caused by content edits, which publish-triggered runs catch. |

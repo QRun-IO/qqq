@@ -134,6 +134,7 @@ public class SQSQueuePoller implements Runnable
                runProcessInput.setProcessName(queueMetaData.getProcessName());
                runProcessInput.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
                runProcessInput.addValue("bodies", bodies);
+               runProcessInput.withPermissionBypass("queue poller process");
 
                QContext.pushAction(runProcessInput);
 

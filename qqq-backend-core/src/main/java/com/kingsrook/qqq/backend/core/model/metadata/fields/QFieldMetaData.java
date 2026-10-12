@@ -68,6 +68,14 @@ public class QFieldMetaData implements Cloneable, QMetaDataObject
    private boolean    isHidden   = false;
    private boolean    isHeavy    = false;
 
+   //////////////////////////////////////////////////////////////////////////////////
+   // isSensitive marks fields whose values should not leave the application via //
+   // bulk or third-party surfaces - excluded from exports (unless explicitly    //
+   // requested), and by policy from AI-assistant / MCP payloads.  It does not   //
+   // restrict reads in the UI or API - use a FieldSecurityLock for that.        //
+   //////////////////////////////////////////////////////////////////////////////////
+   private boolean isSensitive = false;
+
    private FieldSecurityLock fieldSecurityLock;
 
    ///////////////////////////////////////////////////////////////////////////////////
@@ -882,6 +890,39 @@ public class QFieldMetaData implements Cloneable, QMetaDataObject
    public QFieldMetaData withIsHeavy(boolean isHeavy)
    {
       this.isHeavy = isHeavy;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for isSensitive - true for fields whose values are sensitive (e.g.,
+    ** PII or secrets), which are excluded from exports unless the ExportInput asks
+    ** for them, and which AI-assistant / MCP integrations must not send to a model.
+    *******************************************************************************/
+   public boolean getIsSensitive()
+   {
+      return (this.isSensitive);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for isSensitive
+    *******************************************************************************/
+   public void setIsSensitive(boolean isSensitive)
+   {
+      this.isSensitive = isSensitive;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for isSensitive
+    *******************************************************************************/
+   public QFieldMetaData withIsSensitive(boolean isSensitive)
+   {
+      this.isSensitive = isSensitive;
       return (this);
    }
 

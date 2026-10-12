@@ -617,6 +617,12 @@ public class QPossibleValueTranslator
                queryInput.setFieldsToTranslatePossibleValues(possibleValueFieldsToTranslate);
             }
 
+            ////////////////////////////////////////////////////////////////////////////////////
+            // possible-value labels of referenced records are shown to anyone who can see    //
+            // the referencing field (long-standing QQQ behavior) - so this lookup is trusted //
+            ////////////////////////////////////////////////////////////////////////////////////
+            queryInput.withPermissionBypass("possible-value translation of referenced record labels");
+
             LOG.trace("Priming PVS cache for [" + page.size() + "] ids from [" + tableName + "] table.");
             QueryOutput queryOutput = new QueryAction().execute(queryInput);
 

@@ -54,6 +54,7 @@ public class QFrontendFieldMetaData implements Serializable
    private boolean      isRequired;
    private boolean      isEditable;
    private boolean      isHeavy;
+   private boolean      isSensitive;
    private boolean      isHidden;
    private Integer      gridColumns;
    private String       possibleValueSourceName;
@@ -85,6 +86,7 @@ public class QFrontendFieldMetaData implements Serializable
       this.isRequired = fieldMetaData.getIsRequired();
       this.isEditable = fieldMetaData.getIsEditable();
       this.isHeavy = fieldMetaData.getIsHeavy();
+      this.isSensitive = fieldMetaData.getIsSensitive();
       this.isHidden = fieldMetaData.getIsHidden();
       this.gridColumns = fieldMetaData.getGridColumns();
       this.possibleValueSourceName = fieldMetaData.getPossibleValueSourceName();
@@ -186,6 +188,16 @@ public class QFrontendFieldMetaData implements Serializable
    public boolean getIsHeavy()
    {
       return isHeavy;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for isSensitive - frontends may use it to mask values by default.
+    *******************************************************************************/
+   public boolean getIsSensitive()
+   {
+      return isSensitive;
    }
 
 

@@ -12,10 +12,10 @@ The owner accepted every recommendation in §13. These decisions override anythi
 
 | # | Decision |
 |---|---|
-| D1 | Bucket configuration is **IaC-owned by default** (read-only plus drift check). UI edits only for buckets marked `managedBy = UI`, with `s3.admin`. |
+| D1 | Bucket configuration is **IaC-owned by default** (read-only plus drift check). UI edits only for buckets marked `managedBy = UI`, with `object_storage.admin`. |
 | D2 | **Connections come from code config only.** Secret references must match the allow-list. The UI edits operational fields only. |
 | D3 | The **Postgres object index** is the primary browse table (write-through plus scans, live HEAD on the record). A bounded "Live objects" table only for non-indexed buckets. |
-| D4 | **Soft delete**: versioning with 30-day noncurrent expiry where supported; a private trash bucket with 30-day expiry where not. Permanent deletes need `s3.admin`. |
+| D4 | **Soft delete**: versioning with 30-day noncurrent expiry where supported; a private trash bucket with 30-day expiry where not. Permanent deletes need `object_storage.admin`. |
 | D5 | **Referenced objects are blocked** from delete and move in v1, with no override. |
 | D6 | The S3 backend moves to **AWS SDK v2 in 4.1.x**, with a release note for the `S3Utils` public type changes. |
 | D7 | **Per-bucket scoping** with a record security lock ships in v1. |
@@ -23,7 +23,7 @@ The owner accepted every recommendation in §13. These decisions override anythi
 | D9 | Usage statistics are **index-derived** in v1. Admin-API plug-ins come later and are opt-in. |
 | D10 | CMS keeps `CmsStorage` and this qbit provides the S3 adapter. CDN drops `cdnBackfillObjectHeaders` and uses Apply header policy, `PublicUrlResolver` and `StorageChangeListener`. #1083 and #1084 get follow-up edits. |
 | D11 | **Orphaned and missing objects belong to the Storage home.** Data Health gets linking rules only. |
-| D12 | Names: `QRun-IO/qbit-object-storage`, `com.kingsrook.qbits.objectstorage`, app label "Storage", table prefix `object_storage_`, permissions `s3.view`, `s3.write`, `s3.delete`, `s3.admin`. **Amended 2026-10-12 (owner):** the table prefix was `storage` (camelCase names such as `storageObject`); the owner naming rule (§5.1, Naming) makes every table lowercase snake_case prefixed with the full qbit name, so `object_storage_object` etc. Permission names are not table names and are unchanged. |
+| D12 | Names: `QRun-IO/qbit-object-storage`, `com.kingsrook.qbits.objectstorage`, app label "Storage", table prefix `object_storage_`, permissions `object_storage.view`, `object_storage.write`, `object_storage.delete`, `object_storage.admin`. **Amended 2026-10-12 (owner):** the table prefix was `storage` (camelCase names such as `storageObject`); the owner naming rule (§5.1, Naming) makes every table lowercase snake_case prefixed with the full qbit name, so `object_storage_object` etc. Permissions follow the same rule (owner, 2026-10-12): they were `s3.view`, `s3.write`, `s3.delete`, `s3.admin` and are now `object_storage.*`. |
 | D13 | Conformance: **MinIO and Garage in CI on every PR**; AWS S3, R2 and B2 in an optional owner-run workflow; others community-reported. |
 | D14 | A **separate least-privilege presign key** is required when presigned URLs leave the server. |
 
@@ -294,8 +294,8 @@ String url = files.publicUrl(key);                            // via PublicUrlRe
 ### 4.2 Who may call it
 
 The API runs in-process with the current `QContext` session.
-- **Admin-app actions** check `s3.*` permissions and bucket locks before calling the API (§7.1).
-- **Application code** (an upload endpoint, a publishing job) calls it as trusted server code, like any QQQ action. When QQQ core's opt-in `PermissionEnforcement.ENFORCE` (#1061) is on, the API applies the same `s3.*` checks to the session's user. A system session (scheduled jobs) is allowed and logged as such.
+- **Admin-app actions** check `object_storage.*` permissions and bucket locks before calling the API (§7.1).
+- **Application code** (an upload endpoint, a publishing job) calls it as trusted server code, like any QQQ action. When QQQ core's opt-in `PermissionEnforcement.ENFORCE` (#1061) is on, the API applies the same `object_storage.*` checks to the session's user. A system session (scheduled jobs) is allowed and logged as such.
 - Every write, from any caller, lands in `object_storage_operation` (§6.6).
 
 ### 4.3 Keys
@@ -318,7 +318,7 @@ public interface ObjectHeaderPolicy
 }
 ```
 
-- The default implementation reads the **`object_storage_header_rule`** table: bucket, key glob or regex, content-type pattern, Cache-Control, Content-Disposition, priority. It is ordinary data, editable with `s3.admin`, and audited.
+- The default implementation reads the **`object_storage_header_rule`** table: bucket, key glob or regex, content-type pattern, Cache-Control, Content-Disposition, priority. It is ordinary data, editable with `object_storage.admin`, and audited.
 - An app can plug in its own policy in code, for example one driven by per-media-type settings it already keeps. The qbit does not own those settings.
 - `put` applies the policy unless the caller passes explicit headers. The **"Apply header policy"** action (§6.2) rewrites existing objects to match it, which replaces app-specific backfills and the CDN qbit's `cdnBackfillObjectHeaders`.
 - **Coverage** (home, §10.2) is the share of indexed objects whose observed Cache-Control equals the policy's answer.
@@ -339,11 +339,11 @@ public interface ObjectHeaderPolicy
 
 All tables are standard QQQ tables in the app's backend (RDBMS), prefixed `object_storage_` by default (lowercase snake_case; QQQ table name = backend name), with full record screens.
 
-**Naming (owner rule, 2026-10-12).** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table here is lowercase snake_case with the full qbit name as prefix (`object_storage_`, not `storage` or `s3`). The QQQ table name and the backend (DB) table name are identical, and possible-value sources take the table name. Java class names stay CamelCase.
+**Naming (owner rule, 2026-10-12).** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table here is lowercase snake_case with the full qbit name as prefix (`object_storage_`, not `storage` or `s3`). The QQQ table name and the backend (DB) table name are identical, and possible-value sources take the table name. Permissions use the full name too: `object_storage.view`, `object_storage.write`, `object_storage.delete`, `object_storage.admin` (owner, 2026-10-12; were `s3.*`). Java class names stay CamelCase.
 
 | Table | What a row is | Written by | Notes |
 |---|---|---|---|
-| `object_storage_connection` | an S3 endpoint and its settings (§3.1) | config upsert; `s3.admin` for non-identity fields | No secret values. Shows "credentials resolved: yes/no" as a computed field. |
+| `object_storage_connection` | an S3 endpoint and its settings (§3.1) | config upsert; `object_storage.admin` for non-identity fields | No secret values. Shows "credentials resolved: yes/no" as a computed field. |
 | `object_storage_connection_capability` | one capability's status for a connection | Test connection | Child of connection. |
 | `object_storage_bucket` | a bucket alias and its config (role, public base URL, indexed, trash, managed-by, limits) plus observed state (versioning, lifecycle, policy, CORS summaries; object count, bytes, last scan) | config upsert; scan; "Check configuration" | Bucket record is the folder-tree root (§5.4). |
 | `object_storage_bucket_capability` | per-bucket capability | Test connection | Child of bucket. |
@@ -351,8 +351,8 @@ All tables are standard QQQ tables in the app's backend (RDBMS), prefixed `objec
 | `object_storage_object` | one object in an indexed bucket: key, folder, name, extension, size, content type, ETag, last modified, storage class, Cache-Control, Content-Disposition, user metadata (JSON), tags (JSON), version ID, `referenceCount`, `protection`, `headersKnown` | scan, HEAD refresh, write-through | **The object table.** Its fields mirror S3 and are read-only in the edit screen. Changes go through actions (§6.2). |
 | `object_storage_object_version` | a non-current version or delete marker | on demand ("Show versions") | Only for versioned buckets. |
 | `object_storage_object_reference` | a record that points at a key or prefix | reference scan (§6.4) | `objectId` is null when the referenced object does not exist: a **missing** object. |
-| `object_storage_header_rule` | a header policy rule (§4.4) | `s3.admin` | Audited. |
-| `object_storage_protection_rule` | a protected bucket/prefix (§6.3) | `s3.admin` | Audited. |
+| `object_storage_header_rule` | a header policy rule (§4.4) | `object_storage.admin` | Audited. |
+| `object_storage_protection_rule` | a protected bucket/prefix (§6.3) | `object_storage.admin` | Audited. |
 | `object_storage_operation` | one write against storage: who, when, action, bucket, key, destination key, bytes, result, error, provider request ID, process run | the service, always | Read-only for everyone. The storage audit log. |
 | `object_storage_usage_daily` | per bucket per day: object count, bytes, by top-level prefix | nightly job | Feeds the usage trend. |
 
@@ -391,10 +391,10 @@ That gives "click into a folder, see what's there, go up" with no custom compone
 
 | Permission | Grants |
 |---|---|
-| `s3.view` | Read all storage tables; preview, download, presign GET |
-| `s3.write` | Upload, copy, move/rename, change headers and metadata, edit tags, apply header policy, presign PUT, restore |
-| `s3.delete` | Delete objects (soft where possible, §6.5) |
-| `s3.admin` | Edit connections (non-identity fields), header rules, protection rules; Test connection with write tests; bucket configuration changes where allowed (§6.3); permanent deletes; runs over the bulk cap |
+| `object_storage.view` | Read all storage tables; preview, download, presign GET |
+| `object_storage.write` | Upload, copy, move/rename, change headers and metadata, edit tags, apply header policy, presign PUT, restore |
+| `object_storage.delete` | Delete objects (soft where possible, §6.5) |
+| `object_storage.admin` | Edit connections (non-identity fields), header rules, protection rules; Test connection with write tests; bucket configuration changes where allowed (§6.3); permanent deletes; runs over the bulk cap |
 
 Per-bucket scoping uses a **`RecordSecurityLock`** on `bucketId` (and `connectionId` on connection tables), with a security key type `object_storage_bucket`. A user without the key value for a bucket sees none of its rows and cannot run actions on them. Apps with one administrator grant all-access.
 
@@ -404,28 +404,28 @@ Every write is a **standard streamed ETL** (`StreamedETLWithFrontendProcess`): i
 
 | Action (label) | On | Permission | Review shows |
 |---|---|---|---|
-| **Upload files** | `object_storage_object` table, `object_storage_folder` record | `s3.write` | files and sizes, destination prefix, overwrites, headers the policy will apply |
-| **Copy objects** | `object_storage_object` | `s3.write` | count, bytes, destination bucket/prefix, overwrites, objects over 5 GB (multipart copy) |
-| **Move or rename objects** | `object_storage_object`, `object_storage_folder` (rename folder) | `s3.write` + `s3.delete` | count; that a move is copy then delete, not atomic; referenced objects that will be **skipped** (§6.4) |
-| **Change headers and metadata** | `object_storage_object` | `s3.write` | Cache-Control, Content-Type, Content-Disposition, user metadata before → after; that copy-in-place changes Last-Modified and can change the ETag |
-| **Apply header policy** | `object_storage_object`, `object_storage_bucket` | `s3.write` | already correct / will change / failed-to-read counts |
-| **Edit tags** | `object_storage_object` | `s3.write` | shown only when `OBJECT_TAGGING` is supported |
-| **Create presigned link** | `object_storage_object` record | `s3.view` (GET), `s3.write` (PUT) | method, TTL (capped by bucket max), who it is for; the Result shows the URL once |
-| **Delete objects** | `object_storage_object`, `object_storage_folder` | `s3.delete` | will delete (soft) / will delete permanently / skipped: referenced / skipped: protected / skipped: object lock until date; on Wasabi, the minimum-duration billing note |
-| **Restore objects** | `object_storage_object` (deleted), `object_storage_object_version` | `s3.write` | delete markers to remove, or trash copies to move back |
-| **Refresh from bucket** | `object_storage_object` | `s3.view` | count to HEAD |
-| **Rescan bucket** | `object_storage_bucket` | `s3.view` | prefix, last scan, expected list calls |
-| **Check configuration** | `object_storage_bucket` | `s3.view` | observed versioning, lifecycle, policy, CORS; drift against the expected values in config |
-| **Test connection** | `object_storage_connection` | `s3.view` (read probes), `s3.admin` (write probes) | §3.6 |
-| **Download** | object record | `s3.view` | not a process: a `FILE_DOWNLOAD` link to a permission-checked backend route that redirects to a 5-minute presigned GET |
+| **Upload files** | `object_storage_object` table, `object_storage_folder` record | `object_storage.write` | files and sizes, destination prefix, overwrites, headers the policy will apply |
+| **Copy objects** | `object_storage_object` | `object_storage.write` | count, bytes, destination bucket/prefix, overwrites, objects over 5 GB (multipart copy) |
+| **Move or rename objects** | `object_storage_object`, `object_storage_folder` (rename folder) | `object_storage.write` + `object_storage.delete` | count; that a move is copy then delete, not atomic; referenced objects that will be **skipped** (§6.4) |
+| **Change headers and metadata** | `object_storage_object` | `object_storage.write` | Cache-Control, Content-Type, Content-Disposition, user metadata before → after; that copy-in-place changes Last-Modified and can change the ETag |
+| **Apply header policy** | `object_storage_object`, `object_storage_bucket` | `object_storage.write` | already correct / will change / failed-to-read counts |
+| **Edit tags** | `object_storage_object` | `object_storage.write` | shown only when `OBJECT_TAGGING` is supported |
+| **Create presigned link** | `object_storage_object` record | `object_storage.view` (GET), `object_storage.write` (PUT) | method, TTL (capped by bucket max), who it is for; the Result shows the URL once |
+| **Delete objects** | `object_storage_object`, `object_storage_folder` | `object_storage.delete` | will delete (soft) / will delete permanently / skipped: referenced / skipped: protected / skipped: object lock until date; on Wasabi, the minimum-duration billing note |
+| **Restore objects** | `object_storage_object` (deleted), `object_storage_object_version` | `object_storage.write` | delete markers to remove, or trash copies to move back |
+| **Refresh from bucket** | `object_storage_object` | `object_storage.view` | count to HEAD |
+| **Rescan bucket** | `object_storage_bucket` | `object_storage.view` | prefix, last scan, expected list calls |
+| **Check configuration** | `object_storage_bucket` | `object_storage.view` | observed versioning, lifecycle, policy, CORS; drift against the expected values in config |
+| **Test connection** | `object_storage_connection` | `object_storage.view` (read probes), `object_storage.admin` (write probes) | §3.6 |
+| **Download** | object record | `object_storage.view` | not a process: a `FILE_DOWNLOAD` link to a permission-checked backend route that redirects to a 5-minute presigned GET |
 
-Bulk runs are capped at 10,000 objects per run (configurable). Above the cap needs `s3.admin`. Presigned URLs are logged in `object_storage_operation` **without the signature**: key, method, expiry and issuer only, because the URL itself is a bearer token.
+Bulk runs are capped at 10,000 objects per run (configurable). Above the cap needs `object_storage.admin`. Presigned URLs are logged in `object_storage_operation` **without the signature**: key, method, expiry and issuer only, because the URL itself is a bearer token.
 
 ### 6.3 Bucket configuration: observe by default, change only when the bucket is UI-managed
 
 Each bucket has `managedBy`: `IAC` (default) or `UI`.
 - **`IAC`**: versioning, lifecycle, policy and CORS are shown read-only from "Check configuration", with a drift flag against the expected values the app's config declares. The record says where the source of truth is.
-- **`UI`**: `s3.admin` can run **Change versioning**, **Edit lifecycle rules**, **Edit CORS rules** and **Edit bucket policy**, each a standard ETL whose Review shows the current and new JSON side by side, and each only when the capability is `SUPPORTED` or `PARTIAL`.
+- **`UI`**: `object_storage.admin` can run **Change versioning**, **Edit lifecycle rules**, **Edit CORS rules** and **Edit bucket policy**, each a standard ETL whose Review shows the current and new JSON side by side, and each only when the capability is `SUPPORTED` or `PARTIAL`.
 - Bucket creation and deletion stay out of scope (§1.2).
 
 ### 6.4 References: orphans, missing objects and referenced-object protection
@@ -452,11 +452,11 @@ public interface StorageReferenceProvider
 |---|---|---|
 | Versioning enabled | Creates a delete marker | **Restore** removes the marker |
 | Not versioned, trash configured | Copies to the trash location, then deletes | **Restore** copies back |
-| Neither | Deletes permanently, needs `s3.admin`, and the Review says "permanent" on its own line | none |
+| Neither | Deletes permanently, needs `object_storage.admin`, and the Review says "permanent" on its own line | none |
 
 - The **trash location** must be a private bucket, or a prefix in a private bucket. A trash prefix inside a public bucket would leave "deleted" files publicly readable, so the config validator rejects it.
 - The trash is expired by a lifecycle rule where `LIFECYCLE` is supported, otherwise by a nightly purge job (default 30 days).
-- **Permanently delete versions** is a separate `s3.admin` action on `object_storage_object_version`.
+- **Permanently delete versions** is a separate `object_storage.admin` action on `object_storage_object_version`.
 - Object-lock retention and legal holds are shown read-only, and the Review explains why locked objects are skipped.
 
 ### 6.6 Audit
@@ -467,7 +467,7 @@ public interface StorageReferenceProvider
 
 ### 6.7 Protection rules
 
-`object_storage_protection_rule`: bucket, prefix glob, mode (`READ_ONLY`, `NO_DELETE`, `WARN`), reason, and optional `allowedSystemCallers` (for example `backups`, whose system-context permanent delete may pass a `NO_DELETE` rule, §9.4). Actions skip matching objects (or warn, for `WARN`) and say why in the Review. Changing a rule needs `s3.admin` and is audited. Typical use: an IaC-owned prefix, or legal/retention material.
+`object_storage_protection_rule`: bucket, prefix glob, mode (`READ_ONLY`, `NO_DELETE`, `WARN`), reason, and optional `allowedSystemCallers` (for example `backups`, whose system-context permanent delete may pass a `NO_DELETE` rule, §9.4). Actions skip matching objects (or warn, for `WARN`) and say why in the Review. Changing a rule needs `object_storage.admin` and is audited. Typical use: an IaC-owned prefix, or legal/retention material.
 
 ---
 
@@ -477,13 +477,13 @@ public interface StorageReferenceProvider
 
 - Process permissions gate each action, and `RecordSecurityLock` on `bucketId` gates rows.
 - The load step re-checks the permission and the bucket lock per record before each provider call (defense in depth, the same pattern the Assistant kernel uses).
-- The backend download and preview route checks `s3.view` and the bucket lock, then redirects to a 5-minute presigned GET. Public-bucket objects can link straight to the public URL.
+- The backend download and preview route checks `object_storage.view` and the bucket lock, then redirects to a 5-minute presigned GET. Public-bucket objects can link straight to the public URL.
 
 ### 7.2 Secrets are references, never values
 
 - Connection rows store **references** like `${env.S3_SECRET_KEY}` (and `${file./var/run/secrets/...}` once §8.2 lands). Resolved values live only in the in-memory client and are never written to a record, a log line, or a process value.
 - `toString()` on all config classes redacts references and values.
-- **Reference allow-list.** A user who could edit a connection's endpoint and point its secret reference at any environment variable could send that value to a server they control (the access key ID travels in clear in the `Authorization` header). So references must match `allowedSecretRefPatterns` from code config (default: `env.S3_*`, `env.STORAGE_*`, `file./var/run/secrets/storage/*`), and changing `endpoint` or `presignEndpoint` on a connection needs `s3.admin`, is audited, and invalidates the cached client.
+- **Reference allow-list.** A user who could edit a connection's endpoint and point its secret reference at any environment variable could send that value to a server they control (the access key ID travels in clear in the `Authorization` header). So references must match `allowedSecretRefPatterns` from code config (default: `env.S3_*`, `env.STORAGE_*`, `file./var/run/secrets/storage/*`), and changing `endpoint` or `presignEndpoint` on a connection needs `object_storage.admin`, is audited, and invalidates the cached client.
 - Whether connections can be **created** in the UI at all is Q2. The recommendation is no: config only.
 
 ### 7.3 Presigned URLs
@@ -572,9 +572,9 @@ The backups qbit writes backup sets through this service (#1091 §6, Q19 option 
 |---|---|---|---|
 | SF1 | **`BucketRole.BACKUP`**: always private, never public; excluded from the header policy, Apply header policy, and orphan and missing scans | P1 | The config validator rejects a `BACKUP` bucket with a public base URL or a public policy. Backup objects are not app media, so they are never "orphaned" and never get Cache-Control rewritten. |
 | SF2 | **`PutRequest.withObjectLock(mode, retainUntil)`** and **`withStorageClass(...)`** | P1 | Object lock is offered only when the bucket's `OBJECT_LOCK` capability is `SUPPORTED`. Otherwise the call fails with `UNSUPPORTED`, so a lock is never silently dropped. |
-| SF3 | **Permanent delete for system callers**: `delete(DeleteRequest.of(key).permanent())` deletes every version and delete marker of the key | P2 | It exists only in a system-caller context (SF5). The calling qbit's own permission check gates it (backups: `backups.admin`), not `s3.delete`. Objects under object-lock retention are skipped, and the result says so. It bypasses the `NO_DELETE` protection rule only for the context named in that rule's `allowedSystemCallers`. |
+| SF3 | **Permanent delete for system callers**: `delete(DeleteRequest.of(key).permanent())` deletes every version and delete marker of the key | P2 | It exists only in a system-caller context (SF5). The calling qbit's own permission check gates it (backups: `backups.admin`), not `object_storage.delete`. Objects under object-lock retention are skipped, and the result says so. It bypasses the `NO_DELETE` protection rule only for the context named in that rule's `allowedSystemCallers`. |
 | SF4 | **Probes and locked buckets**: write probes (§3.6) skip `BACKUP` buckets that have object lock on. Alternatively they use a `.qqq-probe/` prefix that the bucket's default retention excludes. | P1 | A probe object in a locked bucket could not be deleted. The probe result records "write probes skipped: object lock". |
-| SF5 | **System-caller context**: `ObjectStorage.asSystem("backups", runId).bucket(alias)` | P2 | The calls run in a system context tagged with the caller and run. `object_storage_operation` records "system: backups run 1234 (started by user X)". User `s3.*` permissions don't apply, so a backups operator doesn't also need `s3.write` on the backup bucket. The caller qbit must have checked its own permission first. |
+| SF5 | **System-caller context**: `ObjectStorage.asSystem("backups", runId).bucket(alias)` | P2 | The calls run in a system context tagged with the caller and run. `object_storage_operation` records "system: backups run 1234 (started by user X)". User `object_storage.*` permissions don't apply, so a backups operator doesn't also need `object_storage.write` on the backup bucket. The caller qbit must have checked its own permission first. |
 
 Until these land, backups can fall back to role `PRIVATE` plus a `NO_DELETE` protection rule, and prune by lifecycle expiry (#1091 R12).
 
@@ -670,13 +670,13 @@ Total for P0–P4: about 35–44 days. P2 can ship right after P1, so the first 
 ## 13. Owner questions (decided 2026-10-12: all recommendations accepted, see D1–D14)
 
 1. **Bucket configuration from the UI, or IaC only?** Policy, versioning, lifecycle, CORS and quotas.
-   *Recommendation:* IaC-owned by default (`managedBy = IAC`): shown read-only, with a drift check. UI edits only for buckets explicitly marked `UI`, with `s3.admin`. The first consumer's buckets are created by a GitOps job, so they stay IaC.
+   *Recommendation:* IaC-owned by default (`managedBy = IAC`): shown read-only, with a drift check. UI edits only for buckets explicitly marked `UI`, with `object_storage.admin`. The first consumer's buckets are created by a GitOps job, so they stay IaC.
 2. **May connections be created or re-pointed in the UI?**
-   *Recommendation:* No. Connections come from code config (secret references to environment or mounted files, from an allow-list). The UI may edit operational fields (rate limits, timeouts, presign TTLs) with `s3.admin`. This closes the "point a secret at my server" hole in §7.2.
+   *Recommendation:* No. Connections come from code config (secret references to environment or mounted files, from an allow-list). The UI may edit operational fields (rate limits, timeouts, presign TTLs) with `object_storage.admin`. This closes the "point a secret at my server" hole in §7.2.
 3. **Object index as the primary browse table?**
    *Recommendation:* Yes. A Postgres index kept current by write-through plus a nightly and on-demand scan, with live HEAD on the record screen. A bounded "Live objects" table (the upgraded S3 backend) only for non-indexed buckets.
 4. **Soft delete where the provider has no versioning.**
-   *Recommendation:* Enable versioning, with a 30-day noncurrent-version expiry, on public media buckets where the provider supports it (an IaC change). Use a **private** trash bucket with 30-day expiry where it does not (R2, Garage). Permanent deletes only with `s3.admin`.
+   *Recommendation:* Enable versioning, with a 30-day noncurrent-version expiry, on public media buckets where the provider supports it (an IaC change). Use a **private** trash bucket with 30-day expiry where it does not (R2, Garage). Permanent deletes only with `object_storage.admin`.
 5. **Referenced objects: block, or allow an admin override?**
    *Recommendation:* Block delete and move of referenced objects in v1, with no override. The Review links to the referencing records. Header changes stay allowed.
 6. **SDK v2 migration of the S3 backend in 4.1.x or 4.2?** It changes the public `AmazonS3` types on `S3Utils`.
@@ -692,7 +692,7 @@ Total for P0–P4: about 35–44 days. P2 can ship right after P1, so the first 
 11. **Orphans and missing objects: Storage home or Data Health?**
     *Recommendation:* The Storage home owns them. Data Health gets two rules that link there, with no second dashboard.
 12. **Repo, package and permission names.**
-    *Recommendation:* `QRun-IO/qbit-object-storage`, `com.kingsrook.qbits.objectstorage`, app label "Storage", tables prefixed `object_storage_` (amended 2026-10-12 by the owner naming rule; was `storage`), permissions `s3.view`, `s3.write`, `s3.delete`, `s3.admin`.
+    *Recommendation:* `QRun-IO/qbit-object-storage`, `com.kingsrook.qbits.objectstorage`, app label "Storage", tables prefixed `object_storage_` (amended 2026-10-12 by the owner naming rule; was `storage`), permissions `object_storage.view`, `object_storage.write`, `object_storage.delete`, `object_storage.admin` (amended 2026-10-12 by the same rule; were `s3.*`).
 13. **Conformance targets.**
     *Recommendation:* MinIO and Garage in CI on every PR. AWS S3, R2 and B2 as an optional owner-run workflow with scratch buckets. Wasabi, Spaces and Ceph are community-reported.
 14. **Presigning key.**
@@ -708,7 +708,7 @@ Total for P0–P4: about 35–44 days. P2 can ship right after P1, so the first 
 | SDK v2 defaults break a store | `WHEN_REQUIRED` default off AWS; conformance runs both modes |
 | A provider claims support but misbehaves | Probe-based capabilities; conformance suite; the UI treats `UNKNOWN` as unsupported for writes |
 | An operator deletes live media | Referenced-object blocking, protection rules, soft delete, Review step, audit log |
-| Secret exfiltration via connection edits | Config-only connections, reference allow-list, `s3.admin` on endpoint changes |
+| Secret exfiltration via connection edits | Config-only connections, reference allow-list, `object_storage.admin` on endpoint changes |
 | Large buckets overload the app | Index caps, prefix-scoped indexing, bounded live listing, rate limits, resumable scans |
 | MinIO community-edition changes | Provider-neutral design; Garage in CI as a ready alternative |
 

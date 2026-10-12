@@ -1,6 +1,6 @@
 # Authentik qbit: Design Spec
 
-Status: Draft for review, revision 2 (owner decisions applied) · 2026-10-11 · Author: James Maes (drafted with Claude)
+Status: Approved, revision 3 (phase 0 findings applied) · 2026-10-11 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x, QQQ Next UI 1.0.x, Authentik 2026.8.x (researched against the live `auth.kof22.com` schema, `info.version: 2026.8.3`), new repo `QRun-IO/qbit-authentik`
 
 ## 0. Summary
@@ -45,6 +45,21 @@ Seven design rules shape everything below:
 | 3 | **Who operates.** Decided by permissions, not a fixed group. Fine-grained `identity.*` QQQ permissions are granted through Authentik groups and the mapper. James holds all of them at bootstrap. All safety guards are kept. |
 | 4 | **Users.** Direct create is allowed, alongside invitations. The user sets their own password through an Authentik email. No hard delete; deactivate only. |
 | 5–16 | The recommendations in the first revision are accepted: recovery email only, MFA view and reset, typed confirmation plus reason with two-person approval for role changes, read-through plus webhook→ESB plus mirror, Authentik-specific with neutral names, the mapper, list-and-revoke for service accounts, new repo, cluster-gitops housekeeping, no Enterprise features, and the retention defaults. Decision 11 (attribute-driven permissions) moves **into v1**, because decision 3 depends on it. |
+| §11.2 | All six smaller questions take the recommended answer: snapshot repo `KofTwentyTwo/identity-snapshots` (private); two-person approval **on** for `identity.*` grants, with the Authentik UI as break-glass while James is the only identity admin; a new `kof22-breakglass` superuser; all four seed groups; service accounts listed but only deactivate/revoke; `kof-website-drafters` created with **no** app access until the owner decides (one attribute later). |
+
+### 0.2 Phase 0 findings (2026-10-11, verified on Authentik 2026.8.3)
+
+The four open points of revision 2 were resolved against a disposable Authentik 2026.8.3 (Testcontainers contract tests in `QRun-IO/qbit-authentik`). Six further facts changed the design; each is pinned by a contract test, so an Authentik upgrade that changes it fails CI.
+
+| # | Finding | Design consequence | Test |
+|---|---|---|---|
+| i | **Global role permissions are declarative**: a blueprint `authentik_rbac.role` entry accepts `attrs.permissions: [app.codename, …]` (a blueprint-only `RoleSerializer` field). Create and update both call `role.assign_perms(...)`, so with `state: present` the list is re-asserted **additively** on every apply. Matching is by codename, so `view_group` also grants Django's unused `auth.view_group` (harmless). | The qbit's role is `present` with `permissions` only (§4.3); the lint allows exactly that (§4.5). No runbook `assign` call. | `BootstrapBlueprintIT`, `BlueprintReapplyIT` |
+| ii | **Every route into superuser ancestry is refused** without `enable_group_superuser`: `add_user` to a superuser group or any descendant (403); `parents` set to a superuser group or a descendant, creating a group under one, user `groups` PATCH, group `users` PATCH, `is_superuser` true or false (400). | Escalation floor confirmed; no residual risk on that side. | `SuperuserFloorIT` |
+| ii-b | **The lockout direction is NOT refused**: with `remove_user_from_group` / `change_user` / `change_group` the service account can remove members from `authentik Admins`, deactivate a superuser (break-glass), strip `qqq.io/protected`, empty a superuser's groups and rename the superuser group. | Documented residual risk (§5.1); the guard is the only control; recovery is cluster access (`ak shell`). | `SuperuserFloorIT` |
+| iii | **`check_access?for_user=` works only for superusers.** For anyone else it silently evaluates the **caller** (no error). `POST /policies/all/{uuid}/test/` fails with HTTP 500 (`WrongAppError`) for non-superusers on expression policies. The application **list** shows a non-superuser only the apps it can itself access (`superuser_full_list` is superuser-only); GET by slug works with `view_application`. | The qbit computes app access itself (§5.1, §8.2): `qqq.io/app-access` (the attribute-driven sign-in policy) plus the app's group/user bindings; other expression policies show "not evaluated". `applicationsInScope` must be explicit slugs. `view_user_applications` dropped. | `AccessCheckIT`, `SignInPolicyIT` |
+| iv | **`metaapplyblueprint` ordering works on an empty instance**: discovery creates an instance per file synchronously, then applies each asynchronously; the bootstrap's first entry applies the infrastructure blueprint inside its own transaction, so its `created` stage entry finds the stage. If the infra instance does not exist yet, `required: true` fails **only** the bootstrap blueprint (separate file), which retries on the next discovery. Applies (including `POST …/apply/`) are asynchronous: wait for `last_applied` to change. | §4.3 note made definitive. | `BootstrapBlueprintIT` (h) |
+| v | **Any user can mint API tokens for itself and read their keys** (`POST /core/tokens/` without `add_token`, the `user` field is forced to the caller; `view_key` on that token returns 200). | Service account tokens beyond the expected one are flagged by the drift report; rotation checklist checks the token list (§9.1). | `SuperuserFloorIT` |
+| vi | API details: multi-value filters are **repeated plain names** (`type=a&type=b`); the bracketed form `type[]=a` is **silently ignored** (unfiltered results). The user detail `GET /core/users/{id}/` takes no `include_*` parameters (it always returns `groups_obj` and `roles_obj`). **Groups have no `last_updated`.** Listing tokens without `view_token` returns the caller's own tokens. Java's HttpClient h2c upgrade on plain http is rejected ("400 Invalid HTTP request received"); use HTTP/1.1. | FilterMapper and schema drift test (§6.1, §10); group stale-check and reconcile changed (§5.4, §7.2). | `SchemaDriftTest`, `QbitReadContractIT` |
 
 ---
 
@@ -182,14 +197,14 @@ Facts come from the live OpenAPI schema at `https://auth.kof22.com/api/v3/schema
 
 | Area | Endpoints | Notes that matter for the design |
 |---|---|---|
-| Users | `GET/POST /core/users/`, `GET/PUT/PATCH/DELETE /core/users/{id}/` (int pk) | Filters: `username`, `email`, `name`, `uuid`, `is_active`, `is_superuser`, `groups_by_name[]`, `groups_by_pk[]`, `roles_by_*[]`, `type[]`, `path`, `path_startswith`, `last_login__gt/__lt/__isnull`, `last_updated__gt`, `date_joined__*`, `attributes` (JSON), `include_groups`, `include_roles`. `search` also accepts a query language (`QLSearch`). `is_superuser` is derived and read-only. Types: `internal`, `external`, `service_account`, `internal_service_account`. |
+| Users | `GET/POST /core/users/`, `GET/PUT/PATCH/DELETE /core/users/{id}/` (int pk) | Filters: `username`, `email`, `name`, `uuid`, `is_active`, `is_superuser`, `groups_by_name`, `groups_by_pk`, `roles_by_*`, `type` (multi-value filters are **repeated plain names**; the `[]` form is silently ignored, §0.2 vi), `path`, `path_startswith`, `last_login__gt/__lt/__isnull`, `last_updated__gt`, `date_joined__*`, `attributes` (JSON), `include_groups`, `include_roles`. `search` also accepts a query language (`QLSearch`). `is_superuser` is derived and read-only. Types: `internal`, `external`, `service_account`, `internal_service_account`. |
 | User actions | `POST /core/users/{id}/set_password/`, `/set_password_hash/`, `/recovery/` (returns a link), `/recovery_email/` (needs `email_stage` uuid), `/impersonate/`, `GET /core/users/impersonate_end/`, `POST /core/users/service_account/` (returns a token), `GET /core/users/me/`, `GET /core/users/paths/` | Password actions need `authentik_core.reset_user_password`. Adding a user to a group whose **ancestry** includes a superuser group needs `enable_group_superuser`. Assigning roles needs `authentik_rbac.change_role`. |
 | Sessions | `GET /core/authenticated_sessions/` (filter `user__username`), `DELETE …/{uuid}/`, `DELETE …/bulk_delete/?user_pks=` | Fields: `last_ip`, `last_user_agent`, `last_used`, `expires`, `geo_ip`, `asn`. Deactivating a user deletes their sessions (2026.8). |
 | MFA devices | `GET /authenticators/admin/all/?user=<pk>`. Per type, CRUD on `/authenticators/admin/{totp,webauthn,static,duo,sms,email}/{id}/` | Device metadata only: name, type, confirmed, created, last_used. |
-| Tokens | `GET/POST /core/tokens/`, `GET/PUT/PATCH/DELETE /core/tokens/{identifier}/`, `GET …/view_key/`, `POST …/set_key/` | Intents: `api`, `app_password`, `recovery`, `verification`. Keyed by identifier. `view_token_key` is a separate permission, and the qbit must never hold it. |
+| Tokens | `GET/POST /core/tokens/`, `GET/PUT/PATCH/DELETE /core/tokens/{identifier}/`, `GET …/view_key/`, `POST …/set_key/` | Intents: `api`, `app_password`, `recovery`, `verification`. Keyed by identifier. `view_token_key` is a separate permission, and the qbit must never hold it. **Any user may create tokens for itself and read their keys** without `add_token` (§0.2 v). |
 | Groups | `GET/POST /core/groups/`, `GET/PUT/PATCH/DELETE /core/groups/{uuid}/`, `POST …/add_user/` and `…/remove_user/` (`{pk}`) | **`parents` is many-to-many since 2025.12.** Groups inherit roles **and superuser status** from every ancestor. Names are unique (2025.12). Filters: `members_by_username[]`, `include_users`, `include_children`, `include_parents`, `include_inherited_roles`, `is_superuser`, `attributes`. Custom permissions: `add_user_to_group`, `remove_user_from_group`, `enable_group_superuser`, `disable_group_superuser`. |
 | RBAC | `GET/POST /rbac/roles/`, `…/{uuid}/add_user/` and `…/remove_user/`, `GET /rbac/permissions/` (catalogue), `GET /rbac/permissions/assigned_by_roles/?model=&object_pk=`, `POST …/assigned_by_roles/{uuid}/assign/`, `PATCH …/unassign/`, `GET /rbac/permissions/roles/?uuid=`, `/rbac/initial_permissions/` | **RBAC has been fully role-based since 2025.12.** Roles are assigned to users directly or through groups; there are no direct user permissions. `assign` with `object_pk` grants an object permission; without it, a global one. Initial permissions automatically grant a role permissions on objects that its members create. |
-| Apps and policies | `GET /core/applications/`, **`GET /core/applications/{slug}/check_access/?for_user=`** (returns `{passing, messages}`), `GET/POST /policies/bindings/` (target = `pbm_uuid`, plus exactly one of policy/group/user), `/policies/all/`, `POST /policies/all/{uuid}/test/` | `check_access` explains access per user and per app. Bindings can expire (2026.8). |
+| Apps and policies | `GET /core/applications/{slug}/`, `GET /core/applications/{slug}/check_access/?for_user=`, `GET/POST /policies/bindings/` (target = `pbm_uuid`, plus exactly one of policy/group/user), `/policies/all/`, `POST /policies/all/{uuid}/test/` | **`for_user` is honoured only for superusers** (silently ignored otherwise), the policy test endpoint returns 500 for non-superusers, and the app list shows a non-superuser only its own apps (§0.2 iii). Bindings can expire (2026.8). |
 | Events | `GET /events/events/` (filters `action`, `actions[]`, `username`, `client_ip`, `context_model_app`, `context_model_name`, `context_model_pk`, `context_authorized_app`), `POST /events/events/` (custom `custom_*` actions), `/actions/`, `/volume/`, `/top_per_user/` | Relevant actions: `login`, `login_failed`, `logout`, `password_set`, `model_created/updated/deleted`, `impersonation_*`, `secret_view`, `invitation_used`, `user_write`, `suspicious_request`, `custom_`. |
 | Notifications | `/events/transports/` (mode `webhook` with `webhook_mapping_body`/`_headers`), `/events/rules/` (needs `destination_group` or `destination_event_user`), `/policies/event_matcher/` (action, app, model, client_ip) | Delivery runs as Dramatiq tasks with 5 retries, at least once, with no idempotency key and no ordering guarantee. The default body has no event id or model, so a custom body mapping is required. |
 | Invitations | `GET/POST /stages/invitation/invitations/` (`fixed_data`, `expires`, `single_use`, `flow`), `POST …/{uuid}/send_email/` | Needs an enrollment flow with an invitation stage, plus working email. |
@@ -384,77 +399,124 @@ The 2026.8.3 importer, `authentik/blueprints/v1/importer.py` at tag `version/202
 
 ### 4.3 Bootstrap blueprint (kof22)
 
-This goes in a new ConfigMap key, `kof22-identity-bootstrap.yaml`. Every entry is `created`, and no entry lists members.
+This goes in a new ConfigMap key, `kof22-identity-bootstrap.yaml`. Every identity entry is `created`, and no entry lists members. This is the exact file applied by the contract tests (`QRun-IO/qbit-authentik` `src/test/resources/blueprints/kof22-identity-bootstrap.yaml`) and proposed in KofTwentyTwo/cluster-gitops#72; phase 0/1 holds read permissions only, later phases append to the role's list.
 
 ```yaml
+# Test fixture: the kof22 identity bootstrap blueprint (DESIGN.md section 4.3),
+# in the shape proposed for cluster-gitops. Identity objects are
+# `state: created`: created when missing, never updated, never given members.
 version: 1
 metadata:
   name: kof22-identity-bootstrap
-  labels: { blueprints.goauthentik.io/instantiate: "true" }
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
 entries:
-  # Role the qbit's service account runs as. Permissions re-asserted every apply.
-  - model: authentik_rbac.role
-    state: created
-    id: qqq-role
-    identifiers: { name: qqq-kof22-admin-idadmin }
+  # Apply the infrastructure blueprint first (it owns the recovery email stage
+  # referenced below). On an empty instance this is what makes the bootstrap
+  # apply cleanly (contract test h).
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: kof22-oauth2-apps
+      required: true
 
-  # The qbit service account (token is minted once by hand, never in git).
+  # The role the qbit service account runs as. It is the qbit's own
+  # infrastructure, not identity data, so it is `present`: attrs carry ONLY
+  # `permissions` (global permissions; a blueprint-only RoleSerializer field),
+  # which are assigned additively on every apply, so a permission removed in
+  # the UI comes back within the hour and nothing granted elsewhere is taken
+  # away. No users, no groups. Phase 0/1 = read-only; later phases append here.
+  # Note: matching is by codename, so view_group also grants Django's unused
+  # auth.view_group (harmless).
+  - model: authentik_rbac.role
+    state: present
+    id: qqq-role
+    identifiers:
+      name: qqq-kof22-admin-idadmin
+    attrs:
+      permissions:
+        - authentik_core.view_user
+        - authentik_core.view_group
+        - authentik_core.view_application
+        - authentik_core.view_authenticatedsession
+        - authentik_rbac.view_role
+        - authentik_policies.view_policybinding
+        - authentik_events.view_event
+        - authentik_events.add_event
+        - authentik_blueprints.view_blueprintinstance
+
+  # The qbit service account. Its API token is minted once by hand (never here).
   - model: authentik_core.user
     state: created
     id: qqq-sa
-    identifiers: { username: qqq-kof22-admin-idadmin }
+    identifiers:
+      username: qqq-kof22-admin-idadmin
     attrs:
       name: QQQ kof22 Admin identity service
       type: service_account
       path: service-accounts/qqq
-      roles: [!KeyOf qqq-role]          # applied on first create only
-      attributes: { qqq.io/protected: true }
+      roles:
+        - !KeyOf qqq-role
+      attributes:
+        qqq.io/protected: true
 
-  # Object permission on an object owned by the infra blueprint: a bare
-  # `created` entry is skipped (it exists) but its `permissions:` are still
-  # applied on every run (§4.2). Global role permissions: see notes below.
+  # Object permission on a stage the infrastructure blueprint owns: the bare
+  # `created` entry is skipped (the stage exists), but its permissions are
+  # still applied, additively, on every run.
   - model: authentik_stages_email.emailstage
     state: created
-    identifiers: { name: kof22-recovery-email }
+    identifiers:
+      name: kof22-recovery-email
     permissions:
       - role: !KeyOf qqq-role
-        permission: view_emailstage
+        permission: authentik_stages_email.view_emailstage
 
-  # Seed groups: created once, then data. No users:, no parents beyond seed.
+  # Seed groups: created once, then plain data. No users, no member lists.
   - model: authentik_core.group
     state: created
-    identifiers: { name: identity-admins }
+    identifiers:
+      name: identity-admins
     attrs:
       attributes:
         qqq.io/permissions: ["identity.*"]
         qqq.io/app-access: ["kof22-website-prod"]
   - model: authentik_core.group
     state: created
-    identifiers: { name: kof22-admins }       # already exists → skipped
+    identifiers:
+      name: kof22-admins
   - model: authentik_core.group
     state: created
-    identifiers: { name: kof-website-publishers }   # adopts the UI-made group as a seed
+    identifiers:
+      name: kof-website-publishers
+  # No qqq.io/app-access yet: drafters sign in to the admin only once the owner
+  # decides to set that one attribute (DESIGN.md section 11.2 item 6).
   - model: authentik_core.group
     state: created
-    identifiers: { name: kof-website-drafters }
+    identifiers:
+      name: kof-website-drafters
 
-  # Break-glass admin: a superuser the qbit cannot touch.
+  # Break-glass admin: a superuser the qbit cannot touch. Password set once by
+  # hand (1Password); recovery through `ak create_recovery_key`.
   - model: authentik_core.user
     state: created
-    identifiers: { username: kof22-breakglass }
+    identifiers:
+      username: kof22-breakglass
     attrs:
       name: Break-glass admin
       type: internal
       path: users/breakglass
-      groups: [!Find [authentik_core.group, [name, "authentik Admins"]]]  # first create only
-      attributes: { qqq.io/protected: true }
+      groups:
+        - !Find [authentik_core.group, [name, "authentik Admins"]]
+      attributes:
+        qqq.io/protected: true
 ```
 
-Notes:
-- **Ordering on a fresh install.** The bootstrap file references objects that the infrastructure blueprint creates (the email stage). On a fresh install it could apply first, and a bare `created` entry would then try to *create* the stage, fail validation, and roll back. To prevent that, it starts with an `authentik_blueprints.metaapplyblueprint` entry (`identifiers: {name: kof22-oauth2-apps}`, `required: true`), which applies the infrastructure blueprint first. Phase 0 tests this on an empty Authentik.
-- **Global permissions in blueprints.** Blueprint `permissions:` grants *object* permissions on the entry's instance. Global permissions for the role go in through the documented role-permission blueprint model, or through a one-time `POST /rbac/permissions/assigned_by_roles/{uuid}/assign/` in the phase 0 runbook. **Phase 0 verifies which mechanism 2026.8.3 supports** and fixes the snippet.
-- **Seeding James's membership.** `groups:` on a `created` user only applies when the user is first created. James's account already exists, so his `identity-admins` membership is a one-time manual step in the Authentik UI (or a phase 0 script), recorded in the runbook. `bootstrapOperators` covers the window before it's done.
-- **Break-glass password.** The break-glass admin has no usable password from the blueprint. Its password is set once by hand and stored in 1Password. Its recovery path is `ak create_recovery_key` on the server pod.
+Notes (resolved in phase 0, §0.2):
+- **Global permissions** are the role's `attrs.permissions` (finding i). The role is `present` with nothing but `permissions`, so it is re-asserted additively on every apply and carries no users or groups. `roles:` on the `created` service account applies on first create only; the role's later permission changes still reach it.
+- **Ordering on a fresh install** (finding iv): the leading `metaapplyblueprint` entry applies `kof22-oauth2-apps` first, inside the bootstrap's transaction. Verified on an empty 2026.8.3. If the infra instance did not exist yet, only the bootstrap fails, and it retries on the next discovery.
+- **Object permission** on `kof22-recovery-email` (needed by `recovery_email`, phase 3) is applied through the bare `created` stage entry's `permissions:` on every run.
+- **Seeding James's membership.** `groups:` on a `created` user only applies when the user is first created. James's account already exists, so his `identity-admins` membership is a one-time manual step in the Authentik UI (owner checklist item 10). `bootstrapOperators` covers the window before it's done.
+- **Break-glass password.** The break-glass admin has no usable password from the blueprint. Its password is set once by hand and stored in 1Password. Its recovery path is `ak create_recovery_key` on the worker pod.
 
 ### 4.4 Migration from today's blueprint
 
@@ -472,7 +534,7 @@ Today `kof22-oauth2-apps.yaml` has `present` entries for group `kof22-admins` an
              return True
      return ak_is_group_member(request.user, name__in=["kof22-admins", "kof-website-publishers"])  # remove after step 5
      ```
-   - **Add** the webhook transport, rule and event-matcher policies (§7.1) as `present` infrastructure.
+   - **Add** the webhook transport, body/header mappings, rule and event-matcher policies (§7.1) as `present` infrastructure, **inert** until phase 2: the rule has no destination (`destination_event_user: false`, no group), so nothing is created or sent (Authentik's notification engine also never fires a rule without policies: `empty_result = False`). The ExternalSecret key for the webhook secret ships with phase 2, so a missing Infisical key cannot put `authentik-env` into sync error.
    - Add a CI lint to cluster-gitops (§4.5).
 3. **Apply.** ArgoCD syncs the ConfigMap, the worker sees the file change and applies both blueprints. Then check:
    - Both instances have `status: successful`.
@@ -490,9 +552,11 @@ Today `kof22-oauth2-apps.yaml` has `present` entries for group `kof22-admins` an
 ### 4.5 Guarding against regressions
 
 - **cluster-gitops CI lint.** A small script fails the PR if any blueprint has:
-  - (a) `state: present` (or a missing state, which defaults to present) on `authentik_core.user`, `authentik_core.group` or `authentik_rbac.role`
-  - (b) `users:`, `groups:`, `parents:` or `roles:` in a group or user entry that isn't `created`
-  - (c) a token or password literal
+  - (R1) `state: present` (or a missing state, which defaults to present) on `authentik_core.user` or `authentik_core.group`
+  - (R2) a member list (`users:`) on any group entry. `groups:`/`roles:` on a `created` user stay allowed: they seed only on first create (break-glass, the service account)
+  - (R3) an `authentik_rbac.role` entry that is `present` with anything besides `permissions` (and `name`)
+  - (R4) a literal `password`, `password_hash`, `key`, `token` or `client_secret` (use `!Env`), or any `authentik_core.token` entry
+  - Implemented as `scripts/lint-authentik-blueprints.py` (with `--self-test`) plus a GitHub workflow in cluster-gitops#72. On today's `main` it flags exactly the two entries the migration removes.
 - **qbit health widget.** It shows:
   - blueprint instance status and `last_applied`
   - a **reversion detector**: an Authentik `model_updated` event on a user or group whose actor is the blueprint system task within 2 minutes of a QQQ write to the same object is flagged "possibly reverted by blueprint"
@@ -514,8 +578,9 @@ The role `qqq-<appKey>-idadmin` is assigned directly to the service account (boo
 
 | Permission (global unless noted) | Why | Phase |
 |---|---|---|
-| `authentik_core.view_user`, `view_group`, `view_application`, `view_authenticatedsession`, `view_token`, `authentik_rbac.view_role`, `authentik_policies.view_policybinding`, `authentik_events.view_event`, `authentik_blueprints.view_blueprintinstance`, `authentik_stages_invitation.view_invitation`, device `view_*` | Read screens | 1 |
-| `authentik_core.view_user_applications` + whatever `check_access` needs (verify in phase 0) | Access matrix | 1 |
+| `authentik_core.view_user`, `view_group`, `view_application`, `view_authenticatedsession`, `authentik_rbac.view_role`, `authentik_policies.view_policybinding`, `authentik_events.view_event`, `authentik_blueprints.view_blueprintinstance` | Read screens, access computation, drift report (the phase 0/1 set in §4.3) | 1 |
+| `authentik_core.view_token`, `authentik_stages_invitation.view_invitation`, device `view_*` | Token, invitation and MFA lists | 3 |
+| (none) for the access matrix: `check_access?for_user=` cannot be used by a non-superuser (§0.2 iii); the qbit evaluates `qqq.io/app-access` and the app's bindings itself | Access matrix | 1 |
 | `authentik_events.add_event` | `custom_qqq_admin_action` audit events | 1 |
 | `authentik_core.add_user`, `change_user` | Create, edit, deactivate, reactivate | 3 |
 | `authentik_core.reset_user_password` | `recovery_email` (also allows `set_password`/`recovery`, which the qbit never calls, see §5.5) | 3 |
@@ -529,18 +594,24 @@ The role `qqq-<appKey>-idadmin` is assigned directly to the service account (boo
 | `authentik_rbac.change_role`, `assign` (object, on non-qbit roles) | Role management | 4 |
 
 **Never granted:**
-- `enable_group_superuser` / `disable_group_superuser`. Authentik then refuses to add anyone to a superuser group or its descendants. **Phase 0 verifies** that it also refuses a `parents` change that puts a group under a superuser group. If it doesn't, the guard alone covers it, and this becomes a documented residual risk.
+- `enable_group_superuser` / `disable_group_superuser`. Authentik then refuses every route into superuser ancestry: membership (direct, bulk, by user or by group), `parents` under a superuser group or any descendant, creating a group under one, and flipping `is_superuser` (verified, §0.2 ii).
 - `view_token_key`, `set_token_key`, `add_token` (MHP APPS-1462)
 - `impersonate`, `delete_user`
 - any `change_*` on flows, stages, providers, applications, policies, bindings, brands or blueprints
 - any change on its own role. Role permissions are object permissions excluding `qqq-*` roles, and the guard also refuses.
 
-**What Authentik still enforces if QQQ is fully compromised.** The attacker could edit ordinary users and groups, deactivate users and send recovery emails to users' *own* addresses. They could not:
-- become or create a superuser
-- read or mint tokens
-- impersonate anyone
+**What Authentik still enforces if QQQ is fully compromised** (verified by contract tests). The attacker could edit ordinary users and groups, deactivate users and send recovery emails to users' *own* addresses. They could not:
+- become or create a superuser, or put anyone under superuser ancestry
+- read other users' token keys, or create tokens for anyone but the service account
+- impersonate anyone or obtain recovery links
 - change login flows or policies
 - delete anyone
+
+**What Authentik does NOT enforce (residual risk, §0.2 ii-b and v).** With the phase 2/3 permissions the service account can also *lock out* administrators: remove members from `authentik Admins`, deactivate `kof22-breakglass`, strip `qqq.io/protected`, empty a superuser's groups, rename the superuser group. It can also mint additional API tokens for itself that survive a rotation. Controls:
+- the guard refuses every write that targets a protected account or a superuser group (§5.4); the contract tests pin that Authentik does not
+- phase 2 option: grant `remove_user_from_group` (and `add_user_to_group`) as **object** permissions on the in-scope groups (blueprint `permissions:` plus `initial_permissions` for groups the qbit creates) instead of globally, which removes the "remove from `authentik Admins`" path at the cost of a step for groups created in the UI
+- the drift report flags superuser changes made by the service account (event `model_updated` on a superuser user/group with the service account as actor) and service-account tokens beyond the expected one
+- recovery from a lockout is cluster access: `kubectl exec` into the Authentik worker and `ak shell` (reactivate, re-add), or `ak create_recovery_key`
 
 This is weaker than revision 1's per-group object permissions. That is the cost of "manage all identities from QQQ" (decision 1). It is partly offset by `groupScope`/`userScope` for multi-app setups, and by the qbit-side guards.
 
@@ -590,7 +661,7 @@ This is weaker than revision 1's per-group object permissions. That is the cost 
    - Holders of `identity.*` pass naturally. Delegated managers can only hand out what they hold.
 5. **Last-admin protection.** The qbit refuses any change after which no active, non-protected human holds `identity.memberships.manage` **and** `identity.permissions.manage`. That covers removing a membership, deactivating, editing permissions and re-parenting. Break-glass doesn't count, because it can't use QQQ.
 6. **Bulk caps.** At most 100 targets per run, `TYPED` confirmation above 25, paced by the throttle. A partial failure stops the run with per-record results.
-7. **Stale checks.** Each target's `last_updated` is re-read at execute. A record changed since the preview, for example in the Authentik UI, fails with "changed since preview; review again". This is how the two front doors avoid lost updates: QQQ never blind-overwrites a concurrent UI edit. Attribute edits send a merge-patch of only the changed `qqq.io/*` keys, re-read immediately before the write.
+7. **Stale checks.** Each target's state is re-read at execute: users by `last_updated`; groups (which have no `last_updated` in 2026.8, §0.2 vi) by a fingerprint of name, parents, `qqq.io/*` attributes and member count. A record changed since the preview, for example in the Authentik UI, fails with "changed since preview; review again". This is how the two front doors avoid lost updates: QQQ never blind-overwrites a concurrent UI edit. Attribute edits send a merge-patch of only the changed `qqq.io/*` keys, re-read immediately before the write.
 
 ### 5.5 Credentials policy
 
@@ -738,7 +809,7 @@ Changes made by QQQ itself come back as webhooks too. They are harmless, because
 ### 7.2 Reconcile
 
 Webhooks are hints: delivery is at least once, unordered, and lost if no destination resolves. So:
-- **Every 15 minutes**: `GET /core/users/?last_updated__gt=<watermark>` and changed groups (`/core/groups/` ordered by `-last_updated` if available, otherwise a full group sweep, since groups are few), plus `login_failed` events since the watermark.
+- **Every 15 minutes**: `GET /core/users/?last_updated__gt=<watermark>`, a full group sweep (groups have no `last_updated` in 2026.8, and are few), plus `login_failed` events since the watermark.
 - **Nightly**: a full user, group and membership sweep (about 20 requests per 1,000 users), which removes deleted rows.
 
 ### 7.3 Optional nightly snapshot export (read-only, not authoritative)
@@ -769,10 +840,10 @@ The qbit produces an app `authentikAdmin` (label **"Identity"**, icon `badge`). 
 | Screen | Built from | Contents |
 |---|---|---|
 | Users list | generic query on `authentikUser` | Username, name, email, type, active, last login, groups, protected lock. Saved views: "Inactive 90d", "No MFA", "Service accounts", "Superusers", "Created by QQQ". Bulk actions: Add to groups, Remove from groups, Deactivate, Revoke sessions. Table action: Create user, Invite user. |
-| User detail | generic view + child widgets | Badges (protected, superuser, service account). Tabs: Groups, **Effective permissions** (each with the granting group), Access (`check_access` per app), Sessions, MFA devices, App passwords, History (QQQ audit + Authentik events, including UI-made changes with their actor) |
+| User detail | generic view + child widgets | Badges (protected, superuser, service account). Tabs: Groups, **Effective permissions** (each with the granting group), Access (computed per app from `qqq.io/app-access` and the app's bindings; other expression policies shown as "not evaluated", §0.2 iii), Sessions, MFA devices, App passwords, History (QQQ audit + Authentik events, including UI-made changes with their actor) |
 | Groups | `AUTHENTIK_GROUP_TREE` widget + generic list | Tree over `parents` (many-to-many; shared children marked). Badges: superuser (red, locked), has-permissions, app-access. Member counts. |
 | Group detail | generic view + child widgets | Members (Add/Remove); **Permissions** (own + inherited, with an editor that offers only permissions the operator holds); **App access**; parents and children; roles (read); other attributes (`identity.audit.read`) |
-| Access matrix | `AUTHENTIK_ACCESS_MATRIX` widget | Users in scope × `applicationsInScope`, cells from `check_access` (cached 5 min, 25 rows per page) |
+| Access matrix | `AUTHENTIK_ACCESS_MATRIX` widget | Users in scope × `applicationsInScope`, cells computed by the qbit (not `check_access`, §0.2 iii; cached 5 min, 25 rows per page) |
 | Health | `AUTHENTIK_HEALTH` widget | API reachability and version, token expiry, blueprint instance status, webhook lag, last reconcile, possible blueprint reversions, `bootstrapOperators` in use |
 | Audit | generic query on `authentikAdminAction` + `authentikEvent` | Filter by operator, target, action, status, and source (QQQ vs Authentik UI) |
 
@@ -801,7 +872,7 @@ The qbit produces an app `authentikAdmin` (label **"Identity"**, icon `badge`). 
   - Minted by hand in the Authentik UI for the service account (`intent: api`, 90-day expiry). Never in blueprints.
 - **Rotation.**
   - The health widget warns 14 days before expiry.
-  - Rotate in the Authentik UI, update Infisical, and let ESO refresh.
+  - Rotate in the Authentik UI, update Infisical, and let ESO refresh. Then check the service account has exactly one token (it can mint its own, §0.2 v).
   - The qbit re-reads the env-backed value on a 401 and retries once.
 - **Other secrets.** The webhook secret and the snapshot-export Git credential are separate Infisical keys.
 - **Redaction.**
@@ -868,8 +939,9 @@ Authenticated API calls are not throttled by Authentik, and kof22's Authentik sh
     - (d) A `present` entry with `users:` *does* wipe members. This documents why the CI lint exists.
     - (e) Webhook delivery reaches a test route with the custom body.
     - (f) `PATCH is_active=false` deletes sessions.
-    - (g) `check_access` works with the granted permissions.
+    - (g) ~~`check_access` works with the granted permissions~~ replaced: `check_access?for_user` is ignored for non-superusers and the policy test endpoint fails (pinned in `AccessCheckIT`); the attribute-driven sign-in policy is verified with the admin's `check_access` (`SignInPolicyIT`).
     - (h) The bootstrap blueprint on an empty instance, ordered by `metaapplyblueprint`, applies cleanly.
+  - **Phase 0 status:** (b), (c), (d), (h) green, plus the escalation and lockout floor, token minting, access-check behaviour, the sign-in policy, inert webhook plumbing, and the qbit's own read path (`QbitReadContractIT`), all on 2026.8.3.
 - **cluster-gitops lint tests.** Fixtures with good and bad blueprints.
 - **Schema drift.** A pinned `schema.yml` test, plus a scheduled CI diff against new releases.
 - **Frontend.** Mock fixtures and a Playwright e2e for create user, edit permissions, the tree and the matrix.
@@ -897,10 +969,10 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 
 | # | Task | Who |
 |---|---|---|
-| 1 | Create repo `QRun-IO/qbit-authentik` from `qbit-template`; copy this spec to `docs/DESIGN.md`; add `AGENTS.md`/`CLAUDE.md` | agent |
+| 1 | Create repo `QRun-IO/qbit-authentik` from `qbit-template-extension`; copy this spec to `docs/DESIGN.md`; add `AGENTS.md`/`CLAUDE.md` | agent: **done** (repo private for now, see the owner checklist) |
 | 2 | `AuthentikQBitConfig` + producer skeleton; `AuthentikActionUtil` (bearer auth, page/page_size paging, FilterMapper, throttle, redaction); pinned `schema.yml` + drift test | agent |
 | 3 | Testcontainers harness (Authentik 2026.8.3 + Postgres + Mailpit), fixture recorder; contract tests (b), (c), (d), (h) | agent |
-| 4 | Verify on the container: (i) how to grant *global* role permissions declaratively in 2026.8.3; (ii) whether a `parents` change under a superuser group is refused without `enable_group_superuser`; (iii) the permission `check_access` needs; (iv) the `metaapplyblueprint` ordering. Then fix §4.3 and §5.1. | agent |
+| 4 | Verify on the container: (i) how to grant *global* role permissions declaratively in 2026.8.3; (ii) whether a `parents` change under a superuser group is refused without `enable_group_superuser`; (iii) the permission `check_access` needs; (iv) the `metaapplyblueprint` ordering. Then fix §4.3 and §5.1. | agent: **done**, §0.2 |
 | 5 | Prepare the cluster-gitops PR: add `kof22-identity-bootstrap.yaml`; remove the `present` `james.maes` user and `kof22-admins` group entries; make the sign-in policy attribute-driven with the name fallback; add webhook transport, rule and policies; add the CI lint | agent drafts; **James reviews and merges** |
 | 6 | Rehearse the migration (§4.4 steps 1–6) on a staging Authentik restored from a production snapshot | agent with **James's go-ahead** |
 | 7 | Apply the migration in production: merge the PR, check that both blueprint instances are `successful` and that memberships are unchanged | **James** |
@@ -954,8 +1026,8 @@ The decisions taken on 2026-10-11 are in §0.1. The remaining questions are smal
 
 | QQQ | Authentik |
 |---|---|
-| `QueryInput(authentikUser, filter: isActive EQUALS false AND lastLogin LESS_THAN 2026-07-13, orderBy username, limit 50)` | `GET /api/v3/core/users/?is_active=false&last_login__lt=2026-07-13T00:00:00Z&ordering=username&page=1&page_size=50&include_groups=true&type=internal&type=external` |
-| `GetInput(authentikUser, 42)` | `GET /api/v3/core/users/42/?include_groups=true&include_roles=true` |
+| `QueryInput(authentikUser, filter: isActive EQUALS false AND lastLogin LESS_THAN 2026-07-13, orderBy username, limit 50)` | `GET /api/v3/core/users/?is_active=false&last_login__lt=2026-07-13T00:00:00Z&ordering=username&include_groups=true&include_roles=true&type=internal&type=external&type=service_account&page=1&page_size=50` |
+| `GetInput(authentikUser, 42)` | `GET /api/v3/core/users/42/` (the detail endpoint takes no `include_*` parameters and always returns `groups_obj` and `roles_obj`) |
 | `InsertInput(authentikGroupMember, {groupPk: <uuid>, userPk: 42})` | Guard checks, then `POST /api/v3/core/groups/<uuid>/add_user/` with body `{"pk": 42}`, which returns 204 |
 | `DeleteInput(authentikSession, <uuid>)` | Guard checks, then `DELETE /api/v3/core/authenticated_sessions/<uuid>/` |
 | Count | `GET …&page_size=1`, reading `pagination.count` |

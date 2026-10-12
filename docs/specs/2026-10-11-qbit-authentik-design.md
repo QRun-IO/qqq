@@ -692,6 +692,8 @@ The mapper is a `QAuthenticationModuleCustomizerInterface` component. It replace
 ---
 ## 6. Data model
 
+**Naming (owner rule, 2026-10-12):** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table, API-backed or local, is lowercase snake_case with the `authentik_` prefix (`authentik_user`, `authentik_admin_action`). Where QQQ separates the table name from the backend name, both are identical; possible-value sources use the table name. Java classes stay CamelCase; field, process, widget and permission names are unchanged. No version of qbit-authentik has been released yet, so this is a rename in the design and in the unreleased branch code (whose `applyPrefix` camel-joins `authentik` + name today), not a migration.
+
 ### 6.1 API-backed tables (backend `authentik`, `AuthentikActionUtil`)
 
 | Table | Source | Key | Capabilities | Notes |

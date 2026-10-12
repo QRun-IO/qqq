@@ -90,7 +90,10 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
          if(enforce)
          {
             FieldSecurityLockHelper.assertWritesAccessible(input.getTable(), input.getRecords());
-            FieldSecurityLockHelper.assertCriteriaAccessible(input.getTableName(), null, input.getFilter(), null);
+            if(input.getFilter() != null)
+            {
+               CorePermissionEnforcer.checkReadCriteria(input, null, input.getFilter(), null);
+            }
          }
       }
 

@@ -147,6 +147,7 @@ public class UpdateAction
          if(enforce)
          {
             FieldSecurityLockHelper.assertWritesAccessible(updateInput.getTable(), updateInput.getRecords());
+            CorePermissionEnforcer.checkAssociatedWrites(updateInput);
          }
       }
 

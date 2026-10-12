@@ -37,6 +37,7 @@ import com.kingsrook.qqq.backend.core.actions.metadata.TableMetaDataAction;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.reporting.ExportAction;
+import com.kingsrook.qqq.backend.core.actions.reporting.GenerateReportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
@@ -58,6 +59,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ExportInput;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
+import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
@@ -88,6 +90,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -740,6 +743,125 @@ class CorePermissionEnforcerTest extends BaseTest
       setSession(TABLE + ".read");
       assertThatThrownBy(() -> new InsertAction().execute(new InsertInput(TABLE).withDryRun(true).withRecord(new QRecord().withValue("firstName", "A"))))
          .isInstanceOf(QPermissionDeniedException.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** associated child writes need the child table's permissions and respect its
+    ** field security locks; delete cascades need DELETE on the child table.
+    *******************************************************************************/
+   @Test
+   void testAssociatedWrites() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      String    order     = TestUtils.TABLE_NAME_ORDER;
+      String    line      = TestUtils.TABLE_NAME_LINE_ITEM;
+      qInstance.getTable(order).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      qInstance.getTable(line).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      qInstance.getTable(line).getField("sku").setFieldSecurityLock(new FieldSecurityLock().withSecurityKeyType(KEY).withDefaultBehavior(FieldSecurityLock.Behavior.DENY).withOverrideValues(List.of("pii")));
+      enableInstanceEnforcement();
+
+      setSession(order + ".insert", order + ".delete");
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      assertThatThrownBy(() -> new InsertAction().execute(new InsertInput(order).withDryRun(true).withRecord(new QRecord().withValue("storeId", 1)
+         .withAssociatedRecord("orderLine", new QRecord().withValue("lineNumber", "1")))))
+         .isInstanceOf(QPermissionDeniedException.class);
+
+      QContext.getQSession().withPermission(line + ".insert");
+      assertTrue(isAllowed(() -> new InsertAction().execute(new InsertInput(order).withDryRun(true).withRecord(new QRecord().withValue("storeId", 1)
+         .withAssociatedRecord("orderLine", new QRecord().withValue("lineNumber", "1"))))));
+      assertThatThrownBy(() -> new InsertAction().execute(new InsertInput(order).withDryRun(true).withRecord(new QRecord().withValue("storeId", 1)
+         .withAssociatedRecord("orderLine", new QRecord().withValue("lineNumber", "1").withValue("sku", "locked")))))
+         .isInstanceOf(QPermissionDeniedException.class);
+
+      ///////////////////////////////////////////////////////////////////////
+      // delete of an order with lines cascades: needs DELETE on the lines //
+      ///////////////////////////////////////////////////////////////////////
+      runAsSystem(() -> new InsertAction().execute(new InsertInput(order).withRecord(new QRecord().withValue("id", 77).withValue("storeId", 1)
+         .withAssociatedRecord("orderLine", new QRecord().withValue("lineNumber", "1")))));
+      assertThatThrownBy(() -> new DeleteAction().execute(new DeleteInput(order).withDryRun(true).withPrimaryKeys(List.of(77))))
+         .isInstanceOf(QPermissionDeniedException.class);
+      assertThatThrownBy(() -> new DeleteAction().execute(new DeleteInput(order).withDryRun(true).withQueryFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 77)))))
+         .isInstanceOf(QPermissionDeniedException.class);
+      QContext.getQSession().withPermission(line + ".delete");
+      assertTrue(isAllowed(() -> new DeleteAction().execute(new DeleteInput(order).withDryRun(true).withPrimaryKeys(List.of(77)))));
+   }
+
+
+
+   /*******************************************************************************
+    ** a delete (or dry-run delete) filter may not read joined tables the user
+    ** may not read.
+    *******************************************************************************/
+   @Test
+   void testDeleteFilterOnJoinedTableNeedsRead() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      qInstance.getTable(TestUtils.TABLE_NAME_LINE_ITEM).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      qInstance.getTable(TestUtils.TABLE_NAME_ORDER).setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      enableInstanceEnforcement();
+      setSession(TestUtils.TABLE_NAME_ORDER + ".delete", TestUtils.TABLE_NAME_LINE_ITEM + ".delete");
+      QContext.getQSession().withSecurityKeyValue(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, true);
+      assertThatThrownBy(() -> new DeleteAction().execute(new DeleteInput(TestUtils.TABLE_NAME_ORDER).withDryRun(true)
+         .withQueryFilter(new QQueryFilter(new QFilterCriteria(TestUtils.TABLE_NAME_LINE_ITEM + ".sku", QCriteriaOperator.EQUALS, "X")))))
+         .isInstanceOf(QPermissionDeniedException.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** GetAction.executeViaQuery keeps ENFORCE.
+    *******************************************************************************/
+   @Test
+   void testExecuteViaQueryKeepsEnforce() throws Exception
+   {
+      setSession();
+      GetInput getInput = new GetInput(TABLE).withPrimaryKey(1);
+      getInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      assertThatThrownBy(() -> new GetAction().executeViaQuery(getInput)).isInstanceOf(QPermissionDeniedException.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** a record label built from a denied field is cleared.
+    *******************************************************************************/
+   @Test
+   void testRecordLabelFromLockedFieldIsCleared() throws Exception
+   {
+      QContext.getQInstance().getTable(TABLE).setRecordLabelFields(List.of("email"));
+      QContext.getQInstance().getTable(TABLE).setRecordLabelFormat("%s");
+      enableInstanceEnforcement();
+      setSession(TABLE + ".read");
+      QRecord record = new QueryAction().execute(new QueryInput(TABLE).withShouldGenerateDisplayValues(true)).getRecords().get(0);
+      assertNull(record.getRecordLabel());
+   }
+
+
+
+   /*******************************************************************************
+    ** caller-supplied (unregistered) widget / report meta data: refused under
+    ** ENFORCE; with the instance setting on, not trusted (queries checked).
+    *******************************************************************************/
+   @Test
+   void testUnregisteredWidgetAndReportMetaData() throws Exception
+   {
+      setSession(WIDGET + ".hasAccess");
+      QWidgetMetaData adHoc = new QWidgetMetaData().withName(WIDGET).withCodeReference(new QCodeReference(CountingWidgetRenderer.class));
+
+      RenderWidgetInput enforced = new RenderWidgetInput().withWidgetMetaData(adHoc);
+      enforced.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      assertThatThrownBy(() -> new RenderWidgetAction().execute(enforced)).isInstanceOf(QPermissionDeniedException.class);
+
+      enableInstanceEnforcement();
+      assertThatThrownBy(() -> new RenderWidgetAction().execute(new RenderWidgetInput().withWidgetMetaData(adHoc))).isInstanceOf(QPermissionDeniedException.class);
+      assertTrue(isAllowed(() -> new RenderWidgetAction().execute(new RenderWidgetInput().withWidgetMetaData(QContext.getQInstance().getWidget(WIDGET)))));
+
+      ReportInput reportInput = new ReportInput().withReportMetaData(new QReportMetaData().withName("adHoc"))
+         .withReportDestination(new ReportDestination().withReportFormat(ReportFormat.CSV).withReportOutputStream(new java.io.ByteArrayOutputStream()));
+      reportInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      assertThatThrownBy(() -> new GenerateReportAction().execute(reportInput)).isInstanceOf(QPermissionDeniedException.class);
    }
 
 

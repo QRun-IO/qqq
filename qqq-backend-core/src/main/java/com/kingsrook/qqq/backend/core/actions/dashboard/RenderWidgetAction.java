@@ -27,11 +27,14 @@ import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRenderer;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 
@@ -47,10 +50,24 @@ public class RenderWidgetAction
     *******************************************************************************/
    public RenderWidgetOutput execute(RenderWidgetInput input) throws QException
    {
-      if(input.getWidgetMetaData() != null && input.getWidgetMetaData().getName() != null && QContext.getQInstance() != null && QContext.getQInstance().getWidget(input.getWidgetMetaData().getName()) != null
-         && CorePermissionEnforcer.shouldEnforce(input))
+      if(CorePermissionEnforcer.shouldEnforce(input))
       {
-         PermissionsHelper.checkWidgetPermissionThrowing(input, input.getWidgetMetaData().getName());
+         ///////////////////////////////////////////////////////////////////////////
+         // only a widget defined in the instance (the same object) is authorized //
+         // by its permission; caller-supplied widget meta data is refused under //
+         // ENFORCE, and otherwise renders without an authorized scope.          //
+         ///////////////////////////////////////////////////////////////////////////
+         String                   widgetName = input.getWidgetMetaData() == null ? null : input.getWidgetMetaData().getName();
+         QWidgetMetaDataInterface registered = widgetName == null || QContext.getQInstance() == null ? null : QContext.getQInstance().getWidget(widgetName);
+         if(registered == null || registered != input.getWidgetMetaData())
+         {
+            if(PermissionEnforcement.ENFORCE.equals(input.getPermissionEnforcement()))
+            {
+               throw (new QPermissionDeniedException("Permission denied: only widgets defined in the instance can be rendered with permission enforcement."));
+            }
+            return (executeInAuthorizedScope(input));
+         }
+         PermissionsHelper.checkWidgetPermissionThrowing(input, widgetName);
       }
 
       ////////////////////////////////////////////////////////////////////////

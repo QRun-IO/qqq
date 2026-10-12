@@ -40,7 +40,6 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
-import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
@@ -122,7 +121,15 @@ public class DeleteAction
       {
          if(CorePermissionEnforcer.checkTablePermissions(deleteInput, TablePermissionSubType.DELETE))
          {
-            FieldSecurityLockHelper.assertCriteriaAccessible(deleteInput.getTableName(), null, deleteInput.getQueryFilter(), null);
+            /////////////////////////////////////////////////////////////////////////
+            // a delete filter may not read joined tables or locked fields the   //
+            // user can't (a dry run returns the matched keys, so it's a read). //
+            /////////////////////////////////////////////////////////////////////////
+            if(deleteInput.getQueryFilter() != null)
+            {
+               CorePermissionEnforcer.checkReadCriteria(deleteInput, null, deleteInput.getQueryFilter(), null);
+            }
+            CorePermissionEnforcer.checkAssociatedWrites(deleteInput);
          }
       }
 

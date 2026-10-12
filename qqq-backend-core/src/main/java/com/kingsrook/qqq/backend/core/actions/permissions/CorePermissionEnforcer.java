@@ -22,19 +22,27 @@ package com.kingsrook.qqq.backend.core.actions.permissions;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeSupplier;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -205,6 +213,74 @@ public final class CorePermissionEnforcer
 
       PermissionsHelper.checkProcessPermissionThrowing(input, processName, processValues == null ? Collections.emptyMap() : processValues);
       return (true);
+   }
+
+
+
+   /*******************************************************************************
+    ** For write actions that are being enforced: check permissions (and field
+    ** security locks) for the associated child records the write will insert,
+    ** update or delete - including an update's omitted children and a delete's
+    ** cascades.  Discovery queries run inside an authorized scope; the permission
+    ** checks themselves are explicit.
+    *******************************************************************************/
+   public static void checkAssociatedWrites(AbstractTableActionInput input) throws QException
+   {
+      try(AuthorizedScope ignored = openAuthorizedScope())
+      {
+         if(input instanceof InsertInput insertInput && hasAssociatedRecords(insertInput.getRecords()))
+         {
+            AssociatedWritePermissions.checkWithFieldSecurityLocks(insertInput);
+         }
+         else if(input instanceof UpdateInput updateInput && hasAssociatedRecords(updateInput.getRecords()))
+         {
+            AssociatedWritePermissions.checkWithFieldSecurityLocks(updateInput);
+         }
+         else if(input instanceof DeleteInput deleteInput && input.getTable() != null && CollectionUtils.nullSafeHasContents(input.getTable().getAssociations()))
+         {
+            List<Serializable> primaryKeys = deleteInput.getPrimaryKeys();
+            if(CollectionUtils.nullSafeIsEmpty(primaryKeys) && deleteInput.getQueryFilter() != null)
+            {
+               ///////////////////////////////////////////////////////////////
+               // resolve a filter to the keys it would delete, to check    //
+               // the cascades those records would cause                    //
+               ///////////////////////////////////////////////////////////////
+               String     primaryKeyField = input.getTable().getPrimaryKeyField();
+               QueryInput queryInput      = new QueryInput(input.getTableName());
+               queryInput.setFilter(deleteInput.getQueryFilter().clone());
+               queryInput.setTransaction(deleteInput.getTransaction());
+               primaryKeys = new ArrayList<>();
+               for(QRecord record : new QueryAction().execute(queryInput).getRecords())
+               {
+                  primaryKeys.add(record.getValue(primaryKeyField));
+               }
+            }
+
+            if(CollectionUtils.nullSafeHasContents(primaryKeys))
+            {
+               AssociatedWritePermissions.checkWithFieldSecurityLocks(new DeleteInput(input.getTableName())
+                  .withPrimaryKeys(primaryKeys)
+                  .withTransaction(deleteInput.getTransaction()));
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static boolean hasAssociatedRecords(List<QRecord> records)
+   {
+      for(QRecord record : CollectionUtils.nonNullList(records))
+      {
+         if(record != null && CollectionUtils.nullSafeHasContents(record.getAssociatedRecords()))
+         {
+            return (true);
+         }
+      }
+      return (false);
    }
 
 

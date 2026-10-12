@@ -37,6 +37,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.GetInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.GetActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
@@ -332,6 +333,14 @@ public class GetAction
       public GetOutput execute(GetInput getInput) throws QException
       {
          QueryInput queryInput = convertGetInputToQueryInput(getInput);
+
+         ///////////////////////////////////////////////////////////////////////////
+         // an ENFORCE get (e.g., via the public executeViaQuery) stays enforced //
+         ///////////////////////////////////////////////////////////////////////////
+         if(PermissionEnforcement.ENFORCE.equals(getInput.getPermissionEnforcement()))
+         {
+            queryInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+         }
 
          QueryOutput queryOutput = new QueryAction().execute(queryInput);
 

@@ -19,7 +19,7 @@ The core actions can now enforce these themselves.
 |Table `READ`; `READ` on every joined table (explicit joins, joins implied by `table.field` criteria, exposed-join paths); no criteria, sort, group-by, aggregate, unique-key or `fieldNamesToInclude` reference to a field denied by a `FieldSecurityLock`. Denied fields are removed from the output (values and display values, including joined and associated records).
 
 |`InsertAction` / `UpdateAction` / `DeleteAction`
-|Table `INSERT` / `EDIT` / `DELETE`. Insert and update reject records that carry a value (even `null`) for a denied field; delete rejects a filter on one. Denied fields are removed from the output records.
+|Table `INSERT` / `EDIT` / `DELETE`. Insert and update reject records that carry a value (even `null`) for a denied field; delete rejects a filter on one, and its filter needs `READ` on any joined table. Associated child records need the child table's permissions too (insert: `INSERT`; update: `INSERT`/`EDIT` for supplied children, `DELETE` for omitted ones; delete: `DELETE` on cascaded children), and their field locks apply. Denied fields are removed from the output records.
 
 |`ReplaceAction`
 |`INSERT` and `EDIT` (plus `DELETE` when `performDeletes` is true), and the insert/update field rules.
@@ -31,7 +31,7 @@ The core actions can now enforce these themselves.
 |The process permission (custom permission checkers receive the process values).
 
 |`RenderWidgetAction` / `GenerateReportAction`
-|The widget / report permission, for widgets and reports defined in the instance.
+|The widget / report permission, for widgets and reports defined in the instance (the same meta data object). Caller-supplied meta data is refused under `ENFORCE`; with the instance setting on it runs without the trusted scope, so each of its queries is checked.
 
 |`TableMetaDataAction`
 |Fields denied by a `FieldSecurityLock` are omitted from the table meta data, so frontends hide them.
@@ -66,7 +66,7 @@ This keeps QQQ's existing model - a user who may run a process can have that pro
 
 Sessions of type `QSystemUserSession` pass every check (as before). The framework's own scheduler, polling automations and SQS queue poller also mark their process runs with `withPermissionBypass`. The ESB keeps its explicit process-permission check for its run-as user.
 
-Possible-value lookups (`SearchPossibleValueSourceAction`, `QPossibleValueTranslator`) are trusted, because a possible-value label is visible to anyone who can see the field that references it (unchanged behavior).
+Possible-value lookups (`SearchPossibleValueSourceAction`, `QPossibleValueTranslator`) are trusted, because a possible-value label is visible to anyone who can see the field that references it (unchanged behavior). Under `ENFORCE`, a caller-supplied filter on a possible-value search still may not use locked fields of the possible-value source's table. A record label built from a locked field is cleared.
 
 === The instance setting
 

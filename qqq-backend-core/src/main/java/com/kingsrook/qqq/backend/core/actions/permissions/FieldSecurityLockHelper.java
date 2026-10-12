@@ -338,6 +338,12 @@ public final class FieldSecurityLockHelper
       }
 
       Set<String> deniedKeys = new LinkedHashSet<>(getDeniedFieldNames(table));
+
+      ///////////////////////////////////////////////////////////////////////////
+      // a record label built from a denied field would carry its value - so  //
+      // records of such a table lose their label (callers fall back to ids). //
+      ///////////////////////////////////////////////////////////////////////////
+      boolean clearLabels = CollectionUtils.nonNullList(table.getRecordLabelFields()).stream().anyMatch(deniedKeys::contains);
       for(Map.Entry<String, String> entry : getAliasToTableNameMap(tableName, queryJoins).entrySet())
       {
          if(entry.getKey().equals(tableName) && entry.getValue().equals(tableName))
@@ -362,6 +368,11 @@ public final class FieldSecurityLockHelper
          if(record == null)
          {
             continue;
+         }
+
+         if(clearLabels)
+         {
+            record.setRecordLabel(null);
          }
 
          if(!deniedKeys.isEmpty())

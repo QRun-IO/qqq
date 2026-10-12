@@ -160,6 +160,10 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
          if(enforce)
          {
             FieldSecurityLockHelper.assertWritesAccessible(insertInput.getTable(), insertInput.getRecords());
+            if(nativeRecords == null)
+            {
+               CorePermissionEnforcer.checkAssociatedWrites(insertInput);
+            }
          }
       }
 

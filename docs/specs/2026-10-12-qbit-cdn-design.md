@@ -6,7 +6,7 @@ Targets: QQQ 4.1.x (one small response-header hook in `qqq-middleware-javalin`) 
 - `cluster-gitops` tenants/kof22
 - Praetor `dns/route53`, `unifi/`, and a new `terraform/cdn-cloudfront/`
 
-> This is a design, not an implementation. No AWS resources, accounts, keys, DNS records or cluster resources were created or changed. The owner must answer the items in "Still open" (§12.2) before Phase 2 starts.
+> This spec is a design. Phase P0 (origin cleanup and the `upload.kof22.com` split) is being implemented. No AWS resources have been created; that happens in P2. The open items O1 and O3–O8 were answered on 2026-10-12. O2, the plan subscription, is the owner's own action when the distribution exists (§12.2).
 
 ## Owner decisions (2026-10-12)
 
@@ -700,10 +700,20 @@ Estimates assume one engineer working with Claude. Each phase can be deployed on
 
 See D1–D15 in the table at the top of this document.
 
-### 12.2 Still open: the owner must decide before P2
+### 12.2 Remaining owner items (answered 2026-10-12)
 
-| # | Question | Options (recommended first) |
+| # | Question | Answer |
 |---|---|---|
+| O1 | Which AWS account? | **The existing account `744245396565`** (profile `kingsrook_root_admin`), with `tenant=kof22` cost-allocation tags and the `allowed_account_ids` guard. |
+| O2 | Subscribe to the CloudFront flat-rate Pro plan ($15/mo) | **The owner subscribes himself once the distribution exists in P2.** The implementer stops at that moment and asks the coordinator. Whether one plan covers one distribution with 4 aliases still has to be checked then. |
+| O3 | ACM certificate in `us-east-1` | **Approved:** `kof22.com` + `*.kof22.com`, DNS-validated through octoDNS (the validation CNAME goes in the zone file), and CAA extended with `amazon.com`. |
+| O4 | WAN port 8443 | **Approved,** open only to CloudFront origin-facing ranges, through UniFi IaC. |
+| O5 | New hostnames | **Approved:** DNS-only `origin.kof22.com` and `upload.kof22.com`. `upload` ships in P0. `origin` ships in P2. |
+| O6 | Origin secret | **Infisical,** rotated every 90 days with two values valid during the overlap. |
+| O7 | Metrics and logs | **Cache-hit-rate (additional) metrics only. No standard logs.** |
+| O8 | Privacy page | **The privacy page names AWS as a processor.** |
+
+---|---|---|
 | O1 | **Which AWS account?** | **(a)** The existing account `744245396565` (profile `kingsrook_root_admin`), which already holds the Route53 zone. Add `tenant=kof22` cost tags and keep the `allowed_account_ids` guard. **Recommended.**<br>(b) A new AWS Organizations member account for kof22 with its own profile. Billing is cleaner, and cross-account Route53 ALIAS still works, but the account has to be set up. |
 | O2 | **Subscribe to the CloudFront flat-rate Pro plan** ($15/mo). This is a billing action only the owner can take, after the distribution exists in P2. Also confirm the plan covers **one distribution with 4 aliases** (*verify* whether it attaches per distribution). | **(a)** Yes: one Pro plan on the single kof22 distribution. **Recommended.**<br>(b) Pay-as-you-go: about $0 at this volume, but no cost ceiling and no bundled WAF. |
 | O3 | **ACM certificate in `us-east-1`:** which names, and how to validate | **(a)** `kof22.com` + `*.kof22.com`, validated by DNS. Add the validation CNAME to the octoDNS zone file and extend CAA with `amazon.com`. **Recommended.**<br>(b) Explicit names only: `kof22.com`, `www`, `api`, `s3`. |

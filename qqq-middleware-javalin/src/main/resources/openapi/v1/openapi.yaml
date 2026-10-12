@@ -1630,30 +1630,170 @@ components:
             type: "object"
           type: "array"
       type: "object"
+    RecordSearchDetailV1:
+      properties:
+        displayValue:
+          description: "Display value of the field."
+          type: "string"
+        fieldLabel:
+          description: "User-facing label of the field."
+          type: "string"
+        fieldName:
+          description: "Name of the field."
+          type: "string"
+      type: "object"
+    RecordSearchHighlightMatchV1:
+      properties:
+        end:
+          description: "Offset just after the last matched character (exclusive)."
+          type: "number"
+        start:
+          description: "Offset of the first matched character in the highlight text."
+          type: "number"
+      type: "object"
+    RecordSearchHighlightV1:
+      properties:
+        fieldLabel:
+          description: "User-facing label of the field."
+          type: "string"
+        fieldName:
+          description: "Name of the field the snippet is from."
+          type: "string"
+        matches:
+          description: "Matched spans in the text: sorted, non-overlapping character\
+            \ offsets (start inclusive, end exclusive)."
+          items:
+            $ref: "#/components/schemas/RecordSearchHighlightMatchV1"
+          type: "array"
+        text:
+          description: "Plain-text snippet of the field value (never markup; an ellipsis\
+            \ marks trimmed ends)."
+          type: "string"
+      type: "object"
+    RecordSearchProviderStatusV1:
+      properties:
+        failureClass:
+          description: "When the provider failed: the simple class name of the root\
+            \ cause (e.g., ConnectException)."
+          type: "string"
+        message:
+          description: "When the provider failed with a user-facing error: its message\
+            \ (one line)."
+          type: "string"
+        status:
+          description: "OK: the provider searched the tables it claimed.  FAILED:\
+            \ it failed, and those tables were searched with the default search. \
+            \ NONE: there is no provider, or it claimed none of the searched tables."
+          enum:
+          - "OK"
+          - "FAILED"
+          - "NONE"
+          type: "string"
+      type: "object"
     RecordSearchResponseV1:
       properties:
+        provider:
+          description: "How the instance's record search provider fared: when its\
+            \ status is FAILED, the tables it claimed were searched with the default\
+            \ search instead (their source is FALLBACK)."
+          properties:
+            failureClass:
+              description: "When the provider failed: the simple class name of the\
+                \ root cause (e.g., ConnectException)."
+              type: "string"
+            message:
+              description: "When the provider failed with a user-facing error: its\
+                \ message (one line)."
+              type: "string"
+            status:
+              description: "OK: the provider searched the tables it claimed.  FAILED:\
+                \ it failed, and those tables were searched with the default search.\
+                \  NONE: there is no provider, or it claimed none of the searched\
+                \ tables."
+              enum:
+              - "OK"
+              - "FAILED"
+              - "NONE"
+              type: "string"
+          type: "object"
         results:
           description: "Records whose search fields match the search term, grouped\
-            \ by table (in instance order) and ordered by primary key within each\
-            \ table."
+            \ by table (in instance order) and, within each table, in the requested\
+            \ order (RELEVANCE: the search provider's order, or by primary key for\
+            \ the default search; RECENT: most recently modified first)."
           items:
             $ref: "#/components/schemas/RecordSearchResultV1"
+          type: "array"
+        tables:
+          description: "A summary of each searched table, in the order of the results:\
+            \ how many results it returned, whether it has more, and what searched\
+            \ it."
+          items:
+            $ref: "#/components/schemas/RecordSearchTableSummaryV1"
           type: "array"
       type: "object"
     RecordSearchResultV1:
       properties:
+        details:
+          description: "Other search field values (not in the record label, and not\
+            \ highlighted) to show under the record label."
+          items:
+            $ref: "#/components/schemas/RecordSearchDetailV1"
+          type: "array"
+        highlights:
+          description: "Plain-text snippets of the fields (other than those in the\
+            \ record label) that match the search term, with the matched spans."
+          items:
+            $ref: "#/components/schemas/RecordSearchHighlightV1"
+          type: "array"
         recordId:
           description: "Primary key of the record, as a string."
           type: "string"
         recordLabel:
           description: "Label to identify the record to a user."
           type: "string"
+        score:
+          description: "Relevance from the record search provider (higher is better);\
+            \ absent for the default search."
+          type: "number"
         tableLabel:
           description: "User-facing label of the table that the record is from."
           type: "string"
         tableName:
           description: "Name of the table that the record is from."
           type: "string"
+        updatedAt:
+          description: "When the record was last modified (ISO-8601 instant), when\
+            \ its table has a last-modified field the user may see."
+          type: "string"
+      type: "object"
+    RecordSearchTableSummaryV1:
+      properties:
+        hasMore:
+          description: "Whether the table has more matches past these results (request\
+            \ them with offset)."
+          type: "boolean"
+        resultCount:
+          description: "Number of results returned from the table."
+          type: "number"
+        source:
+          description: "What searched the table: the record search PROVIDER, the DEFAULT\
+            \ search, or the default search as a FALLBACK because the provider failed."
+          enum:
+          - "PROVIDER"
+          - "DEFAULT"
+          - "FALLBACK"
+          type: "string"
+        tableLabel:
+          description: "User-facing label of the table."
+          type: "string"
+        tableName:
+          description: "Name of the table."
+          type: "string"
+        totalCount:
+          description: "Approximate total number of matches in the table, when the\
+            \ search knows it (records the user may not read can make it high)."
+          type: "number"
       type: "object"
     ReportMetaData:
       properties:
@@ -3549,7 +3689,15 @@ paths:
         \ case; integer\nfields match when they equal a numeric term. Only tables\
         \ that the user has permission to read are searched,\nrecord security locks\
         \ apply, and each table returns at most `limitPerTable` records (default 5,\
-        \ maximum 25)."
+        \ maximum 25), after skipping `offset` matches in each table (for paging one\
+        \ table).  An instance may have a record search\nprovider (e.g., a search\
+        \ index) that searches some tables instead; if it fails, those tables are\
+        \ searched with\nthe default search, and the response's `provider` and `tables`\
+        \ say so.\n\nEach result can carry plain-text `highlights` of the fields that\
+        \ match (with the matched spans as character\noffsets - never markup), `details`\
+        \ (other search field values), `updatedAt` and, from a provider, a `score`.\n\
+        Only fields the user may see are used.  All of these, and `tables` and `provider`,\
+        \ are optional: clients must\ntolerate their absence."
       requestBody:
         content:
           application/json:
@@ -3569,6 +3717,19 @@ paths:
                 limitPerTable:
                   description: "Maximum number of records to return from each table."
                   type: "number"
+                offset:
+                  description: "Number of matches to skip in each table, for paging\
+                    \ (default 0, maximum 1000).  Mainly useful with one table in\
+                    \ tableNames."
+                  type: "number"
+                sort:
+                  description: "Order of the results within each table: RELEVANCE\
+                    \ (default) or RECENT (most recently modified first, for tables\
+                    \ with a last-modified field)."
+                  enum:
+                  - "RELEVANCE"
+                  - "RECENT"
+                  type: "string"
               type: "object"
         required: true
       responses:
@@ -3576,17 +3737,40 @@ paths:
           content:
             application/json:
               examples:
-                TODO:
+                Matches in one table:
                   value:
+                    provider:
+                      status: "OK"
                     results:
-                    - recordId: "1"
+                    - details:
+                      - displayValue: "Saint Louis"
+                        fieldLabel: "City"
+                        fieldName: "city"
+                      highlights:
+                      - fieldLabel: "Email"
+                        fieldName: "email"
+                        matches:
+                        - end: 14
+                          start: 6
+                        text: "darin.kelkhoff@example.com"
+                      recordId: "1"
                       recordLabel: "Darin Kelkhoff"
+                      score: 7.25
                       tableLabel: "Person"
                       tableName: "person"
+                      updatedAt: "2026-10-01T14:30:00Z"
                     - recordId: "2"
                       recordLabel: "Tim Kelkhoff"
+                      score: 6.5
                       tableLabel: "Person"
                       tableName: "person"
+                    tables:
+                    - hasMore: true
+                      resultCount: 2
+                      source: "PROVIDER"
+                      tableLabel: "Person"
+                      tableName: "person"
+                      totalCount: 14
               schema:
                 $ref: "#/components/schemas/RecordSearchResponseV1"
           description: "The records matching the search term"

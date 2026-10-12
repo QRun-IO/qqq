@@ -47,6 +47,18 @@ Next `1.0.0-RC.13` or later renders the two features below. Adoption guide: [Ado
   Built in: **Record Security** (each lock, and why the current user can see the record).  `qqq-esb` adds **ESB
   Events** (CloudEvents type/source/subject, destinations, subscribed triggers with dead letters, a sample event for
   the record).  See [Record Developer Panels](docs/misc/DeveloperPanels.adoc).
+- **Record search details: highlights, paging, sort, per-table status (`POST /qqq/v1/search`)** — additive and
+  backward compatible. Requests may send `offset` (per table, for paging one table; at most 1000) and `sort`
+  (`RELEVANCE`, the default, or `RECENT`: most recently modified first, by the table's `MODIFY_DATE` field). Each result
+  may now carry `score` (from a record search provider), `updatedAt` (ISO-8601, from the `MODIFY_DATE` field when the
+  user may see it), `highlights` (plain-text snippets of the matching non-label search fields with `matches` as
+  `{start, end}` character offsets - never markup) and `details` (other search field values). The response adds
+  `tables` (`tableName`, `tableLabel`, `resultCount`, `hasMore`, `totalCount`, and `source`: `PROVIDER`, `DEFAULT` or
+  `FALLBACK`) and `provider` (`status` `OK`/`FAILED`/`NONE`, `failureClass` - the simple class name of the root cause -
+  and, for user-facing errors only, `message`), so clients can say when a failed search index left the default search
+  to answer. Highlights, details and dates use only fields the user can see. `RecordSearchProviderInterface` providers
+  receive `offset` and `sort`, and may return `score`, `highlights` (validated, used only for visible fields core found
+  no match in) and `RecordSearchOutput.totalCountByTable`.
 - **`FILE_PREVIEW` field adornment** — `AdornmentType.FILE_PREVIEW`, with value keys in
   `AdornmentType.FilePreviewValues`, asks frontends to show a field as a thumbnail (images) or a file-type icon (other
   files) that opens a preview: the full-size image with zoom, a PDF, a video or audio player, or open/download links,

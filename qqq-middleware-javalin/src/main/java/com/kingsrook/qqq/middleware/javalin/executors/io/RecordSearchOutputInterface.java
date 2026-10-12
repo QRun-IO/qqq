@@ -22,7 +22,9 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
 import java.util.List;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchProviderStatus;
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchResult;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchTableSummary;
 
 
 /*******************************************************************************
@@ -34,5 +36,24 @@ public interface RecordSearchOutputInterface extends AbstractMiddlewareOutputInt
     **
     ***************************************************************************/
    void setResults(List<RecordSearchResult> results);
+
+
+
+   /***************************************************************************
+    ** A summary of each searched table (ignored by outputs that don't report it).
+    ***************************************************************************/
+   default void setTables(List<RecordSearchTableSummary> tables)
+   {
+   }
+
+
+
+   /***************************************************************************
+    ** How the record search provider fared (ignored by outputs that don't
+    ** report it).
+    ***************************************************************************/
+   default void setProviderStatus(RecordSearchProviderStatus providerStatus)
+   {
+   }
 
 }

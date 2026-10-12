@@ -40,6 +40,9 @@ import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncRecordPipeLoop;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.DataSourceQueryInputCustomizer;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportViewCustomizer;
@@ -49,6 +52,7 @@ import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QFormulaException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QReportingException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
@@ -141,6 +145,43 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
     **
     *******************************************************************************/
    public ReportOutput execute(ReportInput reportInput) throws QException
+   {
+      if(CorePermissionEnforcer.shouldEnforce(reportInput))
+      {
+         ////////////////////////////////////////////////////////////////////////////
+         // only a report defined in the instance is authorized by its permission //
+         // (and then runs its queries trusted).  Caller-supplied report meta     //
+         // data is not: under ENFORCE it is refused; otherwise it runs without   //
+         // an authorized scope, so each of its queries is checked on its own.    //
+         ////////////////////////////////////////////////////////////////////////////
+         String          reportName = reportInput.getReportMetaData() != null ? reportInput.getReportMetaData().getName() : reportInput.getReportName();
+         QReportMetaData registered = StringUtils.hasContent(reportName) && QContext.getQInstance() != null ? QContext.getQInstance().getReport(reportName) : null;
+         if(registered == null || (reportInput.getReportMetaData() != null && reportInput.getReportMetaData() != registered))
+         {
+            if(PermissionEnforcement.ENFORCE.equals(reportInput.getPermissionEnforcement()))
+            {
+               throw (new QPermissionDeniedException("Permission denied: only reports defined in the instance can be run with permission enforcement."));
+            }
+            return (executeInAuthorizedScope(reportInput));
+         }
+         PermissionsHelper.checkReportPermissionThrowing(reportInput, reportName);
+      }
+
+      //////////////////////////////////////////////////////////////////////
+      // the report's own queries are authorized by the report permission //
+      //////////////////////////////////////////////////////////////////////
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(reportInput));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** generate the report, inside an authorized scope.
+    *******************************************************************************/
+   private ReportOutput executeInAuthorizedScope(ReportInput reportInput) throws QException
    {
       ReportOutput    reportOutput = new ReportOutput();
       QReportMetaData report       = getReportMetaData(reportInput);

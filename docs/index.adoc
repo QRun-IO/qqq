@@ -28,6 +28,7 @@ include::metaData/SecurtiyKeyTypes.adoc[leveloffset=+1]
 include::metaData/Reports.adoc[leveloffset=+1]
 include::metaData/Icons.adoc[leveloffset=+1]
 include::metaData/PermissionRules.adoc[leveloffset=+1]
+include::misc/CorePermissionEnforcement.adoc[leveloffset=+1]
 
 == Services
 

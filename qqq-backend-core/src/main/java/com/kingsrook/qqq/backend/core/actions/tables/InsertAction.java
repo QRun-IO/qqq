@@ -39,6 +39,9 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
@@ -150,6 +153,34 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
     *******************************************************************************/
    private InsertOutput execute(InsertInput insertInput, List<QRecord> nativeRecords, Set<Object> originalIdentities, boolean failOnRecordErrors) throws QException
    {
+      boolean enforce = false;
+      if(StringUtils.hasContent(insertInput.getTableName()) && insertInput.getTable() != null)
+      {
+         enforce = CorePermissionEnforcer.checkTablePermissions(insertInput, TablePermissionSubType.INSERT);
+         if(enforce)
+         {
+            FieldSecurityLockHelper.assertWritesAccessible(insertInput.getTable(), insertInput.getRecords());
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         InsertOutput insertOutput = executeInAuthorizedScope(insertInput, nativeRecords, originalIdentities, failOnRecordErrors);
+         if(enforce)
+         {
+            FieldSecurityLockHelper.removeDeniedValues(insertInput.getTableName(), null, insertOutput.getRecords());
+         }
+         return (insertOutput);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The insert itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private InsertOutput executeInAuthorizedScope(InsertInput insertInput, List<QRecord> nativeRecords, Set<Object> originalIdentities, boolean failOnRecordErrors) throws QException
+   {
       ActionHelper.validateSession(insertInput);
 
       if(!StringUtils.hasContent(insertInput.getTableName()))
@@ -167,10 +198,22 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
 
       setAutomationStatusField(insertInput);
 
-      /////////////////////////////
-      // run standard validators //
-      /////////////////////////////
-      performValidations(insertInput, false, false);
+      /////////////////////////////////////////////////////////////////////////
+      // run standard validators (as a preview - e.g., telling customizers  //
+      // not to cause side effects - for a dry run, which then stops here). //
+      /////////////////////////////////////////////////////////////////////////
+      performValidations(insertInput, insertInput.getDryRun(), false);
+      if(insertInput.getDryRun())
+      {
+         if(nativeRecords != null)
+         {
+            throw (new QException("A dry run is not supported for a replace"));
+         }
+
+         InsertOutput dryRunOutput = new InsertOutput();
+         dryRunOutput.setRecords(new ArrayList<>(CollectionUtils.nonNullList(insertInput.getRecords())));
+         return (dryRunOutput);
+      }
 
       Set<Object> expectedNativeOrigins = null;
       if(nativeRecords != null)

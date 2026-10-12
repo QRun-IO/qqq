@@ -40,6 +40,8 @@ import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncRecordPipeLoop;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.DataSourceQueryInputCustomizer;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportViewCustomizer;
@@ -141,6 +143,28 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
     **
     *******************************************************************************/
    public ReportOutput execute(ReportInput reportInput) throws QException
+   {
+      String reportName = reportInput.getReportMetaData() != null ? reportInput.getReportMetaData().getName() : reportInput.getReportName();
+      if(StringUtils.hasContent(reportName) && QContext.getQInstance() != null && QContext.getQInstance().getReport(reportName) != null && CorePermissionEnforcer.shouldEnforce(reportInput))
+      {
+         PermissionsHelper.checkReportPermissionThrowing(reportInput, reportName);
+      }
+
+      //////////////////////////////////////////////////////////////////////
+      // the report's own queries are authorized by the report permission //
+      //////////////////////////////////////////////////////////////////////
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(reportInput));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** generate the report, inside an authorized scope.
+    *******************************************************************************/
+   private ReportOutput executeInAuthorizedScope(ReportInput reportInput) throws QException
    {
       ReportOutput    reportOutput = new ReportOutput();
       QReportMetaData report       = getReportMetaData(reportInput);

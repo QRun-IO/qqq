@@ -40,6 +40,8 @@ public class ExportInput extends AbstractTableActionInput
    private String       titleRow;
    private boolean      includeHeaderRow = true;
 
+   private boolean includeSensitiveFields = false;
+
 
 
    /*******************************************************************************
@@ -189,5 +191,35 @@ public class ExportInput extends AbstractTableActionInput
       return (this);
    }
 
+
+   /*******************************************************************************
+    ** Getter for includeSensitiveFields - by default, fields marked isSensitive are
+    ** left out of exports; set this to true to include them.
+    *******************************************************************************/
+   public boolean getIncludeSensitiveFields()
+   {
+      return (this.includeSensitiveFields);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for includeSensitiveFields
+    *******************************************************************************/
+   public void setIncludeSensitiveFields(boolean includeSensitiveFields)
+   {
+      this.includeSensitiveFields = includeSensitiveFields;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for includeSensitiveFields
+    *******************************************************************************/
+   public ExportInput withIncludeSensitiveFields(boolean includeSensitiveFields)
+   {
+      this.includeSensitiveFields = includeSensitiveFields;
+      return (this);
+   }
 
 }

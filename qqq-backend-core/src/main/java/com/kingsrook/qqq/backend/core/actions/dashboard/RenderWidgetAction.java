@@ -26,6 +26,9 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRenderer;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
@@ -43,6 +46,28 @@ public class RenderWidgetAction
     **
     *******************************************************************************/
    public RenderWidgetOutput execute(RenderWidgetInput input) throws QException
+   {
+      if(input.getWidgetMetaData() != null && input.getWidgetMetaData().getName() != null && QContext.getQInstance() != null && QContext.getQInstance().getWidget(input.getWidgetMetaData().getName()) != null
+         && CorePermissionEnforcer.shouldEnforce(input))
+      {
+         PermissionsHelper.checkWidgetPermissionThrowing(input, input.getWidgetMetaData().getName());
+      }
+
+      ////////////////////////////////////////////////////////////////////////
+      // widget renderers' own queries are authorized by the widget itself //
+      ////////////////////////////////////////////////////////////////////////
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(input));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** render the widget, inside an authorized scope.
+    *******************************************************************************/
+   private RenderWidgetOutput executeInAuthorizedScope(RenderWidgetInput input) throws QException
    {
       ActionHelper.validateSession(input);
 

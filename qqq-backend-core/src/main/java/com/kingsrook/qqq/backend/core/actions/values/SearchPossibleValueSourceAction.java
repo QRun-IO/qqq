@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -75,6 +76,24 @@ public class SearchPossibleValueSourceAction
     **
     *******************************************************************************/
    public SearchPossibleValueSourceOutput execute(SearchPossibleValueSourceInput input) throws QException
+   {
+      ///////////////////////////////////////////////////////////////////////////////////
+      // possible-value searches (e.g., dropdown options) are authorized by the caller //
+      // (e.g., READ/EDIT on the table that has the field, or the process that has it) //
+      // - not by permissions on the PVS's own table - so the lookups are trusted.     //
+      ///////////////////////////////////////////////////////////////////////////////////
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(input));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** the search itself, inside an authorized scope.
+    *******************************************************************************/
+   private SearchPossibleValueSourceOutput executeInAuthorizedScope(SearchPossibleValueSourceInput input) throws QException
    {
       QInstance            qInstance           = QContext.getQInstance();
       QPossibleValueSource possibleValueSource = qInstance.getPossibleValueSource(input.getPossibleValueSourceName());

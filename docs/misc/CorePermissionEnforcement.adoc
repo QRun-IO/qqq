@@ -1,0 +1,124 @@
+:sectnums!:
+
+== Permission Enforcement in Core Actions
+include::../variables.adoc[]
+
+Before QQQ 4.1.0-RC.4, table, process, widget and report permissions were checked only by the middlewares (Javalin, the application API, picocli, Slack), before they called a core action.
+Any other entry point - an MCP server, an AI assistant, a custom route, a script - that called `QueryAction`, `InsertAction`, `RunProcessAction` and so on directly skipped those checks (https://github.com/QRun-IO/qqq/issues/1061[#1061]).
+`FieldSecurityLock` was validated at startup but never enforced (https://github.com/QRun-IO/qqq/issues/1062[#1062]).
+
+The core actions can now enforce these themselves.
+
+=== Which actions
+
+[cols="1,2"]
+|===
+|Action |What is checked when enforcement applies
+
+|`QueryAction`, `GetAction`, `CountAction`, `AggregateAction`
+|Table `READ`; `READ` on every joined table (explicit joins, joins implied by `table.field` criteria, exposed-join paths); no criteria, sort, group-by, aggregate, unique-key or `fieldNamesToInclude` reference to a field denied by a `FieldSecurityLock`. Denied fields are removed from the output (values and display values, including joined and associated records).
+
+|`InsertAction` / `UpdateAction` / `DeleteAction`
+|Table `INSERT` / `EDIT` / `DELETE`. Insert and update reject records that carry a value (even `null`) for a denied field; delete rejects a filter on one. Denied fields are removed from the output records.
+
+|`ReplaceAction`
+|`INSERT` and `EDIT` (plus `DELETE` when `performDeletes` is true), and the insert/update field rules.
+
+|`ExportAction`
+|As for query; locked fields are left out of the columns.
+
+|`RunProcessAction`
+|The process permission (custom permission checkers receive the process values).
+
+|`RenderWidgetAction` / `GenerateReportAction`
+|The widget / report permission, for widgets and reports defined in the instance.
+
+|`TableMetaDataAction`
+|Fields denied by a `FieldSecurityLock` are omitted from the table meta data, so frontends hide them.
+|===
+
+Record security locks are unchanged: they were already enforced inside the backend modules and DML actions, for every call.
+
+=== When enforcement applies
+
+Each action input has a `PermissionEnforcement`:
+
+* `DEFAULT` (the default) - enforced only for an *outermost* call (one not running inside another core action), and only when the instance setting is on.
+* `ENFORCE` - always enforced, even for a nested call and even when the instance setting is off. Use it from any code that acts for a user outside the middlewares: MCP servers, AI assistants, custom routes.
+* `SKIP` - never enforced. It can only be set with `input.withPermissionBypass("reason")`; the reason is required and logged.
+
+[source,java]
+----
+// an assistant or MCP tool acting for the current user
+QueryInput queryInput = new QueryInput("order").withFilter(filter);
+queryInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+new QueryAction().execute(queryInput);
+
+// a deliberate, auditable bypass for one internal lookup
+new QueryInput("configuration").withPermissionBypass("read app configuration at startup");
+
+// a block of trusted application work (e.g., a public route serving published content)
+CorePermissionEnforcer.runTrusted("public site API: published posts", () -> new QueryAction().execute(input));
+----
+
+Calls *nested* inside a core action are framework-internal and trusted: process steps, table customizers, audits, record-change listeners, possible-value translation, widget renderers, report data sources, and async work they start (the trusted scope is carried by `QContext.capture()`).
+This keeps QQQ's existing model - a user who may run a process can have that process read or write tables the user can't access directly.
+
+Sessions of type `QSystemUserSession` pass every check (as before). The framework's own scheduler, polling automations and SQS queue poller also mark their process runs with `withPermissionBypass`. The ESB keeps its explicit process-permission check for its run-as user.
+
+Possible-value lookups (`SearchPossibleValueSourceAction`, `QPossibleValueTranslator`) are trusted, because a possible-value label is visible to anyone who can see the field that references it (unchanged behavior).
+
+=== The instance setting
+
+[source,java]
+----
+qInstance.setEnforcePermissionsInCoreActions(true);
+----
+
+If the instance doesn't set it, the system property `qqq.enforcePermissionsInCoreActions` or the environment variable `QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS` (`true`/`false`) is used; otherwise it is off.
+In QQQ 4.1.x it is *off by default*: only inputs that request `ENFORCE` are checked, so existing applications see no change.
+The default is planned to become *on* in QQQ 4.2; set it explicitly to choose.
+
+When the setting is on, the middlewares' own checks still run first and give the same answers, so allowed requests behave as before and denied requests get the same `403`.
+What changes for applications:
+
+* Code that calls core actions directly - custom routes, scripts, scheduled jobs that run with a non-system session - is now subject to the session's permissions. Run such code as the system user, or mark it with `withPermissionBypass` / `CorePermissionEnforcer.runTrusted` where the bypass is intended.
+* Fields with a `FieldSecurityLock` are hidden from users the lock denies (they were visible before). Check existing locks before turning the setting on: their default behavior is `DENY`.
+* A filter or sort on a locked field returns `403` instead of results.
+
+=== Field security locks
+
+A `FieldSecurityLock` on a field names a security key type, a default behavior (`DENY` by default) and override values.
+For the current session, the lock's default behavior applies unless the session has one of the override values for that key type, which flips it.
+A session with the key type's all-access key, and the system user session, can always access the field.
+A lock on a table's primary key is ignored.
+
+[source,java]
+----
+new QFieldMetaData("salary", QFieldType.DECIMAL)
+   .withFieldSecurityLock(new FieldSecurityLock()
+      .withSecurityKeyType("clearance")
+      .withDefaultBehavior(FieldSecurityLock.Behavior.DENY)
+      .withOverrideValues(List.of("hr")));
+----
+
+=== Sensitive fields
+
+`QFieldMetaData.withIsSensitive(true)` marks a field whose values should not leave the application in bulk or go to third parties (PII, secrets).
+It does not restrict reads in the UI or API (use a `FieldSecurityLock` for that).
+
+* `ExportAction` leaves sensitive fields out unless `ExportInput.withIncludeSensitiveFields(true)`.
+* Frontend field meta data includes `isSensitive`, so frontends can mask values.
+* AI assistant and MCP integrations must not send sensitive values to a model.
+
+=== Dry runs
+
+`InsertInput`, `UpdateInput` and `DeleteInput` have `withDryRun(true)`.
+A dry run applies permissions (when enforced), runs the pre-action customizers with `isPreview = true`, and runs all validations (required fields, unique keys, record security locks, record existence), but stores nothing:
+no backend write, association changes, audits, record-change listeners or post-action customizers.
+
+* Insert returns the would-be records (no generated keys) with their errors and warnings.
+* Update returns each would-be record: the old record with the input's values applied (when the backend can fetch old records), with errors and warnings.
+* Delete returns `DeleteOutput.dryRunPrimaryKeys` (a filter is always resolved to keys) plus `recordsWithErrors` / `recordsWithWarnings`; `deletedRecordCount` stays 0. A dry run does not validate the cascading delete of associated child records.
+
+Pre-action customizers that have side effects should check `isPreview`.

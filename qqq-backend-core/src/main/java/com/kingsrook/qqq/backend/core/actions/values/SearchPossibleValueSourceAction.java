@@ -28,7 +28,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -38,22 +40,27 @@ import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelpe
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceOutput;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -66,6 +73,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class SearchPossibleValueSourceAction
 {
    private static final QLogger LOG = QLogger.getLogger(SearchPossibleValueSourceAction.class);
+
+   private static final int PICKER_MAX_LIMIT = 200;
 
    private static final Set<String> warnedAboutUnexpectedValueField                = Collections.synchronizedSet(new HashSet<>());
    private static final Set<String> warnedAboutUnexpectedNoOfFieldsToSearchByLabel = Collections.synchronizedSet(new HashSet<>());
@@ -92,6 +101,7 @@ public class SearchPossibleValueSourceAction
       if(PermissionEnforcement.ENFORCE.equals(input.getPermissionEnforcement()) && possibleValueSource != null && possibleValueSource.getTableName() != null)
       {
          FieldSecurityLockHelper.assertCriteriaAccessible(possibleValueSource.getTableName(), null, input.getDefaultQueryFilter(), null);
+         FieldSecurityLockHelper.assertCriteriaAccessible(possibleValueSource.getTableName(), null, input.getPickerFilter(), null);
       }
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
@@ -293,10 +303,237 @@ public class SearchPossibleValueSourceAction
 
 
    /*******************************************************************************
+    ** OR a criteria per search field into the filter: strings by the given
+    ** operator, dates/date-times by equality, other types as integers.
+    *******************************************************************************/
+   private static void addSearchCriteria(QQueryFilter queryFilter, QTableMetaData table, List<String> searchFields, String searchTerm, QCriteriaOperator stringOperator)
+   {
+      for(String valueField : CollectionUtils.nonNullList(searchFields))
+      {
+         try
+         {
+            QFieldMetaData field = table.getField(valueField);
+            if(field.getType().equals(QFieldType.STRING))
+            {
+               queryFilter.addCriteria(new QFilterCriteria(valueField, stringOperator, List.of(searchTerm)));
+            }
+            else if(field.getType().equals(QFieldType.DATE))
+            {
+               LocalDate searchDate = ValueUtils.getValueAsLocalDate(searchTerm);
+               if(searchDate != null)
+               {
+                  queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.EQUALS, searchDate));
+               }
+            }
+            else if(field.getType().equals(QFieldType.DATE_TIME))
+            {
+               Instant searchDate = ValueUtils.getValueAsInstant(searchTerm);
+               if(searchDate != null)
+               {
+                  queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.EQUALS, searchDate));
+               }
+            }
+            else
+            {
+               Integer valueAsInteger = ValueUtils.getValueAsInteger(searchTerm);
+               if(valueAsInteger != null)
+               {
+                  queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.EQUALS, List.of(valueAsInteger)));
+               }
+            }
+         }
+         catch(Exception e)
+         {
+            //////////////////////////////////////////////////////////////////////////////////////////
+            // write a FALSE criteria upon exceptions (e.g., type conversion fails)                 //
+            // Why are we doing this?  so a single-field query finds nothing instead of everything. //
+            //////////////////////////////////////////////////////////////////////////////////////////
+            queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.IN, List.of()));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A record picker page: search (CONTAINS) within the field's own filter and
+    ** the picker's filter, ordered by an offered sort, paged by keyset (primary
+    ** key order) or skip, with limit + 1 rows read to know whether more follow -
+    ** never a count.  Each option carries the picker's display values only.
+    *******************************************************************************/
+   private SearchPossibleValueSourceOutput searchPossibleValueTableForPicker(SearchPossibleValueSourceInput input, QPossibleValueSource possibleValueSource) throws QException
+   {
+      QPossibleValuePicker picker = possibleValueSource.getPicker();
+      if(picker == null)
+      {
+         throw (new QBadRequestException("Possible value source " + possibleValueSource.getName() + " does not declare a picker."));
+      }
+
+      QTableMetaData table      = QContext.getQInstance().getTable(possibleValueSource.getTableName());
+      String         primaryKey = table.getPrimaryKeyField();
+      String         idField    = StringUtils.hasContent(possibleValueSource.getOverrideIdField()) ? possibleValueSource.getOverrideIdField() : primaryKey;
+
+      QQueryFilter pickerFilter = input.getPickerFilter() == null ? new QQueryFilter() : input.getPickerFilter().clone();
+      assertPickerFilterAllowed(picker, pickerFilter);
+      List<QFilterOrderBy> orderBys = pickerOrderBys(picker, possibleValueSource, pickerFilter, primaryKey);
+      pickerFilter.setOrderBys(new ArrayList<>());
+
+      QQueryFilter queryFilter = new QQueryFilter();
+      if(input.getDefaultQueryFilter() != null)
+      {
+         queryFilter.addSubFilter(input.getDefaultQueryFilter());
+      }
+      if(CollectionUtils.nullSafeHasContents(pickerFilter.getCriteria()) || CollectionUtils.nullSafeHasContents(pickerFilter.getSubFilters()))
+      {
+         queryFilter.addSubFilter(pickerFilter);
+      }
+
+      if(input.getIdList() != null)
+      {
+         queryFilter.addCriteria(new QFilterCriteria(idField, QCriteriaOperator.IN, input.getIdList()));
+      }
+      else if(StringUtils.hasContent(input.getSearchTerm()))
+      {
+         List<String> searchFields = CollectionUtils.nullSafeHasContents(picker.getSearchFields()) ? picker.getSearchFields() : possibleValueSource.getSearchFields();
+         QQueryFilter searchFilter = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR);
+         addSearchCriteria(searchFilter, table, searchFields, input.getSearchTerm().trim(), QCriteriaOperator.CONTAINS);
+         queryFilter.addSubFilter(searchFilter);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // keyset paging: ordered by the primary key alone, continue after the last  //
+      // id seen (an index range scan) instead of skipping rows (OFFSET).          //
+      ///////////////////////////////////////////////////////////////////////////////
+      int limit = Math.max(1, Math.min(PICKER_MAX_LIMIT, input.getLimit() == null ? picker.getPageSize() : input.getLimit()));
+      if(input.getAfterId() != null && orderBys.size() == 1 && primaryKey.equals(orderBys.get(0).getFieldName()))
+      {
+         QCriteriaOperator operator = orderBys.get(0).getIsAscending() ? QCriteriaOperator.GREATER_THAN : QCriteriaOperator.LESS_THAN;
+         queryFilter.addCriteria(new QFilterCriteria(primaryKey, operator, ValueUtils.getValueAsFieldType(table.getField(primaryKey).getType(), input.getAfterId())));
+      }
+      else
+      {
+         queryFilter.setSkip(input.getSkip() == null ? 0 : Math.max(0, input.getSkip()));
+      }
+      queryFilter.setLimit(limit + 1);
+      queryFilter.setOrderBys(orderBys);
+
+      QueryInput queryInput = new QueryInput();
+      queryInput.setTableName(possibleValueSource.getTableName());
+      queryInput.setFilter(queryFilter);
+      queryInput.setShouldGenerateDisplayValues(true);
+      queryInput.setShouldTranslatePossibleValues(true);
+      List<QRecord> records = new QueryAction().execute(queryInput).getRecords();
+
+      SearchPossibleValueSourceOutput output = new SearchPossibleValueSourceOutput();
+      output.setHasMore(records.size() > limit);
+      if(records.size() > limit)
+      {
+         records = new ArrayList<>(records.subList(0, limit));
+      }
+
+      Set<String>                                  deniedFields  = FieldSecurityLockHelper.getDeniedFieldNames(table);
+      Map<Serializable, Map<String, Serializable>> values        = new LinkedHashMap<>();
+      Map<Serializable, Map<String, String>>       displayValues = new LinkedHashMap<>();
+      List<Serializable>                           ids           = new ArrayList<>();
+      for(QRecord record : records)
+      {
+         Serializable id = record.getValue(idField);
+         ids.add(id);
+         Map<String, Serializable> recordValues  = new LinkedHashMap<>();
+         Map<String, String>       recordDisplay = new LinkedHashMap<>();
+         for(String fieldName : picker.getDisplayFieldNames())
+         {
+            if(deniedFields.contains(fieldName))
+            {
+               continue;
+            }
+            Serializable value = record.getValue(fieldName);
+            recordValues.put(fieldName, value);
+            String displayValue = record.getDisplayValue(fieldName);
+            if(displayValue != null && !displayValue.equals(value == null ? null : String.valueOf(value)))
+            {
+               recordDisplay.put(fieldName, displayValue);
+            }
+         }
+         values.put(id, recordValues);
+         displayValues.put(id, recordDisplay);
+      }
+
+      output.setResults(possibleValueTranslator.buildTranslatedPossibleValueList(possibleValueSource, ids));
+      output.setPickerValues(values);
+      output.setPickerDisplayValues(displayValues);
+      return (output);
+   }
+
+
+
+   /*******************************************************************************
+    ** A picker request may only filter on the picker's filter fields (so other
+    ** columns of the source table cannot be probed), by value - not by
+    ** comparison to another field.
+    *******************************************************************************/
+   private static void assertPickerFilterAllowed(QPossibleValuePicker picker, QQueryFilter filter) throws QBadRequestException
+   {
+      Set<String> allowed = new HashSet<>(CollectionUtils.nonNullList(picker.getFilterFields()));
+      for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
+      {
+         if(!allowed.contains(criteria.getFieldName()) || criteria.getOtherFieldName() != null)
+         {
+            throw (new QBadRequestException("The picker cannot filter on field: " + criteria.getFieldName()));
+         }
+      }
+      for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
+      {
+         assertPickerFilterAllowed(picker, subFilter);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The requested ordering when every field is an offered sort field (or the
+    ** primary key, as a tie-breaker), else the picker's first sort, else the
+    ** source's own ordering.
+    *******************************************************************************/
+   private static List<QFilterOrderBy> pickerOrderBys(QPossibleValuePicker picker, QPossibleValueSource possibleValueSource, QQueryFilter filter, String primaryKey) throws QBadRequestException
+   {
+      Set<String> allowed = new HashSet<>();
+      allowed.add(primaryKey);
+      CollectionUtils.nonNullList(picker.getSorts()).forEach(sort -> allowed.add(sort.getFieldName()));
+
+      if(CollectionUtils.nullSafeHasContents(filter.getOrderBys()))
+      {
+         for(QFilterOrderBy orderBy : filter.getOrderBys())
+         {
+            if(!allowed.contains(orderBy.getFieldName()))
+            {
+               throw (new QBadRequestException("The picker cannot sort by field: " + orderBy.getFieldName()));
+            }
+         }
+         return (new ArrayList<>(filter.getOrderBys()));
+      }
+
+      if(CollectionUtils.nullSafeHasContents(picker.getSorts()))
+      {
+         QPossibleValuePicker.Sort sort = picker.getSorts().get(0);
+         return (new ArrayList<>(List.of(new QFilterOrderBy(sort.getFieldName(), sort.getIsAscending()))));
+      }
+
+      return (new ArrayList<>(CollectionUtils.nonNullList(possibleValueSource.getOrderByFields())));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private SearchPossibleValueSourceOutput searchPossibleValueTable(SearchPossibleValueSourceInput input, QPossibleValueSource possibleValueSource) throws QException
    {
+      if(input.getPickerRequest())
+      {
+         return (searchPossibleValueTableForPicker(input, possibleValueSource));
+      }
+
       SearchPossibleValueSourceOutput output = new SearchPossibleValueSourceOutput();
 
       QueryInput queryInput = new QueryInput();
@@ -363,49 +600,7 @@ public class SearchPossibleValueSourceAction
          String searchTerm = input.getSearchTerm();
          if(StringUtils.hasContent(searchTerm))
          {
-            for(String valueField : possibleValueSource.getSearchFields())
-            {
-               try
-               {
-                  QFieldMetaData field = table.getField(valueField);
-                  if(field.getType().equals(QFieldType.STRING))
-                  {
-                     queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.STARTS_WITH, List.of(searchTerm)));
-                  }
-                  else if(field.getType().equals(QFieldType.DATE))
-                  {
-                     LocalDate searchDate = ValueUtils.getValueAsLocalDate(searchTerm);
-                     if(searchDate != null)
-                     {
-                        queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.EQUALS, searchDate));
-                     }
-                  }
-                  else if(field.getType().equals(QFieldType.DATE_TIME))
-                  {
-                     Instant searchDate = ValueUtils.getValueAsInstant(searchTerm);
-                     if(searchDate != null)
-                     {
-                        queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.EQUALS, searchDate));
-                     }
-                  }
-                  else
-                  {
-                     Integer valueAsInteger = ValueUtils.getValueAsInteger(searchTerm);
-                     if(valueAsInteger != null)
-                     {
-                        queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.EQUALS, List.of(valueAsInteger)));
-                     }
-                  }
-               }
-               catch(Exception e)
-               {
-                  //////////////////////////////////////////////////////////////////////////////////////////
-                  // write a FALSE criteria upon exceptions (e.g., type conversion fails)                 //
-                  // Why are we doing this?  so a single-field query finds nothing instead of everything. //
-                  //////////////////////////////////////////////////////////////////////////////////////////
-                  queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.IN, List.of()));
-               }
-            }
+            addSearchCriteria(queryFilter, table, possibleValueSource.getSearchFields(), searchTerm, QCriteriaOperator.STARTS_WITH);
          }
       }
 

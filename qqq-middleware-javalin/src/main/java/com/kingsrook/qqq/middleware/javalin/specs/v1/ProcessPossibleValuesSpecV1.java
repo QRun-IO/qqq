@@ -180,6 +180,7 @@ public class ProcessPossibleValuesSpecV1 extends AbstractEndpointSpec<PossibleVa
          input.setSearchTerm(PossibleValuesSpecUtils.extractStringField(requestBody, "searchTerm"));
          input.setIdList(PossibleValuesSpecUtils.extractIdList(requestBody));
          input.setLabelList(PossibleValuesSpecUtils.extractLabelList(requestBody));
+         PossibleValuesSpecUtils.applyPickerRequest(requestBody, input);
       }
 
       input.setPathParams(context.pathParamMap());

@@ -73,6 +73,11 @@ public class QPossibleValueSource implements TopLevelMetaDataInterface
    ///////////////////////
    private QCodeReference customCodeReference;
 
+   ////////////////////////////////////////////////////////////////////
+   // for type = TABLE: choose with a searchable, paged record picker //
+   ////////////////////////////////////////////////////////////////////
+   private QPossibleValuePicker picker;
+
 
 
    /*******************************************************************************
@@ -713,4 +718,33 @@ public class QPossibleValueSource implements TopLevelMetaDataInterface
    }
 
 
+
+   /*******************************************************************************
+    ** Getter for picker
+    *******************************************************************************/
+   public QPossibleValuePicker getPicker()
+   {
+      return (this.picker);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for picker
+    *******************************************************************************/
+   public void setPicker(QPossibleValuePicker picker)
+   {
+      this.picker = picker;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for picker
+    *******************************************************************************/
+   public QPossibleValueSource withPicker(QPossibleValuePicker picker)
+   {
+      this.picker = picker;
+      return (this);
+   }
 }

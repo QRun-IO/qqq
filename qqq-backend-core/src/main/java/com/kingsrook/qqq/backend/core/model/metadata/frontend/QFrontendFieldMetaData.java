@@ -28,7 +28,9 @@ import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
@@ -36,6 +38,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
@@ -67,6 +70,14 @@ public class QFrontendFieldMetaData implements Serializable
    private QPossibleValueSource inlinePossibleValueSource;
    private QQueryFilter         possibleValueSourceFilter;
 
+   //////////////////////////////////////////////////////////////////////
+   // set when the field's possible value source declares a picker: the //
+   // picker config plus the source table, whose metadata the UI reads   //
+   // for filter controls and labels.                                    //
+   //////////////////////////////////////////////////////////////////////
+   private QPossibleValuePicker picker;
+   private String               pickerTableName;
+
    private List<FieldBehaviorForFrontend>          behaviors;
    private Map<String, QSupplementalFieldMetaData> supplementalFieldMetaData;
 
@@ -97,6 +108,17 @@ public class QFrontendFieldMetaData implements Serializable
       this.inlinePossibleValueSource = fieldMetaData.getInlinePossibleValueSource();
       this.maxLength = fieldMetaData.getMaxLength();
       this.possibleValueSourceFilter = fieldMetaData.getPossibleValueSourceFilter();
+
+      QInstance qInstance = QContext.getQInstance();
+      if(qInstance != null && fieldMetaData.getPossibleValueSourceName() != null)
+      {
+         QPossibleValueSource possibleValueSource = qInstance.getPossibleValueSource(fieldMetaData.getPossibleValueSourceName());
+         if(possibleValueSource != null && possibleValueSource.getPicker() != null)
+         {
+            this.picker = possibleValueSource.getPicker();
+            this.pickerTableName = possibleValueSource.getTableName();
+         }
+      }
 
       for(FieldBehavior<?> behavior : CollectionUtils.nonNullCollection(fieldMetaData.getBehaviors()))
       {
@@ -330,5 +352,25 @@ public class QFrontendFieldMetaData implements Serializable
    public QQueryFilter getPossibleValueSourceFilter()
    {
       return possibleValueSourceFilter;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for picker
+    *******************************************************************************/
+   public QPossibleValuePicker getPicker()
+   {
+      return (this.picker);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pickerTableName
+    *******************************************************************************/
+   public String getPickerTableName()
+   {
+      return (this.pickerTableName);
    }
 }

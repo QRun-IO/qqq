@@ -36,6 +36,19 @@ The owner decided all fifteen questions on 2026-10-12, and added a direction for
 | D16 | **kof22 cutover is a planned outage (owner direction, 2026-10-12).** "This is my personal blog site for now. We can be down and we don't need migrations; just make it all work, don't lose any data, and make proper changes to the frontend (no hacks or bandaids)." | §3.6 becomes a simple outage: stop, backup plus a restore-tested dump, a one-shot kof22 rename script, deploy the new backend and frontend together, reindex, verify (row counts, checksums, before/after crawl, golden Site API diff), and roll back by restoring the backup. Removed: compatibility views, the watch and redirect periods, reversible-migration and round-trip tooling, and the qbit's adoption and rename tooling. Frontend changes are in §4.4. Phase 4 shrinks from 3 to 1.5 weeks. |
 | D17 | **S3 storage comes from the object-storage qbit ([#1089](https://github.com/QRun-IO/qqq/pull/1089) D10).** The CMS keeps its narrow `CmsStorage` SPI (R7). Its S3 implementation is `ObjectStorageCmsStorage`, shipped by `qbit-object-storage` on that qbit's `ObjectStorage` service. The CMS ships no S3 client of its own. `FilesystemCmsStorage` stays for installs without S3. The CMS registers `FieldReferenceProvider`s for its media and photo tables, so storage can show orphans and missing objects and block deletes of referenced objects. | §1.4 R7, §2.4, §5, §7.1. Object Cache-Control comes from storage's header policy and its Apply header policy action, not from CMS code. |
 
+**Owner decisions (2026-10-12): all recommendations accepted.** The build started on 2026-10-12 in `QRun-IO/qbit-cms`.
+
+### Build alignment (2026-10-12)
+
+Work that landed in Website-Backend while this spec was in review changes how some items are built. The decisions above stand; only the mechanics move.
+
+| Change | Effect on this spec |
+|---|---|
+| **Site API v2** (Website-Backend #123, `docs/design/site-api-v2.md`): the API is generated from the admin model (every CMS table, field, association and table action, under derived names), and v1 and `/public-api` are removed. | `qbit-cms-site-api` (D6) is the generalized v2 generator, not a port of the curated v1. The frozen-v1 contract, R4's v1 constants and R14's v1 name pinning are superseded by v2's derived-name rule and its parity test. D13 is moot (removed in v2). Phase 3 extracts the v2 generator after #123 merges. |
+| **The `cms_` rename runs as Liquibase changeset 0024** (Website-Backend #127), not as a one-shot ops script. Analytics tables become `cms_analytics_*`. | §3.6.1's object list is implemented by 0024. The `createdate`/`modifydate` columns were not renamed; the qbit baseline uses `create_date`/`modify_date`, so kof22 renames those two columns in its cutover changeset before `changelog-sync`. |
+| **View on site** (#121) adds data-driven page URL patterns. **Media types** (#120) and **analytics visitors** (#131) add CMS features. | R6 (`CmsUrlScheme`) builds on #121's patterns instead of a parallel scheme. #120 and #131 are part of the extracted CMS. |
+| **Core permission enforcement** (#107) ships inside #123. | R10 is done by #123. |
+
 ### Naming (owner rule, 2026-10-12)
 
 The owner's rule for every qbit: "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". This spec already follows it: every CMS table is `cms_` + lowercase snake_case (for example `cms_blog_post`), and the QQQ table name equals the backend (SQL) name. Possible-value sources named after a table carry the same name (`cms_redirect_type`). Table names in §1.2 are kof22's names today, before the D3 rename. Java class names stay CamelCase. Clarified in this pass: the possible-value names in §2.2 now show the `cms_` prefix.

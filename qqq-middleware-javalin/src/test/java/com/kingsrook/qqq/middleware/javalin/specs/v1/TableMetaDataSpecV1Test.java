@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
@@ -317,9 +318,10 @@ class TableMetaDataSpecV1Test extends SpecTestBase
          assertEquals(12, field.getInt("gridColumns"));
 
          /////////////////////////////////////////////////////////////////////////////
-         // only behaviors a frontend applies are listed (not the backend-only ones) //
+         // only behaviors a frontend uses are listed (not the backend-only ones); the //
+         // too-long behavior is one, so a form can cap typing or note trimming        //
          /////////////////////////////////////////////////////////////////////////////
-         assertThat(field.getJSONArray("behaviors").toList()).containsExactlyInAnyOrder("TO_UPPER_CASE", "TRIM");
+         assertThat(field.getJSONArray("behaviors").toList()).containsExactlyInAnyOrder("TO_UPPER_CASE", "TRIM", "TRUNCATE");
 
          assertFalse(fields.getJSONObject("lastName").has("gridColumns"));
          assertFalse(fields.getJSONObject("lastName").has("behaviors"));
@@ -327,6 +329,34 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          firstName.setGridColumns(originalGridColumns);
+         firstName.setBehaviors(originalBehaviors);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** a number field's range is published (as plain digits) only when its value
+    ** range behavior rejects values outside it, so a form can say so up front.
+    *******************************************************************************/
+   @Test
+   void testFieldValueRange()
+   {
+      QFieldMetaData firstName = serverQInstance.getTable("person").getField("firstName");
+      Set<FieldBehavior<?>> originalBehaviors = firstName.getBehaviors();
+      try
+      {
+         firstName.setBehaviors(new LinkedHashSet<>(List.of(new ValueRangeBehavior().withMinValue(1).withMaxValue(120).withMaxBehavior(ValueRangeBehavior.Behavior.CLIP))));
+
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         assertEquals("1", fields.getJSONObject("firstName").getString("minValue"));
+         assertFalse(fields.getJSONObject("firstName").has("maxValue"));
+         assertFalse(fields.getJSONObject("lastName").has("minValue"));
+      }
+      finally
+      {
          firstName.setBehaviors(originalBehaviors);
       }
    }

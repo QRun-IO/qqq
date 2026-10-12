@@ -21,17 +21,21 @@
 package com.kingsrook.qqq.backend.core.model.audits;
 
 
+import java.util.List;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 
 /*******************************************************************************
@@ -137,6 +141,63 @@ class AuditsMetaDataProviderTest extends BaseTest
       // verify process is added             //
       /////////////////////////////////////////
       assertNotNull(qInstance.getProcess("GetAuditsForRecord"));
+   }
+
+
+   /*******************************************************************************
+    ** The audit record screens: named sections, the field changes listed on an
+    ** audit record through a child-record widget, labeled detail records.
+    *******************************************************************************/
+   @Test
+   void testDefineAllDefinesRecordScreens() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      new AuditsMetaDataProvider().withDefineRecordScreens(true).defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      QTableMetaData audit = qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT);
+      assertEquals(List.of("audit", AuditsMetaDataProvider.FIELD_CHANGES_SECTION_NAME), audit.getSections().stream().map(QFieldSection::getName).toList());
+      String widgetName = audit.getSection(AuditsMetaDataProvider.FIELD_CHANGES_SECTION_NAME).getWidgetName();
+      assertEquals(WidgetType.CHILD_RECORD_LIST.getType(), qInstance.getWidget(widgetName).getType());
+      assertEquals("Table", audit.getField("auditTableId").getLabel());
+
+      QTableMetaData detail = qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT_DETAIL);
+      assertEquals(List.of("fieldName"), detail.getRecordLabelFields());
+      assertEquals(List.of("change"), detail.getSections().stream().map(QFieldSection::getName).toList());
+
+      for(String tableName : List.of(AuditsMetaDataProvider.TABLE_NAME_AUDIT_TABLE, AuditsMetaDataProvider.TABLE_NAME_AUDIT_USER))
+      {
+         assertNotNull(qInstance.getTable(tableName).getSections(), tableName);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** An application's own sections are kept.
+    *******************************************************************************/
+   @Test
+   void testDefineStandardAuditScreensKeepsExistingSections() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      AuditsMetaDataProvider provider = new AuditsMetaDataProvider().withDefineRecordScreens(true);
+      provider.defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+      int sections = qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT).getSections().size();
+
+      provider.defineStandardAuditScreens(qInstance);
+      assertEquals(sections, qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT).getSections().size());
+   }
+
+
+   /*******************************************************************************
+    ** Without the opt-in, defineAll leaves the audit tables unsectioned (so an
+    ** application may still add fields to them).
+    *******************************************************************************/
+   @Test
+   void testRecordScreensAreOptIn() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      new AuditsMetaDataProvider().defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+      assertNull(qInstance.getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT).getSections());
    }
 
 }

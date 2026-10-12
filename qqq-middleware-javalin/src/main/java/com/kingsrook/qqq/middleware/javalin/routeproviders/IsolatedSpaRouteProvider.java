@@ -648,7 +648,7 @@ public class IsolatedSpaRouteProvider implements QJavalinRouteProviderInterface
       //////////////////////////////////////////////
       // Set up QContext for authentication check //
       //////////////////////////////////////////////
-      QContext.init(qInstance, new QSystemUserSession());
+      QContext.init(qInstance, new QSystemUserSession(qInstance));
 
       try
       {

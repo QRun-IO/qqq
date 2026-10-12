@@ -227,6 +227,40 @@ public class FieldMetaData implements ToSchema
 
 
    /***************************************************************************
+    ** The smallest value a field accepts, when its value range rejects smaller
+    ** ones, so a form can say so before the user saves.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the smallest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMinValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMinValue() : this.wrappedFrontend.getMinValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** The largest value a field accepts, when its value range rejects larger
+    ** ones.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the largest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMaxValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMaxValue() : this.wrappedFrontend.getMaxValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** a bound as plain digits (a string, so a long or decimal keeps its exact value).
+    ***************************************************************************/
+   private static String rangeBound(Number bound)
+   {
+      return (bound == null ? null : new java.math.BigDecimal(bound.toString()).toPlainString());
+   }
+
+
+
+   /***************************************************************************
     ** Width of the field in a 12-column grid, as the Material dashboard lays out
     ** record forms and views (QRun-IO/qqq#723).
     ***************************************************************************/

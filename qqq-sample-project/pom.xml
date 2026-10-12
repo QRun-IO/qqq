@@ -149,6 +149,14 @@
          <scope>test</scope>
       </dependency>
       <dependency>
+         <!-- SampleS3AcceptanceIT's independent "oracle" client.  It stays on AWS SDK v1 on purpose,  -->
+         <!-- so it shares no code with the (v2) S3 backend under test.  Test scope only.              -->
+         <groupId>com.amazonaws</groupId>
+         <artifactId>aws-java-sdk-s3</artifactId>
+         <version>1.12.797</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
          <groupId>org.testcontainers</groupId>
          <artifactId>testcontainers-mysql</artifactId>
          <version>2.0.3</version>

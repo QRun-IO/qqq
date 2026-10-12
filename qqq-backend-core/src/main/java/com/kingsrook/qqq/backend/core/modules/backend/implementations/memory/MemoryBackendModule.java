@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.backend.core.modules.backend.implementations.memory;
 
 
+import java.util.Optional;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
@@ -28,6 +30,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 
@@ -122,6 +125,18 @@ public class MemoryBackendModule implements QBackendModuleInterface
    public DeleteInterface getDeleteInterface()
    {
       return (new MemoryDeleteAction());
+   }
+
+
+
+   /*******************************************************************************
+    ** Copy-on-read: snapshot all the data in the (process-wide) memory store, at
+    ** one instant, for the transaction's reads to come from.
+    *******************************************************************************/
+   @Override
+   public Optional<QBackendTransaction> openConsistentReadTransaction(ConsistentReadInput input)
+   {
+      return (Optional.of(new MemoryConsistentReadTransaction()));
    }
 
 

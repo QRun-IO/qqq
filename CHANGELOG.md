@@ -27,6 +27,15 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
 ### Added
+- **Consistent read transactions** — `QBackendModuleInterface.openConsistentReadTransaction(ConsistentReadInput)`
+  (default: unsupported) returns a read-only transaction through which every table read reflects one instant, for
+  exports, backups and migrations. `QBackendTransaction.openConsistentReadFor(input)` is the convenience entry;
+  `getConsistencyGuarantee()` says what you actually got (`ONE_INSTANT`, `PER_TABLE`, `BEST_EFFORT`) and
+  `getExportedSnapshotId()` is the id other connections can attach to via `ConsistentReadInput.withImportSnapshotId`.
+  PostgreSQL uses `REPEATABLE READ, READ ONLY` plus `pg_export_snapshot()` / `SET TRANSACTION SNAPSHOT`; MySQL/MariaDB
+  `START TRANSACTION WITH CONSISTENT SNAPSHOT` (non-InnoDB tables report `BEST_EFFORT`); SQLite and H2 snapshot reads;
+  MongoDB a snapshot-read-concern session (replica set, best effort, falls back to `PER_TABLE`); the memory backend a
+  copy-on-read snapshot. Opt-in; nothing existing changes.
 - **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
   validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
 - **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless

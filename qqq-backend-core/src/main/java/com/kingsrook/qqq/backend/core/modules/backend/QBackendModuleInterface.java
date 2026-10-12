@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.modules.backend;
 
 
+import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
@@ -33,6 +34,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
@@ -161,6 +163,24 @@ public interface QBackendModuleInterface
    {
       return (new QBackendTransaction());
    }
+
+   /*******************************************************************************
+    ** Open a read-only transaction through which every table read (passed as the
+    ** transaction on the read's input) reflects one instant - see ConsistencyScope
+    ** and ConsistencyGuarantee (QBackendTransaction.getConsistencyGuarantee).
+    ** Where the backend can share the snapshot, the transaction's
+    ** getExportedSnapshotId is set, and other transactions may attach to it via
+    ** ConsistentReadInput.importSnapshotId (while this one stays open).
+    **
+    ** The default - for backends with no such support - is Optional.empty().
+    ** The caller owns the returned transaction, and must close it.
+    *******************************************************************************/
+   default Optional<QBackendTransaction> openConsistentReadTransaction(ConsistentReadInput input) throws QException
+   {
+      return (Optional.empty());
+   }
+
+
 
    /*******************************************************************************
     **

@@ -39,6 +39,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DateTimeGroupBy;
@@ -107,6 +109,18 @@ public class MemoryRecordStore
    private Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> data;
    private Map<BackendIdentifier, Map<String, Integer>>                    nextSerials;
 
+   ///////////////////////////////////////////////////////////////////////////////////////////
+   // writes (insert/update/delete) share the read side of this lock; taking a snapshot     //
+   // (see takeSnapshot) takes the write side - so a snapshot never sees a write half-done, //
+   // or a write to one table but not another from the same instant                         //
+   ///////////////////////////////////////////////////////////////////////////////////////////
+   private final ReentrantReadWriteLock snapshotLock = new ReentrantReadWriteLock();
+
+   //////////////////////////////////////////////////////////////////////////
+   // when set (see callWithSnapshot), reads on this thread come from here //
+   //////////////////////////////////////////////////////////////////////////
+   private static final ThreadLocal<Snapshot> readSnapshot = new ThreadLocal<>();
+
    private static boolean collectStatistics = false;
 
    public static final String STAT_QUERIES_RAN = "queriesRan";
@@ -135,6 +149,97 @@ public class MemoryRecordStore
    {
       data = Collections.synchronizedMap(new HashMap<>());
       nextSerials = Collections.synchronizedMap(new HashMap<>());
+   }
+
+
+
+   /*******************************************************************************
+    ** Opaque point-in-time copy of all the data in the store, as taken by
+    ** takeSnapshot - for use with callWithSnapshot.
+    *******************************************************************************/
+   public static final class Snapshot
+   {
+      private final Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> data;
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      private Snapshot(Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> data)
+      {
+         this.data = data;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Copy all the data in the store, as of one instant (no insert/update/delete
+    ** is half-applied, or applied to only some tables, in the copy).
+    *******************************************************************************/
+   public Snapshot takeSnapshot()
+   {
+      snapshotLock.writeLock().lock();
+      try
+      {
+         Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> copy = new HashMap<>();
+         synchronized(data)
+         {
+            for(Map.Entry<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> backendEntry : data.entrySet())
+            {
+               Map<String, Map<Serializable, QRecord>> tablesCopy = new HashMap<>();
+               copy.put(backendEntry.getKey(), tablesCopy);
+               synchronized(backendEntry.getValue())
+               {
+                  for(Map.Entry<String, Map<Serializable, QRecord>> tableEntry : backendEntry.getValue().entrySet())
+                  {
+                     Map<Serializable, QRecord> recordsCopy = new HashMap<>();
+                     tablesCopy.put(tableEntry.getKey(), recordsCopy);
+                     synchronized(tableEntry.getValue())
+                     {
+                        for(Map.Entry<Serializable, QRecord> recordEntry : tableEntry.getValue().entrySet())
+                        {
+                           recordsCopy.put(recordEntry.getKey(), new QRecord(recordEntry.getValue()));
+                        }
+                     }
+                  }
+               }
+            }
+         }
+         return (new Snapshot(copy));
+      }
+      finally
+      {
+         snapshotLock.writeLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Run a (read) action such that, on this thread, all reads (of any table) are
+    ** from the snapshot rather than the live data.
+    *******************************************************************************/
+   public static <T> T callWithSnapshot(Snapshot snapshot, Callable<T> callable) throws Exception
+   {
+      Snapshot previous = readSnapshot.get();
+      readSnapshot.set(snapshot);
+      try
+      {
+         return (callable.call());
+      }
+      finally
+      {
+         if(previous == null)
+         {
+            readSnapshot.remove();
+         }
+         else
+         {
+            readSnapshot.set(previous);
+         }
+      }
    }
 
 
@@ -181,7 +286,14 @@ public class MemoryRecordStore
     *******************************************************************************/
    private Map<Serializable, QRecord> getTableData(QTableMetaData table) throws QException
    {
-      BackendIdentifier                       backendIdentifier = getBackendIdentifier(table);
+      BackendIdentifier backendIdentifier = getBackendIdentifier(table);
+
+      Snapshot snapshot = readSnapshot.get();
+      if(snapshot != null)
+      {
+         return (snapshot.data.getOrDefault(backendIdentifier, Map.of()).getOrDefault(table.getName(), Map.of()));
+      }
+
       Map<String, Map<Serializable, QRecord>> dataForBackend = data.computeIfAbsent(backendIdentifier, k -> Collections.synchronizedMap(new HashMap<>()));
       return (dataForBackend.computeIfAbsent(table.getName(), k -> Collections.synchronizedMap(new HashMap<>())));
    }
@@ -620,6 +732,24 @@ public class MemoryRecordStore
     *******************************************************************************/
    public List<QRecord> insert(InsertInput input, boolean returnInsertedRecords) throws QException
    {
+      snapshotLock.readLock().lock();
+      try
+      {
+         return (doInsert(input, returnInsertedRecords));
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private List<QRecord> doInsert(InsertInput input, boolean returnInsertedRecords) throws QException
+   {
       incrementStatistic(input);
 
       if(input.getRecords() == null)
@@ -801,6 +931,24 @@ public class MemoryRecordStore
     *******************************************************************************/
    public List<QRecord> update(UpdateInput input, boolean returnUpdatedRecords) throws QException
    {
+      snapshotLock.readLock().lock();
+      try
+      {
+         return (doUpdate(input, returnUpdatedRecords));
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private List<QRecord> doUpdate(UpdateInput input, boolean returnUpdatedRecords) throws QException
+   {
       if(input.getRecords() == null)
       {
          return (new ArrayList<>());
@@ -866,6 +1014,24 @@ public class MemoryRecordStore
     **
     *******************************************************************************/
    public int delete(DeleteInput input) throws QException
+   {
+      snapshotLock.readLock().lock();
+      try
+      {
+         return (doDelete(input));
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private int doDelete(DeleteInput input) throws QException
    {
       if(input.getPrimaryKeys() == null)
       {

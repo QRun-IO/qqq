@@ -27,13 +27,6 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
 ### Added
-- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
-  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
-- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
-  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
-  not send their values to a model.
-
-### Added
 - **Public-internet APIs (`qqq-middleware-api`)** — `ApiInstanceMetaData.httpPolicy` (`ApiHttpPolicy`): anonymous
   `GET`/`HEAD` 200s get shared-cache headers (`Cache-Control` with `s-maxage`, `stale-while-revalidate`,
   `stale-if-error`; RFC 9213 `CDN-Cache-Control`), a weak `ETag` and `304` on `If-None-Match`; everything else is
@@ -46,6 +39,11 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   `QAuthenticationModuleInterface.createSession(instance, metaData, context)` receives the resolved provider.
 - **API processes** — `HttpApiResponse.headers`; request metadata (`ApiProcessUtils.REQUEST_REMOTE_ADDRESS`,
   `REQUEST_FORWARDED_FOR`, `REQUEST_USER_AGENT`) in every API process run's values.
+- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
+  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
+- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
+  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
+  not send their values to a model.
 
 ### Fixed
 - OpenAPI: insert/update operation flags were swapped; field-security-locked fields were dropped from the published

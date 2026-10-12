@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemRunPro
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubList;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemSubMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
@@ -523,6 +524,34 @@ class TableMetaDataSpecV1Test extends SpecTestBase
       finally
       {
          TestUtils.TablePersonalizer.unregister(serverQInstance);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A field whose possible value source declares a picker carries the picker
+    ** and its table in table meta data; other fields carry neither.
+    *******************************************************************************/
+   @Test
+   void testFieldPicker()
+   {
+      QPossibleValueSource source = serverQInstance.getPossibleValueSource(TestUtils.TABLE_NAME_PERSON);
+      source.setPicker(new QPossibleValuePicker().withThumbnailField("email").withSort("Newest", "id", false));
+      try
+      {
+         HttpResponse<String> response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+         assertEquals(200, response.getStatus());
+         JSONObject fields  = JsonUtils.toJSONObject(response.getBody()).getJSONObject("fields");
+         JSONObject partner = fields.getJSONObject("partnerPersonId");
+         assertEquals("email", partner.getJSONObject("picker").getString("thumbnailField"));
+         assertEquals("Newest", partner.getJSONObject("picker").getJSONArray("sorts").getJSONObject(0).getString("label"));
+         assertEquals("person", partner.getString("pickerTableName"));
+         assertFalse(fields.getJSONObject("firstName").has("picker"));
+      }
+      finally
+      {
+         source.setPicker(null);
       }
    }
 }

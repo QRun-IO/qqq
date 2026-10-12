@@ -93,6 +93,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -2737,6 +2738,45 @@ public class QInstanceValidator
 
 
    /*******************************************************************************
+    ** A picker names only real fields of the source table, has a sane page
+    ** size, and every sort has a label and a field.
+    *******************************************************************************/
+   private void validatePossibleValuePicker(QInstance qInstance, String name, QPossibleValuePicker picker, QTableMetaData table)
+   {
+      if(picker == null || table == null)
+      {
+         return;
+      }
+
+      String       prefix = "possibleValueSource " + name + " picker";
+      List<String> fields = new ArrayList<>(picker.getDisplayFieldNames());
+      fields.addAll(CollectionUtils.nonNullList(picker.getFilterFields()));
+      fields.addAll(CollectionUtils.nonNullList(picker.getSearchFields()));
+      for(String fieldName : fields)
+      {
+         assertCondition(table.getFields().containsKey(fieldName), prefix + " has an unrecognized field: " + fieldName);
+      }
+
+      for(QPossibleValuePicker.Sort sort : CollectionUtils.nonNullList(picker.getSorts()))
+      {
+         if(assertCondition(StringUtils.hasContent(sort.getFieldName()) && StringUtils.hasContent(sort.getLabel()), prefix + " has a sort without a label and a fieldName."))
+         {
+            assertCondition(table.getFields().containsKey(sort.getFieldName()), prefix + " has an unrecognized sort field: " + sort.getFieldName());
+         }
+      }
+
+      assertCondition(picker.getPageSize() == null || (picker.getPageSize() > 0 && picker.getPageSize() <= 200), prefix + " pageSize must be between 1 and 200.");
+
+      if(StringUtils.hasContent(picker.getUploadProcessName()))
+      {
+         assertCondition(qInstance.getProcess(picker.getUploadProcessName()) != null, prefix + " has an unrecognized uploadProcessName: " + picker.getUploadProcessName());
+         assertCondition(StringUtils.hasContent(picker.getUploadResultIdField()), prefix + " has an uploadProcessName but no uploadResultIdField.");
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private void validatePossibleValueSources(QInstance qInstance)
@@ -2828,6 +2868,8 @@ public class QInstanceValidator
                      }
                   }
                }
+
+               validatePossibleValuePicker(qInstance, name, possibleValueSource.getPicker(), tableMetaData);
             }
             case CUSTOM ->
             {

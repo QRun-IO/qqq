@@ -21,7 +21,9 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 
 
@@ -36,4 +38,23 @@ public interface PossibleValuesOutputInterface extends AbstractMiddlewareOutputI
     ***************************************************************************/
    void setOptions(List<QPossibleValue<?>> options);
 
+
+
+   /***************************************************************************
+    ** For a picker request: each option's picker display values (raw and
+    ** formatted), keyed by option id.  Outputs that do not carry them may
+    ** ignore this.
+    ***************************************************************************/
+   default void setPickerValues(Map<Serializable, Map<String, Serializable>> values, Map<Serializable, Map<String, String>> displayValues)
+   {
+   }
+
+
+
+   /***************************************************************************
+    ** For a picker request: whether another page follows.
+    ***************************************************************************/
+   default void setHasMore(Boolean hasMore)
+   {
+   }
 }

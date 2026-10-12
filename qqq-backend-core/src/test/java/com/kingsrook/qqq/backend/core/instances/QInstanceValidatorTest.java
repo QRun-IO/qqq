@@ -92,6 +92,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenuSlot;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.defaults.QMenuDefaultViewScreenActionsMenu;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.items.QMenuItemRunProcess;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -1586,6 +1587,30 @@ public class QInstanceValidatorTest extends BaseTest
 
       assertValidationFailureReasons((qInstance) -> qInstance.getPossibleValueSource(TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE).setSearchFields(List.of("id", "notAField", "name")),
          "unrecognized searchField: notAField");
+   }
+
+
+
+   /*******************************************************************************
+    ** A record picker names only fields of the source table, labels its sorts,
+    ** and keeps a sane page size.
+    *******************************************************************************/
+   @Test
+   void testPossibleValueSourcePicker()
+   {
+      assertValidationSuccess((qInstance) -> qInstance.getPossibleValueSource(TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE).setPicker(new QPossibleValuePicker()
+         .withThumbnailField("type").withSubtitleFields(List.of("noOfSides")).withFilterFields(List.of("isPolygon")).withSort("Newest", "id", false)
+         .withUploadProcessName(TestUtils.PROCESS_NAME_GREET_PEOPLE).withUploadResultIdField("id")));
+
+      assertValidationFailureReasons((qInstance) -> qInstance.getPossibleValueSource(TestUtils.POSSIBLE_VALUE_SOURCE_SHAPE).setPicker(new QPossibleValuePicker()
+            .withThumbnailField("noThumb").withFilterFields(List.of("noFilter")).withSort("Bad", "noSort", true).withSort(null, "id", true).withPageSize(500).withUploadProcessName("noSuchProcess")),
+         "unrecognized field: noThumb",
+         "unrecognized field: noFilter",
+         "unrecognized sort field: noSort",
+         "sort without a label",
+         "pageSize must be between 1 and 200",
+         "unrecognized uploadProcessName: noSuchProcess",
+         "has an uploadProcessName but no uploadResultIdField");
    }
 
 

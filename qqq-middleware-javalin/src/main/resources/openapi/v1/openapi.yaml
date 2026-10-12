@@ -782,6 +782,14 @@ components:
             \ (an explicit allow-list - not the supplemental meta-data objects themselves).\
             \  Omitted when the instance defines none of them."
           properties:
+            assistant:
+              additionalProperties: true
+              description: "Present (an object) when the instance has the assistant\
+                \ QBit's `assistant` supplemental meta-data - that is, when the assistant\
+                \ is installed and enabled, so a frontend may probe its routes.  Always\
+                \ has `available: true`, plus the strings, numbers and booleans the\
+                \ QBit publishes for frontends."
+              type: "object"
             materialDashboard:
               description: "Settings from the instance's `materialDashboard` supplemental\
                 \ meta-data, when the instance defines it."
@@ -1808,6 +1816,14 @@ components:
       type: "object"
     SupplementalInstanceMetaData:
       properties:
+        assistant:
+          additionalProperties: true
+          description: "Present (an object) when the instance has the assistant QBit's\
+            \ `assistant` supplemental meta-data - that is, when the assistant is\
+            \ installed and enabled, so a frontend may probe its routes.  Always has\
+            \ `available: true`, plus the strings, numbers and booleans the QBit publishes\
+            \ for frontends."
+          type: "object"
         materialDashboard:
           $ref: "#/components/schemas/MaterialDashboardInstanceSettings"
           description: "Settings from the instance's `materialDashboard` supplemental\

@@ -56,7 +56,13 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** - materialDashboard: the processes to add to every query and view screen;
  ** - materialDashboardTheme: the application theme (MaterialDashboardThemeMetaData),
  **   limited to the visual properties named in THEME_PROPERTY_NAMES
- **   (QRun-IO/qqq#719).
+ **   (QRun-IO/qqq#719);
+ ** - assistant: present (as an object) when the instance has supplemental
+ **   meta-data named "assistant" (registered by the qbit-assistant QBit when it
+ **   is enabled), so a frontend only probes the assistant's routes when they
+ **   exist.  Its content is available=true plus the string, number and
+ **   boolean values of the object's optional getFrontendSettings() map, and
+ **   nothing else.
  ***************************************************************************/
 public class SupplementalInstanceMetaData implements ToSchema
 {
@@ -77,6 +83,12 @@ public class SupplementalInstanceMetaData implements ToSchema
 
    @OpenAPIExclude()
    private static final String ACTIONS_PLACEMENT_GETTER = "getRecordViewActionsPlacement";
+
+   @OpenAPIExclude()
+   public static final String ASSISTANT_NAME = "assistant";
+
+   @OpenAPIExclude()
+   private static final String ASSISTANT_SETTINGS_GETTER = "getFrontendSettings";
    ///////////////////////////////////////////////////////////////////////////////
    // the theme properties a frontend may read: every visual property of the    //
    // material dashboard's theme meta-data, and nothing else.  An allow-list: a  //
@@ -91,6 +103,10 @@ public class SupplementalInstanceMetaData implements ToSchema
    @OpenAPIDescription("The application theme from the instance's MaterialDashboardThemeMetaData supplemental meta-data, when the instance defines it.  Keys are MaterialDashboardThemeMetaData property names (for example primaryColor, fontFamily, typographyH1FontSize, borderRadiusGlobal, density, customCss, brandedHeaderEnabled, sidebarBackgroundColor, tableHeaderBackgroundColor); values are strings, numbers or booleans.  An explicit allow-list of the theme's visual properties; properties without a value are omitted.")
    @OpenAPIHasAdditionalProperties()
    private Map<String, Object> materialDashboardTheme;
+
+   @OpenAPIDescription("Present (an object) when the instance has the assistant QBit's `assistant` supplemental meta-data - that is, when the assistant is installed and enabled, so a frontend may probe its routes.  Always has `available: true`, plus the strings, numbers and booleans the QBit publishes for frontends.")
+   @OpenAPIHasAdditionalProperties()
+   private Map<String, Object> assistant;
 
 
 
@@ -141,7 +157,8 @@ public class SupplementalInstanceMetaData implements ToSchema
       Map<String, QSupplementalInstanceMetaData> supplementalMetaData = CollectionUtils.nonNullMap(metaDataOutput.getSupplementalInstanceMetaData());
       QSupplementalInstanceMetaData              materialDashboard    = supplementalMetaData.get(MATERIAL_DASHBOARD_NAME);
       QSupplementalInstanceMetaData              theme                = supplementalMetaData.get(MATERIAL_DASHBOARD_THEME_NAME);
-      if(materialDashboard == null && theme == null)
+      QSupplementalInstanceMetaData              assistant            = supplementalMetaData.get(ASSISTANT_NAME);
+      if(materialDashboard == null && theme == null && assistant == null)
       {
          return (null);
       }
@@ -155,7 +172,37 @@ public class SupplementalInstanceMetaData implements ToSchema
       {
          published.setMaterialDashboardTheme(buildThemeProperties(theme));
       }
+      if(assistant != null)
+      {
+         published.setAssistant(buildAssistantSettings(assistant));
+      }
       return (published);
+   }
+
+
+
+   /*******************************************************************************
+    ** The assistant's frontend settings: available=true (its presence is what a
+    ** frontend needs - and an empty object would be omitted from the response),
+    ** plus the string, number and boolean values (with string keys) of its
+    ** optional getFrontendSettings() map.
+    *******************************************************************************/
+   static Map<String, Object> buildAssistantSettings(QSupplementalInstanceMetaData assistant)
+   {
+      Map<String, Object> settings = new LinkedHashMap<>();
+      settings.put("available", true);
+      if(invokeGetter(assistant, ASSISTANT_SETTINGS_GETTER) instanceof Map<?, ?> map)
+      {
+         for(Map.Entry<?, ?> entry : map.entrySet())
+         {
+            Object value = entry.getValue();
+            if(entry.getKey() instanceof String key && (value instanceof String || value instanceof Number || value instanceof Boolean))
+            {
+               settings.put(key, value);
+            }
+         }
+      }
+      return (settings);
    }
 
 
@@ -414,4 +461,34 @@ public class SupplementalInstanceMetaData implements ToSchema
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for assistant
+    *******************************************************************************/
+   public Map<String, Object> getAssistant()
+   {
+      return (this.assistant);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for assistant
+    *******************************************************************************/
+   public void setAssistant(Map<String, Object> assistant)
+   {
+      this.assistant = assistant;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for assistant
+    *******************************************************************************/
+   public SupplementalInstanceMetaData withAssistant(Map<String, Object> assistant)
+   {
+      this.assistant = assistant;
+      return (this);
+   }
 }

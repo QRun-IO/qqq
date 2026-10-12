@@ -43,9 +43,9 @@ These decisions override anything below that contradicts them. The sections they
    - on CloudFront, invalidation **paths** and **wildcards**, planned against a monthly invalidation budget
    - on Fastly, Bunny and Souin, tag purges.
 
-   Requests are merged, rate-limited, retried, and recorded in a visible `cdnPurgeRequest` table.
+   Requests are merged, rate-limited, retried, and recorded in a visible `cdn_purge_request` table.
 3. **Builds URLs.** Media URLs stay the same, because the CDN fronts `s3.kof22.com` itself, so no stored URL changes. It also builds image URLs for `FILE_PREVIEW` and the Next.js loader. Signed URLs are part of the SPI but are not used in v1.
-4. **Reports real data.** It imports edge statistics from CloudWatch (requests, bytes, error rates and, when available, cache hit rate) into `cdnEdgeStatDaily`. They feed the **Admin → CDN** app: a home dashboard (connection, performance, purge activity, invalidation budget, origin header coverage and config drift) plus sections for connection, settings, activity and performance. It shows only imported or recorded data. Admin → Health shows a status card that links to it.
+4. **Reports real data.** It imports edge statistics from CloudWatch (requests, bytes, error rates and, when available, cache hit rate) into `cdn_edge_stat_daily`. They feed the **Admin → CDN** app: a home dashboard (connection, performance, purge activity, invalidation budget, origin header coverage and config drift) plus sections for connection, settings, activity and performance. It shows only imported or recorded data. Admin → Health shows a status card that links to it.
 
 **What kof22 does today (§1.2):**
 - There is no CDN.
@@ -151,16 +151,16 @@ Sources are in §14. Prices are as of 2026-10-12. *verify* marks a claim that wa
 
 ```
                                ┌──────────────────────────── qbit-cdn (in each QQQ app) ─────────────────────────────┐
- CMS edit / publish ──commit──►│ ESB topic kof22.cms.tables ─► cdnEnqueuePurgeFromEvents (EsbTrigger, BATCH)         │
-                               │      └─► CdnTagResolver (cdnTableTagRule) ─► cdnPurgeRequest rows (PENDING, tags)     │
+ CMS edit / publish ──commit──►│ ESB topic kof22.cms.tables ─► cdnEnqueuePurgeFromEvents (EsbTrigger, BATCH)           │
+                               │      └─► CdnTagResolver (cdn_table_tag_rule) ─► cdn_purge_request (PENDING, tags)     │
                                │                                                                                       │
                                │ cdnDispatchPurges (scheduled every 5 s; flush window 30 s for CloudFront)             │
-                               │   coalesce ─► [cdnRevalidationHook: every Next pod revalidateTag] ─►                  │
+                               │   coalesce ─► [cdn_revalidation_hook: every Next pod revalidateTag] ─►                │
                                │   provider planner (CloudFront: tags→paths/wildcards within budget) ─► provider.purge │
                                │                                                                                       │
- HTTP responses ◄──────────────┤ CdnResponseHeaderPolicy (cdnCachePolicy): Cache-Control/s-maxage, ETag/304, tags*    │
+ HTTP responses ◄──────────────┤ CdnResponseHeaderPolicy (cdn_cache_policy): Cache-Control/s-maxage, ETag/304, tags*   │
  FILE_PREVIEW / Next loader ◄──┤ CdnUrlBuilder (media URL, rendition picker, signed URL later)                         │
- Admin → CDN app (home) ◄──────┤ cdnEdgeStatDaily ◄── cdnImportEdgeStats (CloudWatch, daily)                          │
+ Admin → CDN app (home) ◄──────┤ cdn_edge_stat_daily ◄── cdnImportEdgeStats (CloudWatch, daily)                        │
                                └───────────────────────────────────────────────────────────────────────────────────────┘
                                    adapters: CLOUDFRONT (first) · SOUIN/VARNISH (tests) · NONE · later CLOUDFLARE/FASTLY/BUNNY
                                                                   │ CreateInvalidation (IAM user cdn-qbit-kof22)
@@ -183,7 +183,7 @@ Sources are in §14. Prices are as of 2026-10-12. *verify* marks a claim that wa
 
 ### 3.2 Request classes and default policies
 
-These are seeded as `cdnCachePolicy` rows (§4.4) and pinned by the header matrix (§9.3). The CloudFront cache policy uses min TTL 0, default 0 and max 31536000. That means **the origin header always decides**, and a response without a caching header is not cached.
+These are seeded as `cdn_cache_policy` rows (§4.4) and pinned by the header matrix (§9.3). The CloudFront cache policy uses min TTL 0, default 0 and max 31536000. That means **the origin header always decides**, and a response without a caching header is not cached.
 
 | Class | Example | `Cache-Control` from origin | Invalidation | Notes |
 |---|---|---|---|---|
@@ -235,7 +235,7 @@ A tag has the form `<kind>:<id>[:<facet>]` and is at most 64 ASCII characters. E
 - **Providers with a tag header:** tags are emitted within the portable budget of ≤ 20 tags and ≤ 1,000 bytes. A list response collapses to its list tag.
 - **CloudFront:** no tag header is emitted. Tags exist only inside the qbit, as the unit of invalidation, and the planner turns them into paths.
 
-The same tag vocabulary is used by Next.js `cacheTag()` (§6.3). A tag therefore means the same thing in Next's cache, in the CDN, and in `cdnPurgeRequest`.
+The same tag vocabulary is used by Next.js `cacheTag()` (§6.3). A tag therefore means the same thing in Next's cache, in the CDN, and in `cdn_purge_request`.
 
 ### 4.3 Purge planning, and the CloudFront path planner
 
@@ -243,47 +243,49 @@ The same tag vocabulary is used by Next.js `cacheTag()` (§6.3). A tag therefore
 
 - **Providers with tag purge** (Fastly, Bunny, Cloudflare, Souin) send the tags as-is, in batches sized to the provider's `itemsPerRequest`.
 - **CloudFront** uses `CloudFrontPathPlanner`, which works in five steps:
-  1. **Expand.** Each tag maps to invalidation paths through `cdnTableTagRule.invalidationPaths`. The paths are rendered from the event's `record` **and** its `oldRecord`, so a slug change also clears the old URL.
+  1. **Expand.** Each tag maps to invalidation paths through `cdn_table_tag_rule.invalidationPaths`. The paths are rendered from the event's `record` **and** its `oldRecord`, so a slug change also clears the old URL.
      - Example: `post:123` becomes `www:/blog/{blog.slug}/{slug}*` and `api:/v1/blog-posts/{id}*`.
      - The trailing `*` covers the RSC `?_rsc=` variants and other query variants.
      - The `host:` prefix is dropped, because one distribution serves all hosts and paths are host-agnostic. The trade-off is that `/v1/blog-posts/123*` on `api` and an identical path on `www` are invalidated together, which is harmless.
   2. **Skip hubs.** Paths whose policy class is *hub* (§3.2) are dropped, because they expire on their own within 60–120 s. A manual "Purge from CDN" action can include them on purpose.
   3. **Collapse.** If more than `collapseThreshold` paths (default 5) share a parent, they are replaced by `parent/*`, which costs 1 path. Any path already covered by a wildcard in the same batch is removed.
-  4. **Budget.** The planner counts this month's billed paths as the sum of `cdnPurgeRequest.billablePaths` for SUCCEEDED requests in the current UTC month. CloudFront bills a wildcard as 1 path and an exact path as 1 path.
+  4. **Budget.** The planner counts this month's billed paths as the sum of `cdn_purge_request.billablePaths` for SUCCEEDED requests in the current UTC month. CloudFront bills a wildcard as 1 path and an exact path as 1 path.
      - **Below the soft limit** (default 800 of the free 1,000): send as planned.
      - **Between the soft and hard limits** (hard default 1,000): coarsen to one wildcard per top-level section, such as `/blog/*` or `/v1/*`.
      - **Above the hard limit:** either pay ($0.005 per path, up to `monthlyPaidPathCap`, default 1,000 paths or $5), or queue the request as `DEFERRED_BUDGET` and let the TTL expire it. Each provider chooses one, and the default is to pay.
 
      The CDN home always shows the month-to-date count against the budget.
   5. **Respect concurrency.** At most `maxInFlightWildcards` wildcards are in flight (default 10, under CloudFront's in-progress wildcard quota), and only one `CreateInvalidation` per distribution. The next one is sent after `GetInvalidation` reports `Completed`, or after 15 minutes.
-     - Each `CreateInvalidation` uses the `cdnPurgeRequest` id as its `CallerReference`, so an at-least-once retry never creates two invalidations.
+     - Each `CreateInvalidation` uses the `cdn_purge_request` id as its `CallerReference`, so an at-least-once retry never creates two invalidations.
 - **Never automatic:** `/*` (purge everything). It is only reachable through the guarded "Purge hostname" action, which requires `cdn.purgeAll`. With a single distribution, on CloudFront that means the whole distribution, and the confirmation screen says so.
 
 A typical kof22 publish costs **2 billable paths**: the post page wildcard and the API record wildcard. The free 1,000 paths cover about **500 publishes a month**, far more than kof22 needs.
 
 ### 4.4 QQQ tables
 
-These are normal, visible QQQ tables. Each has the `cdn` prefix, audit enabled, and `id`/`createDate`/`modifyDate`.
+These are normal, visible QQQ tables. Each has the `cdn_` prefix (lowercase snake_case, table name = backend name, see Naming below), audit enabled, and `id`/`createDate`/`modifyDate`.
+
+**Naming (owner rule, 2026-10-12).** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table is lowercase snake_case with the `cdn_` prefix, and the QQQ table name equals its backend (SQL) name. Possible-value sources use the table name. Java classes stay CamelCase; field, process and permission names are unchanged.
 
 | Table | Purpose | Key fields |
 |---|---|---|
-| **`cdnProvider`** | One row per CDN or image engine | `name`, `providerType`, `role` (CDN / IMAGE_TRANSFORM), `enabled`, `accountRef` (for example AWS account `744245396565`), `zoneOrDistributionId`, `secretRef` (env var name only), `settings` (JSON: `softPathLimit`, `hardPathLimit`, `monthlyPaidPathCap`, `overBudgetMode` PAY/DEFER, `flushWindowSeconds`, `collapseThreshold`), `lastHealthStatus`, `lastHealthCheckDate`, `lastSuccessfulTestDate`, `credentialRotatedDate` (set when the key is rotated; the home compares it with the 90-day rotation), `capabilities` (read-only display), `dnsTarget` (what DNS points at, e.g. `dxxxx.cloudfront.net`, filled by Test connection), `originHost` (e.g. `origin.kof22.com:8443`), `maskedKeyId` (last 4 characters of the access key id only) |
-| **`cdnHostname`** | Hostnames and their rollout stage | `hostname`, `cdnProviderId`, `hostnameRole` (SITE / API / MEDIA / ASSETS), `stage` (OFF / HEADERS_ONLY / LIVE / LOCKED), `purgeEnabled`, `notes` |
-| **`cdnCachePolicy`** | Header policy per hostname and path, or per route class | `name`, `cdnHostnameId`, `matchType` (PREFIX / GLOB / ROUTE_CLASS / TABLE), `matchValue`, `tableName`, `policyClass` (IMMUTABLE / LEAF / HUB / NEVER), `browserMaxAge`, `edgeMaxAge`, `staleWhileRevalidate`, `staleIfError`, `immutable`, `noStore`, `varyHeaders`, `priority`, `enabled`, `seeded` |
-| **`cdnTableTagRule`** | How a table's changes become tags and paths | `tableName`, `tagTemplates`, `invalidationPaths` (templates, with optional `host:` prefix and trailing `*`), `onlyWhenFieldsChange`, `publishedFilter`, `enabled` |
-| **`cdnPurgeRequest`** | Every purge | `cdnProviderId`, `kind` (TAG / PATHS / HOST / ALL), `tags`, `paths` (as planned), `billablePaths`, `source` (ESB_EVENT / RECORD_ACTION / MANUAL / DEPLOY / RETRY), `sourceTable`, `sourceRecordId`, `causationId`, `requestedByUserId`, `status` (PENDING / MERGED / PLANNED / SENT / IN_PROGRESS / SUCCEEDED / FAILED / DEAD / DEFERRED_BUDGET / SKIPPED_STAGE_OFF / SKIPPED_NONE_PROVIDER / SKIPPED_HUB_ONLY), `mergedIntoId`, `attempts`, `nextAttemptDate`, `providerRequestId` (the CloudFront invalidation id), `httpStatus`, `errorMessage`, `sentDate`, `completedDate` |
-| **`cdnRevalidationHook`** | Caches to refresh before the CDN (the Next pods) | `name`, `url`, `fanOutDns` (resolve every pod behind a headless Service), `secretRef`, `timeoutMs`, `enabled` |
-| **`cdnOriginCheck`** | Origin header coverage (real data, from the "Check origin headers" action and a weekly schedule) | `checkDate`, `scope` (e.g. bucket `kof22-website-files`, or a hostname and path class), `objectsChecked`, `correct`, `missingOrWrong`, `unreadable`, `runId` |
-| **`cdnDriftFinding`** | Differences between the expected edge config (exported by OpenTofu) and what the provider reports | `cdnProviderId`, `checkedDate`, `area` (ORIGIN_HEADER / BEHAVIOR / CACHE_POLICY / ALIAS / CERTIFICATE / WAF), `expected`, `actual`, `severity`, `resolvedDate` |
-| **`cdnEdgeStatDaily`** | Imported stats (real data only) | `cdnProviderId`, `scope` (DISTRIBUTION, or a hostname when logs give a per-host breakdown), `statDate`, `requests`, `bytesDownloaded`, `cacheHitRate` (null unless CloudFront additional metrics are on), `error4xxRate`, `error5xxRate`, `importedDate`. Unique on (provider, scope, date). |
+| **`cdn_provider`** | One row per CDN or image engine | `name`, `providerType`, `role` (CDN / IMAGE_TRANSFORM), `enabled`, `accountRef` (for example AWS account `744245396565`), `zoneOrDistributionId`, `secretRef` (env var name only), `settings` (JSON: `softPathLimit`, `hardPathLimit`, `monthlyPaidPathCap`, `overBudgetMode` PAY/DEFER, `flushWindowSeconds`, `collapseThreshold`), `lastHealthStatus`, `lastHealthCheckDate`, `lastSuccessfulTestDate`, `credentialRotatedDate` (set when the key is rotated; the home compares it with the 90-day rotation), `capabilities` (read-only display), `dnsTarget` (what DNS points at, e.g. `dxxxx.cloudfront.net`, filled by Test connection), `originHost` (e.g. `origin.kof22.com:8443`), `maskedKeyId` (last 4 characters of the access key id only) |
+| **`cdn_hostname`** | Hostnames and their rollout stage | `hostname`, `cdnProviderId`, `hostnameRole` (SITE / API / MEDIA / ASSETS), `stage` (OFF / HEADERS_ONLY / LIVE / LOCKED), `purgeEnabled`, `notes` |
+| **`cdn_cache_policy`** | Header policy per hostname and path, or per route class | `name`, `cdnHostnameId`, `matchType` (PREFIX / GLOB / ROUTE_CLASS / TABLE), `matchValue`, `tableName`, `policyClass` (IMMUTABLE / LEAF / HUB / NEVER), `browserMaxAge`, `edgeMaxAge`, `staleWhileRevalidate`, `staleIfError`, `immutable`, `noStore`, `varyHeaders`, `priority`, `enabled`, `seeded` |
+| **`cdn_table_tag_rule`** | How a table's changes become tags and paths | `tableName`, `tagTemplates`, `invalidationPaths` (templates, with optional `host:` prefix and trailing `*`), `onlyWhenFieldsChange`, `publishedFilter`, `enabled` |
+| **`cdn_purge_request`** | Every purge | `cdnProviderId`, `kind` (TAG / PATHS / HOST / ALL), `tags`, `paths` (as planned), `billablePaths`, `source` (ESB_EVENT / RECORD_ACTION / MANUAL / DEPLOY / RETRY), `sourceTable`, `sourceRecordId`, `causationId`, `requestedByUserId`, `status` (PENDING / MERGED / PLANNED / SENT / IN_PROGRESS / SUCCEEDED / FAILED / DEAD / DEFERRED_BUDGET / SKIPPED_STAGE_OFF / SKIPPED_NONE_PROVIDER / SKIPPED_HUB_ONLY), `mergedIntoId`, `attempts`, `nextAttemptDate`, `providerRequestId` (the CloudFront invalidation id), `httpStatus`, `errorMessage`, `sentDate`, `completedDate` |
+| **`cdn_revalidation_hook`** | Caches to refresh before the CDN (the Next pods) | `name`, `url`, `fanOutDns` (resolve every pod behind a headless Service), `secretRef`, `timeoutMs`, `enabled` |
+| **`cdn_origin_check`** | Origin header coverage (real data, from the "Check origin headers" action and a weekly schedule) | `checkDate`, `scope` (e.g. bucket `kof22-website-files`, or a hostname and path class), `objectsChecked`, `correct`, `missingOrWrong`, `unreadable`, `runId` |
+| **`cdn_drift_finding`** | Differences between the expected edge config (exported by OpenTofu) and what the provider reports | `cdnProviderId`, `checkedDate`, `area` (ORIGIN_HEADER / BEHAVIOR / CACHE_POLICY / ALIAS / CERTIFICATE / WAF), `expected`, `actual`, `severity`, `resolvedDate` |
+| **`cdn_edge_stat_daily`** | Imported stats (real data only) | `cdnProviderId`, `scope` (DISTRIBUTION, or a hostname when logs give a per-host breakdown), `statDate`, `requests`, `bytesDownloaded`, `cacheHitRate` (null unless CloudFront additional metrics are on), `error4xxRate`, `error5xxRate`, `importedDate`. Unique on (provider, scope, date). |
 
 ### 4.5 Event pipeline
 
 **`cdnEnqueuePurgeFromEvents`** is an `EsbTrigger` on the app's CMS topic (for kof22, `kof22.cms.tables`). It runs in `BATCH` mode with concurrency 1, `maxAttempts` 5 and the standard DLQ. For each CloudEvent `qqq.table.<t>.inserted|updated|deleted`, it:
-1. finds the table's `cdnTableTagRule`
+1. finds the table's `cdn_table_tag_rule`
 2. applies `publishedFilter` and `onlyWhenFieldsChange`, so a draft autosave of `blog_post_version` invalidates nothing
 3. renders the tags from `record` and `oldRecord`
-4. inserts one `cdnPurgeRequest` (PENDING) for each provider whose affected hostnames are LIVE or LOCKED.
+4. inserts one `cdn_purge_request` (PENDING) for each provider whose affected hostnames are LIVE or LOCKED.
 
 If no such hostname exists, it records the request as `SKIPPED_STAGE_OFF`. During HEADERS_ONLY this shows what would have been purged.
 
@@ -299,7 +301,7 @@ Apps without the ESB call `CdnPurgeService.enqueue(tags, source)` from an after-
 
 ### 4.6 Response headers and media objects
 
-`CdnResponseHeaderPolicy` finds the best-matching enabled `cdnCachePolicy` and writes:
+`CdnResponseHeaderPolicy` finds the best-matching enabled `cdn_cache_policy` and writes:
 - `Cache-Control` (browser `max-age`, edge `s-maxage`, `stale-*`, `immutable`)
 - `CDN-Cache-Control`, only if the provider honors it
 - the tag header, only if the provider has one
@@ -322,23 +324,23 @@ All of these are table or record actions, offered on selected records, the curre
 
 | Process | Where it appears | Permission | What it does |
 |---|---|---|---|
-| `cdnPurgeRecordUrls` | Record action **"Purge from CDN"** on tables with an enabled `cdnTableTagRule`; also a bulk action | `cdn.purge` | A review screen shows the tags, the planned paths (hub paths optional), and the **billable path count against the month-to-date budget**. Then it enqueues the purge and shows the result. |
+| `cdnPurgeRecordUrls` | Record action **"Purge from CDN"** on tables with an enabled `cdn_table_tag_rule`; also a bulk action | `cdn.purge` | A review screen shows the tags, the planned paths (hub paths optional), and the **billable path count against the month-to-date budget**. Then it enqueues the purge and shows the result. |
 | `cdnWarmRecordUrls` | Record action **"Warm CDN cache"** | `cdn.purge` | Fetches the record's public URLs (HTML and `_rsc`) through the CDN with concurrency 2, and reports `X-Cache` for each |
-| `cdnRetryPurge` | Record action on `cdnPurgeRequest` rows that are FAILED, DEAD or DEFERRED_BUDGET | `cdn.purge` | Requeues the request |
-| `cdnPurgeHostname` | Record action on `cdnHostname` | `cdn.purgeAll` | Guarded: the user must type the hostname to confirm. On CloudFront it sends `/*` for the **whole distribution**, and the screen says so. |
-| `cdnTestProvider` | Record action **"Test connection"** on `cdnProvider` | `cdn.admin` | Checks credentials, that the distribution exists, and the IAM scope (with `ListInvalidations`). Confirms the origin custom header is configured, using a read-only `GetDistributionConfig`. |
-| `cdnImportEdgeStats` | Table action **"Import edge stats"** on `cdnEdgeStatDaily`; also scheduled daily at 02:15 | `cdn.admin` | Imports the last N days of CloudWatch metrics, as an upsert |
-| `cdnCheckOriginHeaders` | Table action **"Check origin headers"** on `cdnOriginCheck`; also weekly. **Only when the object-storage qbit is not installed.** | `cdn.view` | Read-only. Samples or walks the origin objects and records coverage rows for the home. With the storage qbit, header coverage comes from its object index instead (D18). |
+| `cdnRetryPurge` | Record action on `cdn_purge_request` rows that are FAILED, DEAD or DEFERRED_BUDGET | `cdn.purge` | Requeues the request |
+| `cdnPurgeHostname` | Record action on `cdn_hostname` | `cdn.purgeAll` | Guarded: the user must type the hostname to confirm. On CloudFront it sends `/*` for the **whole distribution**, and the screen says so. |
+| `cdnTestProvider` | Record action **"Test connection"** on `cdn_provider` | `cdn.admin` | Checks credentials, that the distribution exists, and the IAM scope (with `ListInvalidations`). Confirms the origin custom header is configured, using a read-only `GetDistributionConfig`. |
+| `cdnImportEdgeStats` | Table action **"Import edge stats"** on `cdn_edge_stat_daily`; also scheduled daily at 02:15 | `cdn.admin` | Imports the last N days of CloudWatch metrics, as an upsert |
+| `cdnCheckOriginHeaders` | Table action **"Check origin headers"** on `cdn_origin_check`; also weekly. **Only when the object-storage qbit is not installed.** | `cdn.view` | Read-only. Samples or walks the origin objects and records coverage rows for the home. With the storage qbit, header coverage comes from its object index instead (D18). |
 
 Object header changes are **not** a CDN action. They are storage's **Apply header policy** (#1089 §6.2, D18), which the CDN home links to.
-| `cdnCheckDrift` | Record action **"Check config drift"** on `cdnProvider`; also daily | `cdn.admin` | Read-only. Compares `GetDistributionConfig` with the expected config exported by OpenTofu (§8.2) and records `cdnDriftFinding` rows |
+| `cdnCheckDrift` | Record action **"Check config drift"** on `cdn_provider`; also daily | `cdn.admin` | Read-only. Compares `GetDistributionConfig` with the expected config exported by OpenTofu (§8.2) and records `cdn_drift_finding` rows |
 
 ### 4.8 Permissions and locks
 
 - Permissions are `cdn.view` (the app and its tables, read-only), `cdn.purge` (purge, warm and retry), `cdn.purgeAll` (purge a whole hostname or distribution) and `cdn.admin` (connection, settings, tests and imports).
-- `cdnPurgeRequest` is written only by processes, and all of its fields are read-only in the UI.
+- `cdn_purge_request` is written only by processes, and all of its fields are read-only in the UI.
 - No table stores a secret value.
-- Multi-tenant apps add the tenant key and a `RecordSecurityLock` to every `cdn*` table.
+- Multi-tenant apps add the tenant key and a `RecordSecurityLock` to every `cdn_*` table.
 
 ### 4.9 Admin → CDN app
 
@@ -348,19 +350,19 @@ A sub-app under Admin, like Quick Search and ESB. It exists only when the qbit i
 
 | Card | Shows | Source | Empty state before P2 |
 |---|---|---|---|
-| Connection | Provider and distribution id; the DNS target (`dxxxx.cloudfront.net`) and origin (`origin.kof22.com:8443`); hostnames by stage; last successful Test connection; credential age against the 90-day rotation (warning at 75 days) | `cdnProvider`, `cdnHostname` | "No CDN connected yet." Hostnames show stage OFF/HEADERS_ONLY |
-| Performance | Requests, bytes, 4xx/5xx rates and cache hit rate (when imported), as 7- and 30-day trends per scope | `cdnEdgeStatDaily` | "No edge statistics yet. They are imported daily once a provider is connected." |
-| Purge activity | The last 10 purges with status; failures and dead purges in the last 24 h and 7 days, each linking to a filtered `cdnPurgeRequest` list; median time to complete | `cdnPurgeRequest` | With the NONE provider: the would-be purges recorded as `SKIPPED_STAGE_OFF` (real rows, labeled as not sent) |
-| Invalidation budget | Month-to-date billable paths against the soft limit, the hard limit and the free 1,000, plus a projection to month end | `cdnPurgeRequest.billablePaths` | "No invalidations sent this month." |
-| Origin headers | One line: how many origin objects have the right Cache-Control, with the date of the last check. It links to the Storage home and to **Apply header policy**; the CDN home does not repeat storage data (D18). | The storage qbit's object index when installed, else `cdnOriginCheck` | Works before P2. kof22: 396 of 396 media files correct after the 2026-10-12 backfill |
-| Config drift | Open drift findings by area, with the last check time | `cdnDriftFinding` | "Nothing to compare yet. Drift is checked once the distribution exists." |
+| Connection | Provider and distribution id; the DNS target (`dxxxx.cloudfront.net`) and origin (`origin.kof22.com:8443`); hostnames by stage; last successful Test connection; credential age against the 90-day rotation (warning at 75 days) | `cdn_provider`, `cdn_hostname` | "No CDN connected yet." Hostnames show stage OFF/HEADERS_ONLY |
+| Performance | Requests, bytes, 4xx/5xx rates and cache hit rate (when imported), as 7- and 30-day trends per scope | `cdn_edge_stat_daily` | "No edge statistics yet. They are imported daily once a provider is connected." |
+| Purge activity | The last 10 purges with status; failures and dead purges in the last 24 h and 7 days, each linking to a filtered `cdn_purge_request` list; median time to complete | `cdn_purge_request` | With the NONE provider: the would-be purges recorded as `SKIPPED_STAGE_OFF` (real rows, labeled as not sent) |
+| Invalidation budget | Month-to-date billable paths against the soft limit, the hard limit and the free 1,000, plus a projection to month end | `cdn_purge_request.billablePaths` | "No invalidations sent this month." |
+| Origin headers | One line: how many origin objects have the right Cache-Control, with the date of the last check. It links to the Storage home and to **Apply header policy**; the CDN home does not repeat storage data (D18). | The storage qbit's object index when installed, else `cdn_origin_check` | Works before P2. kof22: 396 of 396 media files correct after the 2026-10-12 backfill |
+| Config drift | Open drift findings by area, with the last check time | `cdn_drift_finding` | "Nothing to compare yet. Drift is checked once the distribution exists." |
 
 **Sections.** Each section is a standard QQQ table with full record screens (list, view, edit where allowed, audit):
 
-- **Connection:** `cdnProvider` and `cdnHostname`. Secrets never appear. Only `secretRef` (an env var name) and `maskedKeyId` (last 4 characters) are shown.
-- **Settings:** `cdnCachePolicy` and `cdnTableTagRule`.
-- **Activity:** `cdnPurgeRequest` (read-only) and `cdnRevalidationHook`.
-- **Performance:** `cdnEdgeStatDaily`, `cdnOriginCheck` and `cdnDriftFinding`.
+- **Connection:** `cdn_provider` and `cdn_hostname`. Secrets never appear. Only `secretRef` (an env var name) and `maskedKeyId` (last 4 characters) are shown.
+- **Settings:** `cdn_cache_policy` and `cdn_table_tag_rule`.
+- **Activity:** `cdn_purge_request` (read-only) and `cdn_revalidation_hook`.
+- **Performance:** `cdn_edge_stat_daily`, `cdn_origin_check` and `cdn_drift_finding`.
 
 **Actions:** Test connection, Import edge stats, Purge (and Warm, Retry, Purge hostname), Check origin headers (without the storage qbit) and Check config drift. Header rewrites are storage's Apply header policy, linked from the Origin headers card (D18). These are the table and record actions from §4.7, using the standard Review and Result flow. **None of them is in the nav.**
 
@@ -395,11 +397,11 @@ When the generic Alerts / Manage-by-Exception qbit is installed (QRun-IO/qqq `do
 
 | Alert | Raised when | Cleared when | Links to |
 |---|---|---|---|
-| Purge failed / dead | A `cdnPurgeRequest` turns FAILED after its last retry, or DEAD | A later purge for the same provider succeeds, or the row is retried successfully | The `cdnPurgeRequest` record(s) |
-| Invalidation budget near / over | Month-to-date billable paths pass the soft limit (warning) or the hard limit (error), or a purge is DEFERRED_BUDGET | The month rolls over | The CDN home budget card / filtered `cdnPurgeRequest` list |
-| Connection test failed | Test connection (manual or scheduled) fails | The next test succeeds | The `cdnProvider` record |
-| Config drift | A `cdnDriftFinding` is opened | All findings for the provider are resolved | The `cdnDriftFinding` list |
-| Secret rotation due | `credentialRotatedDate` is older than 75 days (warning) or 90 days (error) | The key is rotated and the date updated | The `cdnProvider` record |
+| Purge failed / dead | A `cdn_purge_request` turns FAILED after its last retry, or DEAD | A later purge for the same provider succeeds, or the row is retried successfully | The `cdn_purge_request` record(s) |
+| Invalidation budget near / over | Month-to-date billable paths pass the soft limit (warning) or the hard limit (error), or a purge is DEFERRED_BUDGET | The month rolls over | The CDN home budget card / filtered `cdn_purge_request` list |
+| Connection test failed | Test connection (manual or scheduled) fails | The next test succeeds | The `cdn_provider` record |
+| Config drift | A `cdn_drift_finding` is opened | All findings for the provider are resolved | The `cdn_drift_finding` list |
+| Secret rotation due | `credentialRotatedDate` is older than 75 days (warning) or 90 days (error) | The key is rotated and the date updated | The `cdn_provider` record |
 
 **The CDN qbit works without it.** The integration is discovered at startup: if the Alerts qbit is installed and enabled, the producer is used; otherwise these conditions show only on the CDN home, in the Health status card and as the Data Health rules above. Nothing else changes. The dependency is optional (no compile-time requirement on the Alerts qbit beyond its SPI module, if it publishes one; otherwise a small adapter is added when that spec settles). The exact SPI names are taken from the Alerts spec when its PR lands.
 
@@ -446,7 +448,7 @@ Other distribution settings:
 - HTTP/2 and HTTP/3 are on, and so is compression.
 - Price class is the flat-rate plan's default.
 
-### 5.3 Tag and path rules (seeded `cdnTableTagRule`)
+### 5.3 Tag and path rules (seeded `cdn_table_tag_rule`)
 
 | Table | Tags | Invalidation paths (leaves only; hubs expire by TTL) |
 |---|---|---|
@@ -492,7 +494,7 @@ Later and optional: a `CLOUDFRONT_FUNCTION` or Lambda@Edge resize engine behind 
    - *Verify* that Next 16 lets `headers()` override the ISR `Cache-Control`.
    - If it does not, set the min TTL in the CloudFront cache policy for the HTML behaviors, and keep the browser TTL with a response headers policy.
 4. `POST /api/revalidate` takes `{tags}` with an HMAC made from `CDN_REVALIDATE_SECRET`. It calls `revalidateTag` for each tag and returns 200 once done.
-5. **Every pod, then the edge.** The `cdnRevalidationHook` with `fanOutDns` resolves the headless Service `website-frontend-headless` and POSTs to **each** pod. The dispatcher creates the CloudFront invalidation only after every pod has returned 200 (§4.5). This avoids the stale-pod problem the Next self-hosting guide warns about, without needing Redis.
+5. **Every pod, then the edge.** The `cdn_revalidation_hook` with `fanOutDns` resolves the headless Service `website-frontend-headless` and POSTs to **each** pod. The dispatcher creates the CloudFront invalidation only after every pod has returned 200 (§4.5). This avoids the stale-pod problem the Next self-hosting guide warns about, without needing Redis.
 6. Optionally, the "Warm CDN cache" action then fetches the HTML and `_rsc` variants.
 
 ---
@@ -559,7 +561,7 @@ The paused **Traefik DaemonSet with `externalTrafficPolicy: Local` is still want
 
 - **Key D: IAM user `cdn-qbit-kof22`**, defined in `terraform/cdn-cloudfront/iam.tf`.
   - It is allowed `cloudfront:CreateInvalidation`, `GetInvalidation`, `ListInvalidations` and `GetDistributionConfig` on **the one distribution ARN**, plus `cloudwatch:GetMetricData` and `ListMetrics` (`Resource: *`, read-only).
-  - The key lives in Infisical and reaches Website-Backend through ESO as `CDN_AWS_ACCESS_KEY_ID` and `CDN_AWS_SECRET_ACCESS_KEY`. `cdnProvider.secretRef` holds these env var names.
+  - The key lives in Infisical and reaches Website-Backend through ESO as `CDN_AWS_ACCESS_KEY_ID` and `CDN_AWS_SECRET_ACCESS_KEY`. `cdn_provider.secretRef` holds these env var names.
 - **The origin secret** (`X-Origin-Verify`) lives in Infisical.
   - Tofu reads it to set the CloudFront origin custom header, and ESO reads it for `origin-guard`.
   - It rotates every 90 days, with two valid values during the overlap.

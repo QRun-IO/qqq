@@ -7,28 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.11` to `1.0.0-RC.14`; the 4.1.0-RC.4
-Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
+## [4.1.0-RC.5] — candidate (2026-10-12)
+
+Same Next pairing as RC.4 (`1.0.0-RC.14`, BOM-managed). **Breaking for code that touches AWS SDK types:** the S3 backend
+moves to AWS SDK for Java v2 (see Changed and [Adopting QQQ 4.1 features](docs/migration/4.1.adoc)).
 
 ### Security
+- **System sessions no longer lose their all-access keys ([#1101](https://github.com/QRun-IO/qqq/pull/1101))** — `QSystemUserSession`
+  cached the all-access key names JVM-wide on first use; a system session created against a keyless example instance at
+  Javalin startup could prime it empty, after which system writes to record-locked tables failed. Keys are now computed
+  from the intended instance per session; new `QSystemUserSession(QInstance)` constructor; schedulers install the
+  instance before creating sessions.
 - Upgrade jsoup from 1.23.1 to 1.23.2 for GHSA-65r4-943x-97jj, and manage RabbitMQ AMQP client at 5.37.0
   (previously 5.35.0 via RabbitMQ JMS 3.9.0) for GHSA-7822-rcf6-97fx and GHSA-cqgh-8p3p-mx4m.
-- **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
-  [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
-  `InsertAction`, `UpdateAction`, `DeleteAction`, `ReplaceAction`, `ExportAction`, `RunProcessAction`,
-  `RenderWidgetAction` and `GenerateReportAction` can now check the session's table/process/widget/report permissions
-  themselves (previously only the middlewares did, so MCP servers, assistants, custom routes and scripts skipped them),
-  and `FieldSecurityLock` is now enforced: denied fields are removed from read output and table meta data, and
-  filtering, sorting, grouping on or writing to them is a permission error. Per call, `PermissionEnforcement.ENFORCE`
-  always checks and `withPermissionBypass(reason)` never does; otherwise outermost calls are checked when
-  `QInstance.enforcePermissionsInCoreActions` (or `-Dqqq.enforcePermissionsInCoreActions` /
-  `QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS`) is true. Calls nested inside an action (process steps, customizers, widget
-  renderers, possible-value lookups, async children) stay trusted, and `QSystemUserSession` passes as before; the
-  scheduler, polling automations and SQS poller mark their runs as system bypasses. **Off by default in 4.1.x** (no
-  behavior change unless enabled); planned to default on in 4.2. See
-  [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
 ### Changed
+- **Create/Modify Date fields are non-editable by default ([#1103](https://github.com/QRun-IO/qqq/pull/1103))** — `QInstanceEnricher` marks table
+  fields with the `CREATE_DATE`/`MODIFY_DATE` dynamic default behavior `isEditable=false`;
+  `withConfigMakeSystemDateFieldsNonEditable(false)` restores the old behavior. Server-side writes are unaffected.
 - **S3 backend moves to AWS SDK for Java v2 (breaking for code that touches SDK types)** — AWS SDK for Java v1 reached
   end of support on 2025-12-31, so `qqq-backend-module-filesystem` now uses `software.amazon.awssdk:s3` (v2, via the
   same `2.41.10` BOM as core) and no longer depends on `com.amazonaws:aws-java-sdk-s3`. Public type changes:
@@ -55,6 +51,26 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
 - **Tests** — the S3 module's tests run against MinIO (Testcontainers) instead of LocalStack.
 
 ### Added
+- **API virtual fields ([#1092](https://github.com/QRun-IO/qqq/pull/1092))** — a virtual (computed) field with explicit api field meta data
+  (and an `initialVersion`) is now emitted in API record output and as a `readOnly` property in the OpenAPI schema. It
+  never appears in request bodies, filters, `orderBy` or counts. Opt in per lookup with
+  `GetTableApiFieldsInput.withIncludeVirtualFields(true)`; existing callers are unchanged.
+- **Record picker for large possible value sources ([#1099](https://github.com/QRun-IO/qqq/pull/1099))** — `QPossibleValuePicker` on a
+  table-type `QPossibleValueSource` declares a searchable, filterable, paged picker; `SearchPossibleValueSourceAction`
+  serves picker requests; the v1 possible-values body accepts a `picker` object and the response adds `values`,
+  `displayValues` and `hasMore`; v1 field metadata carries `picker` and `pickerTableName`. See
+  [Record Picker](docs/misc/RecordPicker.adoc). Next UI renders it from the RC.16 line.
+- **Too-long behavior and rejecting value ranges for frontends ([#1100](https://github.com/QRun-IO/qqq/pull/1100))** — `ValueTooLongBehavior`
+  is listed in a field's frontend `behaviors`, and frontend/v1 field metadata gain `minValue`/`maxValue` from a
+  `ValueRangeBehavior` whose bound rejects (`ERROR`) and is inclusive.
+- **Audit record screens, opt-in ([#1103](https://github.com/QRun-IO/qqq/pull/1103))** — `AuditsMetaDataProvider.withDefineRecordScreens(true)`
+  (or `defineStandardAuditScreens` after `defineAll`) gives audit records named sections, Table/User labels and a Field
+  Changes child list.
+- **AI tool registry ([#1096](https://github.com/QRun-IO/qqq/pull/1096))** — `AiToolRegistry` supplemental meta-data lets qbits register
+  `READ` and `NAVIGATION` `AbstractAiTool`s that every `AiToolKernel` over the instance offers next to the built-ins, on
+  the same permission-checked path. `WRITE_PROPOSAL` tools and names shadowing built-ins are refused.
+- **`StartOfPeriod` filter expression ([#1115](https://github.com/QRun-IO/qqq/pull/1115))** — the start of the current period (day, week,
+  month, quarter, year) in the session's time zone, for date filters and presets.
 - **Public-internet APIs (`qqq-middleware-api`)** — `ApiInstanceMetaData.httpPolicy` (`ApiHttpPolicy`): anonymous
   `GET`/`HEAD` 200s get shared-cache headers (`Cache-Control` with `s-maxage`, `stale-while-revalidate`,
   `stale-if-error`; RFC 9213 `CDN-Cache-Control`), a weak `ETag` and `304` on `If-None-Match`; everything else is
@@ -67,19 +83,47 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   `QAuthenticationModuleInterface.createSession(instance, metaData, context)` receives the resolved provider.
 - **API processes** — `HttpApiResponse.headers`; request metadata (`ApiProcessUtils.REQUEST_REMOTE_ADDRESS`,
   `REQUEST_FORWARDED_FOR`, `REQUEST_USER_AGENT`) in every API process run's values.
-- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
-  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
-- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
-  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
-  not send their values to a model.
 
 ### Fixed
+- **Table sync ([#1097](https://github.com/QRun-IO/qqq/pull/1097))** — overriding `SYNC_TABLE_PERFORM_UPDATES_KEY` no longer replaces
+  `performInserts`, and records skipped because inserts or updates are disabled are counted on the right summary line.
+- **`ThisOrLastPeriod` across DST ([#1115](https://github.com/QRun-IO/qqq/pull/1115))** — period boundaries no longer shift by an hour
+  when the range crosses a daylight-saving change.
 - OpenAPI: insert/update operation flags were swapped; field-security-locked fields were dropped from the published
   model; processes without an output threw; the schema closure never ended when an association child had its own API
   table name (the spec request hung). Required fields are noted in descriptions.
 - API: an empty association array (`"lines": []`) on update now clears the child list; process input values were lost
   for fields with a `backendName`; an empty process body is no values and a non-object body a `400`; JSON responses
   carry `Content-Type: application/json`; the `POST_RUN` process customizer declared the wrong interface.
+
+## [4.1.0-RC.4] — candidate (2026-10-12)
+
+
+The BOM and sample move the Next dashboard (`qqq-frontend-next`) from `1.0.0-RC.11` to `1.0.0-RC.14`; the 4.1.0-RC.4
+Next acceptance-receipt waiver is bound to that exact artifact. See the [release procedure](docs/release/4.1.adoc).
+
+### Security
+- **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
+  [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
+  `InsertAction`, `UpdateAction`, `DeleteAction`, `ReplaceAction`, `ExportAction`, `RunProcessAction`,
+  `RenderWidgetAction` and `GenerateReportAction` can now check the session's table/process/widget/report permissions
+  themselves (previously only the middlewares did, so MCP servers, assistants, custom routes and scripts skipped them),
+  and `FieldSecurityLock` is now enforced: denied fields are removed from read output and table meta data, and
+  filtering, sorting, grouping on or writing to them is a permission error. Per call, `PermissionEnforcement.ENFORCE`
+  always checks and `withPermissionBypass(reason)` never does; otherwise outermost calls are checked when
+  `QInstance.enforcePermissionsInCoreActions` (or `-Dqqq.enforcePermissionsInCoreActions` /
+  `QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS`) is true. Calls nested inside an action (process steps, customizers, widget
+  renderers, possible-value lookups, async children) stay trusted, and `QSystemUserSession` passes as before; the
+  scheduler, polling automations and SQS poller mark their runs as system bypasses. **Off by default in 4.1.x** (no
+  behavior change unless enabled); planned to default on in 4.2. See
+  [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
+
+### Added
+- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
+  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
+- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
+  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
+  not send their values to a model.
 
 ## [4.1.0-RC.3] — candidate (2026-10-12)
 

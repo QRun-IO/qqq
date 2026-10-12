@@ -1,10 +1,31 @@
 # QQQ Object Storage qbit: Design Spec
 
-Status: **Draft for owner review** · drafted 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: **Approved** · drafted 2026-10-12, owner decisions 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x (`qqq-backend-module-filesystem` S3 upgrade) and a new repo, **`QRun-IO/qbit-object-storage`** (Apache-2.0).
 Related specs: the CMS qbit (#1083) and the CDN qbit (#1084) both consume this one (§9). When the Alerts qbit is installed, storage problems are raised through it (§9.3).
 
-> This is a design only. Nothing has been built, no repository has been created and no bucket has been touched. §13 lists the open questions for the owner, each with a recommendation. The first consumer's (kof22) private migration notes live in that app's own repository, not here.
+> Phase P0 (the core S3 upgrade, §8.1) is in progress in QQQ core. The qbit repository has not been created yet; that needs the owner's explicit approval. The first consumer's (kof22) private migration notes live in that app's own repository, not here.
+
+## Owner decisions (2026-10-12)
+
+The owner accepted every recommendation in §13. These decisions override anything below that contradicts them.
+
+| # | Decision |
+|---|---|
+| D1 | Bucket configuration is **IaC-owned by default** (read-only plus drift check). UI edits only for buckets marked `managedBy = UI`, with `s3.admin`. |
+| D2 | **Connections come from code config only.** Secret references must match the allow-list. The UI edits operational fields only. |
+| D3 | The **Postgres object index** is the primary browse table (write-through plus scans, live HEAD on the record). A bounded "Live objects" table only for non-indexed buckets. |
+| D4 | **Soft delete**: versioning with 30-day noncurrent expiry where supported; a private trash bucket with 30-day expiry where not. Permanent deletes need `s3.admin`. |
+| D5 | **Referenced objects are blocked** from delete and move in v1, with no override. |
+| D6 | The S3 backend moves to **AWS SDK v2 in 4.1.x**, with a release note for the `S3Utils` public type changes. |
+| D7 | **Per-bucket scoping** with a record security lock ships in v1. |
+| D8 | v1 uploads go **through the app server**, 100 MB per file by default. Direct browser uploads come in P5. |
+| D9 | Usage statistics are **index-derived** in v1. Admin-API plug-ins come later and are opt-in. |
+| D10 | CMS keeps `CmsStorage` and this qbit provides the S3 adapter. CDN drops `cdnBackfillObjectHeaders` and uses Apply header policy, `PublicUrlResolver` and `StorageChangeListener`. #1083 and #1084 get follow-up edits. |
+| D11 | **Orphaned and missing objects belong to the Storage home.** Data Health gets linking rules only. |
+| D12 | Names: `QRun-IO/qbit-object-storage`, `com.kingsrook.qbits.objectstorage`, app label "Storage", table prefix `storage`, permissions `s3.view`, `s3.write`, `s3.delete`, `s3.admin`. |
+| D13 | Conformance: **MinIO and Garage in CI on every PR**; AWS S3, R2 and B2 in an optional owner-run workflow; others community-reported. |
+| D14 | A **separate least-privilege presign key** is required when presigned URLs leave the server. |
 
 ## 0. Summary
 
@@ -630,7 +651,7 @@ Total for P0–P4: about 34–43 days. P2 can ship right after P1, so the first 
 
 ---
 
-## 13. Open questions for the owner
+## 13. Owner questions (decided 2026-10-12: all recommendations accepted, see D1–D14)
 
 1. **Bucket configuration from the UI, or IaC only?** Policy, versioning, lifecycle, CORS and quotas.
    *Recommendation:* IaC-owned by default (`managedBy = IAC`): shown read-only, with a drift check. UI edits only for buckets explicitly marked `UI`, with `s3.admin`. The first consumer's buckets are created by a GitOps job, so they stay IaC.

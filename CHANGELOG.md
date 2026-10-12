@@ -27,6 +27,13 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
 ### Added
+- **`AiToolRegistry`: qbits can contribute AI tools to the kernel** — a supplemental instance meta-data
+  (`AiToolRegistry.ofOrWithNew(qInstance).withTool(tool)`) where qbits and applications register typed
+  `AbstractAiTool`s. Every `AiToolKernel` built over the instance offers them next to the built-in tools and runs them
+  on the same path (the caller's session, strict input keys, the untrusted-data envelope, redaction, outcome mapping),
+  so the assistant panel can use them. Only `READ` and `NAVIGATION` tools may be registered (`WRITE_PROPOSAL` is
+  refused: the kernel has no approval flow); names are lower_snake_case and may not repeat or shadow a built-in tool
+  (the instance validator reports a collision). `AiToolKernel.getBuiltInToolNames()` lists the built-in names.
 - **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
   validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
 - **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless

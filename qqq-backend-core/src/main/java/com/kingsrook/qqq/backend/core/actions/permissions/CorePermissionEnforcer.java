@@ -27,13 +27,17 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.ActionFlag;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -42,6 +46,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeSupplier;
@@ -196,6 +201,33 @@ public final class CorePermissionEnforcer
    {
       PermissionsHelper.checkJoinedTableReadPermissions(input, queryJoins, filter);
       FieldSecurityLockHelper.assertCriteriaAccessible(input.getTableName(), queryJoins, filter, additionalFieldNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Reject a write that carries a RestoreWriteFlag unless the session has the
+    ** RestoreWriteFlag.REQUIRED_PERMISSION permission.
+    **
+    ** Unlike the other checks in this class, this one is NOT conditional on the
+    ** instance setting, on the nesting of the call, or on a permission bypass:  the
+    ** flag relaxes integrity behaviors (automations, customizers, audit, events), so
+    ** it is an escalation that must always be earned.  QSystemUserSession has all
+    ** permissions, so framework-internal system work is unaffected.
+    *******************************************************************************/
+   public static void checkRestoreWriteFlag(AbstractTableActionInput input, Set<ActionFlag> flags) throws QPermissionDeniedException
+   {
+      if(RestoreWriteFlag.from(flags) == null)
+      {
+         return;
+      }
+
+      QSession session = QContext.getQSession();
+      if(session == null || !session.hasPermission(RestoreWriteFlag.REQUIRED_PERMISSION))
+      {
+         LOG.warn("Rejecting restore-mode write: session lacks permission", logPair("table", input.getTableName()), logPair("permission", RestoreWriteFlag.REQUIRED_PERMISSION));
+         throw (new QPermissionDeniedException("Permission denied: RestoreWriteFlag requires the permission " + RestoreWriteFlag.REQUIRED_PERMISSION));
+      }
    }
 
 

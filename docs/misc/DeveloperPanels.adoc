@@ -1,0 +1,68 @@
+[#DeveloperPanels]
+== Record Developer Panels
+include::../variables.adoc[]
+
+A record's developer view (`/app/{table}/{id}/dev` in the Next UI) shows, beside the record's raw values and
+table meta-data, *developer panels* contributed by QQQ itself and by modules and qbits: record security, ESB events,
+quick search indexing, SQL workbench queries, assistant tool exposure, and so on.  Each panel only appears when its
+module is installed and active for the table, and only shows what the current user may see.
+
+=== Contributing a panel
+
+Implement `DeveloperPanelProviderInterface` and register the class in the instance's `DeveloperPanelsMetaData`
+(supplemental instance meta-data), typically from a `MetaDataProducer` in a package your application already scans:
+
+[source,java]
+----
+public class MyDeveloperPanelsMetaDataProducer extends MetaDataProducer<DeveloperPanelsMetaData>
+{
+   @Override
+   public DeveloperPanelsMetaData produce(QInstance qInstance) throws QException
+   {
+      return (DeveloperPanelsMetaData.ofOrWithNew(qInstance).withProvider(new QCodeReference(MyDeveloperPanelProvider.class)));
+   }
+}
+----
+
+A provider has:
+
+* `getId()` - stable and unique (e.g., `esb`), and `getTitle()`.
+* `getOrder()` - lower first; built-in panels use 100-199, the default is 500.  `getIcon()` - an optional Material icon name.
+* `isAvailable(context)` - whether to show the panel for the context's table and record, for the current session.
+* `build(context)` - a `DeveloperPanel` of generic blocks.
+
+The `DeveloperPanelContext` holds the table and the record, already read under the user's table permissions and record
+security locks.  Anything else a provider reads (other tables, processes, external systems) must check its own
+permissions.  A provider that throws gets a panel with an error message; other panels are unaffected.
+
+=== Blocks
+
+A `DeveloperPanel` has an optional `description` and status badge (`statusLabel`, `statusTone`), and a list of
+`DeveloperPanelBlock`s, rendered in order by any frontend without provider-specific code:
+
+[cols="1,3"]
+|===
+|Type |Fields
+
+|`KEY_VALUES` |`items`: label, value, `monospace`, optional `href`
+|`TEXT` |`text`, with a `tone` (INFO, SUCCESS, WARNING, ERROR)
+|`CODE` |`code` in a `language` (json, sql, shell, javascript, java...)
+|`TABLE` |`columns` and `rows`, all display strings
+|`LINKS` |`links`: label, `href` (app-relative like `/app/table/1`, or absolute), description, `external`
+|`ACTIONS` |`actions`: a process (`processName`, optional `tableName`) the frontend may launch with this record selected
+|===
+
+Builders: `DeveloperPanelBlock.keyValues(label)`, `text(text, tone)`, `code(label, language, code)`,
+`table(label, columns)`, `links(label)`, `actions(label)`.  Only add actions and links the user may use.
+
+=== Endpoint
+
+`GET /qqq/v1/table/{tableName}/{primaryKey}/developer/panels` returns `{"panels": [...]}`, sorted by order then title.
+It needs table read permission, and returns 404 for a record the user cannot see.
+
+=== Built-in and module panels
+
+* *Record Security* (core) - the table's record security locks, and for each, why the current user can see the record
+  (an all-access key, a matching key value, or the lock's null-value behavior).
+* *ESB Events* (`qqq-esb`) - for tables that publish to the ESB: CloudEvents attributes, destinations, subscribed
+  triggers with dead-letter counts, and a sample event for the record.

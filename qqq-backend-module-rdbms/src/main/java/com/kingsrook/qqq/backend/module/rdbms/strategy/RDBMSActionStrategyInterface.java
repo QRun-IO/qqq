@@ -100,6 +100,17 @@ public interface RDBMSActionStrategyInterface
 
 
 
+   /***************************************************************************
+    ** Hook for a vendor strategy to configure a prepared statement for a query that
+    ** carries the POTENTIALLY_LARGE_NUMBER_OF_RESULTS hint, so that the driver streams
+    ** the results rather than buffering them all in memory.  Default: no-op.
+    ***************************************************************************/
+   default void configureStatementForLargeResults(Connection connection, PreparedStatement statement) throws SQLException
+   {
+   }
+
+
+
    /*******************************************************************************
     ** Insert one row using only native defaults. The default syntax is MySQL/H2.
     *******************************************************************************/

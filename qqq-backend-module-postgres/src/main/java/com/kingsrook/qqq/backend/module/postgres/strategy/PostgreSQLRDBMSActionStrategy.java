@@ -46,6 +46,49 @@ import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
  *******************************************************************************/
 public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
 {
+   public static final int DEFAULT_LARGE_RESULT_FETCH_SIZE = 1_000;
+
+   private int largeResultFetchSize = DEFAULT_LARGE_RESULT_FETCH_SIZE;
+
+
+
+   /***************************************************************************
+    ** The pgjdbc driver buffers the entire result set in memory unless the
+    ** connection is in a transaction (autocommit off) and a fetch size is set
+    ** (it then uses a server-side cursor).  So, for queries hinted as potentially
+    ** large, when we are inside a transaction, set a fetch size.  Outside a
+    ** transaction (autocommit on), a fetch size has no effect, so it is left alone.
+    ***************************************************************************/
+   @Override
+   public void configureStatementForLargeResults(Connection connection, PreparedStatement statement) throws SQLException
+   {
+      if(largeResultFetchSize > 0 && !connection.getAutoCommit())
+      {
+         statement.setFetchSize(largeResultFetchSize);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for largeResultFetchSize (0 disables)
+    *******************************************************************************/
+   public void setLargeResultFetchSize(int largeResultFetchSize)
+   {
+      this.largeResultFetchSize = largeResultFetchSize;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for largeResultFetchSize
+    *******************************************************************************/
+   public int getLargeResultFetchSize()
+   {
+      return largeResultFetchSize;
+   }
+
+
 
    /*******************************************************************************
     ** PostgreSQL requires DEFAULT VALUES when no columns are supplied.

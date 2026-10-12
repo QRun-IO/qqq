@@ -257,7 +257,13 @@
       <dependency>
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
-        <version>4.33.3</version>
+        <version>4.33.6</version>
+      </dependency>
+      <!-- Google Tink (Apache-2.0): streaming AEAD for the crypto package's artifact encryption -->
+      <dependency>
+        <groupId>com.google.crypto.tink</groupId>
+        <artifactId>tink</artifactId>
+        <version>1.23.0</version>
       </dependency>
       <dependency>
         <groupId>org.apache.logging.log4j</groupId>

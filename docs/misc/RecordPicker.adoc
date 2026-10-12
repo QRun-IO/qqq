@@ -102,8 +102,8 @@ Display values of denied fields are left out of `values`.
 * No counts: `hasMore` comes from reading one extra row.
 * Keyset paging for the default "newest first" ordering. Infinite scroll never uses `OFFSET` there.
 * Offset paging only for other orderings (name, size), which users rarely scroll far.
-* Search is `CONTAINS` (`ILIKE '%term%'` on PostgreSQL). At 100,000 rows a sequential scan of the narrow columns is tens of milliseconds. Applications can add a trigram index (`pg_trgm`) when tables grow further.
-* Applications should index the default ordering together with the always-applied filters, e.g. `(site_id, is_active, id DESC)`, and any filter they expect to be selective.
+* Search is a case-insensitive `CONTAINS` (`LOWER(column) LIKE '%term%'`). On PostgreSQL with 100,000 media it reads the matching site's rows once and keeps the newest page, in about 30 ms. Applications can add a trigram index (`pg_trgm`) on `LOWER(column)` when tables grow further.
+* Applications should index each offered ordering together with the filters that are always applied, e.g. `(site_id, id DESC)`, `(site_id, name)` and `(site_id, file_size DESC)`. On PostgreSQL with 100,000 media (kof22), every ordered page then reads an index range in under 1.5 ms of SQL, and keyset page N costs the same as page 1.
 
 === Frontend
 

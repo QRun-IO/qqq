@@ -219,6 +219,78 @@ class NextAcceptanceCiTest(unittest.TestCase):
         bom.write_text(bom_content)
         self.assertEqual(0, self.coverage())
 
+    def test_rc4_candidate_exception_is_bound_to_release_branch_rc3_source_and_its_approval(self):
+        self.fixture.configure_accepted_next('4.1.0-RC.3')
+        rc4 = {'QQQ_ACCEPTED_NEXT_CANDIDATE': '4.1.0-RC.4'}
+        self.env = {**rc4, 'CIRCLECI': 'true', 'CIRCLE_BRANCH': 'release/4.1'}
+        self.assertEqual(0, self.coverage())
+        result = json.loads((self.sample / 'target/feature-coverage-result.json').read_text())
+        self.assertFalse(result['complete'])
+        self.assertEqual(7, len(result['accepted_next_features']))
+        self.assertEqual('4.1.0-RC.4', result['accepted_next_release']['qqq_version'])
+        self.assertEqual('https://github.com/QRun-IO/qqq/issues/798#issuecomment-6124075606',
+                         result['accepted_next_release']['owner_approval'])
+        self.env['CIRCLE_BRANCH'] = 'release/4.1.0'
+        self.assertEqual(0, self.coverage())
+        for branch in ('release/4.2', 'develop', 'main', 'hotfix/4.1.1', 'feature/release/4.1'):
+            with self.subTest(branch=branch):
+                self.env['CIRCLE_BRANCH'] = branch
+                self.assertEqual(1, self.coverage())
+        for extra in ({'CIRCLE_TAG': 'v4.1.0-RC.4', 'CIRCLE_BRANCH': 'release/4.1'}, {'CIRCLECI': 'true'},
+                      {'CIRCLE_BRANCH': ''}):
+            with self.subTest(extra=extra):
+                self.env = {**rc4, **extra}
+                self.assertEqual(1, self.coverage())
+        for candidate in ('4.1.0-RC.5', '4.1.0-RC.3', '4.1.0-RC.2', '4.1.0-RC.1', '4.1.0', '4.2.0-RC.1', '4.1.0-rc.4',
+                          ' 4.1.0-RC.4', '4.1.0-RC4'):
+            with self.subTest(candidate=candidate):
+                self.env = {'QQQ_ACCEPTED_NEXT_CANDIDATE': candidate, 'CIRCLE_BRANCH': 'release/4.1'}
+                self.assertEqual(1, self.coverage())
+        self.env = {**rc4, 'CIRCLE_BRANCH': 'release/4.1'}
+        root_pom = self.sample.parent / 'pom.xml'
+        root_content = root_pom.read_text()
+        for revision, reason in (('4.1.0-SNAPSHOT', 'the publisher would compute RC1, not RC4'),
+                                 ('4.1.0-RC.2', 'the publisher would compute RC3, not RC4'),
+                                 ('4.1.0-RC.4', 'the publisher would increment existing RC4 to RC5'),
+                                 ('4.1.0', 'GA source cannot use a candidate exception')):
+            with self.subTest(revision=revision):
+                root_pom.write_text(root_content.replace('4.1.0-RC.3', revision))
+                self.assertEqual(1, self.coverage(), reason)
+        root_pom.write_text(root_content)
+        policy_path = self.sample / 'release-deferrals.json'
+        policy = policy_path.read_text()
+        for field, value in (('owner_approval', 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-5944789583'),
+                             ('owner_approval', 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6109806327'),
+                             ('owner_approval', 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6115006801'),
+                             ('owner_approval', 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-61240756060'),
+                             ('next_sha', '0' * 40), ('jar_sha256', '0' * 64), ('next_version', '1.0.0-RC.12'),
+                             ('next_version', '1.0.0-RC.13')):
+            with self.subTest(field=field, value=value):
+                changed = json.loads(policy)
+                changed['accepted_next_release'][3][field] = value
+                policy_path.write_text(json.dumps(changed))
+                self.assertEqual(1, self.coverage())
+        # Swapping the RC.3 and RC.4 approval links rejects both candidates.
+        swapped = json.loads(policy)
+        entries = swapped['accepted_next_release']
+        entries[2]['owner_approval'], entries[3]['owner_approval'] = entries[3]['owner_approval'], entries[2]['owner_approval']
+        policy_path.write_text(json.dumps(swapped))
+        self.assertEqual(1, self.coverage())
+        root_pom.write_text(root_content.replace('4.1.0-RC.3', '4.1.0-RC.2'))
+        self.env = {'QQQ_ACCEPTED_NEXT_CANDIDATE': '4.1.0-RC.3', 'CIRCLE_BRANCH': 'release/4.1'}
+        self.assertEqual(1, self.coverage())
+        root_pom.write_text(root_content)
+        self.env = {**rc4, 'CIRCLE_BRANCH': 'release/4.1'}
+        policy_path.write_text(policy)
+        bom = self.sample.parent / 'qqq-bom/pom.xml'
+        bom_content = bom.read_text()
+        for pin in ('1.0.0-RC.12', '1.0.0-RC.13'):
+            with self.subTest(bom_pin=pin):
+                bom.write_text(bom_content.replace('1.0.0-RC.11', pin))
+                self.assertEqual(1, self.coverage(), 'BOM must still select the accepted Next RC11')
+        bom.write_text(bom_content)
+        self.assertEqual(0, self.coverage())
+
     def test_partial_inputs_and_wrong_archive_or_receipt_hash_fail_closed(self):
         for key in ('QQQ_NEXT_CI_BUNDLE_URL', 'QQQ_NEXT_BUNDLE_SHA256', 'QQQ_NEXT_RECEIPT_SHA256'):
             original = self.env[key]

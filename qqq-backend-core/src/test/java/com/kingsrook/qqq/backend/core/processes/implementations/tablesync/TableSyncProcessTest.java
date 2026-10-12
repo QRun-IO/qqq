@@ -44,6 +44,8 @@ import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwith
 import com.kingsrook.qqq.backend.core.processes.utils.GeneralProcessUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -96,6 +98,102 @@ class TableSyncProcessTest extends BaseTest
       Map<Serializable, QRecord> syncPersonsBySourceId = GeneralProcessUtils.loadTableToMap(TABLE_NAME_PEOPLE_SYNC, "sourcePersonId");
       assertEquals("Tyler", syncPersonsBySourceId.get(3).getValueString("firstName"));
       assertEquals("Homer", syncPersonsBySourceId.get(5).getValueString("firstName"));
+   }
+
+
+
+   /*******************************************************************************
+    ** An update override must preserve either value of the insert setting.
+    *******************************************************************************/
+   @ParameterizedTest
+   @CsvSource({ "true, true", "true, false", "false, true", "false, false" })
+   void testPerformUpdatesOverridePreservesPerformInserts(boolean performInserts, boolean performUpdates) throws Exception
+   {
+      assertTransformModes(performInserts, !performUpdates, AbstractTableSyncTransformStep.SYNC_TABLE_PERFORM_UPDATES_KEY, performUpdates, performInserts, performUpdates);
+   }
+
+
+
+   /*******************************************************************************
+    ** An insert override must preserve either value of the update setting.
+    *******************************************************************************/
+   @ParameterizedTest
+   @CsvSource({ "true, true", "true, false", "false, true", "false, false" })
+   void testPerformInsertsOverridePreservesPerformUpdates(boolean performInserts, boolean performUpdates) throws Exception
+   {
+      assertTransformModes(!performInserts, performUpdates, AbstractTableSyncTransformStep.SYNC_TABLE_PERFORM_INSERTS_KEY, performInserts, performInserts, performUpdates);
+   }
+
+
+
+   /*******************************************************************************
+    ** Verify skipped-record summaries independently of input overrides.
+    *******************************************************************************/
+   @ParameterizedTest
+   @CsvSource({ "false, true", "true, false", "false, false" })
+   void testDisabledModeSummaryCounts(boolean performInserts, boolean performUpdates) throws Exception
+   {
+      assertTransformModes(performInserts, performUpdates, null, false, performInserts, performUpdates);
+   }
+
+
+
+   /*******************************************************************************
+    ** Use three new records and two existing records to distinguish the summaries.
+    *******************************************************************************/
+   private void assertTransformModes(boolean configuredInserts, boolean configuredUpdates, String overrideKey, boolean overrideValue, boolean expectedInserts, boolean expectedUpdates) throws Exception
+   {
+      setupDataAndMetaData(ExtractViaQueryStep.class);
+      PersonTransformClass transform = new PersonTransformClass()
+      {
+         /*******************************************************************************
+          **
+          *******************************************************************************/
+         @Override
+         protected SyncProcessConfig getSyncProcessConfig()
+         {
+            return new SyncProcessConfig(TestUtils.TABLE_NAME_PERSON_MEMORY, "id", TABLE_NAME_PEOPLE_SYNC, "sourcePersonId", configuredInserts, configuredUpdates);
+         }
+      };
+
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.setRecords(TestUtils.queryTable(QContext.getQInstance(), TestUtils.TABLE_NAME_PERSON_MEMORY));
+      if(overrideKey != null)
+      {
+         input.addValue(overrideKey, overrideValue);
+      }
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      transform.runOnePage(input, output);
+
+      List<Integer> expectedSourceIds = new ArrayList<>();
+      if(expectedInserts)
+      {
+         expectedSourceIds.addAll(List.of(1, 2, 4));
+      }
+      if(expectedUpdates)
+      {
+         expectedSourceIds.addAll(List.of(3, 5));
+      }
+      assertThat(output.getRecords()).extracting(record -> record.getValueInteger("sourcePersonId"))
+         .containsExactlyInAnyOrderElementsOf(expectedSourceIds);
+
+      ArrayList<ProcessSummaryLineInterface> summary = transform.getProcessSummary(output, false);
+      assertThat(summary).hasSize(2);
+      assertThat(summary).contains(expectedInserts ? transform.okToInsert : transform.willNotInsert, expectedUpdates ? transform.okToUpdate : transform.willNotUpdate);
+      assertEquals(3, (expectedInserts ? transform.okToInsert : transform.willNotInsert).getCount());
+      assertEquals(2, (expectedUpdates ? transform.okToUpdate : transform.willNotUpdate).getCount());
+      if(!expectedInserts)
+      {
+         assertThat(transform.willNotInsert).hasFieldOrPropertyWithValue("pluralFutureMessage", "will not be inserted ")
+            .hasFieldOrPropertyWithValue("messageSuffix", "because this process is not configured to insert records.");
+         assertThat(transform.willNotInsert.getPrimaryKeys()).containsExactlyInAnyOrder(1, 2, 4);
+      }
+      if(!expectedUpdates)
+      {
+         assertThat(transform.willNotUpdate).hasFieldOrPropertyWithValue("pluralFutureMessage", "will not be updated ")
+            .hasFieldOrPropertyWithValue("messageSuffix", "because this process is not configured to update records.");
+         assertThat(transform.willNotUpdate.getPrimaryKeys()).containsExactlyInAnyOrder(3, 5);
+      }
    }
 
 

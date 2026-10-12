@@ -182,6 +182,20 @@ public class QInstanceValidatorTest extends BaseTest
 
 
    /*******************************************************************************
+    ** The instance's home app, when set, must be one of its apps.
+    *******************************************************************************/
+   @Test
+   void testHomeAppName()
+   {
+      assertValidationSuccess((qInstance) -> qInstance.setHomeAppName(TestUtils.APP_NAME_GREETINGS));
+      assertValidationSuccess((qInstance) -> qInstance.setHomeAppName(null));
+      assertValidationFailureReasons((qInstance) -> qInstance.setHomeAppName("notAnApp"),
+         "Instance homeAppName [notAnApp] is not the name of an app in the instance");
+   }
+
+
+
+   /*******************************************************************************
     ** Record change listener code references are validated like other instance
     ** code references: each must load as a RecordChangeListenerInterface.
     *******************************************************************************/
@@ -2612,6 +2626,81 @@ public class QInstanceValidatorTest extends BaseTest
       assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(new FieldAdornment(AdornmentType.FILE_DOWNLOAD).withValue("fileNameFormatFields", "foo"))), "fileNameFormatFields could not be accessed");
       assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(new FieldAdornment(AdornmentType.FILE_DOWNLOAD).withValue("fileNameFormatFields", new ArrayList<>(List.of("foo"))))), "unrecognized field name in fileNameFormatFields [foo]");
       assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(new FieldAdornment(AdornmentType.FILE_DOWNLOAD).withValue("fileNameFormatFields", new ArrayList<>(List.of("lastName"))))));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFilePreviewAdornment()
+   {
+      Function<QInstance, QFieldMetaData> fieldExtractor = qInstance -> qInstance.getTable(TestUtils.TABLE_NAME_PERSON).getField("firstName");
+
+      ////////////////////////////////////////////////////
+      // no values at all - the field is its own source //
+      ////////////////////////////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment())));
+
+      //////////////////////////////////////
+      // every value, referring to fields //
+      //////////////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment()
+         .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.FULL_SIZE_URL_FIELD, "email")
+         .withValue(AdornmentType.FilePreviewValues.FILE_NAME_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.MIME_TYPE_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.ALT_TEXT_FIELD, "firstName")
+         .withValue(AdornmentType.FilePreviewValues.CAPTION_FIELD, "lastName")
+         .withValue(AdornmentType.FilePreviewValues.WIDTH_FIELD, "id")
+         .withValue(AdornmentType.FilePreviewValues.HEIGHT_FIELD, "id")
+         .withValue(AdornmentType.FilePreviewValues.SIZE_BYTES_FIELD, "id")
+         .withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "image/*")
+         .withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 64)
+         .withValue(AdornmentType.FilePreviewValues.PREVIEWABLE, false))));
+
+      ///////////////////////////////////////////
+      // each field-name key must name a field //
+      ///////////////////////////////////////////
+      for(String key : AdornmentType.FilePreviewValues.FIELD_NAME_KEYS)
+      {
+         assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(key, "notAField"))), "unrecognized " + key + " [notAField]");
+      }
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, 17))), "thumbnailUrlField must be a field name");
+
+      ///////////////////////////////
+      // thumbnail size boundaries //
+      ///////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, AdornmentType.FilePreviewValues.MIN_THUMBNAIL_SIZE))));
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, "512"))));
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 15))), "invalid thumbnailMaxSize [15]");
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, 513))), "invalid thumbnailMaxSize [513]");
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE, "big"))), "invalid thumbnailMaxSize [big]");
+
+      /////////////////////////////////
+      // previewable and mime checks //
+      /////////////////////////////////
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.PREVIEWABLE, "true"))));
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.PREVIEWABLE, "yes"))), "invalid previewable value [yes]");
+      assertValidationSuccess((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "application/pdf"))));
+      assertValidationFailureReasons((qInstance -> fieldExtractor.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE, "jpeg"))), "invalid defaultMimeType [jpeg]");
+
+      ////////////////////////////////////////////////////////////////////
+      // a BLOB field needs a FILE_DOWNLOAD adornment (or URL fields) so //
+      // that the preview has a URL to load                             //
+      ////////////////////////////////////////////////////////////////////
+      Function<QInstance, QFieldMetaData> blobFieldAdder = qInstance ->
+      {
+         QFieldMetaData blobField = new QFieldMetaData("photo", QFieldType.BLOB).withIsHeavy(true);
+         qInstance.getTable(TestUtils.TABLE_NAME_PERSON).addField(blobField);
+         return (blobField);
+      };
+      assertValidationFailureReasons((qInstance -> blobFieldAdder.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment())), "is on a BLOB field, so it needs a FILE_DOWNLOAD adornment");
+      assertValidationSuccess((qInstance -> blobFieldAdder.apply(qInstance)
+         .withFieldAdornment(new FieldAdornment(AdornmentType.FILE_DOWNLOAD).withValue(AdornmentType.FileDownloadValues.DEFAULT_MIME_TYPE, "image/jpeg"))
+         .withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment())));
+      assertValidationSuccess((qInstance -> blobFieldAdder.apply(qInstance).withFieldAdornment(AdornmentType.FilePreviewValues.newFieldAdornment().withValue(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD, "lastName"))));
    }
 
 

@@ -79,6 +79,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
@@ -260,6 +261,11 @@ public class QInstanceValidator
     ***************************************************************************/
    private void validateInstanceAttributes(QInstance qInstance)
    {
+      if(qInstance.getHomeAppName() != null)
+      {
+         assertCondition(qInstance.getApps() != null && qInstance.getApps().containsKey(qInstance.getHomeAppName()), "Instance homeAppName [" + qInstance.getHomeAppName() + "] is not the name of an app in the instance.");
+      }
+
       if(qInstance.getMetaDataActionCustomizer() != null)
       {
          validateSimpleCodeReference("Instance metaDataActionCustomizer ", qInstance.getMetaDataActionCustomizer(), MetaDataActionCustomizerInterface.class);
@@ -1597,6 +1603,7 @@ public class QInstanceValidator
                      }
                   }
                }
+               case FILE_PREVIEW -> validateFilePreviewAdornment(table, field, adornmentPrefix, adornmentValues);
                case WIDGET ->
                {
                   String widgetName = ValueUtils.getValueAsString(adornmentValues.get(AdornmentType.WidgetValues.WIDGET_NAME));
@@ -1614,6 +1621,69 @@ public class QInstanceValidator
       }
 
       validateFieldSupplementalMetaData(field, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** validate the values of a FILE_PREVIEW adornment: field-name values must
+    ** name fields of the table, the thumbnail size must be in range, and a BLOB
+    ** field needs either URL fields or a FILE_DOWNLOAD adornment (which gives it
+    ** a URL).
+    *******************************************************************************/
+   private void validateFilePreviewAdornment(Optional<QTableMetaData> table, QFieldMetaData field, String adornmentPrefix, Map<String, Serializable> adornmentValues)
+   {
+      for(String key : AdornmentType.FilePreviewValues.FIELD_NAME_KEYS)
+      {
+         Serializable value = adornmentValues.get(key);
+         if(value == null)
+         {
+            continue;
+         }
+
+         if(assertCondition(value instanceof String fieldName && StringUtils.hasContent(fieldName), adornmentPrefix + key + " must be a field name (a non-empty String)")
+            && assertCondition(table.isPresent(), adornmentPrefix + "with " + key + " cannot be used outside of the context of a table"))
+         {
+            //noinspection OptionalGetWithoutIsPresent - is checked in the assertCondition line
+            assertNoException(() -> table.get().getField((String) value), adornmentPrefix + "specifies an unrecognized " + key + " [" + value + "]");
+         }
+      }
+
+      Serializable thumbnailMaxSize = adornmentValues.get(AdornmentType.FilePreviewValues.THUMBNAIL_MAX_SIZE);
+      if(thumbnailMaxSize != null)
+      {
+         Integer size = null;
+         try
+         {
+            size = ValueUtils.getValueAsInteger(thumbnailMaxSize);
+         }
+         catch(Exception e)
+         {
+            // handled by the assertion below
+         }
+
+         int min = AdornmentType.FilePreviewValues.MIN_THUMBNAIL_SIZE;
+         int max = AdornmentType.FilePreviewValues.MAX_THUMBNAIL_SIZE;
+         assertCondition(size != null && size >= min && size <= max, adornmentPrefix + "has an invalid thumbnailMaxSize [" + thumbnailMaxSize + "] (must be an integer from " + min + " to " + max + ")");
+      }
+
+      Serializable previewable = adornmentValues.get(AdornmentType.FilePreviewValues.PREVIEWABLE);
+      if(previewable != null)
+      {
+         assertCondition(previewable instanceof Boolean || "true".equalsIgnoreCase(previewable.toString()) || "false".equalsIgnoreCase(previewable.toString()), adornmentPrefix + "has an invalid previewable value [" + previewable + "] (must be a Boolean)");
+      }
+
+      Serializable defaultMimeType = adornmentValues.get(AdornmentType.FilePreviewValues.DEFAULT_MIME_TYPE);
+      if(defaultMimeType != null)
+      {
+         assertCondition(defaultMimeType.toString().matches("^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*/([a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*|[*])$"), adornmentPrefix + "has an invalid defaultMimeType [" + defaultMimeType + "] (expected type/subtype, e.g., image/jpeg or image/*)");
+      }
+
+      if(QFieldType.BLOB.equals(field.getType()))
+      {
+         boolean hasUrlFields = adornmentValues.get(AdornmentType.FilePreviewValues.THUMBNAIL_URL_FIELD) != null || adornmentValues.get(AdornmentType.FilePreviewValues.FULL_SIZE_URL_FIELD) != null;
+         assertCondition(hasUrlFields || field.getAdornment(AdornmentType.FILE_DOWNLOAD).isPresent(), adornmentPrefix + "is on a BLOB field, so it needs a FILE_DOWNLOAD adornment (to give the field a URL) or a thumbnailUrlField / fullSizeUrlField");
+      }
    }
 
 

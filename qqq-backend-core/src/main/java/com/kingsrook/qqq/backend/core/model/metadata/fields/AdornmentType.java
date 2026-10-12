@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.fields;
 import java.io.Serializable;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
 import com.kingsrook.qqq.backend.core.utils.Pair;
@@ -47,7 +48,8 @@ public enum AdornmentType
    FILE_UPLOAD,
    TOOLTIP,
    WIDGET,
-   ERROR;
+   ERROR,
+   FILE_PREVIEW;
    //////////////////////////////////////////////////////////////////////////
    // keep these values in sync with AdornmentType.ts in qqq-frontend-core //
    //////////////////////////////////////////////////////////////////////////
@@ -256,6 +258,66 @@ public enum AdornmentType
    {
       String STATIC_TEXT = "staticText";
       String TOOLTIP_DYNAMIC = "tooltipDynamic";
+   }
+
+
+
+   /*******************************************************************************
+    ** Values for a FILE_PREVIEW adornment, which makes a field render as a
+    ** thumbnail (for images) or a file-type icon (for other files), where
+    ** clicking opens a preview (lightbox) of the full-size file.
+    **
+    ** The adorned field's own value is the default source for both the thumbnail
+    ** and the full-size file: a URL (absolute http(s) or a same-origin path), or,
+    ** for a BLOB field that also has a FILE_DOWNLOAD adornment, the download URL
+    ** the backend produces for it.  Every key is optional; the "...Field" keys
+    ** name other fields of the same table, whose values (in the same record)
+    ** supply the thumbnail URL, the full-size URL and the file's details.
+    *******************************************************************************/
+   public interface FilePreviewValues
+   {
+      // name of a field holding a (small) thumbnail URL. default: this field
+      String THUMBNAIL_URL_FIELD = "thumbnailUrlField";
+
+      // name of a field holding the full-size (or original) URL. default: this field
+      String FULL_SIZE_URL_FIELD = "fullSizeUrlField";
+
+      String FILE_NAME_FIELD  = "fileNameField";
+      String MIME_TYPE_FIELD  = "mimeTypeField";
+      String ALT_TEXT_FIELD   = "altTextField";
+      String CAPTION_FIELD    = "captionField";
+      String WIDTH_FIELD      = "widthField";
+      String HEIGHT_FIELD     = "heightField";
+      String SIZE_BYTES_FIELD = "sizeBytesField";
+
+      // mime type (e.g., "image/jpeg", "image/*", "application/pdf") to assume
+      // when there is no mimeTypeField (or it is empty in a record).
+      String DEFAULT_MIME_TYPE = "defaultMimeType";
+
+      // largest edge, in css pixels, of the thumbnail in lists (e.g., the query
+      // grid). Integer between MIN_THUMBNAIL_SIZE and MAX_THUMBNAIL_SIZE.
+      String THUMBNAIL_MAX_SIZE = "thumbnailMaxSize";
+
+      // Boolean, default true. false shows the thumbnail without the preview.
+      String PREVIEWABLE = "previewable";
+
+      int DEFAULT_THUMBNAIL_SIZE = 40;
+      int MIN_THUMBNAIL_SIZE     = 16;
+      int MAX_THUMBNAIL_SIZE     = 512;
+
+      // the value keys that name other fields of the table (validated).
+      List<String> FIELD_NAME_KEYS = List.of(THUMBNAIL_URL_FIELD, FULL_SIZE_URL_FIELD, FILE_NAME_FIELD, MIME_TYPE_FIELD, ALT_TEXT_FIELD, CAPTION_FIELD, WIDTH_FIELD, HEIGHT_FIELD, SIZE_BYTES_FIELD);
+
+
+
+      /*******************************************************************************
+       ** Start a FILE_PREVIEW adornment, to add values to with
+       ** {@link FieldAdornment#withValue(String, Serializable)}.
+       *******************************************************************************/
+      static FieldAdornment newFieldAdornment()
+      {
+         return (new FieldAdornment(AdornmentType.FILE_PREVIEW));
+      }
    }
 
 

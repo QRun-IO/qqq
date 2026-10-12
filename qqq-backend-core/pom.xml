@@ -79,12 +79,18 @@
          <version>1.12.797</version>
       </dependency>
       <!-- Apache HttpClient 4.5 is used directly by utils.http.SafeHttpClient   -->
-      <!-- (its DnsResolver pins checked addresses). Same version the AWS and     -->
-      <!-- Google SDKs already bring in transitively.                             -->
+      <!-- (its DnsResolver pins checked addresses). Pinned with httpcore 4.4.16 so a direct dependency  -->
+      <!-- never downgrades what other modules resolve.                           -->
       <dependency>
          <groupId>org.apache.httpcomponents</groupId>
          <artifactId>httpclient</artifactId>
-         <version>4.5.13</version>
+         <version>4.5.14</version>
+      </dependency>
+      <!-- keep httpcore at the version the rest of QQQ resolves (HttpStatus.SC_TOO_MANY_REQUESTS) -->
+      <dependency>
+         <groupId>org.apache.httpcomponents</groupId>
+         <artifactId>httpcore</artifactId>
+         <version>4.4.16</version>
       </dependency>
       <dependency>
          <groupId>com.ibm.icu</groupId>

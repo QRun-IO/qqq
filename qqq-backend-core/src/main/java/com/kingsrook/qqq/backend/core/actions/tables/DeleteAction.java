@@ -39,6 +39,8 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterfa
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -115,10 +117,26 @@ public class DeleteAction
     *******************************************************************************/
    private DeleteOutput execute(DeleteInput deleteInput, Set<Target> ancestors) throws QException
    {
+      if(deleteInput.getTableName() != null && deleteInput.getTable() != null)
+      {
+         if(CorePermissionEnforcer.checkTablePermissions(deleteInput, TablePermissionSubType.DELETE))
+         {
+            /////////////////////////////////////////////////////////////////////////
+            // a delete filter may not read joined tables or locked fields the   //
+            // user can't (a dry run returns the matched keys, so it's a read). //
+            /////////////////////////////////////////////////////////////////////////
+            if(deleteInput.getQueryFilter() != null)
+            {
+               CorePermissionEnforcer.checkReadCriteria(deleteInput, null, deleteInput.getQueryFilter(), null);
+            }
+            CorePermissionEnforcer.checkAssociatedWrites(deleteInput);
+         }
+      }
+
       List<Serializable> primaryKeys = deleteInput.getPrimaryKeys() == null ? null : new ArrayList<>(deleteInput.getPrimaryKeys());
       QQueryFilter filter = deleteInput.getQueryFilter();
       QContext.pushAction(deleteInput);
-      try
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
       {
          return executeInternal(deleteInput, ancestors);
       }
@@ -190,7 +208,7 @@ public class DeleteAction
       //////////////////////////////////////////////////////////////////////
       // Validation and cascades must act on the exact selected key list. //
       //////////////////////////////////////////////////////////////////////
-      if(deleteInput.getQueryFilter() != null && (!deleteInterface.supportsQueryFilterInput() || deleteInterface.supportsPreFetchQuery() || CollectionUtils.nullSafeHasContents(QContext.getQInstance().getTable(table.getName()).getAssociations())))
+      if(deleteInput.getQueryFilter() != null && (deleteInput.getDryRun() || !deleteInterface.supportsQueryFilterInput() || deleteInterface.supportsPreFetchQuery() || CollectionUtils.nullSafeHasContents(QContext.getQInstance().getTable(table.getName()).getAssociations())))
       {
          LOG.debug("Selecting primary keys before validated or cascading delete", new LogPair("tableName", table.getName()));
          List<Serializable> primaryKeyList = getPrimaryKeysFromQueryFilter(deleteInput);
@@ -204,6 +222,10 @@ public class DeleteAction
             DeleteOutput deleteOutput = new DeleteOutput();
             deleteOutput.setRecordsWithErrors(new ArrayList<>());
             deleteOutput.setDeletedRecordCount(0);
+            if(deleteInput.getDryRun())
+            {
+               deleteOutput.setDryRunPrimaryKeys(new ArrayList<>());
+            }
             return (deleteOutput);
          }
       }
@@ -230,7 +252,7 @@ public class DeleteAction
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(deleteInput, deleteInterface);
       List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(deleteInput, oldRecordList);
 
-      List<QRecord>              customizerResult              = performValidations(deleteInput, oldRecordList, false);
+      List<QRecord>              customizerResult              = performValidations(deleteInput, oldRecordList, deleteInput.getDryRun());
       List<QRecord>              recordsWithValidationErrors   = new ArrayList<>();
       Map<Object, QRecord>       recordsWithValidationWarnings = new LinkedHashMap<>();
 
@@ -270,6 +292,18 @@ public class DeleteAction
                }
             }
          }
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // a dry run stops here - before any association cascade or the delete. //
+      ///////////////////////////////////////////////////////////////////////////
+      if(deleteInput.getDryRun())
+      {
+         DeleteOutput dryRunOutput = new DeleteOutput();
+         dryRunOutput.setRecordsWithErrors(recordsWithValidationErrors);
+         dryRunOutput.setRecordsWithWarnings(new ArrayList<>(recordsWithValidationWarnings.values()));
+         dryRunOutput.setDryRunPrimaryKeys(primaryKeys == null ? new ArrayList<>() : new ArrayList<>(primaryKeys));
+         return (dryRunOutput);
       }
 
       List<QRecord> associationResults = deleteAssociations(deleteInput, ancestors);

@@ -25,6 +25,8 @@ import java.util.Collections;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -58,6 +60,29 @@ public class CountAction
     *******************************************************************************/
    public CountOutput execute(CountInput countInput) throws QException
    {
+      boolean enforce = false;
+      if(countInput.getTableName() != null && countInput.getTable() != null)
+      {
+         enforce = CorePermissionEnforcer.checkTablePermissions(countInput, TablePermissionSubType.READ);
+         if(enforce)
+         {
+            CorePermissionEnforcer.checkReadCriteria(countInput, countInput.getQueryJoins(), countInput.getFilter(), null);
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(countInput, enforce));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The count itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private CountOutput executeInAuthorizedScope(CountInput countInput, boolean enforce) throws QException
+   {
       ActionHelper.validateSession(countInput);
 
       if(countInput.getTableName() == null)
@@ -71,7 +96,7 @@ public class CountAction
          throw (new QException("A table named [" + countInput.getTableName() + "] was not found in the active QInstance"));
       }
 
-      table = TableMetaDataPersonalizerAction.execute(countInput);
+      table = TableMetaDataPersonalizerAction.execute(countInput, enforce);
       if(table == null)
       {
          throw (new QException("Count table is not available"));

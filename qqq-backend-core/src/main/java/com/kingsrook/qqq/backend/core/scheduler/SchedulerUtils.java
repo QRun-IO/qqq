@@ -159,6 +159,7 @@ public class SchedulerUtils
          runProcessInput.setCallback(QProcessCallbackFactory.forPrimaryKey(table.getPrimaryKeyField(), recordId));
       }
 
+      runProcessInput.withPermissionBypass("scheduled process");
       QContext.pushAction(runProcessInput);
 
       RunProcessAction runProcessAction = new RunProcessAction();
@@ -180,6 +181,7 @@ public class SchedulerUtils
          QueryInput queryInput = new QueryInput();
          queryInput.setTableName(backendMetaData.getBackendVariantsConfig().getOptionsTableName());
          queryInput.setFilter(backendMetaData.getBackendVariantsConfig().getOptionsFilter());
+         queryInput.withPermissionBypass("scheduler backend-variant lookup");
 
          QueryOutput queryOutput = new QueryAction().execute(queryInput);
          records = queryOutput.getRecords();

@@ -33,6 +33,7 @@ import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.NoCodeWidgetRenderer;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.processes.listeners.ProcessLifecycleListenerHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -109,6 +110,24 @@ public class RunProcessAction
     **
     *******************************************************************************/
    public RunProcessOutput execute(RunProcessInput runProcessInput) throws QException
+   {
+      if(runProcessInput.getProcessName() != null && QContext.getQInstance() != null && QContext.getQInstance().getProcess(runProcessInput.getProcessName()) != null)
+      {
+         CorePermissionEnforcer.checkProcessPermission(runProcessInput, runProcessInput.getProcessName(), runProcessInput.getValues());
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(runProcessInput));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Run the process - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private RunProcessOutput executeInAuthorizedScope(RunProcessInput runProcessInput) throws QException
    {
       ActionHelper.validateSession(runProcessInput);
 

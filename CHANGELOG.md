@@ -8,18 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
-- **OAuth2 refresh tokens encrypted at rest ([#1048](https://github.com/QRun-IO/qqq/issues/1048))** — refresh tokens
-  in the `userSessionRefreshToken` table (#1041) are now encrypted with AES-256-GCM, using a random nonce per value
-  and the session's uuid and `userId` as associated data, so a copied database, replica or backup no longer holds
-  usable tokens. The key comes from the new `OAuth2AuthenticationMetaData.refreshTokenEncryptionKey`, a base64
-  32-byte key from `openssl rand -base64 32` (`${env.X}` references are resolved). `refreshTokenEncryptionKeyId` and
-  `previousRefreshTokenEncryptionKeys` support rotation: values under a previous key are re-encrypted on their next
-  write. Instance validation fails when the table is defined and refresh is enabled but no valid key is set;
-  `allowPlaintextRefreshTokens` (default `false`) is a local-development escape hatch and logs a warning. A value
-  that can't be decrypted ends its session with the usual 401. The table now requires a dedicated permission that no
-  role is granted, so the v1 table API, export, reports and the UI deny it to every user. **Upgrade:** apps that
-  enabled the table from `develop` must set a key, and their existing plaintext rows end at the next refresh. See
-  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+- **Permission enforcement in core actions ([#1061](https://github.com/QRun-IO/qqq/issues/1061),
+  [#1062](https://github.com/QRun-IO/qqq/issues/1062))** — `QueryAction`, `GetAction`, `CountAction`, `AggregateAction`,
+  `InsertAction`, `UpdateAction`, `DeleteAction`, `ReplaceAction`, `ExportAction`, `RunProcessAction`,
+  `RenderWidgetAction` and `GenerateReportAction` can now check the session's table/process/widget/report permissions
+  themselves (previously only the middlewares did, so MCP servers, assistants, custom routes and scripts skipped them),
+  and `FieldSecurityLock` is now enforced: denied fields are removed from read output and table meta data, and
+  filtering, sorting, grouping on or writing to them is a permission error. Per call, `PermissionEnforcement.ENFORCE`
+  always checks and `withPermissionBypass(reason)` never does; otherwise outermost calls are checked when
+  `QInstance.enforcePermissionsInCoreActions` (or `-Dqqq.enforcePermissionsInCoreActions` /
+  `QQQ_ENFORCE_PERMISSIONS_IN_CORE_ACTIONS`) is true. Calls nested inside an action (process steps, customizers, widget
+  renderers, possible-value lookups, async children) stay trusted, and `QSystemUserSession` passes as before; the
+  scheduler, polling automations and SQS poller mark their runs as system bypasses. **Off by default in 4.1.x** (no
+  behavior change unless enabled); planned to default on in 4.2. See
+  [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
+
+### Added
+- **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
+  validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
+- **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless
+  `ExportInput.withIncludeSensitiveFields(true)`, frontend field meta data carries the flag, and AI/MCP integrations must
+  not send their values to a model.
+
+## [4.1.0-RC.3] — candidate (2026-10-12)
+
+Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1/RC.2; see the [release procedure](docs/release/4.1.adoc).
+Next `1.0.0-RC.13` or later renders the two features below. Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
 
 ### Added
 - **Record developer panels** — a generic contract for modules and qbits to contribute panels to a record's developer
@@ -44,6 +58,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   links its logo and breadcrumb root there). Validation requires the name to be an app in the instance. Metadata
   (`MetaDataOutput.homeAppName`, v1 `metaData` response `homeAppName`) publishes it only to users who may access that
   app; otherwise it is omitted and frontends keep their default home page.
+
+## [4.1.0-RC.2] — candidate (2026-10-11)
+
+Same Next `1.0.0-RC.11` pairing and retained limitations as RC.1; see the [release procedure](docs/release/4.1.adoc).
+Adoption guide: [Adopting QQQ 4.1 features](docs/migration/4.1.adoc).
+
+### Security
+- **OAuth2 refresh tokens encrypted at rest ([#1048](https://github.com/QRun-IO/qqq/issues/1048))** — refresh tokens
+  in the `userSessionRefreshToken` table (#1041) are now encrypted with AES-256-GCM, using a random nonce per value
+  and the session's uuid and `userId` as associated data, so a copied database, replica or backup no longer holds
+  usable tokens. The key comes from the new `OAuth2AuthenticationMetaData.refreshTokenEncryptionKey`, a base64
+  32-byte key from `openssl rand -base64 32` (`${env.X}` references are resolved). `refreshTokenEncryptionKeyId` and
+  `previousRefreshTokenEncryptionKeys` support rotation: values under a previous key are re-encrypted on their next
+  write. Instance validation fails when the table is defined and refresh is enabled but no valid key is set;
+  `allowPlaintextRefreshTokens` (default `false`) is a local-development escape hatch and logs a warning. A value
+  that can't be decrypted ends its session with the usual 401. The table now requires a dedicated permission that no
+  role is granted, so the v1 table API, export, reports and the UI deny it to every user. **Upgrade:** apps that
+  enabled the table from `develop` must set a key, and their existing plaintext rows end at the next refresh. See
+  [OAuth2 refresh tokens](docs/misc/OAuth2RefreshTokens.adoc).
+
+### Added
 - **OAuth2 refresh tokens ([#1041](https://github.com/QRun-IO/qqq/issues/1041))** — `OAuth2AuthenticationModule`
   stores the refresh token from the code exchange (e.g., with the `offline_access` scope) server-side, in the new
   opt-in `userSessionRefreshToken` table (`UserSessionRefreshToken`, `UserSessionRefreshTokenMetaDataProducer`).

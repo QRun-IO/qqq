@@ -38,6 +38,8 @@ public class DeleteOutput extends AbstractActionOutput implements Serializable
    private List<QRecord> recordsWithErrors;
    private List<QRecord> recordsWithWarnings;
 
+   private List<Serializable> dryRunPrimaryKeys;
+
 
 
    /*******************************************************************************
@@ -147,6 +149,37 @@ public class DeleteOutput extends AbstractActionOutput implements Serializable
          this.recordsWithWarnings = new ArrayList<>();
       }
       this.recordsWithWarnings.add(recordWithWarning);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for dryRunPrimaryKeys - for a DeleteInput with dryRun=true, the
+    ** primary keys of the records that would have been deleted (null otherwise).
+    *******************************************************************************/
+   public List<Serializable> getDryRunPrimaryKeys()
+   {
+      return (this.dryRunPrimaryKeys);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dryRunPrimaryKeys
+    *******************************************************************************/
+   public void setDryRunPrimaryKeys(List<Serializable> dryRunPrimaryKeys)
+   {
+      this.dryRunPrimaryKeys = dryRunPrimaryKeys;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dryRunPrimaryKeys
+    *******************************************************************************/
+   public DeleteOutput withDryRunPrimaryKeys(List<Serializable> dryRunPrimaryKeys)
+   {
+      this.dryRunPrimaryKeys = dryRunPrimaryKeys;
+      return (this);
    }
 
 }

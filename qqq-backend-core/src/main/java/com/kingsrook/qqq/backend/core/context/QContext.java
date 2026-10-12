@@ -53,6 +53,15 @@ public class QContext
 
    private static ThreadLocal<Map<String, Serializable>> objectsThreadLocal = new ThreadLocal<>();
 
+   ///////////////////////////////////////////////////////////////////////////////
+   // depth of "authorized action scopes" - e.g., how many core actions (which  //
+   // have already applied any permission enforcement owed to their caller) are //
+   // currently executing on this thread.  Actions called while this is > 0 are //
+   // framework-internal (customizers, process steps, etc) and are trusted,     //
+   // unless their input explicitly requests PermissionEnforcement.ENFORCE.     //
+   ///////////////////////////////////////////////////////////////////////////////
+   private static ThreadLocal<Integer> authorizedActionScopeDepthThreadLocal = new ThreadLocal<>();
+
 
 
    /*******************************************************************************
@@ -83,6 +92,7 @@ public class QContext
       qInstanceThreadLocal.set(qInstance);
       qSessionThreadLocal.set(qSession);
       qBackendTransactionThreadLocal.set(transaction);
+      authorizedActionScopeDepthThreadLocal.remove();
 
       actionStackThreadLocal.set(new Stack<>());
       if(actionInput != null)
@@ -133,6 +143,7 @@ public class QContext
    {
       init(capturedContext.qInstance(), capturedContext.qSession(), capturedContext.qBackendTransaction(), null);
       actionStackThreadLocal.set(capturedContext.actionStack());
+      authorizedActionScopeDepthThreadLocal.set(capturedContext.authorizedActionScopeDepth());
    }
 
 
@@ -143,7 +154,7 @@ public class QContext
     *******************************************************************************/
    public static CapturedContext capture()
    {
-      return (new CapturedContext(getQInstance(), getQSession(), getQBackendTransaction(), getActionStack()));
+      return (new CapturedContext(getQInstance(), getQSession(), getQBackendTransaction(), getActionStack(), getAuthorizedActionScopeDepth()));
    }
 
 
@@ -158,6 +169,7 @@ public class QContext
       qBackendTransactionThreadLocal.remove();
       actionStackThreadLocal.remove();
       objectsThreadLocal.remove();
+      authorizedActionScopeDepthThreadLocal.remove();
    }
 
 
@@ -198,6 +210,53 @@ public class QContext
    public static Stack<AbstractActionInput> getActionStack()
    {
       return (actionStackThreadLocal.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** Get the number of authorized action scopes that are currently open on this
+    ** thread.  0 means that the code running now is not inside any core action
+    ** (e.g., it is a middleware entry point, a custom route, or a script), so a
+    ** core action called from here is an "outermost" call, subject to the
+    ** instance's core permission-enforcement setting.
+    *******************************************************************************/
+   public static int getAuthorizedActionScopeDepth()
+   {
+      Integer depth = authorizedActionScopeDepthThreadLocal.get();
+      return (depth == null ? 0 : depth);
+   }
+
+
+
+   /*******************************************************************************
+    ** Open an authorized action scope.  Meant to be called by core actions after
+    ** they have applied whatever permission enforcement is owed to their caller
+    ** (and by framework code that runs trusted internal work), always paired with
+    ** exitAuthorizedActionScope in a finally block - or, preferably, use
+    ** CorePermissionEnforcer.openAuthorizedScope() in a try-with-resources.
+    *******************************************************************************/
+   public static void enterAuthorizedActionScope()
+   {
+      authorizedActionScopeDepthThreadLocal.set(getAuthorizedActionScopeDepth() + 1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Close an authorized action scope opened by enterAuthorizedActionScope.
+    *******************************************************************************/
+   public static void exitAuthorizedActionScope()
+   {
+      int depth = getAuthorizedActionScopeDepth();
+      if(depth <= 1)
+      {
+         authorizedActionScopeDepthThreadLocal.remove();
+      }
+      else
+      {
+         authorizedActionScopeDepthThreadLocal.set(depth - 1);
+      }
    }
 
 

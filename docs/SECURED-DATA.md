@@ -197,6 +197,18 @@ get-by-unique-key, export, report source queries, possible-value searches):
 - `IS_BLANK` / `IS_NOT_BLANK` are not exact matches and are refused for REVEALABLE (they partition
   the table without a known value). `IN` is limited to 25 values for REVEALABLE so it cannot be
   used to enumerate.
+- **Enumeration guardrails** (§7.6). Before an exact-match query runs, core calls the resolver's
+  `checkExactMatch(FieldAccessEvent)`, which may refuse it (rate limit, low-entropy field) with a
+  `QPermissionDeniedException` carrying a user-facing message. The resolver's decision can also
+  say `exactMatchAllowed=false` for a field, which makes REVEALABLE behave like MASKED for
+  filtering. After the query (or count), core reports the outcome: `onAccess(EXACT_MATCH_FILTER)`
+  with `outcome` MATCH or NO_MATCH and `recordCount`. A refusal is reported with outcome REFUSED.
+  The searched values never leave core: the event carries only `searchValueFingerprints`, from the
+  resolver's `fingerprintSearchValue(Serializable)` (the qbit uses a keyed HMAC), so distinct-value
+  counts can be kept without storing values.
+- **Client channels** (#1141). The table-level channel wall in `PermissionsHelper` runs first; field
+  tiers are evaluated after it in the same enforcement path, and the resolver sees the channel on
+  the session (`QSession.getClientChannelName()`), so a policy can cap tiers per channel (§7.1).
 
 ### 3.3 Masking results
 `QueryAction` (the path under get, export, reports, record-list widgets and record search) calls
@@ -390,6 +402,33 @@ Evaluated when a REVEAL or EXACT_MATCH_FILTER row is written (cheap counters per
 - any break-glass session.
 Each raises an alert (`secured_data.anomaly`, keyed by user and day) through the alerts SPI and
 sets `anomaly_flag` on the log row. Without qbit-alerts, flags still show on the app home.
+
+### 7.6 Enumeration guardrails for exact-match search
+A CS admin with REVEALABLE access could guess and check low-variety values (birth year, state,
+last 4 digits, a date of birth within a year) without ever revealing. Four controls, each a
+policy setting on `secured_data_policy`, all ON by default:
+1. **Rate limit** (`exact_match_per_hour`, default 20, per user per field): counted from
+   `secured_data_access_log` EXACT_MATCH_FILTER rows in the last hour (authoritative across nodes).
+   Over the limit the search is refused: "Exact-match search limit reached for [field]. Try again
+   later or ask an administrator." (403, outcome REFUSED).
+2. **Miss alerting** (`miss_alert_consecutive`, default 5; `distinct_value_alert`, default 15 per
+   hour): N consecutive NO_MATCH searches on the same field by one user, or more than M distinct
+   searched values (by HMAC fingerprint) in an hour, raise `secured_data.enumeration` through the
+   alerts SPI and flag the log row.
+3. **Minimum entropy** (`min_entropy_enabled`, default true): exact match is disabled
+   (`exactMatchAllowed=false`) for fields marked low-cardinality on
+   `secured_data_classification.low_cardinality` (true/false/null = auto). Auto marks: boolean and
+   enum (possible-value-source) fields, date fields, integer fields named or labelled like a year,
+   state/region/zip3 fields, and string fields whose `maxLength` is under 6. Admin rows override
+   auto in either direction.
+4. **Logging:** every exact-match search writes one access-log row with outcome MATCH, NO_MATCH
+   or REFUSED (and the reason for a refusal); never the searched value.
+
+These are **compensating controls** for the HIPAA minimum-necessary standard (45 CFR
+164.514(d)): users whose role needs only to locate a record by an identifier they already hold get
+that and nothing more. They also implement access monitoring (164.308(a)(1)(ii)(D), information
+system activity review, and 164.312(b), audit controls): every restricted access is logged with
+user, field, outcome and channel, and anomalies alert.
 
 ### 7.5 Permissions
 - Table features registered through `TableFeaturePermissionsMetaData` for every table with a

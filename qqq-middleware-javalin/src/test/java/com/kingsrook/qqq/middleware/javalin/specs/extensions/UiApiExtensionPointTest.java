@@ -33,6 +33,7 @@ import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.UiApiRouteAuditor;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInvoker;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiRequest;
@@ -165,7 +166,7 @@ class UiApiExtensionPointTest
 
       MiddlewareVersionV1 version = new MiddlewareVersionV1();
       version.setQInstance(qInstance);
-      assertEquals(version.getEndpointSpecs().size() + 1, version.getAllEndpointSpecs().size());
+      assertEquals(version.getEndpointSpecs().size() + 2, version.getAllEndpointSpecs().size());
       assertThat(version.getExtensions()).containsKey("test-ext");
 
       OpenAPI openAPI = version.generateOpenAPIModel("qqq");
@@ -177,7 +178,8 @@ class UiApiExtensionPointTest
       // the extension-alone document has only the extension path //
       ///////////////////////////////////////////////////////////////
       OpenAPI extensionOpenAPI = version.generateExtensionOpenAPIModel("qqq", TestExtensionSpecs.echoExtension());
-      assertEquals(1, extensionOpenAPI.getPaths().size());
+      assertEquals(2, extensionOpenAPI.getPaths().size());
+      assertThat(openAPI.getPaths().get("/qqq/v1/qbit/test-ext/sum/{label}").getPost().getRequestBody().getRequired()).isTrue();
       assertEquals("1.2.3", extensionOpenAPI.getInfo().getVersion());
 
       ///////////////////////////////////////////////////////////////////////////////////
@@ -257,6 +259,18 @@ class UiApiExtensionPointTest
       assertEquals("1.2.3", extension.getString("version"));
       assertEquals("/qbit/test-ext", extension.getString("pathPrefix"));
 
+      //////////////////////////////////////////////////////////////////
+      // the JSON spec: path, query and body in; JSON (nulls kept) out //
+      //////////////////////////////////////////////////////////////////
+      JSONObject sum = new JSONObject(Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total?scale=2")
+         .header("Content-Type", "application/json").body("{\"numbers\": [1, 2.5]}").asString().getBody());
+      assertEquals("total", sum.getString("label"));
+      assertEquals(7.0, sum.getDouble("sum"));
+      assertTrue(sum.has("note") && sum.isNull("note"));
+      assertEquals(400, Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total?scale=x").header("Content-Type", "application/json").body("{}").asString().getStatus());
+      assertEquals(400, Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total").header("Content-Type", "text/plain").body("nope").asString().getStatus());
+      assertEquals(400, Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total").header("Content-Type", "application/json").body("[1").asString().getStatus());
+
       //////////////////////////////////////////////////////////////
       // the raw route still works (warn mode) but is reported    //
       //////////////////////////////////////////////////////////////
@@ -329,6 +343,20 @@ class UiApiExtensionPointTest
          .withInvokedBy("test"));
       assertEquals(200, echo.getStatus());
       assertEquals("two words", echo.getJson().get("word").asText());
+
+      //////////////////////////////////////////////////////////////////////////////
+      // the invoker acts as the exact calling user (MOCK auth here): the caller's //
+      // own HTTP call and the forwarded calls see the same user                   //
+      //////////////////////////////////////////////////////////////////////////////
+      String callerUser = new JSONObject(Unirest.get("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/echo/x").header("Cookie", "sessionUUID=caller-session").asString().getBody()).getString("userId");
+      String bySessionUuid = invoker.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/qbit/test-ext/echo/{word}").withPathParam("word", "x")
+         .withSessionUUID("caller-session")).getJson().get("userId").asText();
+      String byCredentials = invoker.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/qbit/test-ext/echo/{word}").withPathParam("word", "x")
+         .withCredentials(new UiApiCredentials("caller-session", null, null, null))).getJson().get("userId").asText();
+      assertEquals(callerUser, bySessionUuid);
+      assertEquals(callerUser, byCredentials);
+      assertFalse(new UiApiCredentials(null, null, null, null).isPresent());
+      assertThat(new UiApiCredentials("secret", null, null, null).toString()).doesNotContain("secret");
 
       UiApiResponse metaData = invoker.invoke(new UiApiRequest()
          .withMethod(HttpMethod.GET)

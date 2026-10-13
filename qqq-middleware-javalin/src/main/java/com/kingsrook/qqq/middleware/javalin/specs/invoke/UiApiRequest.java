@@ -40,7 +40,7 @@ public class UiApiRequest
    private Map<String, String> queryParams = new LinkedHashMap<>();
    private Map<String, String> formParams;
    private Object              jsonBody;
-   private String              sessionUUID;
+   private UiApiCredentials    credentials;
    private String              userTimezone;
    private String              invokedBy;
    private Duration            timeout     = Duration.ofSeconds(60);
@@ -122,7 +122,20 @@ public class UiApiRequest
     *******************************************************************************/
    public UiApiRequest withSessionUUID(String sessionUUID)
    {
-      this.sessionUUID = sessionUUID;
+      this.credentials = UiApiCredentials.ofSessionUUID(sessionUUID);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The calling user's credentials, as their request carried them (see
+    ** UiApiCredentials.fromContext) - forwarded as they were, so the call
+    ** authenticates exactly as the caller did, with any authentication module.
+    *******************************************************************************/
+   public UiApiRequest withCredentials(UiApiCredentials credentials)
+   {
+      this.credentials = credentials;
       return (this);
    }
 
@@ -222,11 +235,11 @@ public class UiApiRequest
 
 
    /*******************************************************************************
-    ** Getter for sessionUUID
+    ** Getter for credentials
     *******************************************************************************/
-   public String getSessionUUID()
+   public UiApiCredentials getCredentials()
    {
-      return (this.sessionUUID);
+      return (this.credentials);
    }
 
 

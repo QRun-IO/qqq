@@ -41,6 +41,27 @@ MiddlewareSpecExtensionsMetaData.ofOrWithNew(qInstance)
   QInstance when the server calls `setQInstance`, binds their routes after the core routes, and
   includes them in the OpenAPI it serves at `/qqq/v1/openapi.yaml` and `.json`.
 
+### Writing a spec: `AbstractJsonEndpointSpec`
+Most module and qbit endpoints take path/query parameters and an optional JSON object body, and
+return JSON. `AbstractJsonEndpointSpec` (same package) does the plumbing. A subclass defines:
+
+- `defineBasicOperation()` (path, method, summary), `defineRequestParameters()`, and
+  `defineComponentSchemas()` (the response schema and any it references);
+- `getResponseSchemaName()`, and `defineRequestBodySchema()` (or null for no body);
+- `handle(JsonInput)`, which does the work with the user's session in `QContext` and returns the
+  body. The body is serialized to JSON with nulls kept.
+
+`JsonInput` gives `getPathParam`, `getQueryParam`, `getQueryParamInteger` (400 on bad input) and
+`getBody()`. A body that is not JSON is rejected with 400. Endpoints with other shapes (files,
+streams) extend `AbstractEndpointSpec` directly.
+
+**Streaming (SSE).** Declare the 200 response with content type `text/event-stream`
+(`BasicResponse(contentType, ...)`), with an event schema in `defineComponentSchemas()`, and write
+the stream in `handleOutput`. Document each event type as a schema, so non-web clients can parse it.
+
+**Non-UI routes.** Machine-to-machine endpoints, such as Alertmanager's webhook, are not part of
+the UI API. Register them outside `/qqq/v1`, e.g. `/qqq/hooks/{qbit}/...`, through a route provider.
+
 ### Namespaces
 - **Default: `/qqq/v1/qbit/{qbitName}/...`.** New qbit endpoints use this (the extension's
   `pathPrefix` defaults to `/qbit/{name}`).

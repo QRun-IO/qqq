@@ -165,7 +165,7 @@ class UiApiExtensionPointTest
 
       MiddlewareVersionV1 version = new MiddlewareVersionV1();
       version.setQInstance(qInstance);
-      assertEquals(version.getEndpointSpecs().size() + 1, version.getAllEndpointSpecs().size());
+      assertEquals(version.getEndpointSpecs().size() + 2, version.getAllEndpointSpecs().size());
       assertThat(version.getExtensions()).containsKey("test-ext");
 
       OpenAPI openAPI = version.generateOpenAPIModel("qqq");
@@ -177,7 +177,8 @@ class UiApiExtensionPointTest
       // the extension-alone document has only the extension path //
       ///////////////////////////////////////////////////////////////
       OpenAPI extensionOpenAPI = version.generateExtensionOpenAPIModel("qqq", TestExtensionSpecs.echoExtension());
-      assertEquals(1, extensionOpenAPI.getPaths().size());
+      assertEquals(2, extensionOpenAPI.getPaths().size());
+      assertThat(openAPI.getPaths().get("/qqq/v1/qbit/test-ext/sum/{label}").getPost().getRequestBody().getRequired()).isTrue();
       assertEquals("1.2.3", extensionOpenAPI.getInfo().getVersion());
 
       ///////////////////////////////////////////////////////////////////////////////////
@@ -256,6 +257,18 @@ class UiApiExtensionPointTest
       assertEquals("test-ext", extension.getString("name"));
       assertEquals("1.2.3", extension.getString("version"));
       assertEquals("/qbit/test-ext", extension.getString("pathPrefix"));
+
+      //////////////////////////////////////////////////////////////////
+      // the JSON spec: path, query and body in; JSON (nulls kept) out //
+      //////////////////////////////////////////////////////////////////
+      JSONObject sum = new JSONObject(Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total?scale=2")
+         .header("Content-Type", "application/json").body("{\"numbers\": [1, 2.5]}").asString().getBody());
+      assertEquals("total", sum.getString("label"));
+      assertEquals(7.0, sum.getDouble("sum"));
+      assertTrue(sum.has("note") && sum.isNull("note"));
+      assertEquals(400, Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total?scale=x").header("Content-Type", "application/json").body("{}").asString().getStatus());
+      assertEquals(400, Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total").header("Content-Type", "text/plain").body("nope").asString().getStatus());
+      assertEquals(400, Unirest.post("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/sum/total").header("Content-Type", "application/json").body("[1").asString().getStatus());
 
       //////////////////////////////////////////////////////////////
       // the raw route still works (warn mode) but is reported    //

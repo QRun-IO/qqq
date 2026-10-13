@@ -86,7 +86,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
     ACCEPTED_CANDIDATES = (('4.1.0-RC.1', 0, '4.1.0-SNAPSHOT', '1.0.0-RC.11'),
                            ('4.1.0-RC.2', 1, '4.1.0-RC.1', '1.0.0-RC.11'),
                            ('4.1.0-RC.3', 2, '4.1.0-RC.2', '1.0.0-RC.11'),
-                           ('4.1.0-RC.4', 3, '4.1.0-RC.3', '1.0.0-RC.14'))
+                           ('4.1.0-RC.4', 3, '4.1.0-RC.3', '1.0.0-RC.14'),
+                           ('4.1.0-RC.5', 4, '4.1.0-RC.4', '1.0.0-RC.14'))
 
     def configure_accepted_next(self, revision='4.1.0-SNAPSHOT', next_version='1.0.0-RC.11'):
         shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
@@ -115,8 +116,9 @@ class FeatureCoverageGateTest(unittest.TestCase):
                 self.assertTrue(result['next_acceptance']['problems'])
                 self.assertEqual(1, self.run_gate(stage='source', candidate_version=candidate,
                                                  required='core.widget.row_builder')[0])
-                for version in ('4.1.0', '4.1.0-RC.5', '4.2.0-RC.1', '4.1.0-rc.2', ' 4.1.0-RC.2',
-                                '4.1.0-rc.3', '4.1.0-RC.3 ', '4.1.0-RC3', '4.1.0-rc.4', '4.1.0-RC.4 ', '4.1.0-RC4'):
+                for version in ('4.1.0', '4.1.0-RC.6', '4.2.0-RC.1', '4.1.0-rc.2', ' 4.1.0-RC.2',
+                                '4.1.0-rc.3', '4.1.0-RC.3 ', '4.1.0-RC3', '4.1.0-rc.4', '4.1.0-RC.4 ', '4.1.0-RC4',
+                                '4.1.0-rc.5', '4.1.0-RC.5 ', '4.1.0-RC5'):
                     self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=version)[0])
         # Each candidate only accepts its own source revisions: RC.2 on the pre-RC1 snapshot and RC.3 on the
         # snapshot or the RC.1 revision are rejected.
@@ -193,9 +195,10 @@ class FeatureCoverageGateTest(unittest.TestCase):
             allowed_after_publish = {'4.1.0-RC.1': ('4.1.0-SNAPSHOT', '4.1.0-RC.1'),
                                      '4.1.0-RC.2': ('4.1.0-RC.1', '4.1.0-RC.2'),
                                      '4.1.0-RC.3': ('4.1.0-RC.2', '4.1.0-RC.3'),
-                                     '4.1.0-RC.4': ('4.1.0-RC.3', '4.1.0-RC.4')}[candidate]
+                                     '4.1.0-RC.4': ('4.1.0-RC.3', '4.1.0-RC.4'),
+                                     '4.1.0-RC.5': ('4.1.0-RC.4', '4.1.0-RC.5')}[candidate]
             for revision in ('4.1.0', '4.1.0-SNAPSHOT', '4.1.0-RC.1', '4.1.0-RC.2', '4.1.0-RC.3', '4.1.0-RC.4',
-                             '4.1.0-RC.5', '4.2.0-SNAPSHOT'):
+                             '4.1.0-RC.5', '4.1.0-RC.6', '4.2.0-SNAPSHOT'):
                 with self.subTest(candidate=candidate, revision=revision):
                     root_pom.write_text(root_content.replace(base_revision, revision))
                     code = self.run_gate(stage='source', candidate_version=candidate)[0]
@@ -212,24 +215,25 @@ class FeatureCoverageGateTest(unittest.TestCase):
     def test_accepted_next_policy_list_is_closed_and_unambiguous(self):
         path = self.sample / 'release-deferrals.json'
         original = json.loads(Path(__file__).with_name('release-deferrals.json').read_text())
-        rc1, rc2, rc3, rc4 = original['accepted_next_release']
-        rc5 = dict(rc4, qqq_version='4.1.0-RC.5')
+        rc1, rc2, rc3, rc4, rc5 = original['accepted_next_release']
+        rc6 = dict(rc5, qqq_version='4.1.0-RC.6')
+        approved = (rc1, rc2, rc3, rc4, rc5)
         for candidate, _, revision, next_version in self.ACCEPTED_CANDIDATES[1:]:
             self.configure_accepted_next(revision, next_version)
             self.assertEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-            own = next(entry for entry in (rc1, rc2, rc3, rc4) if entry['qqq_version'] == candidate)
-            others = [entry for entry in (rc1, rc2, rc3, rc4) if entry is not own]
+            own = next(entry for entry in approved if entry['qqq_version'] == candidate)
+            others = [entry for entry in approved if entry is not own]
             for label, policy in (('legacy object', own), ('empty', []), ('missing own entry', others),
-                                  ('duplicate own entry', [rc1, rc2, rc3, rc4, own]),
-                                  ('unapproved RC.5', [rc1, rc2, rc3, rc4, rc5]),
-                                  ('non-object entry', [rc1, rc2, rc3, rc4, candidate])):
+                                  ('duplicate own entry', [*approved, own]),
+                                  ('unapproved RC.6', [*approved, rc6]),
+                                  ('non-object entry', [*approved, candidate])):
                 with self.subTest(candidate=candidate, policy=label):
                     path.write_text(json.dumps(dict(original, accepted_next_release=policy)))
                     self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
             path.write_text(json.dumps(original))
-        self.configure_accepted_next('4.1.0-RC.4', '1.0.0-RC.14')
-        path.write_text(json.dumps(dict(original, accepted_next_release=[rc1, rc2, rc3, rc4, rc5])))
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.5')[0])
+        self.configure_accepted_next('4.1.0-RC.5', '1.0.0-RC.14')
+        path.write_text(json.dumps(dict(original, accepted_next_release=[*approved, rc6])))
+        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.6')[0])
 
     def test_repository_pins_select_the_next_artifact_bound_to_the_newest_candidate(self):
         import next_acceptance

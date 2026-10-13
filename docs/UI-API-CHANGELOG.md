@@ -47,6 +47,21 @@ Strict mode (`withStrictUiApiRoutes(true)` or `QQQ_UI_API_STRICT_ROUTES=true`) f
 instead. Strict becomes the default once the alerts, assistant and sql-workbench qbits ship their
 spec'd routes.
 
+## Legacy unversioned routes (deprecated)
+
+The unversioned `QJavalinImplementation` routes (`/metaData`, `/data/...`, `/processes/...`,
+`/widget/...`, `/possibleValues/...`, `/download/...`, `/reports/...`, `/serverInfo`,
+`/manageSession`) are the Material Dashboard's API. They are **deprecated as of 2026-10-13**.
+Next UI makes no calls to them (see `UI-API-AUDIT.md`).
+
+- Every response from them carries `Deprecation: @1760313600` (RFC 9745) and
+  `Link: </qqq/v1/openapi.html>; rel="successor-version"`.
+- The first call to each route family is logged at INFO.
+- They stay served while the Material Dashboard uses them, because
+  `serveLegacyUnversionedMiddlewareAPI` defaults to true.
+- **Sunset:** they are removed together with the Material Dashboard. No date is set yet; it will be
+  announced here.
+
 ## Versions
 
 ### 1.1.0 (QQQ 4.1.0-RC.6, unreleased)

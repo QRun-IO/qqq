@@ -1,0 +1,498 @@
+components:
+  schemas:
+    EsbCapabilities:
+      description: "What the provider supports for this destination - show only the\
+        \ actions that are true."
+      properties:
+        browse:
+          description: "Messages can be browsed."
+          type: "boolean"
+        pauseQueue:
+          description: "The queue can be paused and resumed."
+          type: "boolean"
+        purge:
+          description: "All messages can be deleted."
+          type: "boolean"
+        deleteSelected:
+          description: "Selected messages can be deleted."
+          type: "boolean"
+        deleteOlderThan:
+          description: "Messages older than a time can be deleted."
+          type: "boolean"
+        move:
+          description: "Messages can be moved to another destination."
+          type: "boolean"
+      type: "object"
+    EsbCounter:
+      description: "Activity counters since the server started."
+      properties:
+        published:
+          description: "Messages published."
+          type: "integer"
+        publishFailures:
+          description: "Publish attempts that failed."
+          type: "integer"
+        consumed:
+          description: "Messages consumed."
+          type: "integer"
+        succeeded:
+          description: "Consumed messages processed successfully."
+          type: "integer"
+        failed:
+          description: "Consumed messages that failed."
+          type: "integer"
+        retried:
+          description: "Redeliveries."
+          type: "integer"
+        deadLettered:
+          description: "Messages moved to the dead-letter destination."
+          type: "integer"
+        inFlight:
+          description: "Messages being processed now."
+          type: "integer"
+        lastActivity:
+          description: "Time of the last activity (ISO-8601), or null."
+          format: "date-time"
+          nullable: true
+          type: "string"
+        avgMs:
+          description: "Average processing time in milliseconds."
+          type: "integer"
+        maxMs:
+          description: "Longest processing time in milliseconds."
+          type: "integer"
+        lastError:
+          description: "The last error message, or null."
+          nullable: true
+          type: "string"
+      type: "object"
+    EsbDeadLetter:
+      description: "A dead-letter (or subscription) destination of a trigger."
+      properties:
+        brokerName:
+          description: "Name on the broker."
+          type: "string"
+        messageCount:
+          description: "Messages waiting, or null when unknown."
+          nullable: true
+          type: "integer"
+        paused:
+          description: "Whether it is paused, or null when unknown."
+          nullable: true
+          type: "boolean"
+      type: "object"
+    EsbDestination:
+      description: "A queue or topic."
+      properties:
+        name:
+          description: "Destination name."
+          type: "string"
+        type:
+          description: "Destination type."
+          enum:
+          - "QUEUE"
+          - "TOPIC"
+          type: "string"
+        provider:
+          description: "Name of the provider (broker connection)."
+          type: "string"
+        brokerName:
+          description: "Name of the destination on the broker."
+          type: "string"
+        counters:
+          $ref: "#/components/schemas/EsbCounter"
+        queueInfo:
+          $ref: "#/components/schemas/EsbQueueInfo"
+          nullable: true
+        capabilities:
+          $ref: "#/components/schemas/EsbCapabilities"
+      type: "object"
+    EsbMessage:
+      description: "A message on a destination."
+      properties:
+        messageId:
+          description: "Broker message id."
+          type: "string"
+        timestamp:
+          description: "When it was sent (ISO-8601)."
+          format: "date-time"
+          type: "string"
+        deliveryCount:
+          description: "Delivery attempts so far."
+          type: "integer"
+        event:
+          additionalProperties: true
+          description: "The CloudEvents envelope (specversion, id, source, type, time,\
+            \ subject, datacontenttype, data, qqqcausationid), or null when the body\
+            \ is not one."
+          nullable: true
+          type: "object"
+        rawBody:
+          description: "The message body as text."
+          type: "string"
+        properties:
+          additionalProperties: true
+          description: "Message properties."
+          type: "object"
+      type: "object"
+    EsbMessagePageResponseV1:
+      description: "A page of messages."
+      properties:
+        messages:
+          description: "The messages, oldest first."
+          items:
+            $ref: "#/components/schemas/EsbMessage"
+          type: "array"
+        hasMore:
+          description: "Whether more messages follow this page."
+          type: "boolean"
+      type: "object"
+    EsbOverviewDestination:
+      allOf:
+      - $ref: "#/components/schemas/EsbDestination"
+      - properties:
+          publishers:
+            description: "Tables and processes publishing to it."
+            items:
+              $ref: "#/components/schemas/EsbPublisher"
+            type: "array"
+          triggers:
+            description: "Triggers consuming it."
+            items:
+              $ref: "#/components/schemas/EsbTrigger"
+            type: "array"
+        type: "object"
+      description: "A destination with its publishers and triggers."
+    EsbOverviewResponseV1:
+      description: "GET /esb/overview: providers and every destination."
+      properties:
+        providers:
+          description: "Broker connections."
+          items:
+            $ref: "#/components/schemas/EsbProvider"
+          type: "array"
+        destinations:
+          description: "Destinations with their publishers and triggers."
+          items:
+            $ref: "#/components/schemas/EsbOverviewDestination"
+          type: "array"
+        permissions:
+          $ref: "#/components/schemas/EsbPermissions"
+      type: "object"
+    EsbPermissions:
+      description: "What the user may do."
+      properties:
+        canOperate:
+          description: "May pause, resume and retry."
+          type: "boolean"
+        canDelete:
+          description: "May delete messages."
+          type: "boolean"
+      type: "object"
+    EsbProcessResponseV1:
+      description: "GET /esb/process/{process}: what a process publishes, and the\
+        \ triggers that run it."
+      properties:
+        process:
+          description: "Process name."
+          type: "string"
+        publications:
+          description: "Destinations the process publishes to."
+          items:
+            $ref: "#/components/schemas/EsbPublication"
+          type: "array"
+        triggers:
+          description: "Triggers that run the process."
+          items:
+            $ref: "#/components/schemas/EsbTrigger"
+          type: "array"
+        permissions:
+          $ref: "#/components/schemas/EsbPermissions"
+      type: "object"
+    EsbProvider:
+      description: "A broker connection."
+      properties:
+        name:
+          description: "Provider name."
+          type: "string"
+        type:
+          description: "Broker type."
+          enum:
+          - "ACTIVEMQ_ARTEMIS"
+          - "RABBITMQ"
+          type: "string"
+        connected:
+          description: "Whether the connection is up."
+          type: "boolean"
+        managementEnabled:
+          description: "Whether broker management (browse, pause, purge) is available."
+          type: "boolean"
+      type: "object"
+    EsbPublication:
+      description: "A destination that a table or process publishes events to."
+      properties:
+        destination:
+          $ref: "#/components/schemas/EsbDestination"
+        events:
+          description: "Events published: INSERT, UPDATE or DELETE for tables; STARTED,\
+            \ COMPLETED or FAILED for processes."
+          items:
+            description: "Event name."
+            type: "string"
+          type: "array"
+      type: "object"
+    EsbPublisher:
+      description: "A table or process that publishes to a destination."
+      properties:
+        kind:
+          description: "What publishes."
+          enum:
+          - "TABLE"
+          - "PROCESS"
+          type: "string"
+        name:
+          description: "Table or process name."
+          type: "string"
+        events:
+          description: "Events published."
+          items:
+            description: "Event name."
+            type: "string"
+          type: "array"
+      type: "object"
+    EsbQueueInfo:
+      description: "Broker-reported state of a queue."
+      properties:
+        messageCount:
+          description: "Messages waiting."
+          type: "integer"
+        consumerCount:
+          description: "Connected consumers."
+          type: "integer"
+        paused:
+          description: "Whether the queue is paused."
+          type: "boolean"
+      type: "object"
+    EsbTableResponseV1:
+      description: "GET /esb/table/{table}: what a table publishes, and who subscribes."
+      properties:
+        table:
+          description: "Table name."
+          type: "string"
+        publications:
+          description: "Destinations the table publishes to."
+          items:
+            $ref: "#/components/schemas/EsbPublication"
+          type: "array"
+        subscribers:
+          description: "Triggers subscribed to those destinations (on processes the\
+            \ user can access)."
+          items:
+            $ref: "#/components/schemas/EsbTrigger"
+          type: "array"
+        permissions:
+          $ref: "#/components/schemas/EsbPermissions"
+      type: "object"
+    EsbTrigger:
+      description: "A process subscribed to a destination."
+      properties:
+        name:
+          description: "Trigger name."
+          type: "string"
+        processName:
+          description: "Process the trigger runs."
+          type: "string"
+        processLabel:
+          description: "User-facing label of the process."
+          type: "string"
+        destination:
+          $ref: "#/components/schemas/EsbDestination"
+        mode:
+          description: "SINGLE runs the process per message; BATCH per batch of messages."
+          enum:
+          - "SINGLE"
+          - "BATCH"
+          type: "string"
+        concurrency:
+          description: "Consumers run in parallel."
+          type: "integer"
+        maxAttempts:
+          description: "Attempts before a message is dead-lettered."
+          type: "integer"
+        state:
+          description: "Current state of the trigger."
+          enum:
+          - "RUNNING"
+          - "PAUSED"
+          - "CONNECTING"
+          - "STOPPED"
+          type: "string"
+        counters:
+          $ref: "#/components/schemas/EsbCounter"
+        deadLetter:
+          $ref: "#/components/schemas/EsbDeadLetter"
+        subscription:
+          $ref: "#/components/schemas/EsbDeadLetter"
+          nullable: true
+      type: "object"
+  securitySchemes:
+    sessionUuidCookie:
+      in: "cookie"
+      name: "sessionUUID"
+      type: "apiKey"
+info:
+  contact:
+    email: "contact@kingsrook.com"
+  description: "ESB overview, the ESB of tables and processes, and messages and dead\
+    \ letters on destinations."
+  title: "QQQ Middleware API extension: esb"
+  version: "1.0.0"
+openapi: "3.0.3"
+paths:
+  /qqq/v1/esb/overview:
+    get:
+      description: "Every broker connection and destination, with the tables and processes\
+        \ publishing to each and the triggers consuming it, and what the user may\
+        \ do. Needs the ESB app permission."
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsbOverviewResponseV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "ESB overview"
+      tags:
+      - "ESB"
+  /qqq/v1/esb/table/{table}:
+    get:
+      description: "The destinations a table publishes its events to, the triggers\
+        \ subscribed to them (on processes the user can access), and what the user\
+        \ may do. Needs READ on the table."
+      parameters:
+      - description: "Table name."
+        in: "path"
+        name: "table"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsbTableResponseV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "ESB of a table"
+      tags:
+      - "ESB"
+  /qqq/v1/esb/process/{process}:
+    get:
+      description: "The destinations a process publishes its lifecycle events to,\
+        \ the triggers that run it, and what the user may do. Needs access to the\
+        \ process."
+      parameters:
+      - description: "Process name."
+        in: "path"
+        name: "process"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsbProcessResponseV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "ESB of a process"
+      tags:
+      - "ESB"
+  /qqq/v1/esb/deadLetters/{trigger}:
+    get:
+      description: "A page of the messages on a trigger dead-letter destination, oldest\
+        \ first. Needs the operate permission."
+      parameters:
+      - description: "Trigger name."
+        in: "path"
+        name: "trigger"
+        required: true
+        schema:
+          type: "string"
+      - description: "Messages to skip (default 0)."
+        in: "query"
+        name: "offset"
+        required: false
+        schema:
+          type: "integer"
+      - description: "Messages to return (default and maximum set by the server)."
+        in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsbMessagePageResponseV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Dead letters of a trigger"
+      tags:
+      - "ESB"
+  /qqq/v1/esb/messages/{destination}:
+    get:
+      description: "A page of the messages waiting on a destination (or, with trigger,\
+        \ on that trigger subscription of a topic), oldest first. Needs the operate\
+        \ permission."
+      parameters:
+      - description: "Destination name."
+        in: "path"
+        name: "destination"
+        required: true
+        schema:
+          type: "string"
+      - description: "For a topic: the trigger whose subscription to browse."
+        in: "query"
+        name: "trigger"
+        required: false
+        schema:
+          type: "string"
+      - description: "Messages to skip (default 0)."
+        in: "query"
+        name: "offset"
+        required: false
+        schema:
+          type: "integer"
+      - description: "Messages to return (default and maximum set by the server)."
+        in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EsbMessagePageResponseV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Messages on a destination"
+      tags:
+      - "ESB"

@@ -47,6 +47,12 @@ Strict mode (`withStrictUiApiRoutes(true)` or `QQQ_UI_API_STRICT_ROUTES=true`) f
 instead. Strict becomes the default once the alerts, assistant and sql-workbench qbits ship their
 spec'd routes.
 
+## Extensions
+
+| Extension | Prefix | Version | Owner |
+|---|---|---|---|
+| esb | `/esb` | 1.0.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
+
 ## Versions
 
 ### 1.1.0 (QQQ 4.1.0-RC.6, unreleased)

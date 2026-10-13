@@ -160,11 +160,21 @@ Capabilities are table-level ("may, if the record allows"). Record-level answers
 
 ### 2.3 Feature permissions
 
-- For each table with a permission-bearing feature, the enricher adds `AvailablePermission`s:
-  `<table>.comment`, `<table>.attach`, `<table>.tag`, `<table>.share`, `<table>.task` and
-  `<table>.assign`. Permission names use the table's permission base name. The permissions appear
-  in `PermissionsHelper.getAllAvailablePermissions`, which feeds the qbit-authentik policy editor
-  catalog, under a "Collaboration" group per table.
+- Each permission-bearing feature is registered through the core **table feature permission**
+  hook, which it shares with qbit-data-analysis's `<table>.analyze` (DATA-ANALYSIS.md §3.6). The
+  hook is `TableFeaturePermissionsMetaData`, holding `TableFeaturePermission`s, each with:
+  - `suffix` and `label`;
+  - `appliesTo`, a serializable `(QInstance, QTableMetaData) -> boolean`; here, "this feature is
+    enabled for the table";
+  - `impliedBy`, a serializable `(QInstance, QTableMetaData) -> TablePermissionSubType`; here,
+    EDIT under `EDIT_OR_GRANTED` and null under `GRANTED_ONLY`.
+- `PermissionsHelper.getAllAvailablePermissions` then lists `<table>.comment`, `<table>.attach`,
+  `<table>.tag`, `<table>.share`, `<table>.task` and `<table>.assign`, using the table's
+  permission base name. That list feeds the qbit-authentik policy editor catalog, where these
+  permissions show under a generic FEATURE action per table.
+- `PermissionsHelper.hasTableFeaturePermission(...)` is the table-level check. It is true when the
+  user has table READ and either holds the explicit permission or holds the implied table
+  permission.
 - **Permission mode** is set per feature:
   - `EDIT_OR_GRANTED` is the default. A user may use the feature if they hold the feature
     permission, or if they can edit the record (table edit permission plus the parent's WRITE

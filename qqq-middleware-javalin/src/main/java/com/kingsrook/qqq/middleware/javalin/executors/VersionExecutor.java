@@ -50,7 +50,7 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
 
       output.setApiVersion(semver);
       output.setBasePath(("/qqq/" + version.getVersionBasePath()).replaceAll("/+", "/").replaceFirst("/$", ""));
-      output.setSupportedMajorVersions(List.of(Integer.parseInt(semver.replaceFirst("\\..*", "").replaceAll("\\D", ""))));
+      output.setSupportedMajorVersions(List.of(majorOf(semver)));
       output.setFeatures(version.getFeatures());
 
       List<UiApiExtensionInfo> extensions = new ArrayList<>();
@@ -63,5 +63,16 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
             .withDescription(extension.getDescription()));
       }
       output.setExtensions(extensions);
+   }
+
+
+
+   /***************************************************************************
+    ** The MAJOR of a semantic version (1 when it has none, e.g. "v1").
+    ***************************************************************************/
+   static int majorOf(String semver)
+   {
+      String major = semver == null ? "" : semver.replaceFirst("\\..*", "").replaceAll("\\D", "");
+      return (major.matches("\\d{1,9}") ? Integer.parseInt(major) : 1);
    }
 }

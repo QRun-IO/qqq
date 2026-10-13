@@ -57,6 +57,8 @@ APPROVED_NEXT_CANDIDATES = {
                    'next': NEXT_RC11, 'before_publish': ('4.1.0-RC.2',), 'after_publish': ('4.1.0-RC.2', '4.1.0-RC.3')},
     '4.1.0-RC.4': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6125729475',
                    'next': NEXT_RC14, 'before_publish': ('4.1.0-RC.3',), 'after_publish': ('4.1.0-RC.3', '4.1.0-RC.4')},
+    '4.1.0-RC.5': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-PENDING_OWNER_APPROVAL_RC5',
+                   'next': NEXT_RC14, 'before_publish': ('4.1.0-RC.4',), 'after_publish': ('4.1.0-RC.4', '4.1.0-RC.5')},
 }
 
 

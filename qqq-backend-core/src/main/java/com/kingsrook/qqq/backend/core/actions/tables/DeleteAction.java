@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -65,6 +66,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordReferenceTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
@@ -208,7 +210,7 @@ public class DeleteAction
       //////////////////////////////////////////////////////////////////////
       // Validation and cascades must act on the exact selected key list. //
       //////////////////////////////////////////////////////////////////////
-      if(deleteInput.getQueryFilter() != null && (deleteInput.getDryRun() || !deleteInterface.supportsQueryFilterInput() || deleteInterface.supportsPreFetchQuery() || CollectionUtils.nullSafeHasContents(QContext.getQInstance().getTable(table.getName()).getAssociations())))
+      if(deleteInput.getQueryFilter() != null && (RecordReferenceTableMetaData.of(table) != null || deleteInput.getDryRun() || !deleteInterface.supportsQueryFilterInput() || deleteInterface.supportsPreFetchQuery() || CollectionUtils.nullSafeHasContents(QContext.getQInstance().getTable(table.getName()).getAssociations())))
       {
          LOG.debug("Selecting primary keys before validated or cascading delete", new LogPair("tableName", table.getName()));
          List<Serializable> primaryKeyList = getPrimaryKeysFromQueryFilter(deleteInput);
@@ -543,6 +545,7 @@ public class DeleteAction
 
       QTableMetaData table               = deleteInput.getTable();
       List<QRecord>  primaryKeysNotFound = validateRecordsExistAndCanBeAccessed(deleteInput, oldRecordList.get());
+      RecordReferenceSecurityHelper.validateWrites(table, oldRecordList.get(), RecordChangeType.DELETE, deleteInput.getTransaction());
 
       Map<Object, QRecord> visibleRecords = new LinkedHashMap<>();
       for(QRecord record : oldRecordList.get())
@@ -765,7 +768,7 @@ public class DeleteAction
     *******************************************************************************/
    private static Optional<List<QRecord>> fetchOldRecords(DeleteInput deleteInput, DeleteInterface deleteInterface) throws QException
    {
-      if(deleteInterface.supportsPreFetchQuery())
+      if(deleteInterface.supportsPreFetchQuery() || RecordReferenceTableMetaData.of(deleteInput.getTable()) != null)
       {
          return (queryOldRecords(deleteInput));
       }
@@ -860,6 +863,10 @@ public class DeleteAction
       }
       catch(Exception e)
       {
+         if(e instanceof RecordChangeListenerHelper.RequiredListenerException required)
+         {
+            throw (required);
+         }
          LOG.warn("Error preparing record change event", e, new LogPair("tableName", deleteInput.getTableName()));
       }
    }

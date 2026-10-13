@@ -91,6 +91,20 @@ public class UiApiContract
     *******************************************************************************/
    public static List<String> check(String generatedYaml, String committedYaml, String baselineYaml, int expectedMajor, String regenerateHint)
    {
+      return (check(generatedYaml, committedYaml, baselineYaml, expectedMajor, regenerateHint, List.of()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Run the contract checks, accepting listed breaking-change reports.  An
+    ** accepted change is a correction of the document to what the server always
+    ** did (so no client could have relied on the old description); each entry is
+    ** a substring of the reported change.  Accepted changes are cleared when the
+    ** baseline is refreshed.  See docs/UI-API-CHANGELOG.md.
+    *******************************************************************************/
+   public static List<String> check(String generatedYaml, String committedYaml, String baselineYaml, int expectedMajor, String regenerateHint, List<String> acceptedBreakingChanges)
+   {
       List<String> problems = new ArrayList<>();
 
       String generated = normalize(generatedYaml);
@@ -121,6 +135,10 @@ public class UiApiContract
 
             for(String breaking : OpenApiCompatibilityChecker.findBreakingChanges(baselineDocument, committedDocument))
             {
+               if(acceptedBreakingChanges.stream().anyMatch(accepted -> !accepted.isBlank() && breaking.contains(accepted)))
+               {
+                  continue;
+               }
                problems.add("Breaking change since " + baselineVersion + " (needs a new URL version, /qqq/v" + (expectedMajor + 1) + "): " + breaking);
             }
 

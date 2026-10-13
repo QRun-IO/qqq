@@ -377,7 +377,7 @@ public class OpenApiCompatibilityChecker
          for(Map.Entry<?, ?> entry : map.entrySet())
          {
             String key = String.valueOf(entry.getKey());
-            if(!isNameMap && (DOCUMENTATION_KEYS.contains(key) || ("".equals(parentKey) && key.equals("info"))))
+            if(!isNameMap && (DOCUMENTATION_KEYS.contains(key) || (parentKey != null && parentKey.isEmpty() && key.equals("info"))))
             {
                continue;
             }

@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RuntimeMetaDataOverlay;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionCheckResult;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
@@ -81,6 +82,7 @@ public class MetaDataAction
       ActionHelper.validateSession(metaDataInput);
 
       MetaDataOutput           metaDataOutput = new MetaDataOutput();
+      metaDataOutput.setMetaDataGeneration(RuntimeMetaDataOverlay.getGeneration(QContext.getQInstance()));
       Map<String, AppTreeNode> treeNodes      = new LinkedHashMap<>();
 
       MetaDataActionCustomizerInterface customizer = getMetaDataActionCustomizer();

@@ -1,0 +1,125 @@
+= Record collaboration contracts
+
+Record collaboration is opt-in. Core publishes metadata, enforces record references,
+and provides extension SPIs; feature storage and business behavior belong to qbits.
+
+== Declaring features
+
+[source,java]
+----
+RecordFeaturesMetaData.ofOrWithNew(instance)
+   .withEnabled(RecordFeature.FAVORITES, true);
+
+RecordFeaturesMetaData.ofOrWithNew(app)
+   .withEnabled(RecordFeature.COMMENTS, true);
+
+RecordFeaturesMetaData.ofOrWithNew(table)
+   .withSetting(RecordFeature.COMMENTS, "format", "markdown")
+   .withPermissionMode(RecordFeature.COMMENTS, FeaturePermissionMode.EDIT_OR_GRANTED)
+   .withOwnership(new RecordOwnership().withOwnerFieldName("ownerUserId"));
+----
+
+`RecordFeaturesMetaData` is the shared holder and instance supplemental metadata.
+`RecordFeaturesAppMetaData` and `RecordFeaturesTableMetaData` adapt the holder to
+the other supplemental base classes. All use the name `recordFeatures`.
+
+Resolution merges the instance, matching apps in instance iteration order, and
+table declarations, then runtime overrides in that same scope order. Settings
+merge by setting name. Features default off and permission modes default to
+`EDIT_OR_GRANTED`. A false `withFeatureLocked(feature, false)` at any applicable
+level cannot be overridden. Tables require one primary key and GET or QUERY;
+`collaboration_*` tables cannot receive record features.
+
+Register an override provider with `withOverrideProvider(new QCodeReference(...))`
+on the instance holder. Its `runtimeProviders` list accepts
+`RuntimeMetaDataProviderInterface` implementations. After enrichment, and after
+runtime changes commit, call `RuntimeMetaDataOverlay.refresh(instance)`. Each
+refresh publishes a new monotonic generation, at least as high as the source
+providers' generations, and invalidates resolutions. An invalid provider
+contribution retains its previous accepted overrides and logs the failure.
+There are no runtime field contributions in this phase.
+
+Frontend table metadata exposes enabled features, public settings and table
+capabilities. `/qqq/v1/metaData` and table metadata carry `metaDataGeneration`.
+`GET /qqq/v1/table/{tableName}/{primaryKey}/features` first reads the parent with
+the current session and returns record capabilities. Instance `summaryProviders`
+may fill counts, favorite/follow state, ownership, presence and extensions; core
+owns the final feature and capability answers. Without providers, optional values
+remain null and maps are empty.
+
+== Permissions
+
+Enabled permission-bearing features add table catalog permissions using the
+table's effective permission base: `.comment`, `.attach`, `.tag`, `.share`,
+`.task` and `.assign`. Every capability requires READ. `EDIT_OR_GRANTED` accepts
+either the explicit grant or table EDIT plus the parent's WRITE locks.
+`GRANTED_ONLY` requires the explicit grant. Unprotected tables follow core's
+`NOT_PROTECTED` convention. Features without a suffix require parent visibility.
+
+Core's generic `TableFeaturePermissionsMetaData` registry also serves features
+outside collaboration. For example:
+
+[source,java]
+----
+TableFeaturePermissionsMetaData.ofOrWithNew(instance)
+   .withPermission(new TableFeaturePermission().withSuffix("analyze").withLabel("Analyze"));
+PermissionsHelper.hasTableFeaturePermission(table, "analyze");
+----
+
+A null `appliesTo` includes every non-hidden table. A null `impliedBy` (or a
+callback returning null) requires the explicit grant, alongside table READ.
+An implication can return READ, EDIT, INSERT or DELETE and uses the table's
+normal permission-level mapping and custom checker. Re-registering a suffix
+replaces its prior definition. Callbacks implement serializable interfaces;
+avoid capturing an instance or non-serializable state. The registry's `clone()`
+deep-copies entries and callbacks through Java serialization. `QInstance` itself
+does not expose a clone API or implement Java `Serializable`.
+
+`QInstanceEnricher` automatically registers all six collaboration permissions
+when feature metadata exists at instance, app or table scope. Registration is
+idempotent and uses the current resolved feature state and permission mode.
+If declarations are installed after enrichment, enrich again before using them.
+
+== Record references
+
+[source,java]
+----
+extensionTable.withSupplementalMetaData(new RecordReferenceTableMetaData()
+   .withTableNameField("tableName")
+   .withRecordIdField("recordId")
+   .withFeature(RecordFeature.COMMENTS)
+   .withMirroredLocks(true)
+   .withAuthorField("createdByUserId"));
+
+RecordReferenceSecurityConfig.ofOrWithNew(instance)
+   .withMirroredSecurityKeyTypes(List.of("clientId"))
+   .withCleanupProviders(List.of(new QCodeReference(ParentCleanup.class)));
+----
+
+Store primary keys as strings (`new RecordReference(tableName, primaryKey).primaryKeyAsString()`).
+The reference fields and optional author field must exist. Core filters queries,
+counts and aggregates to readable parent tables with the feature enabled. Queries
+with top-level AND criteria for one parent table and an EQUALS/IN parent key also
+check each parent's visibility. Gets and every write check the parent. Updates
+check both the stored and proposed reference. Updating or deleting another
+author's row additionally requires `RecordReferenceSecurityHelper.ADMIN_PERMISSION`
+(`collaboration.admin`).
+
+Configured direct parent locks are copied into existing `lockKey_<keyType>` fields;
+non-alphanumeric characters in the key type become underscores. Declare ordinary
+record locks on these extension fields with null behavior ALLOW. Joined locks
+are enforced by the parent check and are not mirrored. Supplied mirror values
+are replaced by parent values on inserts and updates.
+
+Enrichment of `RecordReferenceSecurityConfig` registers the record-change listener.
+A qbit installing metadata later can call `RecordReferenceSecurityHelper.register(instance)`.
+The listener updates derived mirror columns through the backend with the parent's
+transaction, without treating propagation as a user edit of another author's row.
+Use a transaction on the same backend for atomic parent and mirror updates;
+required integrity-listener failures propagate and the caller must roll back.
+Cleanup providers run after commit (immediately after a successful nontransactional
+delete); rollback discards their callbacks. No session elevation is introduced.
+
+Unpinned queries over unmirrored parent locks still need the post-filter, paging
+refill and approximate-count behavior described in collaboration spec 3.2 item 4.
+That work is explicitly deferred from this phase (a) implementation.

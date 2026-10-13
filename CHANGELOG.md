@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional AI table/field `DataClassification` (`PUBLIC`, `CONFIDENTIAL`, `PII`, `PHI`) and null-safe `AiDataClassifications` lookup/aggregation helpers. Existing exposure defaults and frontend metadata are unchanged.
+
 ### Changed
 - Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.
 

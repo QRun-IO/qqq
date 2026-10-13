@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
 import com.kingsrook.qqq.backend.core.actions.automation.AutomationStatus;
 import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationStatusUpdater;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -292,10 +293,7 @@ public class UpdateAction
          new DMLAuditAction().execute(dmlAuditInput);
       }
 
-      if(restoreWriteFlag == null || restoreWriteFlag.getPublishEvents())
-      {
-         fireRecordChangeListeners(updateInput, table, updateOutput.getRecords(), listenerOldRecords);
-      }
+      fireRecordChangeListeners(updateInput, table, updateOutput.getRecords(), listenerOldRecords);
 
       //////////////////////////////////////////////////////////////
       // finally, run the post-update customizer, if there is one //
@@ -500,6 +498,7 @@ public class UpdateAction
          runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
       }
       UniqueKeyHelper.validateUpdateUniqueKeys(updateInput);
+      RecordReferenceSecurityHelper.validateWrites(table, updateInput.getRecords(), RecordChangeType.UPDATE, updateInput.getTransaction());
    }
 
 
@@ -626,15 +625,20 @@ public class UpdateAction
             }
          }
 
+         RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(updateInput.getFlags());
          RecordChangeListenerHelper.fire(qInstance, new RecordChangeEvent()
             .withTableName(updateInput.getTableName())
             .withType(RecordChangeType.UPDATE)
             .withRecords(Collections.unmodifiableList(successfulRecords))
             .withOldRecords(Collections.unmodifiableList(pairedOldRecords))
-            .withTransaction(updateInput.getTransaction()));
+            .withTransaction(updateInput.getTransaction()), restoreWriteFlag != null && !restoreWriteFlag.getPublishEvents());
       }
       catch(Exception e)
       {
+         if(e instanceof RecordChangeListenerHelper.RequiredListenerException required)
+         {
+            throw (required);
+         }
          LOG.warn("Error preparing record change event", e, logPair("tableName", updateInput.getTableName()));
       }
    }

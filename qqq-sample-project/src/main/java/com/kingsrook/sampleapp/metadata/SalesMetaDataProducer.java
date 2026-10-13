@@ -53,7 +53,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.picker.RelatedRecord
  ** Sample sales tables for the related-record picker
  ** (docs/RELATED-RECORD-PICKER.md): an order picks its customer (SINGLE, with
  ** quick-create), adds SKUs as order lines with a review step (MULTI_CHILD),
- ** and links tags (LINK).
+ ** and links tags (LINK).  The tables declare no record-search fields, so
+ ** the sample's global search is unchanged; picker searches use their
+ ** record-label fields.
  *******************************************************************************/
 public class SalesMetaDataProducer extends MetaDataProducer<MetaDataProducerMultiOutput>
 {
@@ -79,7 +81,6 @@ public class SalesMetaDataProducer extends MetaDataProducer<MetaDataProducerMult
       MetaDataProducerMultiOutput output = new MetaDataProducerMultiOutput();
 
       output.add(table(CUSTOMER, "Customer", "name")
-         .withSearchFields("name", "email")
          .withField(new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true).withMaxLength(100))
          .withField(new QFieldMetaData("email", QFieldType.STRING).withMaxLength(250))
          .withField(new QFieldMetaData("phone", QFieldType.STRING).withMaxLength(40))
@@ -91,7 +92,7 @@ public class SalesMetaDataProducer extends MetaDataProducer<MetaDataProducerMult
          .withQuickCreateSectionName("identity"));
 
       output.add(table(SKU, "SKU", "code")
-         .withSearchFields("code", "name")
+         .withRecordLabelFormat("%s %s").withRecordLabelFields("code", "name")
          .withField(new QFieldMetaData("code", QFieldType.STRING).withIsRequired(true).withMaxLength(40))
          .withField(new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true).withMaxLength(100))
          .withField(new QFieldMetaData("description", QFieldType.STRING).withMaxLength(250))
@@ -103,7 +104,6 @@ public class SalesMetaDataProducer extends MetaDataProducer<MetaDataProducerMult
          .withSection(dates()));
 
       output.add(table(TAG, "Tag", "name")
-         .withSearchFields("name")
          .withField(new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true).withMaxLength(40))
          .withSection(new QFieldSection("identity", "Identity", new QIcon("sell"), Tier.T1, List.of("id", "name")))
          .withSection(dates()));
@@ -138,7 +138,6 @@ public class SalesMetaDataProducer extends MetaDataProducer<MetaDataProducerMult
       output.add(ChildRecordListRenderer.widgetMetaDataBuilder(tagJoin).withName("salesOrderTags").withLabel("Tags").withMaxRows(50).getWidgetMetaData());
 
       output.add(table(SALES_ORDER, "Sales Order", "orderNo")
-         .withSearchFields("orderNo")
          .withField(new QFieldMetaData("orderNo", QFieldType.STRING).withIsRequired(true).withMaxLength(40))
          .withField(new QFieldMetaData("customerId", QFieldType.INTEGER).withPossibleValueSourceName(CUSTOMER))
          .withField(new QFieldMetaData("region", QFieldType.STRING).withMaxLength(40))

@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.backend.core.modules.backend;
 
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
@@ -38,6 +40,7 @@ import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentRea
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
@@ -178,6 +181,22 @@ public interface QBackendModuleInterface
    default Optional<QBackendTransaction> openConsistentReadTransaction(ConsistentReadInput input) throws QException
    {
       return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Advance each table's generated-key sequence past the largest key now in the
+    ** table, so the next generated insert gets max+1.  Needed after rows were
+    ** inserted with explicit (preserved) primary keys, e.g., a restore or a data
+    ** migration.
+    **
+    ** The default does nothing, and returns an empty list: backends without
+    ** generated key sequences have nothing to resync.
+    *******************************************************************************/
+   default List<SequenceResyncResult> resyncKeySequences(QBackendMetaData backend, Collection<QTableMetaData> tables) throws QException
+   {
+      return (List.of());
    }
 
 

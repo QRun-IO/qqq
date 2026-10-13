@@ -49,6 +49,9 @@ public class PublishAPI implements Callable<Integer>
    @CommandLine.Option(names = { "--sortFileContentsForHuman" }, description = "By default, properties in the yaml are sorted alphabetically, to help with stability (for diffing).  This option preserves the 'natural' order of the file, so may look a little bette for human consumption")
    private boolean sortFileContentsForHuman = false;
 
+   @CommandLine.Option(names = { "--baseline" }, description = "Also write the document as the release baseline (baseline.yaml) that UiApiContractTest checks compatibility against.  The release captain runs this when cutting an RC or GA.")
+   private boolean writeBaseline = false;
+
 
 
    /*******************************************************************************
@@ -118,6 +121,10 @@ public class PublishAPI implements Callable<Integer>
       });
 
       writeFile(yaml, versionDirectory, "openapi.yaml");
+      if(writeBaseline)
+      {
+         writeFile(yaml, versionDirectory, "baseline.yaml");
+      }
 
       //////////////////////////////////////////////////////////////////////////////////////
       // if we want to split up by some paths, components, we could use a version of this //

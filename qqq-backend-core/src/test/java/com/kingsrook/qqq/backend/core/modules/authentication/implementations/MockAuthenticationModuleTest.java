@@ -113,4 +113,29 @@ class MockAuthenticationModuleTest extends BaseTest
       assertEquals(first.getIdReference(), restored.getIdReference());
       assertNotEquals(first.getIdReference(), module.createSession(instance, Map.of()).getIdReference());
    }
+
+
+
+   /*******************************************************************************
+    ** A session named by its sessionUUID (or sessionId) is resumed with the same
+    ** uuid and the same user, so calls carrying it (e.g. the in-process UI API
+    ** invoker) act as the same user.
+    *******************************************************************************/
+   @Test
+   void testCreateSession_resumesBySessionUuidWithStableUser() throws Exception
+   {
+      QInstance                qInstance = QContext.getQInstance();
+      MockAuthenticationModule module    = new MockAuthenticationModule();
+
+      QSession first  = module.createSession(qInstance, Map.of("sessionUUID", "abc-123"));
+      QSession second = module.createSession(qInstance, Map.of("sessionUUID", "abc-123"));
+      assertEquals("abc-123", first.getUuid());
+      assertEquals(first.getUuid(), second.getUuid());
+      assertEquals(first.getUser().getIdReference(), second.getUser().getIdReference());
+
+      QSession byId = module.createSession(qInstance, Map.of("sessionId", "abc-123"));
+      assertEquals(first.getUser().getIdReference(), byId.getUser().getIdReference());
+
+      assertNotEquals("abc-123", module.createSession(qInstance, Map.of()).getUuid());
+   }
 }

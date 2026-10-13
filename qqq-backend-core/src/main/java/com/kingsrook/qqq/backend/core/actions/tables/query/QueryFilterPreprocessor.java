@@ -90,6 +90,16 @@ public class QueryFilterPreprocessor
          {
             return;
          }
+         ///////////////////////////////////////////////////////////////////////////
+         // leave the caller's filter object untouched unless it uses an expander //
+         // virtual field or a sub-query (callers and tests rely on the reference) //
+         ///////////////////////////////////////////////////////////////////////////
+         if(!needsPreparation(input.getTable(), input.getFilter()))
+         {
+            FilterValidationHelper.validateFieldNamesInFilter(input);
+            return;
+         }
+
          CriteriaExpansionContext context = new CriteriaExpansionContext(QContext.getQInstance(), QContext.getQSession(), input.getTransaction());
          input.setFilter(expand(input.getTable(), input.getFilter(), context, true));
          FilterValidationHelper.validateFieldNamesInFilter(input);
@@ -106,6 +116,52 @@ public class QueryFilterPreprocessor
             DEPTH.set(depth);
          }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the filter (or any sub-filter) has criteria on a virtual field with
+    ** a criteria expander, or a QSubQuery value.
+    *******************************************************************************/
+   static boolean needsPreparation(QTableMetaData table, QQueryFilter filter)
+   {
+      if(filter == null)
+      {
+         return (false);
+      }
+      for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
+      {
+         if(criteria == null)
+         {
+            continue;
+         }
+         if(criteria.getValues() != null && criteria.getValues().stream().anyMatch(value -> value instanceof QSubQuery))
+         {
+            return (true);
+         }
+         String fieldName = criteria.getFieldName();
+         if(fieldName != null && table != null)
+         {
+            if(fieldName.startsWith(table.getName() + "."))
+            {
+               fieldName = fieldName.substring(table.getName().length() + 1);
+            }
+            QVirtualFieldMetaData field = CollectionUtils.nonNullMap(table.getVirtualFields()).get(fieldName);
+            if(field != null && field.getCriteriaExpander() != null)
+            {
+               return (true);
+            }
+         }
+      }
+      for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
+      {
+         if(needsPreparation(table, subFilter))
+         {
+            return (true);
+         }
+      }
+      return (false);
    }
 
 

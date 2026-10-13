@@ -810,6 +810,8 @@ components:
             \ the user may access that app.  Omitted otherwise, in which case the\
             \ frontend uses its own default home page."
           type: "string"
+        metaDataGeneration:
+          type: "number"
         processes:
           additionalProperties:
             $ref: "#/components/schemas/ProcessMetaDataLight"
@@ -1704,6 +1706,90 @@ components:
             type: "object"
           type: "array"
       type: "object"
+    RecordFeatureSummaryV1:
+      properties:
+        tableName:
+          type: "string"
+        primaryKey:
+          type: "string"
+        features:
+          items:
+            enum:
+            - "ATTACHMENTS"
+            - "TAGS"
+            - "CUSTOM_FIELDS"
+            - "COMMENTS"
+            - "PRESENCE"
+            - "SHARING"
+            - "FAVORITES"
+            - "FOLLOW"
+            - "TIMELINE"
+            - "RECENTS"
+            - "TASKS"
+            - "ASSIGNMENT"
+            type: "string"
+          type: "array"
+        capabilities:
+          additionalProperties:
+            type: "boolean"
+          type: "object"
+        isFavorite:
+          nullable: true
+          type: "boolean"
+        isFollowing:
+          nullable: true
+          type: "boolean"
+        counts:
+          additionalProperties:
+            type: "integer"
+          type: "object"
+        owner:
+          nullable: true
+          type: "string"
+        assignee:
+          nullable: true
+          type: "string"
+        presence:
+          items:
+            additionalProperties: true
+            type: "object"
+          nullable: true
+          type: "array"
+        extensions:
+          additionalProperties:
+            additionalProperties: true
+            type: "object"
+          type: "object"
+      type: "object"
+    RecordFeaturesV1:
+      properties:
+        capabilities:
+          additionalProperties:
+            type: "boolean"
+          type: "object"
+        features:
+          items:
+            enum:
+            - "ATTACHMENTS"
+            - "TAGS"
+            - "CUSTOM_FIELDS"
+            - "COMMENTS"
+            - "PRESENCE"
+            - "SHARING"
+            - "FAVORITES"
+            - "FOLLOW"
+            - "TIMELINE"
+            - "RECENTS"
+            - "TASKS"
+            - "ASSIGNMENT"
+            type: "string"
+          type: "array"
+        settings:
+          additionalProperties:
+            additionalProperties: true
+            type: "object"
+          type: "object"
+      type: "object"
     RecordSearchDetailV1:
       properties:
         displayValue:
@@ -2127,6 +2213,9 @@ components:
           items:
             $ref: "#/components/schemas/TableMenu"
           type: "array"
+        metaDataGeneration:
+          description: "Runtime metadata generation; refetch metadata when this changes."
+          type: "number"
         name:
           description: "Unique name for this table within the QQQ Instance"
           type: "string"
@@ -2137,6 +2226,10 @@ components:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
+        recordFeatures:
+          $ref: "#/components/schemas/RecordFeaturesV1"
+          description: "Enabled record collaboration features, public settings, and\
+            \ this session's table capabilities."
         searchFields:
           description: "Names of the fields that record search (POST /search) matches\
             \ for this table. Only present when the table is searchable and the user\
@@ -2218,6 +2311,9 @@ components:
         label:
           description: "User-facing name for this table"
           type: "string"
+        metaDataGeneration:
+          description: "Runtime metadata generation; refetch metadata when this changes."
+          type: "number"
         name:
           description: "Unique name for this table within the QQQ Instance"
           type: "string"
@@ -2225,6 +2321,10 @@ components:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
+        recordFeatures:
+          $ref: "#/components/schemas/RecordFeaturesV1"
+          description: "Enabled record collaboration features, public settings, and\
+            \ this session's table capabilities."
         searchFields:
           description: "Names of the fields that record search (POST /search) matches\
             \ for this table. Only present when the table is searchable and the user\
@@ -2305,6 +2405,9 @@ components:
           items:
             $ref: "#/components/schemas/TableMenu"
           type: "array"
+        metaDataGeneration:
+          description: "Runtime metadata generation; refetch metadata when this changes."
+          type: "number"
         name:
           description: "Unique name for this table within the QQQ Instance"
           type: "string"
@@ -2315,6 +2418,8 @@ components:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
+        recordFeatures:
+          $ref: "#/components/schemas/RecordFeaturesV1"
         searchFields:
           description: "Names of the fields that record search (POST /search) matches\
             \ for this table. Only present when the table is searchable and the user\
@@ -3703,6 +3808,7 @@ paths:
                           name: "childApp"
                           processes:
                           - "samplePersonProcess"
+                    metaDataGeneration: 0
                     processes:
                       person.bulkInsert:
                         hasPermission: true
@@ -3763,6 +3869,7 @@ paths:
                         insertPermission: true
                         isHidden: false
                         label: "Person"
+                        metaDataGeneration: 0
                         name: "person"
                         readPermission: true
               schema:
@@ -3820,6 +3927,7 @@ paths:
                       insertPermission: true
                       isHidden: false
                       label: "Person"
+                      metaDataGeneration: 0
                       name: "person"
                       primaryKeyField: "id"
                       readPermission: true
@@ -4271,6 +4379,34 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Update a record in a table"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/{primaryKey}/features:
+    get:
+      description: "Features and capabilities for a visible record, with optional\
+        \ summary provider contributions."
+      parameters:
+      - in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - in: "path"
+        name: "primaryKey"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordFeatureSummaryV1"
+          description: "Record collaboration summary"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get record collaboration features"
       tags:
       - "Tables"
   /qqq/v1/table/{tableName}:

@@ -39,6 +39,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturePermissionsRegistrar;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
 import com.kingsrook.qqq.backend.core.actions.permissions.BulkTableActionProcessPermissionChecker;
@@ -231,6 +232,7 @@ public class QInstanceEnricher
 
       enrichJoins();
       enrichInstance();
+      RecordFeaturePermissionsRegistrar.register(qInstance);
 
       //////////////////////////////////////////////////////////////////////////////
       // if the instance DOES have 1 or more scheduler, but no schedulable types, //

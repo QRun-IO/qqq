@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.audits.AuditAction;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -208,6 +209,7 @@ public class QueryAction
          throw (new QException("Query table is not available"));
       }
       queryInput.setTableMetaData(table);
+      queryInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, queryInput.getFilter(), queryInput.getTransaction()));
 
       validateFieldNamesToInclude(queryInput);
       FilterValidationHelper.validateFieldNamesInFilter(queryInput);

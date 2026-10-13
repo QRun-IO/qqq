@@ -32,6 +32,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeatureSummaryHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RuntimeMetaDataOverlay;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
@@ -42,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.FrontendRecordFeatures;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
@@ -66,6 +69,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendTableMetaData
 {
+   private FrontendRecordFeatures recordFeatures;
+   private Long metaDataGeneration;
+
    private static final QLogger LOG = QLogger.getLogger(QFrontendTableMetaData.class);
 
    private String  name;
@@ -116,6 +122,8 @@ public class QFrontendTableMetaData
     *******************************************************************************/
    public QFrontendTableMetaData(AbstractActionInput actionInput, QBackendMetaData backendForTable, QTableMetaData tableMetaData, boolean includeFullMetaData, boolean includeJoins, Map<String, QFieldMetaData> overrideFields)
    {
+      this.recordFeatures = RecordFeatureSummaryHelper.frontend(QContext.getQInstance(), tableMetaData);
+      this.metaDataGeneration = RuntimeMetaDataOverlay.getGeneration(QContext.getQInstance());
       this.name = tableMetaData.getName();
       this.label = tableMetaData.getLabel();
       this.isHidden = tableMetaData.getIsHidden();
@@ -538,4 +546,66 @@ public class QFrontendTableMetaData
       return (this.searchFields);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for recordFeatures
+    *******************************************************************************/
+   public FrontendRecordFeatures getRecordFeatures()
+   {
+      return (this.recordFeatures);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordFeatures
+    *******************************************************************************/
+   public void setRecordFeatures(FrontendRecordFeatures recordFeatures)
+   {
+      this.recordFeatures = recordFeatures;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordFeatures
+    *******************************************************************************/
+   public QFrontendTableMetaData withRecordFeatures(FrontendRecordFeatures recordFeatures)
+   {
+      setRecordFeatures(recordFeatures);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for metaDataGeneration
+    *******************************************************************************/
+   public Long getMetaDataGeneration()
+   {
+      return (this.metaDataGeneration);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for metaDataGeneration
+    *******************************************************************************/
+   public void setMetaDataGeneration(Long metaDataGeneration)
+   {
+      this.metaDataGeneration = metaDataGeneration;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for metaDataGeneration
+    *******************************************************************************/
+   public QFrontendTableMetaData withMetaDataGeneration(Long metaDataGeneration)
+   {
+      setMetaDataGeneration(metaDataGeneration);
+      return (this);
+   }
 }

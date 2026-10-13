@@ -54,6 +54,15 @@ spec'd routes.
 ## Versions
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
+1.1.0 was never released; its additions ship here.
+- Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
+  and registered extensions.
+- Added the extension point: modules and qbits register endpoint specs
+  (`MiddlewareSpecExtensionsMetaData`, `AbstractJsonEndpointSpec`); they are served under
+  `/qqq/v1/qbit/{name}/...` (or an established prefix: `/esb`, `/alerts`, `/assistant`,
+  `/sql-workbench`) and included in the served OpenAPI document. `UiApiInvoker` invokes spec'd
+  operations in-process with the caller's credentials.
+- `info.version` is now semver (it was `v1`).
 - `POST /widget/{name}`: its response is now typed as `WidgetData`, a discriminated union (by
   `type`) of one schema per widget type, built from the backend's widget data classes. The request
   body is documented as string inputs, which may also be sent as query parameters.
@@ -68,15 +77,6 @@ spec'd routes.
 **Accepted corrections.** A change the checker reports as breaking can be accepted only when it
 corrects the document to the server's actual, unchanged behaviour. List it, with the reason, in
 `openapi/v1/accepted-breaking-changes.txt`. The list is cleared when the baseline is refreshed.
-
-### 1.1.0 (folded into 1.2.0, never released)
-- Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
-  and registered extensions.
-- Added the extension point: modules and qbits register endpoint specs
-  (`MiddlewareSpecExtensionsMetaData`); they are served under `/qqq/v1/qbit/{name}/...` (or an
-  established prefix: `/esb`, `/alerts`, `/assistant`, `/sql-workbench`) and included in the served
-  OpenAPI document.
-- `info.version` is now semver (it was `v1`).
 
 ### 1.0.0 (baseline)
 - The 32 operations of QQQ 4.1.0-RC.5: authentication, session, metaData, tables (query, count,

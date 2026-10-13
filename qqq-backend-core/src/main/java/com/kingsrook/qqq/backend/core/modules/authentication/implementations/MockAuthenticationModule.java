@@ -63,14 +63,22 @@ public class MockAuthenticationModule implements QAuthenticationModuleInterface
          throw (new QAuthenticationException("Access denied (per accessToken requesting as such)"));
       }
 
+      ////////////////////////////////////////////////////////////////////////////////
+      // resume the session the caller names - by the sessionId cookie, or by the   //
+      // sessionUUID cookie (which manageSession sets, and which the in-process UI  //
+      // API invoker forwards) - so a session keeps its uuid and user across calls. //
+      ////////////////////////////////////////////////////////////////////////////////
+      String sessionUuid = StringUtils.hasContent(context.get("sessionId")) ? context.get("sessionId") : context.get("sessionUUID");
+
       QUser qUser = new QUser();
-      qUser.setIdReference("User:" + (System.currentTimeMillis() % USER_ID_MODULO));
+      long  userNumber = StringUtils.hasContent(sessionUuid) ? Math.floorMod(sessionUuid.hashCode(), USER_ID_MODULO) : (System.currentTimeMillis() % USER_ID_MODULO);
+      qUser.setIdReference("User:" + userNumber);
       qUser.setFullName("John Smith");
 
       QSession qSession = new QSession();
-      if(StringUtils.hasContent(context.get("sessionId")))
+      if(StringUtils.hasContent(sessionUuid))
       {
-         qSession.setUuid(context.get("sessionId"));
+         qSession.setUuid(sessionUuid);
       }
       qSession.setIdReference(qSession.getUuid());
       qSession.setUser(qUser);

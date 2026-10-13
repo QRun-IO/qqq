@@ -2497,6 +2497,50 @@ components:
             $ref: "#/components/schemas/TableVariant"
           type: "array"
       type: "object"
+    UiApiExtensionInfo:
+      properties:
+        description:
+          description: "A short description of the extension."
+          type: "string"
+        name:
+          description: "The extension namespace, e.g. alerts or sql-workbench."
+          type: "string"
+        pathPrefix:
+          description: "The path prefix of the extension operations under the API\
+            \ base path, e.g. /qbit/backups or /esb."
+          type: "string"
+        version:
+          description: "The extension semantic version (MAJOR.MINOR.PATCH)."
+          type: "string"
+      type: "object"
+    VersionResponseV1:
+      properties:
+        apiVersion:
+          description: "Semantic version (MAJOR.MINOR.PATCH) of the UI API this server\
+            \ implements. MAJOR matches the URL version (v1). A client built against\
+            \ 1.x works with any server 1.y where y >= x."
+          type: "string"
+        basePath:
+          description: "Base path of this API version, e.g. /qqq/v1."
+          type: "string"
+        extensions:
+          description: "Extensions (modules and qbits) registered on this server,\
+            \ each with its own path prefix and semantic version."
+          items:
+            $ref: "#/components/schemas/UiApiExtensionInfo"
+          type: "array"
+        features:
+          description: "Names of the optional core features this server supports,\
+            \ so a client can show or hide an area without probing."
+          items:
+            type: "string"
+          type: "array"
+        supportedMajorVersions:
+          description: "The major versions of the UI API this server serves."
+          items:
+            type: "number"
+          type: "array"
+      type: "object"
     VirtualFieldMetaData:
       properties:
         adornments:
@@ -3335,9 +3379,44 @@ info:
     \ with apps, tables, process, etc, the frontend utilizes the appropriate endpoints\
     \ as required.\n"
   title: "QQQ Middleware API"
-  version: "v1"
+  version: "1.1.0"
 openapi: "3.0.3"
 paths:
+  /qqq/v1/version:
+    get:
+      description: "Describes the semantic version of this UI API (MAJOR.MINOR.PATCH,\
+        \ where MAJOR matches the URL\nversion), the optional core features the server\
+        \ supports, and the extensions (modules and qbits)\nregistered on it, each\
+        \ with its own semantic version.\n\nA client should call this first, before\
+        \ authentication, and stop with a clear message when\napiVersion is outside\
+        \ the range it supports.  Not secured."
+      responses:
+        200:
+          content:
+            application/json:
+              examples:
+                Server with one extension:
+                  value:
+                    apiVersion: "1.1.0"
+                    basePath: "/qqq/v1"
+                    extensions:
+                    - description: "ESB overview, destinations, messages and dead\
+                        \ letters"
+                      name: "esb"
+                      pathPrefix: "/esb"
+                      version: "1.0.0"
+                    features:
+                    - "recordSearch"
+                    - "tableVariants"
+                    - "version"
+                    supportedMajorVersions:
+                    - 1
+              schema:
+                $ref: "#/components/schemas/VersionResponseV1"
+          description: "Successful Response"
+      summary: "Get the UI API version"
+      tags:
+      - "General"
   /qqq/v1/metaData/authentication:
     get:
       description: "For a frontend to determine which authentication provider or mechanism\

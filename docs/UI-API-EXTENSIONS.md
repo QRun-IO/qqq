@@ -141,8 +141,8 @@ response.getStatus(); response.getJson(); response.getHeaders();
   (`getPort()`); the invoker sends the user's timezone header when given, and a per-call timeout
   (default 60 s). Streams (SSE) are not invocable in-process; the assistant only needs
   request/response operations.
-- Recursion guard: requests carrying `X-QQQ-Invoked-By` are counted per thread; the invoker refuses
-  more than 8 nested calls.
+- Recursion guard: the invoker counts nested invocations on the calling thread and refuses more
+  than 8 (`UiApiInvoker.MAX_DEPTH`).
 
 ## 6. What a client sees
 The served `/qqq/v1/openapi.yaml` is core plus every registered extension, so a generated client

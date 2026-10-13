@@ -215,7 +215,7 @@ public class JsonPathSQLTest
       assertTrue(strategy.sql.contains("CORR((\"udf_test\".\"qqq_custom_fields\"->>'weight')::numeric, " + score + ")"), strategy.sql);
       assertTrue(strategy.sql.contains("CASE WHEN " + score + " = ? THEN ? ELSE width_bucket(" + score + ", ?, ?, ?) END"), strategy.sql);
       assertTrue(strategy.sql.contains("date_trunc('month', CAST((\"udf_test\".\"qqq_custom_fields\"->>'event_date')::date AS TIMESTAMP))"), strategy.sql);
-      assertTrue(strategy.sql.contains("GROUP BY 1,2"), strategy.sql);
+      assertTrue(strategy.sql.contains("GROUP BY \"qqq_bucket_0\",\"qqq_bucket_1\""), strategy.sql);
       assertEquals(List.of(BigDecimal.TEN, 2, BigDecimal.ZERO, BigDecimal.TEN, 2), strategy.params);
    }
 

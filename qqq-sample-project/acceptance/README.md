@@ -1,5 +1,7 @@
 # Starter and application QBit source acceptance (#607, #608)
 
+By owner decision on 2026-10-13, the per-RC Next waiver approval gate was removed. Releases no longer require an owner comment on issue #798. Acceptance results for the seven Next-owned successor features are a non-blocking release report: missing receipts, pending mappings and pending review are recorded with reasons in `next_report_only_features`, excluded from verified counts, and keep `complete=false`. Reviewed receipts are evaluated as before and all native results remain in `next_acceptance`. Failed mapped tests and supplied receipts or bundles rejected as invalid or tampered still fail strict coverage. All non-Next strict requirements remain unchanged.
+
 This fixture uses local checkouts of the first-party `qqq-app-starter` and
 `qbit-template-application` repositories. It installs the selected QQQ source
 revision into a dedicated Maven cache, makes disposable copies of both

@@ -151,14 +151,10 @@ jobs:
   sample_acceptance:
     executor: qqq-orb/java
     environment:
-      QQQ_ACCEPTED_NEXT_CANDIDATE: << parameters.accepted_next_candidate >>
       QQQ_NEXT_CI_BUNDLE_URL: << pipeline.parameters.next_acceptance_bundle_url >>
       QQQ_NEXT_BUNDLE_SHA256: << pipeline.parameters.next_acceptance_bundle_sha256 >>
       QQQ_NEXT_RECEIPT_SHA256: << pipeline.parameters.next_acceptance_receipt_sha256 >>
     parameters:
-      accepted_next_candidate:
-        type: string
-        default: ""
       require_complete_coverage:
         type: boolean
         default: false
@@ -440,7 +436,6 @@ workflows:
                 - /release\/.*/
       - sample_acceptance:
           name: candidate_sample_acceptance
-          accepted_next_candidate: "4.1.0-RC.5"
           require_complete_coverage: true
           requires: [sample_bootstrap_source]
           filters:

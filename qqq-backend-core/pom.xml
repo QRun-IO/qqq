@@ -78,6 +78,20 @@
          <artifactId>aws-java-sdk-secretsmanager</artifactId>
          <version>1.12.797</version>
       </dependency>
+      <!-- Apache HttpClient 4.5 is used directly by utils.http.SafeHttpClient   -->
+      <!-- (its DnsResolver pins checked addresses). Pinned with httpcore 4.4.16 so a direct dependency  -->
+      <!-- never downgrades what other modules resolve.                           -->
+      <dependency>
+         <groupId>org.apache.httpcomponents</groupId>
+         <artifactId>httpclient</artifactId>
+         <version>4.5.14</version>
+      </dependency>
+      <!-- keep httpcore at the version the rest of QQQ resolves (HttpStatus.SC_TOO_MANY_REQUESTS) -->
+      <dependency>
+         <groupId>org.apache.httpcomponents</groupId>
+         <artifactId>httpcore</artifactId>
+         <version>4.4.16</version>
+      </dependency>
       <dependency>
          <groupId>com.ibm.icu</groupId>
          <artifactId>icu4j</artifactId>
@@ -180,7 +194,7 @@
       <dependency>
          <groupId>org.jsoup</groupId>
          <artifactId>jsoup</artifactId>
-         <version>1.23.1</version>
+         <version>1.23.2</version>
       </dependency>
       <dependency>
          <groupId>com.openhtmltopdf</groupId>

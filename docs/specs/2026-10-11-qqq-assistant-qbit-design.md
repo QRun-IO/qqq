@@ -583,7 +583,7 @@ The assistant's own tool kernel still treats `assistant*` tables as exposure `NO
   - There is also a header button with an unread badge.
   - The command palette gets an "Ask Assistant: <typed text>" item, so ⌘K → type → Enter hands the query over.
   - Open state persists in localStorage.
-- **Feature gate.** `GET /qqq/v1/assistant/config`, with the same probe pattern as ESB (`getOrNull`). If it 404s, the panel and shortcut are not rendered. Recommended: also put an `assistant` supplemental entry in instance `/metaData`, so the UI knows without the extra call.
+- **Feature gate.** The qbit registers supplemental instance metadata named `assistant`, which `/metaData` publishes as `supplementalInstanceMetaData.assistant` (`{available: true}` plus scalar frontend settings). Only when that entry is present does Next call `GET /qqq/v1/assistant/config` (`getOrNull`); a 404 or `enabled:false` hides the panel and the shortcut. Apps without the qbit therefore never see a probe request.
 
 ### 5.2 UX
 
@@ -748,7 +748,7 @@ The app digest (labels + `aiDescription` + help summaries) is built once per app
 ### 7.2 Cost controls
 
 - **Prompt caching:**
-  - Use 1h `cache_control` on tools + system/app digest. This prefix is shared by every user of an app version, because tools are generic and the digest is permission-neutral.
+  - Use 1h `cache_control` on tools + system/app digest. This prefix is shared by every user of an app version, because tools are generic and the app digest only describes objects that no permission rule can deny (NOT_PROTECTED, no custom checker). Everything permission-restricted is described only in the per-user digest (5m breakpoint), filtered by that user's permissions, so DENY_HIDE objects are never named to a user who can't see them (D3). With QQQ's usual protected defaults most descriptions move into the user digest; cache hit rate is measured in phase 1.
   - Use a 5m breakpoint after the user digest.
   - Keep the tool list byte-stable: sorted, no timestamps. A changed tool definition invalidates the whole cache.
   - Watch `cache_read_input_tokens` on the dashboard.
@@ -827,7 +827,7 @@ The core permission work (D1: #1061, #1062, `ENFORCE`, `dryRun`, `isSensitive`) 
 | Risk | Mitigation |
 |---|---|
 | A permission bypass, because core actions don't check permissions | Kernel-only execution, ArchUnit, red-team release gate, core `ENFORCE` (4.1.0-RC.4) plus the kernel's own checks |
-| Data leaks through system-evaluated sources (Data Health cache, widgets that render as system) | Re-scoping in providers, and an allowlist of widgets marked `assistantSafe` |
+| Data leaks through system-evaluated sources (Data Health cache, widgets that render as system) | Re-scoping in providers; `render_widget` is **default-deny**: only widgets the app lists in `AssistantQBitConfig.allowedWidgetNames` (passed to the kernel's `AiToolKernelSettings`) render, `hiddenWidgetNames` overrides, and unlisted widgets get the same denial as missing ones |
 | Prompt injection leads to harmful writes | Proposals plus server-rendered previews plus human approval; no exfil channel |
 | Over-trust in model-written numbers | Numbers only from tool results, a "How I got this" expander, faithfulness evals |
 | Cost runaway | Caching, routing, caps, budgets, kill switch |

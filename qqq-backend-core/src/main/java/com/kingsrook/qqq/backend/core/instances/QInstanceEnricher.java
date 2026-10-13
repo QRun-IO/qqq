@@ -137,6 +137,7 @@ public class QInstanceEnricher
 
    private boolean configRemoveIdFromNameWhenCreatingPossibleValueFieldLabels        = true;
    private boolean configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate = true;
+   private boolean configMakeSystemDateFieldsNonEditable                             = true;
 
    //////////////////////////////////////////////////////////////////////////////////////////////////
    // let an instance define mappings to be applied during name-to-label enrichments,              //
@@ -160,6 +161,17 @@ public class QInstanceEnricher
    public QInstanceEnricher(QInstance qInstance)
    {
       this.qInstance = qInstance;
+   }
+
+
+
+   /*******************************************************************************
+    ** The instance being enriched - for supplemental meta-data whose enrich
+    ** needs to add to the instance (e.g. AlertProcessMetaData declaring types).
+    *******************************************************************************/
+   public QInstance getQInstance()
+   {
+      return (this.qInstance);
    }
 
 
@@ -439,6 +451,7 @@ public class QInstanceEnricher
             }
 
             enrichField(field);
+            enrichSystemDateField(field);
          }
       }
 
@@ -743,6 +756,29 @@ public class QInstanceEnricher
       }
 
       runPlugins(QFieldMetaData.class, field, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** A table field whose value QQQ maintains (the CREATE_DATE or MODIFY_DATE
+    ** dynamic default value behavior) is not editable by people: QQQ sets it on
+    ** insert (and MODIFY_DATE on every update), so frontends leave it off create
+    ** forms and show it read-only on edit. Off when
+    ** configMakeSystemDateFieldsNonEditable is false.
+    *******************************************************************************/
+   private void enrichSystemDateField(QFieldMetaData field)
+   {
+      if(!configMakeSystemDateFieldsNonEditable)
+      {
+         return;
+      }
+
+      DynamicDefaultValueBehavior behavior = field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class);
+      if(DynamicDefaultValueBehavior.CREATE_DATE.equals(behavior) || DynamicDefaultValueBehavior.MODIFY_DATE.equals(behavior))
+      {
+         field.setIsEditable(false);
+      }
    }
 
 
@@ -1964,6 +2000,37 @@ public class QInstanceEnricher
    public QInstanceEnricher withConfigAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate(boolean configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate)
    {
       this.configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate = configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public boolean getConfigMakeSystemDateFieldsNonEditable()
+   {
+      return (this.configMakeSystemDateFieldsNonEditable);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public void setConfigMakeSystemDateFieldsNonEditable(boolean configMakeSystemDateFieldsNonEditable)
+   {
+      this.configMakeSystemDateFieldsNonEditable = configMakeSystemDateFieldsNonEditable;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public QInstanceEnricher withConfigMakeSystemDateFieldsNonEditable(boolean configMakeSystemDateFieldsNonEditable)
+   {
+      this.configMakeSystemDateFieldsNonEditable = configMakeSystemDateFieldsNonEditable;
       return (this);
    }
 

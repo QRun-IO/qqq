@@ -23,7 +23,10 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.SpecTestBase;
 import io.javalin.http.ContentType;
@@ -223,4 +226,67 @@ class TablePossibleValuesSpecV1Test extends SpecTestBase
       }
    }
 
+
+
+   /*******************************************************************************
+    ** A record picker request (the body's "picker" object) on a source that
+    ** declares a picker: keyset pages by id, hasMore instead of a count, each
+    ** option with only the picker's display values, and undeclared filter
+    ** fields refused.
+    *******************************************************************************/
+   @Test
+   void testPickerRequest()
+   {
+      QPossibleValueSource source = serverQInstance.getPossibleValueSource(TestUtils.TABLE_NAME_PERSON);
+      source.setPicker(new QPossibleValuePicker().withThumbnailField("email").withFilterFields(List.of("lastName")).withSort("Newest", "id", false).withPageSize(2));
+      try
+      {
+         String url = getBaseUrlAndPath() + "/table/person/possibleValues/partnerPersonId";
+         HttpResponse<String> response = Unirest.post(url)
+            .contentType(ContentType.APPLICATION_JSON.getMimeType())
+            .body(JsonUtils.toJson(Map.of("picker", Map.of("skip", 0))))
+            .asString();
+         assertEquals(200, response.getStatus());
+         JSONObject body    = JsonUtils.toJSONObject(response.getBody());
+         JSONArray  options = body.getJSONArray("options");
+         assertEquals(2, options.length());
+         assertTrue(body.getBoolean("hasMore"));
+         int firstId = options.getJSONObject(0).getInt("id");
+         int lastId  = options.getJSONObject(1).getInt("id");
+         assertThat(firstId).isGreaterThan(lastId);
+         JSONObject values = options.getJSONObject(0).getJSONObject("values");
+         assertTrue(values.has("email"));
+         assertThat(values.keySet()).containsOnly("email");
+
+         response = Unirest.post(url)
+            .contentType(ContentType.APPLICATION_JSON.getMimeType())
+            .body(JsonUtils.toJson(Map.of("picker", Map.of("afterId", lastId, "limit", 1))))
+            .asString();
+         assertEquals(200, response.getStatus());
+         options = JsonUtils.toJSONObject(response.getBody()).getJSONArray("options");
+         assertEquals(1, options.length());
+         assertThat(options.getJSONObject(0).getInt("id")).isLessThan(lastId);
+
+         response = Unirest.post(url)
+            .contentType(ContentType.APPLICATION_JSON.getMimeType())
+            .body(JsonUtils.toJson(Map.of("picker", Map.of("filter", Map.of("criteria", List.of(Map.of("fieldName", "email", "operator", "IS_NOT_BLANK", "values", List.of())))))))
+            .asString();
+         assertEquals(400, response.getStatus());
+
+         ////////////////////////////////////////////////////
+         // ordinary requests carry no picker extras      //
+         ////////////////////////////////////////////////////
+         response = Unirest.post(url)
+            .contentType(ContentType.APPLICATION_JSON.getMimeType())
+            .body(JsonUtils.toJson(Map.of("searchTerm", "Kelkhoff")))
+            .asString();
+         body = JsonUtils.toJSONObject(response.getBody());
+         assertTrue(!body.has("hasMore"));
+         assertTrue(!body.getJSONArray("options").getJSONObject(0).has("values"));
+      }
+      finally
+      {
+         source.setPicker(null);
+      }
+   }
 }

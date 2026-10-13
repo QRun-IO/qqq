@@ -23,17 +23,26 @@ package com.kingsrook.qqq.backend.core.model.session;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Auth0AuthenticationModule;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.FullyAnonymousAuthenticationModule;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.TableBasedAuthenticationModule;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -70,10 +79,30 @@ class QSystemUserSessionTest extends BaseTest
     **
     *******************************************************************************/
    @Test
-   void testWeDoNotBlowUpIfInstanceIsntInContextWhenPrimingAllAccessKeyNames()
+   void testAllAccessKeysFollowReplacementInstance()
+   {
+      QInstance instanceWithSecurityKeys = QContext.getQInstance();
+      QContext.setQInstance(new QInstance());
+      QSystemUserSession earlySession = new QSystemUserSession();
+      assertNull(earlySession.getSecurityKeyValues());
+
+      QContext.setQInstance(instanceWithSecurityKeys);
+      QSystemUserSession systemUserSession = new QSystemUserSession();
+      assertEquals(List.of(true), systemUserSession.getSecurityKeyValues(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS));
+
+      QContext.setQInstance(new QInstance());
+      assertNull(new QSystemUserSession().getSecurityKeyValues());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testWeDoNotBlowUpIfInstanceIsntInContext()
    {
       QInstance qInstance = QContext.getQInstance();
-      QSystemUserSession.unsetAllAccessKeyNames();
 
       QContext.clear();
       QSystemUserSession systemUserSession = new QSystemUserSession();
@@ -82,6 +111,121 @@ class QSystemUserSessionTest extends BaseTest
       QContext.setQInstance(qInstance);
       systemUserSession = new QSystemUserSession();
       assertEquals(List.of(true), systemUserSession.getSecurityKeyValues(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS));
+   }
+
+
+
+   /*******************************************************************************
+    ** A session made before QContext.init must use the supplied instance.
+    *******************************************************************************/
+   @Test
+   void testExplicitInstance()
+   {
+      QInstance qInstance = newInstanceWithAllAccessKey("explicitAllAccess");
+      assertEquals(Map.of("explicitAllAccess", List.of(true)), new QSystemUserSession(qInstance).getSecurityKeyValues());
+
+      QContext.clear();
+      assertEquals(Map.of("explicitAllAccess", List.of(true)), new QSystemUserSession(qInstance).getSecurityKeyValues());
+   }
+
+
+
+   /*******************************************************************************
+    ** Record locks must accept system writes after an empty startup instance.
+    *******************************************************************************/
+   @Test
+   void testRecordLockedWriteAfterInstanceReplacement() throws Exception
+   {
+      QInstance qInstance = QContext.getQInstance();
+      QContext.setQInstance(new QInstance());
+      QSession earlySession = new QSystemUserSession();
+      QContext.setQInstance(qInstance);
+      QRecord deniedRecord = new QRecord().withValue("storeId", 42);
+      QContext.setQSession(earlySession);
+      ValidateRecordSecurityLockHelper.validateSecurityFields(qInstance.getTable(TestUtils.TABLE_NAME_ORDER), List.of(deniedRecord), ValidateRecordSecurityLockHelper.Action.INSERT, null);
+      assertThat(deniedRecord.getErrors()).isNotEmpty();
+
+      QContext.setQSession(new QSystemUserSession());
+      QRecord allowedRecord = new QRecord().withValue("storeId", 42);
+      ValidateRecordSecurityLockHelper.validateSecurityFields(qInstance.getTable(TestUtils.TABLE_NAME_ORDER), List.of(allowedRecord), ValidateRecordSecurityLockHelper.Action.INSERT, null);
+      assertThat(allowedRecord.getErrors()).isNullOrEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Key additions, renames and removals on the same instance must be visible to
+    ** newly created sessions, without modifying sessions already in use.
+    *******************************************************************************/
+   @Test
+   void testSecurityMetadataChanges()
+   {
+      QInstance qInstance = newInstanceWithAllAccessKey("originalAllAccess");
+      QContext.setQInstance(qInstance);
+      QSystemUserSession originalSession = new QSystemUserSession();
+
+      qInstance.getSecurityKeyType("key").setAllAccessKeyName("renamedAllAccess");
+      qInstance.addSecurityKeyType(new QSecurityKeyType().withName("additional").withAllAccessKeyName("additionalAllAccess"));
+      qInstance.addSecurityKeyType(new QSecurityKeyType().withName("noAllAccess"));
+      qInstance.addSecurityKeyType(new QSecurityKeyType().withName("blankAllAccess").withAllAccessKeyName(" "));
+      assertEquals(Map.of("renamedAllAccess", List.of(true), "additionalAllAccess", List.of(true)), new QSystemUserSession().getSecurityKeyValues());
+      assertEquals(Map.of("originalAllAccess", List.of(true)), originalSession.getSecurityKeyValues());
+
+      qInstance.getSecurityKeyTypes().clear();
+      assertNull(new QSystemUserSession().getSecurityKeyValues());
+   }
+
+
+
+   /*******************************************************************************
+    ** Threads using different instances must never share all-access keys.
+    *******************************************************************************/
+   @Test
+   void testConcurrentInstances() throws Exception
+   {
+      CyclicBarrier barrier = new CyclicBarrier(2);
+      try(var executor = Executors.newFixedThreadPool(2))
+      {
+         var first = executor.submit(() -> assertConcurrentSessionKeys("firstAllAccess", barrier));
+         var second = executor.submit(() -> assertConcurrentSessionKeys("secondAllAccess", barrier));
+         first.get(10, TimeUnit.SECONDS);
+         second.get(10, TimeUnit.SECONDS);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Synchronize construction in separate thread-local contexts.
+    *******************************************************************************/
+   private boolean assertConcurrentSessionKeys(String allAccessKeyName, CyclicBarrier barrier) throws Exception
+   {
+      QContext.setQInstance(newInstanceWithAllAccessKey(allAccessKeyName));
+      try
+      {
+         barrier.await(10, TimeUnit.SECONDS);
+         for(int i = 0; i < 100; i++)
+         {
+            assertEquals(Map.of(allAccessKeyName, List.of(true)), new QSystemUserSession().getSecurityKeyValues());
+         }
+         return (true);
+      }
+      finally
+      {
+         QContext.clear();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Minimal metadata for exercising system sessions independently of validation.
+    *******************************************************************************/
+   private QInstance newInstanceWithAllAccessKey(String allAccessKeyName)
+   {
+      QInstance qInstance = new QInstance();
+      qInstance.addSecurityKeyType(new QSecurityKeyType().withName("key").withAllAccessKeyName(allAccessKeyName));
+      return (qInstance);
    }
 
 }

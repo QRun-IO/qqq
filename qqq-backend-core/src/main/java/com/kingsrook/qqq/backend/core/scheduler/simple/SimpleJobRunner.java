@@ -74,6 +74,7 @@ public class SimpleJobRunner implements Runnable
          ////////////////////////////////////////////////////////////////
          QContext.setObjects(null);
          SimpleScheduler simpleScheduler = SimpleScheduler.getInstance(qInstance);
+         QContext.setQInstance(qInstance);
          QContext.init(qInstance, simpleScheduler.getSessionSupplier().get());
 
          SchedulableRunner schedulableRunner = QCodeLoader.getAdHoc(SchedulableRunner.class, schedulableType.getRunner());

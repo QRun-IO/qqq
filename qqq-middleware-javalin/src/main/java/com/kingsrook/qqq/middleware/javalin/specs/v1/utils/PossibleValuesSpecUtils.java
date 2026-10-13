@@ -27,7 +27,10 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.io.PossibleValuesInput;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.RequestBody;
 import com.kingsrook.qqq.openapi.model.Schema;
@@ -80,6 +83,24 @@ public class PossibleValuesSpecUtils
       properties.put("filter", new Schema()
          .withDescription("Optional default filter to apply to the possible value search")
          .withRef("#/components/schemas/QueryFilter"));
+
+      Map<String, Schema> pickerProperties = new LinkedHashMap<>();
+      pickerProperties.put("filter", new Schema()
+         .withDescription("Criteria (only on the picker's filterFields) and orderBys (only on its sort fields or the primary key)")
+         .withRef("#/components/schemas/QueryFilter"));
+      pickerProperties.put("afterId", new Schema()
+         .withDescription("Keyset paging: the last option id of the previous page, when ordered by the primary key alone")
+         .withType(Type.STRING));
+      pickerProperties.put("skip", new Schema()
+         .withDescription("Offset paging, for orderings other than the primary key")
+         .withType(Type.INTEGER));
+      pickerProperties.put("limit", new Schema()
+         .withDescription("Options per page (default: the picker's pageSize; at most 200)")
+         .withType(Type.INTEGER));
+      properties.put("picker", new Schema()
+         .withDescription("Record picker request, for a possible value source that declares a picker: options carry the picker's display values and the response says whether more follow (no count)")
+         .withType(Type.OBJECT)
+         .withProperties(pickerProperties));
 
       return new RequestBody()
          .withContent(Map.of(
@@ -207,4 +228,42 @@ public class PossibleValuesSpecUtils
       return (null);
    }
 
+
+
+   /***************************************************************************
+    ** Read the record picker request (the body's "picker" object), if any.
+    ***************************************************************************/
+   public static void applyPickerRequest(JSONObject requestBody, PossibleValuesInput input)
+   {
+      if(requestBody == null || !requestBody.has("picker") || requestBody.isNull("picker"))
+      {
+         return;
+      }
+
+      JSONObject picker = requestBody.getJSONObject("picker");
+      input.setPickerRequest(true);
+      if(picker.has("filter") && !picker.isNull("filter"))
+      {
+         try
+         {
+            input.setPickerFilter(JsonUtils.toObject(picker.getJSONObject("filter").toString(), QQueryFilter.class));
+         }
+         catch(Exception e)
+         {
+            throw (new IllegalArgumentException("Invalid picker filter: " + e.getMessage(), e));
+         }
+      }
+      if(picker.has("afterId") && !picker.isNull("afterId"))
+      {
+         input.setAfterId(String.valueOf(picker.get("afterId")));
+      }
+      if(picker.has("skip") && !picker.isNull("skip"))
+      {
+         input.setSkip(picker.getInt("skip"));
+      }
+      if(picker.has("limit") && !picker.isNull("limit"))
+      {
+         input.setLimit(picker.getInt("limit"));
+      }
+   }
 }

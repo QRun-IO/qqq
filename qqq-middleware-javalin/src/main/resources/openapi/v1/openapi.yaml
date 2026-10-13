@@ -416,6 +416,29 @@ components:
               type: "array"
             overrideIdField:
               type: "string"
+            picker:
+              properties:
+                detailFields:
+                  type: "array"
+                filterFields:
+                  type: "array"
+                pageSize:
+                  type: "number"
+                previewField:
+                  type: "string"
+                searchFields:
+                  type: "array"
+                sorts:
+                  type: "array"
+                subtitleFields:
+                  type: "array"
+                thumbnailField:
+                  type: "string"
+                uploadProcessName:
+                  type: "string"
+                uploadResultIdField:
+                  type: "string"
+              type: "object"
             searchFields:
               type: "array"
             tableName:
@@ -454,9 +477,48 @@ components:
         maxLength:
           description: "For String fields, the max length the field supports."
           type: "number"
+        maxValue:
+          description: "For number fields, the largest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        minValue:
+          description: "For number fields, the smallest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
         name:
           description: "Unique name for this field within its container (table or\
             \ process)"
+          type: "string"
+        picker:
+          description: "When this field's possible value source declares a record\
+            \ picker (for sources over large tables), its configuration: thumbnail,\
+            \ preview, subtitle and detail fields, filter fields, search fields, sorts\
+            \ and page size.  Frontends offer a searchable, paged picker dialog."
+          properties:
+            detailFields:
+              type: "array"
+            filterFields:
+              type: "array"
+            pageSize:
+              type: "number"
+            previewField:
+              type: "string"
+            searchFields:
+              type: "array"
+            sorts:
+              type: "array"
+            subtitleFields:
+              type: "array"
+            thumbnailField:
+              type: "string"
+            uploadProcessName:
+              type: "string"
+            uploadResultIdField:
+              type: "string"
+          type: "object"
+        pickerTableName:
+          description: "When this field has a picker, the table its possible value\
+            \ source reads, whose metadata describes the picker's fields."
           type: "string"
         possibleValueSourceName:
           description: "If this field's values should come from a possible value source,\
@@ -955,15 +1017,27 @@ components:
       type: "object"
     PossibleValueOption:
       properties:
+        displayValues:
+          description: "For a picker request: formatted or translated display values,\
+            \ where they differ from the raw values"
+          type: "object"
         id:
           description: "Unique identifier for this possible value option"
           type: "object"
         label:
           description: "Human-readable label for this possible value option"
           type: "string"
+        values:
+          description: "For a picker request: the option's picker display values (thumbnail,\
+            \ preview, subtitle and detail fields), raw"
+          type: "object"
       type: "object"
     PossibleValuesResponseV1:
       properties:
+        hasMore:
+          description: "For a picker request: whether another page of options follows\
+            \ (the picker never counts)"
+          type: "boolean"
         options:
           description: "List of possible value options matching the search request"
           items:
@@ -2492,6 +2566,29 @@ components:
               type: "array"
             overrideIdField:
               type: "string"
+            picker:
+              properties:
+                detailFields:
+                  type: "array"
+                filterFields:
+                  type: "array"
+                pageSize:
+                  type: "number"
+                previewField:
+                  type: "string"
+                searchFields:
+                  type: "array"
+                sorts:
+                  type: "array"
+                subtitleFields:
+                  type: "array"
+                thumbnailField:
+                  type: "string"
+                uploadProcessName:
+                  type: "string"
+                uploadResultIdField:
+                  type: "string"
+              type: "object"
             searchFields:
               type: "array"
             tableName:
@@ -2538,9 +2635,48 @@ components:
         maxLength:
           description: "For String fields, the max length the field supports."
           type: "number"
+        maxValue:
+          description: "For number fields, the largest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
+        minValue:
+          description: "For number fields, the smallest value the field accepts (inclusive).\
+            \  Absent when there is no such limit."
+          type: "string"
         name:
           description: "Unique name for this field within its container (table or\
             \ process)"
+          type: "string"
+        picker:
+          description: "When this field's possible value source declares a record\
+            \ picker (for sources over large tables), its configuration: thumbnail,\
+            \ preview, subtitle and detail fields, filter fields, search fields, sorts\
+            \ and page size.  Frontends offer a searchable, paged picker dialog."
+          properties:
+            detailFields:
+              type: "array"
+            filterFields:
+              type: "array"
+            pageSize:
+              type: "number"
+            previewField:
+              type: "string"
+            searchFields:
+              type: "array"
+            sorts:
+              type: "array"
+            subtitleFields:
+              type: "array"
+            thumbnailField:
+              type: "string"
+            uploadProcessName:
+              type: "string"
+            uploadResultIdField:
+              type: "string"
+          type: "object"
+        pickerTableName:
+          description: "When this field has a picker, the table its possible value\
+            \ source reads, whose metadata describes the picker's fields."
           type: "string"
         possibleValueSourceName:
           description: "If this field's values should come from a possible value source,\
@@ -2836,6 +2972,29 @@ components:
                         type: "array"
                       overrideIdField:
                         type: "string"
+                      picker:
+                        properties:
+                          detailFields:
+                            type: "array"
+                          filterFields:
+                            type: "array"
+                          pageSize:
+                            type: "number"
+                          previewField:
+                            type: "string"
+                          searchFields:
+                            type: "array"
+                          sorts:
+                            type: "array"
+                          subtitleFields:
+                            type: "array"
+                          thumbnailField:
+                            type: "string"
+                          uploadProcessName:
+                            type: "string"
+                          uploadResultIdField:
+                            type: "string"
+                        type: "object"
                       searchFields:
                         type: "array"
                       tableName:
@@ -2874,9 +3033,50 @@ components:
                   maxLength:
                     description: "For String fields, the max length the field supports."
                     type: "number"
+                  maxValue:
+                    description: "For number fields, the largest value the field accepts\
+                      \ (inclusive).  Absent when there is no such limit."
+                    type: "string"
+                  minValue:
+                    description: "For number fields, the smallest value the field\
+                      \ accepts (inclusive).  Absent when there is no such limit."
+                    type: "string"
                   name:
                     description: "Unique name for this field within its container\
                       \ (table or process)"
+                    type: "string"
+                  picker:
+                    description: "When this field's possible value source declares\
+                      \ a record picker (for sources over large tables), its configuration:\
+                      \ thumbnail, preview, subtitle and detail fields, filter fields,\
+                      \ search fields, sorts and page size.  Frontends offer a searchable,\
+                      \ paged picker dialog."
+                    properties:
+                      detailFields:
+                        type: "array"
+                      filterFields:
+                        type: "array"
+                      pageSize:
+                        type: "number"
+                      previewField:
+                        type: "string"
+                      searchFields:
+                        type: "array"
+                      sorts:
+                        type: "array"
+                      subtitleFields:
+                        type: "array"
+                      thumbnailField:
+                        type: "string"
+                      uploadProcessName:
+                        type: "string"
+                      uploadResultIdField:
+                        type: "string"
+                    type: "object"
+                  pickerTableName:
+                    description: "When this field has a picker, the table its possible\
+                      \ value source reads, whose metadata describes the picker's\
+                      \ fields."
                     type: "string"
                   possibleValueSourceName:
                     description: "If this field's values should come from a possible\
@@ -4409,6 +4609,28 @@ paths:
                   $ref: "#/components/schemas/QueryFilter"
                   description: "Optional default filter to apply to the possible value\
                     \ search"
+                picker:
+                  description: "Record picker request, for a possible value source\
+                    \ that declares a picker: options carry the picker's display values\
+                    \ and the response says whether more follow (no count)"
+                  properties:
+                    filter:
+                      $ref: "#/components/schemas/QueryFilter"
+                      description: "Criteria (only on the picker's filterFields) and\
+                        \ orderBys (only on its sort fields or the primary key)"
+                    afterId:
+                      description: "Keyset paging: the last option id of the previous\
+                        \ page, when ordered by the primary key alone"
+                      type: "string"
+                    skip:
+                      description: "Offset paging, for orderings other than the primary\
+                        \ key"
+                      type: "integer"
+                    limit:
+                      description: "Options per page (default: the picker's pageSize;\
+                        \ at most 200)"
+                      type: "integer"
+                  type: "object"
               type: "object"
         required: false
       responses:
@@ -4480,6 +4702,28 @@ paths:
                   $ref: "#/components/schemas/QueryFilter"
                   description: "Optional default filter to apply to the possible value\
                     \ search"
+                picker:
+                  description: "Record picker request, for a possible value source\
+                    \ that declares a picker: options carry the picker's display values\
+                    \ and the response says whether more follow (no count)"
+                  properties:
+                    filter:
+                      $ref: "#/components/schemas/QueryFilter"
+                      description: "Criteria (only on the picker's filterFields) and\
+                        \ orderBys (only on its sort fields or the primary key)"
+                    afterId:
+                      description: "Keyset paging: the last option id of the previous\
+                        \ page, when ordered by the primary key alone"
+                      type: "string"
+                    skip:
+                      description: "Offset paging, for orderings other than the primary\
+                        \ key"
+                      type: "integer"
+                    limit:
+                      description: "Options per page (default: the picker's pageSize;\
+                        \ at most 200)"
+                      type: "integer"
+                  type: "object"
               type: "object"
         required: false
       responses:
@@ -4545,6 +4789,28 @@ paths:
                   $ref: "#/components/schemas/QueryFilter"
                   description: "Optional default filter to apply to the possible value\
                     \ search"
+                picker:
+                  description: "Record picker request, for a possible value source\
+                    \ that declares a picker: options carry the picker's display values\
+                    \ and the response says whether more follow (no count)"
+                  properties:
+                    filter:
+                      $ref: "#/components/schemas/QueryFilter"
+                      description: "Criteria (only on the picker's filterFields) and\
+                        \ orderBys (only on its sort fields or the primary key)"
+                    afterId:
+                      description: "Keyset paging: the last option id of the previous\
+                        \ page, when ordered by the primary key alone"
+                      type: "string"
+                    skip:
+                      description: "Offset paging, for orderings other than the primary\
+                        \ key"
+                      type: "integer"
+                    limit:
+                      description: "Options per page (default: the picker's pageSize;\
+                        \ at most 200)"
+                      type: "integer"
+                  type: "object"
               type: "object"
         required: false
       responses:

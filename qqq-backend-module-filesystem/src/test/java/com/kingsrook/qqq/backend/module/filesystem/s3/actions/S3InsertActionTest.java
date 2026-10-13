@@ -22,10 +22,7 @@ package com.kingsrook.qqq.backend.module.filesystem.s3.actions;
 
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.S3Object;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -36,7 +33,6 @@ import com.kingsrook.qqq.backend.module.filesystem.TestUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.FilesystemRecordBackendDetailFields;
 import com.kingsrook.qqq.backend.module.filesystem.s3.BaseS3Test;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3TableBackendDetails;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.NotImplementedException;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -69,12 +65,10 @@ public class S3InsertActionTest extends BaseS3Test
          .allMatch(record -> record.getBackendDetailString(FilesystemRecordBackendDetailFields.FULL_PATH).contains("blobs"));
 
       String       fullPath = insertOutput.getRecords().get(0).getBackendDetailString(FilesystemRecordBackendDetailFields.FULL_PATH);
-      S3Object     object   = getAmazonS3().getObject(BUCKET_NAME, fullPath);
-      List<String> lines    = IOUtils.readLines(object.getObjectContent(), StandardCharsets.UTF_8);
+      List<String> lines    = getObjectAsString(BUCKET_NAME, fullPath).lines().toList();
       assertEquals("Hi, Bob.", lines.get(0));
 
-      ObjectMetadata objectMetadata = object.getObjectMetadata();
-      assertEquals("text/plain", objectMetadata.getContentType());
+      assertEquals("text/plain", headObject(BUCKET_NAME, fullPath).contentType());
    }
 
 
@@ -100,9 +94,7 @@ public class S3InsertActionTest extends BaseS3Test
       InsertOutput insertOutput = insertAction.execute(insertInput);
 
       String   fullPath = insertOutput.getRecords().get(0).getBackendDetailString(FilesystemRecordBackendDetailFields.FULL_PATH);
-      S3Object object   = getAmazonS3().getObject(BUCKET_NAME, fullPath);
-      ObjectMetadata objectMetadata = object.getObjectMetadata();
-      assertEquals("myContentType/fake", objectMetadata.getContentType());
+      assertEquals("myContentType/fake", headObject(BUCKET_NAME, fullPath).contentType());
    }
 
 
@@ -128,9 +120,7 @@ public class S3InsertActionTest extends BaseS3Test
       InsertOutput insertOutput = insertAction.execute(insertInput);
 
       String   fullPath = insertOutput.getRecords().get(0).getBackendDetailString(FilesystemRecordBackendDetailFields.FULL_PATH);
-      S3Object object   = getAmazonS3().getObject(BUCKET_NAME, fullPath);
-      ObjectMetadata objectMetadata = object.getObjectMetadata();
-      assertEquals("your-content-type", objectMetadata.getContentType());
+      assertEquals("your-content-type", headObject(BUCKET_NAME, fullPath).contentType());
    }
 
 

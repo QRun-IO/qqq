@@ -27,11 +27,6 @@ import java.net.URLConnection;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -39,13 +34,15 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
-import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.actions.AbstractBaseFilesystemAction;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemTableBackendDetails;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3TableBackendDetails;
+import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3ClientFactory;
 import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3Utils;
+import software.amazon.awssdk.services.s3.S3Client;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -88,7 +85,7 @@ public class AbstractS3Action extends AbstractBaseFilesystemAction<S3ObjectSumma
    @Override
    public Instant getFileModifyDate(S3ObjectSummary s3ObjectSummary)
    {
-      return s3ObjectSummary.getLastModified().toInstant();
+      return s3ObjectSummary.getLastModified();
    }
 
 
@@ -108,31 +105,19 @@ public class AbstractS3Action extends AbstractBaseFilesystemAction<S3ObjectSumma
       }
 
       s3Utils = new S3Utils();
-      s3Utils.setAmazonS3(buildAmazonS3ClientFromBackendMetaData(backendMetaData));
+      s3Utils.setS3Client(buildS3ClientFromBackendMetaData(backendMetaData));
    }
 
 
 
    /*******************************************************************************
-    **
+    ** Get the (shared, cached) S3 client for the backend's connection settings.
+    ** Throws IllegalArgumentException if the backend is not an S3 backend.
     *******************************************************************************/
-   protected AmazonS3 buildAmazonS3ClientFromBackendMetaData(QBackendMetaData backendMetaData)
+   protected S3Client buildS3ClientFromBackendMetaData(QBackendMetaData backendMetaData)
    {
-      S3BackendMetaData     s3BackendMetaData = getBackendMetaData(S3BackendMetaData.class, backendMetaData);
-      AmazonS3ClientBuilder clientBuilder     = AmazonS3ClientBuilder.standard();
-
-      if(StringUtils.hasContent(s3BackendMetaData.getAccessKey()) && StringUtils.hasContent(s3BackendMetaData.getSecretKey()))
-      {
-         BasicAWSCredentials credentials = new BasicAWSCredentials(s3BackendMetaData.getAccessKey(), s3BackendMetaData.getSecretKey());
-         clientBuilder.setCredentials(new AWSStaticCredentialsProvider(credentials));
-      }
-
-      if(StringUtils.hasContent(s3BackendMetaData.getRegion()))
-      {
-         clientBuilder.setRegion(s3BackendMetaData.getRegion());
-      }
-
-      return (clientBuilder.build());
+      S3BackendMetaData s3BackendMetaData = getBackendMetaData(S3BackendMetaData.class, backendMetaData);
+      return (S3ClientFactory.getClient(s3BackendMetaData));
    }
 
 
@@ -175,10 +160,7 @@ public class AbstractS3Action extends AbstractBaseFilesystemAction<S3ObjectSumma
       String bucketName = s3BackendMetaData.getBucketName();
       String glob       = tableDetails.getGlob();
 
-      ////////////////////////////////////////////////////////////////////
-      // todo - look at metadata to configure the s3 client here?       //
-      ////////////////////////////////////////////////////////////////////
-      return getS3Utils().listObjectsInBucketMatchingGlob(bucketName, fullPath, glob, requestedPath, tableDetails);
+      return getS3Utils().listObjectsInBucketMatchingGlob(bucketName, fullPath, glob, requestedPath, tableDetails, S3ClientFactory.getEffectiveMaxListedObjects(s3BackendMetaData));
    }
 
 

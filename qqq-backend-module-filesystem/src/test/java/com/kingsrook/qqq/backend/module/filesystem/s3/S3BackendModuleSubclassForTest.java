@@ -21,22 +21,21 @@
 package com.kingsrook.qqq.backend.module.filesystem.s3;
 
 
-import cloud.localstack.awssdkv1.TestUtils;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.module.filesystem.base.actions.AbstractBaseFilesystemAction;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.AbstractS3Action;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3Utils;
 
 
 /*******************************************************************************
  ** Subclass of the S3Backend module, meant for use in unit tests, if/where we
- ** need to make sure we use the localstack version of the S3 client.
+ ** need to make sure we use the test (MinIO) S3 client.
  *******************************************************************************/
 public class S3BackendModuleSubclassForTest extends S3BackendModule
 {
 
    /*******************************************************************************
-    ** Seed the AbstractS3Action with an s3Utils object that has the localstack
+    ** Seed the AbstractS3Action with an s3Utils object that has the test (MinIO)
     ** s3 client in it
     *******************************************************************************/
    @Override
@@ -44,7 +43,7 @@ public class S3BackendModuleSubclassForTest extends S3BackendModule
    {
       AbstractS3Action actionBase = (AbstractS3Action) super.getActionBase();
       S3Utils          s3Utils    = new S3Utils();
-      s3Utils.setAmazonS3(TestUtils.getClientS3());
+      s3Utils.setS3Client(BaseS3Test.getTestS3Client());
       actionBase.setS3Utils(s3Utils);
       return (actionBase);
    }

@@ -23,7 +23,6 @@ package com.kingsrook.qqq.backend.module.filesystem.processes.implementations.fi
 
 import java.util.List;
 import java.util.stream.Collectors;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.core.actions.processes.RunBackendStepAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -43,6 +42,7 @@ import com.kingsrook.qqq.backend.module.filesystem.s3.BaseS3Test;
 import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModule;
 import com.kingsrook.qqq.backend.module.filesystem.s3.S3BackendModuleSubclassForTest;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.AbstractS3Action;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3TableBackendDetails;
 import org.junit.jupiter.api.Test;
@@ -69,9 +69,9 @@ class FilesystemSyncProcessS3Test extends BaseS3Test
       String archiveBucket    = "archive-bucket";
       String processingBucket = "processing-bucket";
 
-      getAmazonS3().createBucket(sourceBucket);
-      getAmazonS3().createBucket(archiveBucket);
-      getAmazonS3().createBucket(processingBucket);
+      createBucket(sourceBucket);
+      createBucket(archiveBucket);
+      createBucket(processingBucket);
 
       S3BackendMetaData sourceBackend     = defineBackend(qInstance, "source", sourceBucket);
       S3BackendMetaData archiveBackend    = defineBackend(qInstance, "archive", archiveBucket);
@@ -134,8 +134,8 @@ class FilesystemSyncProcessS3Test extends BaseS3Test
       String vendorBucket = "vendor-bucket";
       String localBucket  = "local-bucket";
 
-      getAmazonS3().createBucket(vendorBucket);
-      getAmazonS3().createBucket(localBucket);
+      createBucket(vendorBucket);
+      createBucket(localBucket);
 
       S3BackendMetaData vendorBackend = defineBackend(qInstance, "source", vendorBucket);
       S3BackendMetaData localBackend  = defineBackend(qInstance, "archive", localBucket);

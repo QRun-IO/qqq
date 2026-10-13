@@ -239,6 +239,7 @@ public class QMiddlewareApiSpecHandler
          // do replacements in the html //
          /////////////////////////////////
          html = html.replace("{spec-url}", "/" + basePath + "/" + version + "/openapi.json");
+         html = html.replace("{assetBase}", "/api/docs/");
          html = html.replace("{version}", version);
          html = html.replace("{primaryColor}", "#444444");
          html = html.replace("{navLogoImg}", "<img id=\"navLogo\" slot=\"nav-logo\" src=\"/images/qqq-api-logo.png\" />");

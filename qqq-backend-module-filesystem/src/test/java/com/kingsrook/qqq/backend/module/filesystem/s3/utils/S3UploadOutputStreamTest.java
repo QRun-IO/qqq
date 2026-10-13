@@ -30,16 +30,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import com.amazonaws.SdkClientException;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AbortMultipartUploadRequest;
-import com.amazonaws.services.s3.model.InitiateMultipartUploadResult;
-import com.amazonaws.services.s3.model.ListMultipartUploadsRequest;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.UploadPartRequest;
-import com.amazonaws.services.s3.model.UploadPartResult;
 import com.kingsrook.qqq.backend.module.filesystem.s3.BaseS3Test;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest;
+import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse;
+import software.amazon.awssdk.services.s3.model.UploadPartResponse;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -64,7 +61,6 @@ class S3UploadOutputStreamTest extends BaseS3Test
       String bucketName = BaseS3Test.BUCKET_NAME;
       String key        = "uploader-tests/" + Instant.now().toString() + ".txt";
 
-      // S3UploadOutputStream outputStream = new S3UploadOutputStream(amazonS3, bucketName, key);
       // FileOutputStream outputStream = new FileOutputStream("/tmp/file.json");
       ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
@@ -76,7 +72,7 @@ class S3UploadOutputStreamTest extends BaseS3Test
       outputStream.write("\n]\n".getBytes(StandardCharsets.UTF_8));
       outputStream.close();
 
-      S3UploadOutputStream s3UploadOutputStream = new S3UploadOutputStream(getS3Utils().getAmazonS3(), bucketName, key, null);
+      S3UploadOutputStream s3UploadOutputStream = new S3UploadOutputStream(getS3Utils().getS3Client(), bucketName, key, null);
       s3UploadOutputStream.write(outputStream.toByteArray(), 0, 5 * 1024 * 1024);
       s3UploadOutputStream.write(outputStream.toByteArray(), 0, 3 * 1024 * 1024);
       s3UploadOutputStream.write(outputStream.toByteArray(), 0, 3 * 1024 * 1024);
@@ -106,21 +102,18 @@ class S3UploadOutputStreamTest extends BaseS3Test
    {
       String key = "uploader-tests/" + UUID.randomUUID();
       byte[] source = "0123456789".getBytes(StandardCharsets.UTF_8);
-      try(S3UploadOutputStream output = new S3UploadOutputStream(getAmazonS3(), BUCKET_NAME, key, null))
+      try(S3UploadOutputStream output = new S3UploadOutputStream(getS3Client(), BUCKET_NAME, key, null))
       {
          output.write(source, 0, 0);
          output.write(source, 2, 0);
          output.write(source, source.length, 0);
          output.write(new byte[0], 0, 0);
-         assertFalse(getAmazonS3().doesObjectExist(BUCKET_NAME, key));
-         assertTrue(getAmazonS3().listMultipartUploads(new ListMultipartUploadsRequest(BUCKET_NAME).withPrefix(key)).getMultipartUploads().isEmpty());
+         assertFalse(doesObjectExist(BUCKET_NAME, key));
+         assertTrue(listMultipartUploads(BUCKET_NAME, key).isEmpty());
          output.write(source);
          output.write(source, source.length, 0);
       }
-      try(S3Object object = getAmazonS3().getObject(BUCKET_NAME, key))
-      {
-         assertArrayEquals(source, object.getObjectContent().readAllBytes());
-      }
+      assertArrayEquals(source, getObjectBytes(BUCKET_NAME, key));
    }
 
 
@@ -134,7 +127,7 @@ class S3UploadOutputStreamTest extends BaseS3Test
       String key = "uploader-tests/" + UUID.randomUUID();
       byte[] source = new byte[5 * 1024 * 1024];
       byte[] retained = "before-after".getBytes(StandardCharsets.UTF_8);
-      try(S3UploadOutputStream output = new S3UploadOutputStream(getAmazonS3(), BUCKET_NAME, key, null))
+      try(S3UploadOutputStream output = new S3UploadOutputStream(getS3Client(), BUCKET_NAME, key, null))
       {
          output.write("before-".getBytes(StandardCharsets.UTF_8));
          assertThrows(NullPointerException.class, () -> output.write(null, 0, 0));
@@ -143,16 +136,13 @@ class S3UploadOutputStreamTest extends BaseS3Test
          assertThrows(IndexOutOfBoundsException.class, () -> output.write(source, source.length + 1, 0));
          assertThrows(IndexOutOfBoundsException.class, () -> output.write(source, Integer.MAX_VALUE, 1));
          assertThrows(IndexOutOfBoundsException.class, () -> output.write(source, 0, source.length + 1));
-         assertTrue(getAmazonS3().listMultipartUploads(new ListMultipartUploadsRequest(BUCKET_NAME).withPrefix(key)).getMultipartUploads().isEmpty(),
+         assertTrue(listMultipartUploads(BUCKET_NAME, key).isEmpty(),
             "an invalid large slice must not publish even one multipart part");
          assertThrows(IndexOutOfBoundsException.class, () -> output.write(source, 1, Integer.MAX_VALUE));
-         assertFalse(getAmazonS3().doesObjectExist(BUCKET_NAME, key));
+         assertFalse(doesObjectExist(BUCKET_NAME, key));
          output.write("after".getBytes(StandardCharsets.UTF_8));
       }
-      try(S3Object object = getAmazonS3().getObject(BUCKET_NAME, key))
-      {
-         assertArrayEquals(retained, object.getObjectContent().readAllBytes());
-      }
+      assertArrayEquals(retained, getObjectBytes(BUCKET_NAME, key));
    }
 
 
@@ -217,7 +207,7 @@ class S3UploadOutputStreamTest extends BaseS3Test
       String key = "uploader-tests/" + UUID.randomUUID();
       byte[] payload = new byte[5 * 1024 * 1024 + 19];
       Arrays.fill(payload, (byte) 23);
-      S3UploadOutputStream output = new S3UploadOutputStream(getAmazonS3(), BUCKET_NAME, key, "application/octet-stream");
+      S3UploadOutputStream output = new S3UploadOutputStream(getS3Client(), BUCKET_NAME, key, "application/octet-stream");
       try(output)
       {
          output.write(payload);
@@ -226,12 +216,9 @@ class S3UploadOutputStreamTest extends BaseS3Test
       assertThrows(IOException.class, () -> output.write(1));
       assertThrows(IOException.class, () -> output.write(new byte[] { 1 }, 0, 1));
       assertDoesNotThrow(output::close);
-      try(S3Object object = getAmazonS3().getObject(BUCKET_NAME, key))
-      {
-         assertArrayEquals(payload, object.getObjectContent().readAllBytes());
-         assertEquals("application/octet-stream", object.getObjectMetadata().getContentType());
-      }
-      assertTrue(getAmazonS3().listMultipartUploads(new ListMultipartUploadsRequest(BUCKET_NAME).withPrefix(key)).getMultipartUploads().isEmpty());
+      assertArrayEquals(payload, getObjectBytes(BUCKET_NAME, key));
+      assertEquals("application/octet-stream", headObject(BUCKET_NAME, key).contentType());
+      assertTrue(listMultipartUploads(BUCKET_NAME, key).isEmpty());
    }
 
 
@@ -243,34 +230,29 @@ class S3UploadOutputStreamTest extends BaseS3Test
    private void assertFailedStreamIsTerminal(boolean failCompletion, boolean failAbort) throws Exception
    {
       String key = "failure-key";
-      SdkClientException original = new SdkClientException("original SDK failure");
-      SdkClientException abortFailure = new SdkClientException("abort SDK failure");
+      SdkClientException original = SdkClientException.create("original SDK failure");
+      SdkClientException abortFailure = SdkClientException.create("abort SDK failure");
       List<String> calls = new ArrayList<>();
-      AmazonS3 client = (AmazonS3) Proxy.newProxyInstance(AmazonS3.class.getClassLoader(), new Class<?>[] { AmazonS3.class }, (proxy, method, arguments) ->
+      S3Client client = (S3Client) Proxy.newProxyInstance(S3Client.class.getClassLoader(), new Class<?>[] { S3Client.class }, (proxy, method, arguments) ->
       {
          calls.add(method.getName());
          switch(method.getName())
          {
-            case "initiateMultipartUpload":
-               InitiateMultipartUploadResult initiation = new InitiateMultipartUploadResult();
-               initiation.setUploadId("owned-upload");
-               return initiation;
+            case "createMultipartUpload":
+               return CreateMultipartUploadResponse.builder().uploadId("owned-upload").build();
             case "uploadPart":
                if(!failCompletion)
                {
                   throw original;
                }
-               UploadPartResult result = new UploadPartResult();
-               result.setPartNumber(((UploadPartRequest) arguments[0]).getPartNumber());
-               result.setETag("fixture-etag");
-               return result;
+               return UploadPartResponse.builder().eTag("fixture-etag").build();
             case "completeMultipartUpload":
                throw original;
             case "abortMultipartUpload":
                AbortMultipartUploadRequest request = (AbortMultipartUploadRequest) arguments[0];
-               assertEquals(BUCKET_NAME, request.getBucketName());
-               assertEquals(key, request.getKey());
-               assertEquals("owned-upload", request.getUploadId());
+               assertEquals(BUCKET_NAME, request.bucket());
+               assertEquals(key, request.key());
+               assertEquals("owned-upload", request.uploadId());
                if(failAbort)
                {
                   throw abortFailure;
@@ -291,8 +273,8 @@ class S3UploadOutputStreamTest extends BaseS3Test
       {
          assertSame(original, assertThrows(SdkClientException.class, () -> output.write(part)));
       }
-      assertEquals(failCompletion ? List.of("initiateMultipartUpload", "uploadPart", "completeMultipartUpload", "abortMultipartUpload")
-         : List.of("initiateMultipartUpload", "uploadPart", "abortMultipartUpload"), calls);
+      assertEquals(failCompletion ? List.of("createMultipartUpload", "uploadPart", "completeMultipartUpload", "abortMultipartUpload")
+         : List.of("createMultipartUpload", "uploadPart", "abortMultipartUpload"), calls);
       assertEquals(failAbort ? 1 : 0, original.getSuppressed().length);
       if(failAbort)
       {
@@ -318,15 +300,12 @@ class S3UploadOutputStreamTest extends BaseS3Test
       ByteArrayOutputStream expected = new ByteArrayOutputStream();
       expected.write(prefix);
       expected.write(Arrays.copyOfRange(source, start, start + length));
-      try(S3UploadOutputStream output = new S3UploadOutputStream(getAmazonS3(), BUCKET_NAME, key, null))
+      try(S3UploadOutputStream output = new S3UploadOutputStream(getS3Client(), BUCKET_NAME, key, null))
       {
          output.write(prefix);
          output.write(source, start, length);
       }
-      try(S3Object object = getAmazonS3().getObject(BUCKET_NAME, key))
-      {
-         assertArrayEquals(expected.toByteArray(), object.getObjectContent().readAllBytes());
-      }
-      assertTrue(getAmazonS3().listMultipartUploads(new ListMultipartUploadsRequest(BUCKET_NAME).withPrefix(key)).getMultipartUploads().isEmpty());
+      assertArrayEquals(expected.toByteArray(), getObjectBytes(BUCKET_NAME, key));
+      assertTrue(listMultipartUploads(BUCKET_NAME, key).isEmpty());
    }
 }

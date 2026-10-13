@@ -41,7 +41,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Date;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -53,15 +52,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.PatternSyntaxException;
 import com.amazonaws.ClientConfiguration;
-import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.AbortMultipartUploadRequest;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
 import com.amazonaws.services.s3.model.GroupGrantee;
 import com.amazonaws.services.s3.model.ListMultipartUploadsRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
@@ -71,7 +67,6 @@ import com.amazonaws.services.s3.model.PartSummary;
 import com.amazonaws.services.s3.model.Permission;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.services.s3.model.UploadPartRequest;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
@@ -134,6 +129,24 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.MountableFile;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest;
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.UploadPartRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -159,7 +172,7 @@ public class SampleS3AcceptanceIT
    private static final String BUCKET = "qqq-sample-" + UUID.randomUUID();
    private static GenericContainer<?> container;
    private static AmazonS3 oracle;
-   private static AmazonS3 actionClient;
+   private static S3Client actionClient;
    private static boolean bucketCreated;
    private String prefix;
 
@@ -178,7 +191,7 @@ public class SampleS3AcceptanceIT
          container.start();
          String endpoint = "http://" + container.getHost() + ":" + container.getMappedPort(4566);
          oracle = client(endpoint);
-         actionClient = client(endpoint);
+         actionClient = actionClient(endpoint);
          oracle.createBucket(BUCKET);
          bucketCreated = true;
          QBackendModuleDispatcher.registerBackendModule(new SampleS3Backend());
@@ -222,7 +235,7 @@ public class SampleS3AcceptanceIT
          {
             if(actionClient != null)
             {
-               actionClient.shutdown();
+               actionClient.close();
             }
          }
          finally
@@ -255,6 +268,32 @@ public class SampleS3AcceptanceIT
       return AmazonS3ClientBuilder.standard().withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, "us-east-1"))
          .withPathStyleAccessEnabled(true).withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("test", "test")))
          .withClientConfiguration(new ClientConfiguration().withConnectionTimeout(5000).withSocketTimeout(socketTimeout).withMaxErrorRetry(0)).build();
+   }
+
+
+
+   /*******************************************************************************
+    ** The (AWS SDK v2) client injected into the QQQ S3 actions.  The oracle above
+    ** stays an independent (v1) client, so it does not share code with the module.
+    ******************************************************************************/
+   private static S3Client actionClient(String endpoint)
+   {
+      return actionClient(endpoint, 10000);
+   }
+
+
+
+   /*******************************************************************************
+    ** Same deadlines and no retries, like the oracle, so fault tests see one
+    ** request per operation.
+    ******************************************************************************/
+   private static S3Client actionClient(String endpoint, int socketTimeout)
+   {
+      return S3Client.builder().endpointOverride(URI.create(endpoint)).region(Region.US_EAST_1).forcePathStyle(true)
+         .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test", "test")))
+         .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED).responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
+         .httpClient(ApacheHttpClient.builder().connectionTimeout(Duration.ofMillis(5000)).socketTimeout(Duration.ofMillis(socketTimeout)).build())
+         .overrideConfiguration(configuration -> configuration.retryStrategy(AwsRetryStrategy.doNotRetry())).build();
    }
 
 
@@ -465,14 +504,14 @@ public class SampleS3AcceptanceIT
          assertArrayEquals(payload, read.readAllBytes());
       }
       Map<String, String> before = snapshot();
-      AmazonS3Exception missing = assertInstanceOf(AmazonS3Exception.class, rootCause(assertThrows(QException.class, () ->
+      S3Exception missing = assertInstanceOf(S3Exception.class, rootCause(assertThrows(QException.class, () ->
       {
          try(InputStream ignored = storage.getInputStream(new StorageInput(FILES).withReference("absent.bin")))
          {
             ignored.read();
          }
       })));
-      assertEquals("NoSuchKey", missing.getErrorCode());
+      assertEquals("NoSuchKey", missing.awsErrorDetails().errorCode());
       assertEquals(before, snapshot());
    }
 
@@ -533,9 +572,9 @@ public class SampleS3AcceptanceIT
       backend.setBucketName("absent-" + UUID.randomUUID());
       try
       {
-         AmazonS3Exception failure = assertInstanceOf(AmazonS3Exception.class, rootCause(assertThrows(QException.class,
+         S3Exception failure = assertInstanceOf(S3Exception.class, rootCause(assertThrows(QException.class,
             () -> new QueryAction().execute(new QueryInput(FILES)))));
-         assertEquals("NoSuchBucket", failure.getErrorCode());
+         assertEquals("NoSuchBucket", failure.awsErrorDetails().errorCode());
       }
       finally
       {
@@ -644,17 +683,17 @@ public class SampleS3AcceptanceIT
       List<SdkClientException> injectedFailures = new ArrayList<>();
       List<String> sdkCalls = new ArrayList<>();
       AtomicInteger abortAttempts = new AtomicInteger();
-      SdkClientException abortFailure = new SdkClientException("synthetic abort failure");
-      AmazonS3 normalClient = actionClient;
-      AmazonS3 faultClient = (AmazonS3) Proxy.newProxyInstance(AmazonS3.class.getClassLoader(), new Class<?>[] { AmazonS3.class }, (proxy, method, arguments) ->
+      SdkClientException abortFailure = SdkClientException.create("synthetic abort failure");
+      S3Client normalClient = actionClient;
+      S3Client faultClient = (S3Client) Proxy.newProxyInstance(S3Client.class.getClassLoader(), new Class<?>[] { S3Client.class }, (proxy, method, arguments) ->
       {
          sdkCalls.add(method.getName());
          if(method.getName().equals("abortMultipartUpload"))
          {
             AbortMultipartUploadRequest request = (AbortMultipartUploadRequest) arguments[0];
-            assertEquals(BUCKET, request.getBucketName());
-            assertEquals(key, request.getKey());
-            assertTrue(uploadsBeforeFailure.contains(request.getUploadId()));
+            assertEquals(BUCKET, request.bucket());
+            assertEquals(key, request.key());
+            assertTrue(uploadsBeforeFailure.contains(request.uploadId()));
             abortAttempts.incrementAndGet();
             if(failAbort)
             {
@@ -665,18 +704,18 @@ public class SampleS3AcceptanceIT
          if(point == MultipartFailure.COMPLETION && method.getName().equals("completeMultipartUpload"))
          {
             CompleteMultipartUploadRequest request = (CompleteMultipartUploadRequest) arguments[0];
-            assertEquals(BUCKET, request.getBucketName());
-            assertEquals(key, request.getKey());
-            uploadId = request.getUploadId();
+            assertEquals(BUCKET, request.bucket());
+            assertEquals(key, request.key());
+            uploadId = request.uploadId();
          }
          else if(point != MultipartFailure.COMPLETION && method.getName().equals("uploadPart"))
          {
             UploadPartRequest request = (UploadPartRequest) arguments[0];
-            if(request.getPartNumber() == 2)
+            if(request.partNumber() == 2)
             {
-               assertEquals(BUCKET, request.getBucketName());
-               assertEquals(key, request.getKey());
-               uploadId = request.getUploadId();
+               assertEquals(BUCKET, request.bucket());
+               assertEquals(key, request.key());
+               uploadId = request.uploadId();
             }
          }
          if(uploadId != null)
@@ -690,7 +729,7 @@ public class SampleS3AcceptanceIT
             assertEquals(before, snapshot(), "pending parts must not replace an existing object or publish a new one");
             uploadsBeforeFailure.add(uploadId);
             partsBeforeFailure.add(sizes);
-            SdkClientException failure = new SdkClientException("synthetic multipart " + point + " failure");
+            SdkClientException failure = SdkClientException.create("synthetic multipart " + point + " failure");
             injectedFailures.add(failure);
             throw failure;
          }
@@ -841,30 +880,30 @@ public class SampleS3AcceptanceIT
             }
          });
          server.start();
-         AmazonS3 normalClient = actionClient;
-         AmazonS3 faultClient = client("http://127.0.0.1:" + server.getAddress().getPort());
+         S3Client normalClient = actionClient;
+         S3Client faultClient = actionClient("http://127.0.0.1:" + server.getAddress().getPort());
          try
          {
             actionClient = faultClient;
-            AmazonS3Exception read = assertInstanceOf(AmazonS3Exception.class, rootCause(assertThrows(QException.class,
+            S3Exception read = assertInstanceOf(S3Exception.class, rootCause(assertThrows(QException.class,
                () -> new QueryAction().execute(new QueryInput(FILES)))));
-            assertEquals(403, read.getStatusCode());
-            assertEquals(code, read.getErrorCode());
-            AmazonS3Exception write = assertThrows(AmazonS3Exception.class, () ->
+            assertEquals(403, read.statusCode());
+            assertEquals(code, read.awsErrorDetails().errorCode());
+            S3Exception write = assertThrows(S3Exception.class, () ->
             {
                try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference("denied.bin")))
                {
                   output.write(bytes("must fail"));
                }
             });
-            assertEquals(403, write.getStatusCode());
-            assertEquals(code, write.getErrorCode());
+            assertEquals(403, write.statusCode());
+            assertEquals(code, write.awsErrorDetails().errorCode());
             assertEquals(2, requests.get());
          }
          finally
          {
             actionClient = normalClient;
-            faultClient.shutdown();
+            faultClient.close();
             server.stop(0);
          }
          assertEquals(before, snapshot());
@@ -902,8 +941,8 @@ public class SampleS3AcceptanceIT
          }
       });
       server.start();
-      AmazonS3 normalClient = actionClient;
-      AmazonS3 faultClient = client("http://127.0.0.1:" + server.getAddress().getPort(), 500);
+      S3Client normalClient = actionClient;
+      S3Client faultClient = actionClient("http://127.0.0.1:" + server.getAddress().getPort(), 500);
       try
       {
          actionClient = faultClient;
@@ -917,7 +956,7 @@ public class SampleS3AcceptanceIT
       {
          actionClient = normalClient;
          release.countDown();
-         faultClient.shutdown();
+         faultClient.close();
          server.stop(0);
          executor.shutdownNow();
          assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
@@ -1082,8 +1121,8 @@ public class SampleS3AcceptanceIT
          }
       });
       server.start();
-      AmazonS3 sdk = client("http://127.0.0.1:" + server.getAddress().getPort());
-      AmazonS3 normalClient = actionClient;
+      S3Client sdk = actionClient("http://127.0.0.1:" + server.getAddress().getPort());
+      S3Client normalClient = actionClient;
       Map<String, String> before = snapshot();
       try
       {
@@ -1092,7 +1131,7 @@ public class SampleS3AcceptanceIT
          {
             String key = prefix + "/files/" + reference;
             String requestPath = "/" + BUCKET + "/" + key;
-            sdk.putObject(BUCKET, key, "wire control");
+            sdk.putObject(PutObjectRequest.builder().bucket(BUCKET).key(key).build(), RequestBody.fromString("wire control", StandardCharsets.UTF_8));
             assertEquals("PUT " + requestPath, paths.get(paths.size() - 1));
             try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference)))
             {
@@ -1112,7 +1151,7 @@ public class SampleS3AcceptanceIT
       finally
       {
          actionClient = normalClient;
-         sdk.shutdown();
+         sdk.close();
          server.stop(0);
       }
    }
@@ -1129,16 +1168,20 @@ public class SampleS3AcceptanceIT
       String reference = "../../../invalid.txt";
       String key = prefix + "/files/" + reference;
       AmazonS3Exception nativeFailure = assertThrows(AmazonS3Exception.class, () -> oracle.putObject(BUCKET, key, "native invalid control"));
-      AmazonS3Exception actionFailure = assertThrows(AmazonS3Exception.class, () ->
+      S3Exception actionFailure = assertThrows(S3Exception.class, () ->
       {
          try(OutputStream output = new StorageAction().createOutputStream(new StorageInput(FILES).withReference(reference)))
          {
             output.write(bytes("invalid QQQ write"));
          }
       });
-      assertEquals(nativeFailure.getErrorCode(), actionFailure.getErrorCode());
+      ///////////////////////////////////////////////////////////////////////////////
+      // the emulator's 500 has no error body: v1 synthesizes an error code from    //
+      // the status line and v2 leaves it null, so compare the status, not the code //
+      ///////////////////////////////////////////////////////////////////////////////
+      assertEquals(nativeFailure.getStatusCode(), actionFailure.statusCode());
       assertEquals(500, nativeFailure.getStatusCode(), "this emulator returns an internal error, not an AWS InvalidArgument diagnostic");
-      assertEquals(500, actionFailure.getStatusCode());
+      assertEquals(500, actionFailure.statusCode());
       assertEquals(before, snapshotBucket());
    }
 
@@ -1213,10 +1256,16 @@ public class SampleS3AcceptanceIT
          String secret = "synthetic-secret-" + suffix;
          S3BackendMetaData metadata = new S3BackendMetaData().withName("signing-" + suffix)
             .withAccessKey(access).withSecretKey(secret).withRegion("us-west-2");
-         AmazonS3 sdk = new MetadataClientProbe().client(metadata);
-         try
+         //////////////////////////////////////////////////////////////////////////////
+         // the module's client is shared (cached), so it is not closed here.  sign   //
+         // with the credentials and region the module resolved from the meta data.  //
+         //////////////////////////////////////////////////////////////////////////////
+         S3Client sdk = new MetadataClientProbe().client(metadata);
+         try(S3Presigner presigner = S3Presigner.builder().credentialsProvider(sdk.serviceClientConfiguration().credentialsProvider())
+            .region(sdk.serviceClientConfiguration().region()).build())
          {
-            URL url = sdk.generatePresignedUrl("owned-offline-signing", "metadata-proof.txt", new Date(System.currentTimeMillis() + 60000));
+            URL url = presigner.presignGetObject(GetObjectPresignRequest.builder().signatureDuration(Duration.ofMinutes(1))
+               .getObjectRequest(GetObjectRequest.builder().bucket("owned-offline-signing").key("metadata-proof.txt").build()).build()).url();
             Map<String, String> query = new TreeMap<>();
             for(String pair : url.getQuery().split("&"))
             {
@@ -1234,10 +1283,6 @@ public class SampleS3AcceptanceIT
             byte[] signingKey = hmac(hmac(hmac(hmac(bytes("AWS4" + secret), timestamp.substring(0, 8)), "us-west-2"), "s3"), "aws4_request");
             assertTrue(MessageDigest.isEqual(hmac(signingKey, toSign), HexFormat.of().parseHex(query.get("X-Amz-Signature"))),
                "independent HMAC must confirm the metadata secret without logging signed URLs or signatures");
-         }
-         finally
-         {
-            sdk.shutdown();
          }
       }
       assertEquals(before, snapshot());
@@ -1265,10 +1310,10 @@ public class SampleS3AcceptanceIT
       /***************************************************************************
        **
        ***************************************************************************/
-      AmazonS3 client(S3BackendMetaData metadata) throws QException
+      S3Client client(S3BackendMetaData metadata) throws QException
       {
          preAction(metadata);
-         return getS3Utils().getAmazonS3();
+         return getS3Utils().getS3Client();
       }
    }
 
@@ -1377,7 +1422,7 @@ public class SampleS3AcceptanceIT
       private <T extends AbstractS3Action> T configure(T action)
       {
          S3Utils utils = new S3Utils();
-         utils.setAmazonS3(actionClient);
+         utils.setS3Client(actionClient);
          action.setS3Utils(utils);
          return action;
       }
@@ -1443,7 +1488,7 @@ public class SampleS3AcceptanceIT
        **
        ***************************************************************************/
       @Override
-      public AbstractBaseFilesystemAction<S3ObjectSummary> getActionBase()
+      public AbstractBaseFilesystemAction<com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary> getActionBase()
       {
          return configure(new AbstractS3Action());
       }

@@ -189,6 +189,12 @@
   <dependencyManagement>
     <dependencies>
       <!-- Align patched libraries across direct and transitive dependencies. -->
+      <!-- RabbitMQ JMS 3.9.0 still brings amqp-client 5.35.0; fix GHSA-7822-rcf6-97fx and GHSA-cqgh-8p3p-mx4m. -->
+      <dependency>
+        <groupId>com.rabbitmq</groupId>
+        <artifactId>amqp-client</artifactId>
+        <version>5.37.0</version>
+      </dependency>
       <dependency>
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>

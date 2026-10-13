@@ -81,6 +81,7 @@ public class SchedulerUtils
 
       try
       {
+         QContext.setQInstance(qInstance);
          QContext.init(qInstance, sessionSupplier.get());
 
          if(process.getVariantBackend() == null || VariantRunStrategy.PARALLEL.equals(process.getVariantRunStrategy()))

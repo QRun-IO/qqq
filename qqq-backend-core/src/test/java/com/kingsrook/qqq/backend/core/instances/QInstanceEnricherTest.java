@@ -57,6 +57,7 @@ import static com.kingsrook.qqq.backend.core.utils.TestUtils.APP_NAME_PEOPLE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -562,6 +563,35 @@ class QInstanceEnricherTest extends BaseTest
       new QInstanceEnricher(qInstance).enrich();
       assertEquals(DynamicDefaultValueBehavior.CREATE_DATE, table.getField("createDate").getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class));
       assertEquals(DynamicDefaultValueBehavior.MODIFY_DATE, table.getField("modifyDate").getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Fields QQQ fills itself (create / modify date) are not editable by default,
+    ** whether the behavior was given or added by the enricher; other fields are
+    ** untouched; the config turns it off.
+    *******************************************************************************/
+   @Test
+   void testSystemDateFieldsAreNotEditable()
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+      qInstance.addTable(newTable("A", "id", "createDate", "modifyDate", "name"));
+      qInstance.addTable(newTable("B", "id", "createdAt"));
+      QTableMetaData tableA = qInstance.getTable("A");
+      QTableMetaData tableB = qInstance.getTable("B");
+      tableB.getField("createdAt").withBehavior(DynamicDefaultValueBehavior.CREATE_DATE);
+
+      new QInstanceEnricher(qInstance).withConfigMakeSystemDateFieldsNonEditable(false).enrich();
+      assertTrue(tableA.getField("createDate").getIsEditable());
+      assertTrue(tableB.getField("createdAt").getIsEditable());
+
+      new QInstanceEnricher(qInstance).enrich();
+      assertFalse(tableA.getField("createDate").getIsEditable());
+      assertFalse(tableA.getField("modifyDate").getIsEditable());
+      assertFalse(tableB.getField("createdAt").getIsEditable());
+      assertTrue(tableA.getField("name").getIsEditable());
+      assertTrue(tableA.getField("id").getIsEditable());
    }
 
 

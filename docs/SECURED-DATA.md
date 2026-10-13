@@ -138,7 +138,10 @@ public enum FieldAccessTier
 
 public enum FieldMaskStyle { AUTO, EMAIL, LAST_4, FIRST_LAST, FULL }
 
-public record FieldAccessDecision(FieldAccessTier tier, FieldMaskStyle maskStyle, String reason) {}
+public record FieldAccessDecision(FieldAccessTier tier, FieldMaskStyle maskStyle, String reason, boolean exactMatchAllowed)
+{
+   public FieldAccessDecision(FieldAccessTier tier, FieldMaskStyle maskStyle, String reason) { this(tier, maskStyle, reason, true); }
+}
 
 public interface FieldAccessResolverInterface
 {
@@ -153,13 +156,20 @@ public interface FieldAccessResolverInterface
 
    /** Told about access to restricted fields, after enforcement (for the access log). Must not throw. */
    default void onAccess(FieldAccessEvent event) { }
+
+   /** Before an exact-match query on a REVEALABLE field runs: throw QPermissionDeniedException to refuse (rate limit). */
+   default void checkExactMatch(FieldAccessEvent event) throws QPermissionDeniedException { }
+
+   /** A one-way fingerprint of a searched value (the qbit uses a keyed HMAC). Values never leave core otherwise. */
+   default String fingerprintSearchValue(Serializable value) { return null; }
 }
 ```
 
 - `FieldAccessResolverMetaData` (`QSupplementalInstanceMetaData`, name `fieldAccessResolver`)
   holds one resolver (`QCodeReference` or instance). There is at most one; registering a second
   fails validation.
-- `FieldAccessEvent`: `type` (VIEW, EXACT_MATCH_FILTER, DENIED), `tableName`, `fieldNames`,
+- `FieldAccessEvent`: `type` (VIEW, EXACT_MATCH_FILTER, DENIED), `outcome` (MATCH, NO_MATCH,
+  REFUSED; exact-match only), `searchValueFingerprints`, `tableName`, `fieldNames`,
   `primaryKeys` (for GET and small results; capped, see §6.2), `recordCount`, `actionName`
   (query, get, export, report, search, process, widget), and never the values or filter values.
 - `FieldSecurityLock.Behavior` gains **`MASK`** and **`REVEAL`** next to ALLOW and DENY. A lock's
@@ -314,13 +324,16 @@ main tables, record screens with sections. Labels in brackets.
 ### 6.1 Configuration
 - **`secured_data_classification`** [Classification]: `id`, `table_name` (PVS of tables),
   `field_name` (nullable; PVS filtered by table), `classification` (PUBLIC, CONFIDENTIAL, PII, PHI),
-  `mask_style` (nullable), `notes`, `create_date`, `modify_date`, `modified_by`. Unique
+  `mask_style` (nullable), `low_cardinality` (nullable boolean: null = auto, §7.6), `notes`, `create_date`, `modify_date`, `modified_by`. Unique
   (table_name, field_name).
 - **`secured_data_policy`** [Policy]: `id`, `name`, `permission_name` (the session permission this
   row applies to, e.g. `cs_admin`, or an authentik-generated permission), `classification`,
   `table_name` (nullable: all tables), `tier` (FULL, REVEALABLE, MASKED, HIDDEN),
   `reveal_minutes` (default 5, 1–60), `daily_reveal_cap` (nullable), `reason_options` (text, one
   per line), `allow_free_text_reason` (default true), `require_free_text` (default false),
+  `client_channel` (nullable: all channels; a channel row only caps, see §7.1),
+  `exact_match_per_hour` (default 20), `miss_alert_consecutive` (default 5),
+  `distinct_value_alert` (default 15), `min_entropy_enabled` (default true) (§7.6),
   `is_active`, `create_date`, `modify_date`, `modified_by`.
 
 ### 6.2 Activity
@@ -337,7 +350,7 @@ main tables, record screens with sections. Labels in brackets.
   POLICY_CHANGE, CLASSIFICATION_CHANGE), `user_id`, `user_name`, `table_name`, `record_id`
   (nullable), `field_name` (nullable; comma list for VIEW), `record_count`, `action_name`,
   `reason`, `reason_text`, `client_channel` (from `QSession.getClientChannel()` when present),
-  `outcome` (ALLOWED, DENIED, CAPPED), `break_glass_id`, `created_at`. Insert-only (no edit, no
+  `outcome` (ALLOWED, DENIED, CAPPED, MATCH, NO_MATCH, REFUSED), `anomaly_flag`, `break_glass_id`, `created_at`. Insert-only (no edit, no
   delete permission is ever granted; the table has no update/delete capability).
   - VIEW rows are written for restricted fields only (classification PII or PHI by default,
     configurable), one row per action per table, with up to 50 record ids; GETs log their one
@@ -354,9 +367,11 @@ For a field with effective classification C on table T:
 3. The table feature `T.secured_data_full` → FULL; `T.secured_data_reveal` → at least REVEALABLE.
 4. Active `secured_data_policy` rows whose `permission_name` the session holds, whose
    classification is C and whose table is T or null → the least restrictive tier among them.
-5. Otherwise the code default for C from `SecuredDataQBitConfig` (defaults: CONFIDENTIAL FULL, PII
+5. Policy rows whose `client_channel` equals the session's channel name (e.g. `assistant`) then
+   cap the result: the most restrictive of the result and those rows' tiers.
+6. Otherwise the code default for C from `SecuredDataQBitConfig` (defaults: CONFIDENTIAL FULL, PII
    MASKED, PHI MASKED).
-6. Holders of `secured_data.admin` are FULL on the qbit's own tables only; they get no implicit
+7. Holders of `secured_data.admin` are FULL on the qbit's own tables only; they get no implicit
    access to classified data elsewhere (separation of duties).
 
 The fingerprint is a hash of (user id, sorted permissions, policy version, classification version,
@@ -484,6 +499,9 @@ sort, aggregate, process records, widget, the QQQ API and the assistant channel:
 - REVEALABLE: exact-match finds the record with the value still masked, the search is logged,
   reveal shows the value for N minutes then masks again, the cap refuses and alerts;
 - break-glass grants FULL, notifies, and expires on time;
+- enumeration guardrails: the 21st exact-match search in an hour is refused; 5 consecutive misses
+  and 16 distinct values each alert; a low-cardinality field (boolean, enum, year, state, short
+  digits, admin-marked) refuses exact match; each search logs MATCH, NO_MATCH or REFUSED;
 - every reveal, exact-match search, denied filter and restricted view produces exactly one
   access-log row with user, table, field, record(s), reason, channel and outcome.
 

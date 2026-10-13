@@ -498,6 +498,14 @@ public abstract class AbstractMiddlewareVersion
          4. The response from the `manageSession` call (assuming success), sets the `sessionUUID` Cookie, which should be included in all subsequent requests for authentication.
          5. After the user is authenticated, the frontend calls `.../metaData`, to discover the apps, tables, processes, etc, that the application is made up of (and that the authenticated user has permission to access).
          6. As the user interacts with apps, tables, process, etc, the frontend utilizes the appropriate endpoints as required.
+         
+         ## Client channel
+         Every request should name its client in the `X-QQQ-Client` header: `channel[/detail]`, e.g. `next-ui`, `cli`,
+         or `assistant/<turnId>` (the accepted channels are listed by `GET .../version`; an unknown one is refused with 400).
+         The channel is recorded in audits.  It is attribution only: the actor is always the signed-in user, and a channel
+         never grants anything - but some objects are denied to some channels (e.g. the AI assistant can never see its own
+         configuration, identity and permission administration, audits, API keys or secrets), exactly as if the user had
+         no permission for them.
          """;
    }
 

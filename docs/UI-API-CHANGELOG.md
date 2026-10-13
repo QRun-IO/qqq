@@ -72,6 +72,14 @@ spec'd routes.
 - `FieldAdornment.type` now lists every adornment type (adds FILE_UPLOAD and TOOLTIP).
   `FieldAdornment.values` documents its known keys.
 - `FrontendComponent.type` now lists every component type (adds the three BULK_LOAD forms).
+- Client channels (`docs/UI-API-CLIENT-CHANNELS.md`):
+  - the `X-QQQ-Client: <channel>[/<detail>]` request header, checked against
+    `ClientChannelsMetaData` (an unknown channel gets 400);
+  - `GET /version` lists the accepted channels in `clientChannels`;
+  - the channel is stored on the session and in audits (`audit.clientChannel`, opt-in);
+  - channel deny rules: `QPermissionRules.withDeniedClients`, plus denied objects and patterns, with a
+    default wall that keeps the assistant away from its own configuration, identity, permissions,
+    audits, API keys, credentials and secrets.
 - Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
 
 **Accepted corrections.** A change the checker reports as breaking can be accepted only when it

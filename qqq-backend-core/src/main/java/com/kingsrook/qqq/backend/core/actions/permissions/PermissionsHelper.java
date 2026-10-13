@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithName;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
@@ -171,6 +172,16 @@ public class PermissionsHelper
    {
       QPermissionRules rules              = getEffectivePermissionRules(metaDataWithPermissionRules, QContext.getQInstance());
       String           permissionBaseName = getEffectivePermissionBaseName(rules, metaDataWithPermissionRules.getName());
+
+      ////////////////////////////////////////////////////////////////////////////
+      // a client channel denied this object (e.g. the assistant's wall) - as if //
+      // the user had no permission; hidden.  Checked before anything that could //
+      // allow (NOT_PROTECTED, custom checkers).                                 //
+      ////////////////////////////////////////////////////////////////////////////
+      if(isDeniedForClientChannel(metaDataWithPermissionRules, rules))
+      {
+         return (PermissionCheckResult.DENY_HIDE);
+      }
 
       switch(rules.getLevel())
       {
@@ -643,6 +654,16 @@ public class PermissionsHelper
    {
       QPermissionRules effectivePermissionRules = getEffectivePermissionRules(metaDataWithPermissionRules, QContext.getQInstance());
 
+      /////////////////////////////////////////////////////////////////////////////////
+      // client-channel deny rules come first: nothing (custom checkers, unprotected //
+      // objects, the user's permissions) overrides them                             //
+      /////////////////////////////////////////////////////////////////////////////////
+      if(isDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules))
+      {
+         LOG.info("Client channel denied", logPair("clientChannel", QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel()), logPair("name", name));
+         throw (new QPermissionDeniedException("Permission denied."));
+      }
+
       ////////////////////////////////////////////////////////////////////
       // use the result of a custom permission checker, if there is one //
       ////////////////////////////////////////////////////////////////////
@@ -679,6 +700,25 @@ public class PermissionsHelper
    private static String getPermissionName(String permissionBaseName, PermissionSubType permissionSubType)
    {
       return permissionBaseName + "." + permissionSubType.getPermissionSuffix();
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session's client channel (if any) is denied this object -
+    ** by its rules' deniedClients, or the instance's ClientChannelsMetaData
+    ** (whose defaults apply when the instance registers none).
+    *******************************************************************************/
+   public static boolean isDeniedForClientChannel(MetaDataWithPermissionRules metaDataWithPermissionRules, QPermissionRules effectiveRules)
+   {
+      QSession session = QContext.getQSession();
+      String   channel = session == null ? null : session.getClientChannelName();
+      if(channel == null)
+      {
+         return (false);
+      }
+
+      return (ClientChannelsMetaData.of(QContext.getQInstance()).isDenied(channel, metaDataWithPermissionRules.getName(), effectiveRules));
    }
 
 

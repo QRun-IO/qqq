@@ -23,7 +23,9 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.middleware.javalin.executors.io.VersionInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.VersionOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
@@ -63,6 +65,7 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
             .withDescription(extension.getDescription()));
       }
       output.setExtensions(extensions);
+      output.setClientChannels(new ArrayList<>(ClientChannelsMetaData.of(QContext.getQInstance()).getChannels().keySet()));
    }
 
 

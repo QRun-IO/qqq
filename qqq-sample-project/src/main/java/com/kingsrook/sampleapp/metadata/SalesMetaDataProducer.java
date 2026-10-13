@@ -172,7 +172,7 @@ public class SalesMetaDataProducer extends MetaDataProducer<MetaDataProducerMult
             .withReviewFieldNames(List.of("quantity", "unitPrice")))
          .withRelatedRecordPicker(new QRelatedRecordPicker()
             .withName("tags")
-            .withLabel("Tags")
+            .withLabel("Link Tags")
             .withMode(RelatedRecordPickerMode.LINK)
             .withAssociationName("tags")
             .withChildTargetFieldName("tagId")));

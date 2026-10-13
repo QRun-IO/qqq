@@ -54,8 +54,10 @@ import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExten
  **
  ** - Only operations described by an endpoint spec (core or extension) can be
  **   invoked; anything else is refused before a request is made.
- ** - The caller's session UUID is required and is sent as the sessionUUID
- **   cookie; there is no service session and no elevation.
+ ** - The caller's credentials are required and are forwarded exactly as the
+ **   caller's request carried them (session cookies, Authorization, x-api-key),
+ **   so the call authenticates as the same user with any authentication module;
+ **   there is no service session and no elevation.
  ** - Nested invocation on one thread is limited to MAX_DEPTH.
  *******************************************************************************/
 public class UiApiInvoker
@@ -157,9 +159,9 @@ public class UiApiInvoker
       UiApiOperation operation = findOperation(request.getMethod(), request.getPath())
          .orElseThrow(() -> new QException("Not a UI API operation: " + request.getMethod() + " " + request.getPath() + " (only operations in the OpenAPI document can be invoked)"));
 
-      if(operation.secured() && !StringUtils.hasContent(request.getSessionUUID()))
+      if(operation.secured() && (request.getCredentials() == null || !request.getCredentials().isPresent()))
       {
-         throw (new QException("A session UUID is required to invoke " + request.getMethod() + " " + request.getPath()));
+         throw (new QException("The caller's credentials (session) are required to invoke " + request.getMethod() + " " + request.getPath()));
       }
 
       if(DEPTH.get() >= MAX_DEPTH)
@@ -232,9 +234,30 @@ public class UiApiInvoker
       {
          builder.header("Content-Type", contentType);
       }
-      if(StringUtils.hasContent(request.getSessionUUID()))
+      UiApiCredentials credentials = request.getCredentials();
+      if(credentials != null)
       {
-         builder.header("Cookie", "sessionUUID=" + request.getSessionUUID());
+         List<String> cookies = new ArrayList<>();
+         if(StringUtils.hasContent(credentials.sessionId()))
+         {
+            cookies.add("sessionId=" + credentials.sessionId());
+         }
+         if(StringUtils.hasContent(credentials.sessionUUID()))
+         {
+            cookies.add("sessionUUID=" + credentials.sessionUUID());
+         }
+         if(!cookies.isEmpty())
+         {
+            builder.header("Cookie", String.join("; ", cookies));
+         }
+         if(StringUtils.hasContent(credentials.authorization()))
+         {
+            builder.header("Authorization", credentials.authorization());
+         }
+         if(StringUtils.hasContent(credentials.apiKey()))
+         {
+            builder.header("x-api-key", credentials.apiKey());
+         }
       }
       if(StringUtils.hasContent(request.getUserTimezone()))
       {

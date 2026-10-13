@@ -41,6 +41,27 @@ MiddlewareSpecExtensionsMetaData.ofOrWithNew(qInstance)
   QInstance when the server calls `setQInstance`, binds their routes after the core routes, and
   includes them in the OpenAPI it serves at `/qqq/v1/openapi.yaml` and `.json`.
 
+### Writing a spec: `AbstractJsonEndpointSpec`
+Most module and qbit endpoints take path/query parameters and an optional JSON object body, and
+return JSON. `AbstractJsonEndpointSpec` (same package) does the plumbing. A subclass defines:
+
+- `defineBasicOperation()` (path, method, summary), `defineRequestParameters()`, and
+  `defineComponentSchemas()` (the response schema and any it references);
+- `getResponseSchemaName()`, and `defineRequestBodySchema()` (or null for no body);
+- `handle(JsonInput)`, which does the work with the user's session in `QContext` and returns the
+  body. The body is serialized to JSON with nulls kept.
+
+`JsonInput` gives `getPathParam`, `getQueryParam`, `getQueryParamInteger` (400 on bad input) and
+`getBody()`. A body that is not JSON is rejected with 400. Endpoints with other shapes (files,
+streams) extend `AbstractEndpointSpec` directly.
+
+**Streaming (SSE).** Declare the 200 response with content type `text/event-stream`
+(`BasicResponse(contentType, ...)`), with an event schema in `defineComponentSchemas()`, and write
+the stream in `handleOutput`. Document each event type as a schema, so non-web clients can parse it.
+
+**Non-UI routes.** Machine-to-machine endpoints, such as Alertmanager's webhook, are not part of
+the UI API. Register them outside `/qqq/v1`, e.g. `/qqq/hooks/{qbit}/...`, through a route provider.
+
 ### Namespaces
 - **Default: `/qqq/v1/qbit/{qbitName}/...`.** New qbit endpoints use this (the extension's
   `pathPrefix` defaults to `/qbit/{name}`).
@@ -124,7 +145,7 @@ UiApiResponse response = invoker.invoke(new UiApiRequest()
    .withPathParam("tableName", "person")
    .withQueryParam("limit", "20")
    .withJsonBody(Map.of("filter", filter))
-   .withSessionUUID(QContext.getQSession().getUuid())   // the user's own session; required
+   .withCredentials(callerCredentials)            // UiApiCredentials.fromContext(ctx) of the user's request; required
    .withInvokedBy("assistant"));                  // X-QQQ-Invoked-By, written to the access log
 response.getStatus(); response.getJson(); response.getHeaders();
 ```
@@ -132,8 +153,12 @@ response.getStatus(); response.getJson(); response.getHeaders();
 - **Only spec'd operations can be invoked.** The invoker resolves `method + path template`
   against the version's spec list (core plus extensions). Anything else is refused before any
   request is made, so the assistant cannot reach raw or legacy routes.
-- **The session is the user's.** The invoker sends the `sessionUUID` cookie it is given; there is
-  no service session and no way to elevate. A 401/403 comes back exactly as the UI would see it.
+- **The session is the user's.** The invoker forwards the caller's credentials exactly as their
+  request carried them (`UiApiCredentials.fromContext`: the sessionUUID/sessionId cookies, the
+  Authorization header, x-api-key), so the call authenticates as the same user under any module
+  (OAuth2/OIDC and Auth0 resume by sessionUUID, table-based by sessionId, API keys by header, MOCK
+  by either). `withSessionUUID(uuid)` is the shorthand when only the session UUID is known. There
+  is no service session and no way to elevate; a 401/403 comes back exactly as the UI would see it.
 - **`listOperations()`** returns each invocable operation (method, path template, summary,
   parameters, request/response schema refs) from the same OpenAPI model, so the assistant can build
   its tool list from the spec instead of hand-written tool definitions.

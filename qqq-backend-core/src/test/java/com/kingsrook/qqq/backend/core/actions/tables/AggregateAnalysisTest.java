@@ -248,6 +248,33 @@ class AggregateAnalysisTest extends BaseTest
 
 
    /*******************************************************************************
+    ** String-only operators reject non-string operands before choosing a backend.
+    *******************************************************************************/
+   @Test
+   void stringOperatorTypes() throws Exception
+   {
+      for(AggregateOperator operator : List.of(AggregateOperator.COUNT_BLANK, AggregateOperator.MIN_LENGTH, AggregateOperator.MAX_LENGTH, AggregateOperator.AVG_LENGTH))
+      {
+         for(QFieldType type : QFieldType.values())
+         {
+            QContext.getQInstance().getTable(TABLE).getField("textValue").setType(type);
+            AggregateInput input = new AggregateInput(TABLE).withAggregate(operator.of("textValue"));
+            if(type == QFieldType.STRING || type == QFieldType.TEXT || type == QFieldType.HTML)
+            {
+               AggregateAnalysis.validate(input);
+            }
+            else
+            {
+               assertThatThrownBy(() -> new AggregateAction().execute(input)).isInstanceOf(QException.class)
+                  .hasMessageContaining(operator.name()).hasMessageContaining("textValue").hasMessageContaining("STRING, TEXT or HTML");
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Invalid parameters fail before backend evaluation; deterministic samples are labelled.
     *******************************************************************************/
    @Test

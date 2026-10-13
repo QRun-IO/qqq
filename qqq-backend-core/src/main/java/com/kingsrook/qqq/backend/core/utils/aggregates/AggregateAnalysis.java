@@ -37,6 +37,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DateTimeGroupBy;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
@@ -47,6 +48,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupByBucket;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.NumericBucket;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -108,8 +110,22 @@ public final class AggregateAnalysis
       {
          throw (new QException("samplePercent must be greater than zero and at most 100"));
       }
+      JoinsContext joins = null;
       for(Aggregate aggregate : aggregatesIncludingOrderBy(input))
       {
+         if(aggregate.getOperator() == AggregateOperator.COUNT_BLANK || aggregate.getOperator() == AggregateOperator.MIN_LENGTH
+            || aggregate.getOperator() == AggregateOperator.MAX_LENGTH || aggregate.getOperator() == AggregateOperator.AVG_LENGTH)
+         {
+            if(joins == null)
+            {
+               joins = new JoinsContext(QContext.getQInstance(), input, input.getFilter() == null ? new QQueryFilter() : input.getFilter().clone());
+            }
+            QFieldType sourceType = joins.getFieldAndTableNameOrAlias(aggregate.getFieldName(), true).field().getType();
+            if(sourceType != QFieldType.STRING && sourceType != QFieldType.TEXT && sourceType != QFieldType.HTML)
+            {
+               throw (new QException(aggregate.getOperator() + " requires a STRING, TEXT or HTML field: " + aggregate.getFieldName() + " is " + sourceType));
+            }
+         }
          if(aggregate.getOperator() == AggregateOperator.PERCENTILE_CONT || aggregate.getOperator() == AggregateOperator.PERCENTILE_DISC)
          {
             if(aggregate.getPercentile() == null || aggregate.getPercentile().signum() < 0 || aggregate.getPercentile().compareTo(BigDecimal.ONE) > 0)

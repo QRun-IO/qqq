@@ -80,6 +80,26 @@ class PostgreSQLAggregateExpressionTest
 
 
    /*******************************************************************************
+    ** Fixed offsets must bind intervals in both directions, with ISO signs and explicit UTC.
+    *******************************************************************************/
+   @Test
+   void offsetBuckets()
+   {
+      for(String minutes : List.of("-300", "0", "330"))
+      {
+         QContext.setQSession(new QSession().withValue(QSession.VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES, minutes));
+         List<Serializable> params = new ArrayList<>();
+         GroupBy group = new GroupBy(QFieldType.DATE_TIME, "x").withBucket(new DateBucket(DateBucketUnit.HOUR));
+         String sql = new PostgreSQLRDBMSActionStrategy().getGroupByBucketExpression(group, "x", QFieldType.DATE_TIME, new PostgreSQLBackendMetaData(), params);
+         assertThat(sql).isEqualTo("((date_trunc('hour', ((x AT TIME ZONE 'UTC') AT TIME ZONE CAST(? AS INTERVAL))) AT TIME ZONE CAST(? AS INTERVAL)) AT TIME ZONE 'UTC')");
+         String zone = minutes.equals("-300") ? "-05:00" : minutes.equals("0") ? "+00:00" : "+05:30";
+         assertThat(params).containsExactly(zone, zone);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Date bucketing binds the session timezone; width_bucket includes the explicit max clamp.
     *******************************************************************************/
    @Test

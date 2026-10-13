@@ -207,7 +207,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
                         {
                            fieldType = QFieldType.DECIMAL;
                         }
-                        else if(field.getType().isTemporal() && (aggregate.getOperator().equals(AggregateOperator.COUNT)) || aggregate.getOperator().equals(AggregateOperator.COUNT_DISTINCT))
+                        else if((field.getType().isTemporal() || field.getType().equals(QFieldType.BOOLEAN)) && (aggregate.getOperator().equals(AggregateOperator.COUNT)) || aggregate.getOperator().equals(AggregateOperator.COUNT_DISTINCT))
                         {
                            fieldType = QFieldType.INTEGER;
                         }
@@ -290,6 +290,10 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
             if(orderBy instanceof QFilterOrderByGroupBy orderByGroupBy)
             {
                GroupBy                               groupBy                  = orderByGroupBy.getGroupBy();
+               if(groupBy.getBucket() != null)
+               {
+                  continue;
+               }
                JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(groupBy.getFieldName(), true);
                QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
 

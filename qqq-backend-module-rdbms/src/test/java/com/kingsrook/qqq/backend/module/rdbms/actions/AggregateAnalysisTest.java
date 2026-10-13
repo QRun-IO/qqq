@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.actions.tables.AggregateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -41,12 +42,17 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucketU
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.NumericBucket;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunctionTypeIdentifier;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.implementations.StringLengthFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
@@ -58,7 +64,10 @@ import com.kingsrook.qqq.backend.core.utils.aggregates.AggregateAnalysis;
 import com.kingsrook.qqq.backend.module.rdbms.BaseTest;
 import com.kingsrook.qqq.backend.module.rdbms.TestUtils;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSAggregateAction;
+import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSFieldFunctionAdapterInterface;
+import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSStringLengthFunction;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSTableBackendDetails;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -193,6 +202,34 @@ class AggregateAnalysisTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Offset-only sessions use the ISO sign, including across the midnight boundary.
+    *******************************************************************************/
+   @Test
+   void offsetOnlyBuckets() throws Exception
+   {
+      QContext.getQSession().withValue(QSession.VALUE_KEY_USER_TIMEZONE, null)
+         .withValue(QSession.VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES, "-300");
+      for(DateBucketUnit unit : List.of(DateBucketUnit.DAY, DateBucketUnit.HOUR_OF_DAY, DateBucketUnit.HOUR))
+      {
+         GroupBy group = new GroupBy(QFieldType.DATE_TIME, "eventTime").withBucket(new DateBucket(unit));
+         AggregateInput input = new AggregateInput(TABLE).withGroupBy(group).withAggregate(AggregateOperator.COUNT.of("id"));
+         AggregateOutput actual = new AggregateAction().execute(input);
+         AggregateOutput expected = new AggregateAction().execute(input.withTableName(MEMORY));
+         equivalent(actual, expected);
+         if(unit == DateBucketUnit.DAY)
+         {
+            assertThat(actual.getResults()).extracting(row -> row.getGroupByValue(group)).contains(LocalDate.of(2024, 3, 31));
+         }
+         else if(unit == DateBucketUnit.HOUR_OF_DAY)
+         {
+            assertThat(actual.getResults()).extracting(row -> row.getGroupByValue(group)).containsExactlyInAnyOrder(19, null);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Every date unit, numeric edges and session zones agree across backends.
     *******************************************************************************/
    @Test
@@ -218,6 +255,83 @@ class AggregateAnalysisTest extends BaseTest
                .containsExactlyInAnyOrderElementsOf(expected.getResults().stream().map(row -> row.getGroupByValue(group)).toList());
             equivalent(actual, expected);
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A virtual field's raw sort expression must not split a bucket into extra groups.
+    *******************************************************************************/
+   @Test
+   void sortedVirtualFieldBucket() throws Exception
+   {
+      RDBMSBackendMetaData backend = new RDBMSBackendMetaData()
+      {
+         /*******************************************************************************
+          ** Exercise the existing string-length function with a distinct raw sort expression.
+          *******************************************************************************/
+         @Override
+         public RDBMSFieldFunctionAdapterInterface getFieldFunctionAdapter(FieldFunctionTypeIdentifier identifier)
+         {
+            return (new RDBMSStringLengthFunction()
+            {
+               /*******************************************************************************
+                ** Sort by the original text outside bucketed group-bys.
+                *******************************************************************************/
+               @Override
+               public String wrapColumnNameForOrderBy(String column, FieldFunction function, Function<String, String> resolver)
+               {
+                  return (column);
+               }
+            });
+         }
+      };
+      backend.setName(TestUtils.DEFAULT_BACKEND_NAME);
+      backend.setVendor(RDBMSBackendMetaData.VENDOR_H2);
+      QContext.getQInstance().getBackends().put(backend.getName(), backend);
+      QVirtualFieldMetaData field = new QVirtualFieldMetaData("textLength", QFieldType.INTEGER)
+         .withIsQuerySelectable(true).withIsQueryCriteria(true)
+         .withFieldFunction(new FieldFunction().withFieldName("textValue").withFunctionTypeIdentifier(StringLengthFunction.IDENTIFIER));
+      QContext.getQInstance().getTable(TABLE).withVirtualField(field);
+      GroupBy group = new GroupBy(field).withBucket(new NumericBucket(BigDecimal.ZERO, BigDecimal.TEN, 1));
+      Aggregate count = AggregateOperator.COUNT.of("id");
+      AggregateInput input = new AggregateInput(TABLE).withGroupBy(group).withAggregate(count)
+         .withFilter(new QQueryFilter().withOrderBy(new QFilterOrderByGroupBy(group)));
+      AggregateOutput output = new AggregateAction().execute(input);
+      assertThat(output.getResults()).hasSize(2);
+      assertThat(output.getResults().stream().filter(row -> Integer.valueOf(1).equals(row.getGroupByValue(group))).findFirst().orElseThrow()
+         .getAggregateValue(count)).isEqualTo(5);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fractional bin widths must not round a value into an extra or preceding bin.
+    *******************************************************************************/
+   @Test
+   void fractionalNumericBuckets() throws Exception
+   {
+      QContext.getQInstance().getTable(TABLE).getField("x").setType(QFieldType.DECIMAL);
+      QContext.getQInstance().getTable(MEMORY).getField("x").setType(QFieldType.DECIMAL);
+      try(Connection connection = ConnectionManager.getConnection(TestUtils.defineBackend()))
+      {
+         connection.createStatement().execute("DELETE FROM analysis_fixture");
+         connection.createStatement().execute("ALTER TABLE analysis_fixture ALTER COLUMN x DECIMAL(30, 10)");
+      }
+      MemoryRecordStore.getInstance().reset();
+      for(int count : List.of(3, 32))
+      {
+         BigDecimal value = new BigDecimal(count == 3 ? "0.99995" : "0.5");
+         for(String table : List.of(TABLE, MEMORY))
+         {
+            new InsertAction().execute(new InsertInput(table).withRecord(new QRecord().withValue("id", count).withValue("x", value)));
+         }
+         GroupBy group = new GroupBy(QFieldType.DECIMAL, "x").withBucket(new NumericBucket(BigDecimal.ZERO, BigDecimal.ONE, count));
+         AggregateInput input = new AggregateInput(TABLE).withGroupBy(group).withAggregate(AggregateOperator.COUNT.of("id"));
+         AggregateOutput actual = new AggregateAction().execute(input);
+         equivalent(actual, new AggregateAction().execute(input.withTableName(MEMORY)));
+         assertThat(actual.getResults()).extracting(row -> row.getGroupByValue(group)).contains(count == 3 ? 3 : 17);
       }
    }
 

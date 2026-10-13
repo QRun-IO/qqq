@@ -193,6 +193,34 @@ class AggregateAnalysisTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Offset-only sessions use the ISO sign, including across the midnight boundary.
+    *******************************************************************************/
+   @Test
+   void offsetOnlyBuckets() throws Exception
+   {
+      QContext.getQSession().withValue(QSession.VALUE_KEY_USER_TIMEZONE, null)
+         .withValue(QSession.VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES, "-300");
+      for(DateBucketUnit unit : List.of(DateBucketUnit.DAY, DateBucketUnit.HOUR_OF_DAY, DateBucketUnit.HOUR))
+      {
+         GroupBy group = new GroupBy(QFieldType.DATE_TIME, "eventTime").withBucket(new DateBucket(unit));
+         AggregateInput input = new AggregateInput(TABLE).withGroupBy(group).withAggregate(AggregateOperator.COUNT.of("id"));
+         AggregateOutput actual = new AggregateAction().execute(input);
+         AggregateOutput expected = new AggregateAction().execute(input.withTableName(MEMORY));
+         equivalent(actual, expected);
+         if(unit == DateBucketUnit.DAY)
+         {
+            assertThat(actual.getResults()).extracting(row -> row.getGroupByValue(group)).contains(LocalDate.of(2024, 3, 31));
+         }
+         else if(unit == DateBucketUnit.HOUR_OF_DAY)
+         {
+            assertThat(actual.getResults()).extracting(row -> row.getGroupByValue(group)).containsExactlyInAnyOrder(19, null);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Every date unit, numeric edges and session zones agree across backends.
     *******************************************************************************/
    @Test

@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -69,6 +70,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.core.utils.aggregates.AggregateAnalysis;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -80,6 +83,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
 {
    private static final QLogger LOG = QLogger.getLogger(BaseRDBMSActionStrategy.class);
+
+   private static final Map<RDBMSBackendMetaData, Map<String, Boolean>> MYSQL_TIME_ZONE_SUPPORT = new WeakHashMap<>();
 
    private static final int MILLIS_PER_SECOND = 1000;
 
@@ -990,8 +995,61 @@ public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
       {
          capabilities.remove(AggregateCapability.PERCENTILE);
          capabilities.remove(AggregateCapability.CORRELATION);
+         if(AggregateAnalysis.requiredCapabilities(input).contains(AggregateCapability.DATE_BUCKET)
+            && !mysqlSupportsTimeZone(backend, getBucketTimeZone(ValueUtils.getSessionOrInstanceZoneId())))
+         {
+            capabilities.remove(AggregateCapability.DATE_BUCKET);
+         }
       }
       return (capabilities);
+   }
+
+
+
+   /*******************************************************************************
+    ** Cache CONVERT_TZ availability per backend and zone, including missing named-zone tables.
+    *******************************************************************************/
+   private boolean mysqlSupportsTimeZone(RDBMSBackendMetaData backend, String zone)
+   {
+      synchronized(MYSQL_TIME_ZONE_SUPPORT)
+      {
+         Map<String, Boolean> zones = MYSQL_TIME_ZONE_SUPPORT.computeIfAbsent(backend, ignored -> new HashMap<>());
+         if(zones.containsKey(zone))
+         {
+            return (zones.get(zone));
+         }
+         try(Connection connection = ConnectionManager.getConnection(backend);
+             PreparedStatement statement = connection.prepareStatement("SELECT CONVERT_TZ('2000-01-01 00:00:00','+00:00',?)"))
+         {
+            statement.setString(1, zone);
+            try(ResultSet result = statement.executeQuery())
+            {
+               boolean supported = result.next() && result.getObject(1) != null;
+               zones.put(zone, supported);
+               return (supported);
+            }
+         }
+         catch(SQLException e)
+         {
+            // A transient connection failure must not poison the cached zone support.
+            LOG.warn("Unable to probe MySQL date bucket timezone", e, logPair("backend", backend.getName()), logPair("zone", zone));
+            return (false);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** SQL offset parameters use ISO signs and an explicit zero offset instead of Z.
+    *******************************************************************************/
+   protected String getBucketTimeZone(ZoneId zone)
+   {
+      if(zone.normalized() instanceof ZoneOffset offset)
+      {
+         return (ZoneOffset.UTC.equals(offset) ? "+00:00" : offset.getId());
+      }
+      return (zone.getId());
    }
 
 
@@ -1060,12 +1118,13 @@ public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
       if(group.getBucket() instanceof NumericBucket numeric)
       {
          params.addAll(List.of(numeric.getMin(), numeric.getMax(), numeric.getCount() + 1, numeric.getMax(), numeric.getCount(),
-            numeric.getMin(), numeric.getMax(), numeric.getMin(), numeric.getCount()));
-         return ("CASE WHEN " + column + " < ? THEN 0 WHEN " + column + " > ? THEN ? WHEN " + column
-            + " = ? THEN ? ELSE FLOOR((" + column + " - ?) / ((? - ?) / ?)) + 1 END");
+            numeric.getMin(), numeric.getCount(), numeric.getMax(), numeric.getMin(), numeric.getCount()));
+         String numericColumn = isH2(backend) ? "CAST(" + column + " AS DECIMAL(65, 30))" : column;
+         return ("CASE WHEN " + column + " IS NULL THEN NULL WHEN " + column + " < ? THEN 0 WHEN " + column + " > ? THEN ? WHEN " + column
+            + " = ? THEN ? ELSE LEAST(FLOOR((" + numericColumn + " - ?) * ? / (? - ?)) + 1, ?) END");
       }
       DateBucketUnit unit = ((DateBucket) group.getBucket()).getUnit();
-      String zone = ValueUtils.getSessionOrInstanceZoneId().getId();
+      String zone = getBucketTimeZone(ValueUtils.getSessionOrInstanceZoneId());
       if(isH2(backend))
       {
          if(sourceType == QFieldType.DATE_TIME)

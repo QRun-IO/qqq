@@ -451,7 +451,11 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
          column = "CAST(" + column + " AS TIMESTAMP)";
       }
       DateBucketUnit unit = ((DateBucket) group.getBucket()).getUnit();
-      String zone = ValueUtils.getSessionOrInstanceZoneId().getId();
+      String zone = getBucketTimeZone(ValueUtils.getSessionOrInstanceZoneId());
+      // PostgreSQL AT TIME ZONE accepts an interval with the ISO offset sign.
+      // Text offsets (including UTC-05:00) use the opposite POSIX sign.
+      // See https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-ZONECONVERT
+      String zoneParameter = ValueUtils.getSessionOrInstanceZoneId().normalized() instanceof ZoneOffset ? "CAST(? AS INTERVAL)" : "?";
       if(sourceType == QFieldType.DATE_TIME)
       {
          ///////////////////////////////////////////////////////////////////////////////
@@ -459,7 +463,7 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
          // as UTC LocalDateTimes), so: UTC wall time -> absolute -> session wall time  //
          ///////////////////////////////////////////////////////////////////////////////
          params.add(zone);
-         column = "((" + column + " AT TIME ZONE 'UTC') AT TIME ZONE ?)";
+         column = "((" + column + " AT TIME ZONE 'UTC') AT TIME ZONE " + zoneParameter + ")";
       }
       if(unit == DateBucketUnit.DAY_OF_WEEK || unit == DateBucketUnit.HOUR_OF_DAY)
       {
@@ -474,7 +478,7 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
          // value must not depend on the connection's TimeZone setting.             //
          //////////////////////////////////////////////////////////////////////////////
          params.add(zone);
-         return ("((" + expression + " AT TIME ZONE ?) AT TIME ZONE 'UTC')");
+         return ("((" + expression + " AT TIME ZONE " + zoneParameter + ") AT TIME ZONE 'UTC')");
       }
       return ("CAST(" + expression + " AS DATE)");
    }

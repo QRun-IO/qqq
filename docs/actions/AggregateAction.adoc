@@ -110,6 +110,7 @@ A backend without an aggregate implementation rejects the operation. The common 
 `COUNT_NULL`, `COUNT_BLANK`, `MIN_LENGTH` and `MAX_LENGTH` return INTEGER. `PERCENTILE_DISC` preserves the operand type.
 An explicit `Aggregate.fieldType` still overrides result conversion.
 `COUNT_BLANK` counts nulls and strings whose SQL `TRIM` is empty; lengths exclude nulls and count characters.
+`COUNT_BLANK`, `MIN_LENGTH`, `MAX_LENGTH` and `AVG_LENGTH` require a STRING, TEXT or HTML operand; other field types are rejected before backend execution.
 Sample variance/deviation require two non-null values; population variants return zero for one value. Correlation uses only pairs with both values present and returns null for zero variance.
 
 Percentiles require `0 <= percentile <= 1`. Continuous percentiles interpolate at `p * (n - 1)` in sorted non-null values.
@@ -152,6 +153,10 @@ AggregateOutput buckets = new AggregateAction().execute(new AggregateInput("orde
 Memory and PostgreSQL support all extensions. Base RDBMS identifies H2 from backend vendor metadata and supports all extensions there;
 MySQL supports all except PERCENTILE and CORRELATION. Other dialects must explicitly advertise supported features.
 MySQL date buckets with named zones require the database's timezone tables to be populated.
+Date-bucket requests probe MySQL's `CONVERT_TZ` once per backend metadata instance and zone, caching availability for that instance's lifetime.
+If the conversion returns NULL, DATE_BUCKET is not advertised for that request, allowing the capability error or streamed fallback.
+After loading timezone tables, recreate the backend metadata (or restart) to clear the cached result.
+Fixed session offsets are bound as ISO offsets (including `+00:00`); PostgreSQL uses interval parameters to avoid POSIX text-zone sign reversal.
 Unsupported requested operators/buckets produce a `QUserFacingException` naming the missing capabilities unless fallback is enabled.
 Sampling alone never causes a capability error.
 

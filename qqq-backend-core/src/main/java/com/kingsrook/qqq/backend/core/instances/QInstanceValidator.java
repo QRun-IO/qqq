@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustom
 import com.kingsrook.qqq.backend.core.actions.scripts.TestScriptActionInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchProviderInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.picker.RelatedRecordPickerAction;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.validation.plugins.QInstanceValidatorPluginInterface;
@@ -129,6 +130,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.Automatio
 import com.kingsrook.qqq.backend.core.model.metadata.tables.automation.QTableAutomationDetails;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.cache.CacheOf;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.cache.CacheUseCase;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.picker.QRelatedRecordPicker;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.picker.RelatedRecordPickerMode;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantSetting;
 import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsConfig;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
@@ -1122,6 +1125,7 @@ public class QInstanceValidator
       validateTableCacheOf(qInstance, table);
       validateTableRecordSecurityLocks(qInstance, table);
       validateTableAssociations(qInstance, table);
+      validateTableRelatedRecordPickers(qInstance, table);
       validateExposedJoins(qInstance, joinGraph, table);
 
       for(QSupplementalTableMetaData supplementalTableMetaData : CollectionUtils.nonNullMap(table.getSupplementalMetaData()).values())
@@ -1327,6 +1331,124 @@ public class QInstanceValidator
                }
             }
          }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Related-record pickers (docs/RELATED-RECORD-PICKER.md) and the table's
+    ** quick-create section.
+    *******************************************************************************/
+   private void validateTableRelatedRecordPickers(QInstance qInstance, QTableMetaData table)
+   {
+      if(table.getQuickCreateSectionName() != null)
+      {
+         assertCondition(CollectionUtils.nonNullList(table.getSections()).stream().anyMatch(s -> table.getQuickCreateSectionName().equals(s.getName())),
+            "quickCreateSectionName " + table.getQuickCreateSectionName() + " is not a section of table " + table.getName());
+      }
+
+      for(Map.Entry<String, QRelatedRecordPicker> entry : CollectionUtils.nonNullMap(table.getRelatedRecordPickers()).entrySet())
+      {
+         QRelatedRecordPicker picker = entry.getValue();
+         String               prefix = "Related record picker " + entry.getKey() + " on table " + table.getName() + ": ";
+         if(!assertCondition(picker != null && Objects.equals(entry.getKey(), picker.getName()), prefix + "missing or inconsistent name"))
+         {
+            continue;
+         }
+         if(!assertCondition(picker.getMode() != null, prefix + "missing mode"))
+         {
+            continue;
+         }
+
+         if(picker.getMode() == RelatedRecordPickerMode.SINGLE)
+         {
+            assertCondition(picker.getFieldName() != null && table.getFields().containsKey(picker.getFieldName()), prefix + "SINGLE needs fieldName, a field of the table");
+            assertCondition(picker.getAssociationName() == null && picker.getChildTargetFieldName() == null, prefix + "SINGLE does not take associationName or childTargetFieldName");
+            assertCondition(picker.getChildFieldDefaults() == null && picker.getChildValuesFromTarget() == null && picker.getReviewFieldNames() == null, prefix + "SINGLE does not take child field settings");
+         }
+         else
+         {
+            assertCondition(picker.getFieldName() == null, prefix + picker.getMode() + " does not take fieldName");
+            assertCondition(CollectionUtils.nonNullList(table.getAssociations()).stream().anyMatch(a -> Objects.equals(a.getName(), picker.getAssociationName())), prefix + "associationName " + picker.getAssociationName() + " is not an association of the table");
+            assertCondition(picker.getChildTargetFieldName() != null, prefix + "missing childTargetFieldName");
+            if(picker.getMode() == RelatedRecordPickerMode.LINK)
+            {
+               assertCondition(picker.getReviewFieldNames() == null, prefix + "LINK does not take reviewFieldNames");
+            }
+         }
+         assertCondition(picker.getMaxSelections() == null || (picker.getMaxSelections() >= 1 && picker.getMaxSelections() <= 1000), prefix + "maxSelections must be 1 to 1000");
+
+         RelatedRecordPickerAction.Resolved resolved = RelatedRecordPickerAction.resolve(qInstance, table, picker);
+         if(!assertCondition(resolved != null, prefix + "the target table does not resolve (set targetTableName, or use a field with a TABLE possible value source)"))
+         {
+            continue;
+         }
+
+         QTableMetaData target = resolved.getTargetTable();
+         QTableMetaData child  = resolved.getChildTable();
+         if(child != null)
+         {
+            assertCondition(child.getFields().containsKey(picker.getChildTargetFieldName()), prefix + "childTargetFieldName " + picker.getChildTargetFieldName() + " is not a field of " + child.getName());
+         }
+
+         for(String fieldName : CollectionUtils.nonNullList(picker.getColumns()))
+         {
+            assertCondition(target.getFields().containsKey(fieldName), prefix + "column " + fieldName + " is not a field of " + target.getName());
+         }
+         for(String fieldName : CollectionUtils.nonNullList(picker.getPreviewFields()))
+         {
+            assertCondition(target.getFields().containsKey(fieldName), prefix + "preview field " + fieldName + " is not a field of " + target.getName());
+         }
+         if(picker.getThumbnailField() != null)
+         {
+            assertCondition(target.getFields().containsKey(picker.getThumbnailField()), prefix + "thumbnailField " + picker.getThumbnailField() + " is not a field of " + target.getName());
+         }
+         validateRelatedRecordPickerFilter(picker.getFilter(), target, prefix + "filter");
+         validateRelatedRecordPickerFilter(picker.getDefaultFilter(), target, prefix + "defaultFilter");
+
+         if(child != null)
+         {
+            Set<String> forced = resolved.getForcedChildFields();
+            for(String fieldName : CollectionUtils.nonNullMap(picker.getChildFieldDefaults()).keySet())
+            {
+               assertCondition(child.getFields().containsKey(fieldName) && !forced.contains(fieldName), prefix + "childFieldDefaults key " + fieldName + " must be a field of " + child.getName() + " other than its join fields");
+            }
+            for(Map.Entry<String, String> copy : CollectionUtils.nonNullMap(picker.getChildValuesFromTarget()).entrySet())
+            {
+               assertCondition(child.getFields().containsKey(copy.getKey()) && !forced.contains(copy.getKey()), prefix + "childValuesFromTarget key " + copy.getKey() + " must be a field of " + child.getName() + " other than its join fields");
+               assertCondition(target.getFields().containsKey(copy.getValue()), prefix + "childValuesFromTarget value " + copy.getValue() + " is not a field of " + target.getName());
+            }
+            for(String fieldName : CollectionUtils.nonNullList(picker.getReviewFieldNames()))
+            {
+               assertCondition(child.getFields().containsKey(fieldName) && !forced.contains(fieldName), prefix + "review field " + fieldName + " must be a field of " + child.getName() + " other than its join fields");
+            }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Every criterion and order-by of a picker filter names a target field.
+    *******************************************************************************/
+   private void validateRelatedRecordPickerFilter(QQueryFilter filter, QTableMetaData target, String prefix)
+   {
+      if(filter == null)
+      {
+         return;
+      }
+      for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
+      {
+         assertCondition(criteria.getFieldName() != null && target.getFields().containsKey(criteria.getFieldName()), prefix + " criteria field " + criteria.getFieldName() + " is not a field of " + target.getName());
+      }
+      for(QFilterOrderBy orderBy : CollectionUtils.nonNullList(filter.getOrderBys()))
+      {
+         assertCondition(target.getFields().containsKey(orderBy.getFieldName()), prefix + " order-by field " + orderBy.getFieldName() + " is not a field of " + target.getName());
+      }
+      for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
+      {
+         validateRelatedRecordPickerFilter(subFilter, target, prefix);
       }
    }
 

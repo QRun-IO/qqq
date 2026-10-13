@@ -23,10 +23,6 @@ package com.kingsrook.qqq.backend.core.modules.backend.implementations.memory;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -43,8 +39,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DateTimeGroupBy;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.tables.StreamedAggregateEvaluator;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
@@ -92,6 +88,7 @@ import com.kingsrook.qqq.backend.core.utils.JsonFieldUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.core.utils.aggregates.AggregateAnalysis;
 import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -1195,6 +1192,11 @@ public class MemoryRecordStore
     *******************************************************************************/
    public AggregateOutput aggregate(AggregateInput aggregateInput) throws QException
    {
+      if(!AggregateAnalysis.requiredCapabilities(aggregateInput).isEmpty() || aggregateInput.getSamplePercent() != null)
+      {
+         return (new StreamedAggregateEvaluator().execute(aggregateInput, Integer.MAX_VALUE, true));
+      }
+
       //////////////////////
       // first do a query //
       //////////////////////
@@ -1362,50 +1364,8 @@ public class MemoryRecordStore
     *******************************************************************************/
    private Serializable applyFormatString(Serializable value, GroupBy groupBy) throws QException
    {
-      if(value == null)
-      {
-         return (null);
-      }
-
-      String formatString = groupBy.getFormatString();
-
-      try
-      {
-         if(formatString.startsWith("DATE_FORMAT"))
-         {
-            /////////////////////////////////////////////////////////////////////////////
-            // one known-use case we have here looks like this:                        //
-            // DATE_FORMAT(CONVERT_TZ(%s, 'UTC', 'UTC'), '%%Y-%%m-%%dT%%H')            //
-            // ... for now, let's just try to support the formatting bit at the end... //
-            // todo - support the CONVERT_TZ bit too!                                  //
-            /////////////////////////////////////////////////////////////////////////////
-            String            sqlDateTimeFormat = formatString.replaceFirst(".*'%%", "%%").replaceFirst("'.*", "");
-            DateTimeFormatter dateTimeFormatter = DateTimeGroupBy.sqlDateFormatToSelectedDateTimeFormatter(sqlDateTimeFormat);
-            if(dateTimeFormatter == null)
-            {
-               throw (new QException("Unsupported sql dateTime format string [" + sqlDateTimeFormat + "] for MemoryRecordStore"));
-            }
-
-            String        valueAsString  = ValueUtils.getValueAsString(value);
-            Instant       valueAsInstant = ValueUtils.getValueAsInstant(valueAsString);
-            ZonedDateTime zonedDateTime  = valueAsInstant.atZone(ZoneId.systemDefault());
-            return (dateTimeFormatter.format(zonedDateTime));
-         }
-         else
-         {
-            throw (new QException("Unsupported group-by format string [" + formatString + "] for MemoryRecordStore"));
-         }
-      }
-      catch(QException qe)
-      {
-         throw (qe);
-      }
-      catch(Exception e)
-      {
-         throw (new QException("Error applying format string [" + formatString + "] to group by value [" + value + "]", e));
-      }
+      return (AggregateAnalysis.applyFormatString(value, groupBy));
    }
-
 
 
    /*******************************************************************************
@@ -1534,6 +1494,7 @@ public class MemoryRecordStore
                .stream().boxed().map(d -> new BigDecimal(d)).findFirst().orElse(null);
             default -> throw (new IllegalArgumentException("Cannot perform " + operator + " aggregate on " + fieldType + " field."));
          };
+         default -> throw (new IllegalArgumentException("Unsupported legacy aggregate " + operator));
       };
 
       return ValueUtils.getValueAsFieldType(fieldType, aggregateValue);

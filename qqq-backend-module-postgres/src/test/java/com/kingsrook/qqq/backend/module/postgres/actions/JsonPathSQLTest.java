@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.module.postgres.actions;
 
 import java.io.Serializable;
 import java.lang.reflect.Proxy;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.Arrays;
@@ -32,7 +33,10 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucket;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucketUnit;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.NumericBucket;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -190,6 +194,29 @@ public class JsonPathSQLTest
          .withGroupBy(new GroupBy(QFieldType.STRING, "note")));
       assertTrue(strategy.sql.contains("SUM((\"udf_test\".\"qqq_custom_fields\"->>'score')::integer)"), strategy.sql);
       assertTrue(strategy.sql.contains("GROUP BY (\"udf_test\".\"qqq_custom_fields\"->>'note')"), strategy.sql);
+   }
+
+
+
+   /*******************************************************************************
+    ** Aggregate pushdown resolves both operands and bucket sources through JSON storage.
+    *******************************************************************************/
+   @Test
+   void aggregatePushdownWithJsonFields() throws Exception
+   {
+      QContext.getQInstance().getTable("udf_test")
+         .withField(field("weight", QFieldType.DECIMAL))
+         .withField(field("event_date", QFieldType.DATE));
+      new RDBMSAggregateAction().execute(new AggregateInput().withTableName("udf_test").withTransaction(transaction)
+         .withAggregate(new Aggregate().withFieldName("score").withOtherFieldName("weight").withOperator(AggregateOperator.CORR))
+         .withGroupBy(new GroupBy(QFieldType.INTEGER, "score").withBucket(new NumericBucket(BigDecimal.ZERO, BigDecimal.TEN, 2)))
+         .withGroupBy(new GroupBy(QFieldType.DATE, "event_date").withBucket(new DateBucket(DateBucketUnit.MONTH))));
+      String score = "(\"udf_test\".\"qqq_custom_fields\"->>'score')::integer";
+      assertTrue(strategy.sql.contains("CORR((\"udf_test\".\"qqq_custom_fields\"->>'weight')::numeric, " + score + ")"), strategy.sql);
+      assertTrue(strategy.sql.contains("CASE WHEN " + score + " = ? THEN ? ELSE width_bucket(" + score + ", ?, ?, ?) END"), strategy.sql);
+      assertTrue(strategy.sql.contains("date_trunc('month', CAST((\"udf_test\".\"qqq_custom_fields\"->>'event_date')::date AS TIMESTAMP))"), strategy.sql);
+      assertTrue(strategy.sql.contains("GROUP BY 1,2"), strategy.sql);
+      assertEquals(List.of(BigDecimal.TEN, 2, BigDecimal.ZERO, BigDecimal.TEN, 2), strategy.params);
    }
 
 

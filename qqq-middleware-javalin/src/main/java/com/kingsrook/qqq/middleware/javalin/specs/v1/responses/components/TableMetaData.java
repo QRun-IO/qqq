@@ -203,4 +203,30 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    }
 
 
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Related-record pickers of this table whose target the user may read (docs/RELATED-RECORD-PICKER.md)")
+   @OpenAPIListItems(value = RelatedRecordPicker.class, useRef = true)
+   public List<RelatedRecordPicker> getRelatedRecordPickers()
+   {
+      if(wrapped.getRelatedRecordPickers() == null)
+      {
+         return (null);
+      }
+
+      return (wrapped.getRelatedRecordPickers().stream().map(RelatedRecordPicker::new).toList());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("Name of the section whose editable fields a quick-create form shows (else the required, editable fields)")
+   public String getQuickCreateSectionName()
+   {
+      return (wrapped.getQuickCreateSectionName());
+   }
 }

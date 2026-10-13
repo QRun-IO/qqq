@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
@@ -38,11 +39,13 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateResult;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
@@ -54,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunct
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.aggregates.AggregateAnalysis;
 import com.kingsrook.qqq.backend.module.rdbms.fieldfunctions.RDBMSFieldFunctionAdapterInterface;
 
 
@@ -75,6 +79,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
    {
       try
       {
+         AggregateAnalysis.validate(aggregateInput);
          QTableMetaData table = aggregateInput.getTable();
          setBackendMetaData(aggregateInput.getBackend());
 
@@ -88,10 +93,19 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
          Map<GroupBy, Integer> orderByPositionMap    = new HashMap<>();
          populateStructuresForComplexGroupBys(filter, joinsContext, selectClauses, selectParams, extraGroupByPositions, orderByPositionMap);
 
+         for(int i = 0; i < CollectionUtils.nonNullList(aggregateInput.getGroupBys()).size(); i++)
+         {
+            if(aggregateInput.getGroupBys().get(i).getBucket() != null)
+            {
+               orderByPositionMap.put(aggregateInput.getGroupBys().get(i), i + 1);
+            }
+         }
+         boolean sampled = aggregateInput.getSamplePercent() != null && getSupportedCapabilities(aggregateInput).contains(AggregateCapability.SAMPLING);
          List<Serializable> params = new ArrayList<>();
          params.addAll(selectParams);
 
-         String fromClause = makeFromClause(QContext.getQInstance(), table.getName(), joinsContext, params);
+         String fromClause = sampled ? makeFromClause(QContext.getQInstance(), table.getName(), joinsContext, params, aggregateInput.getSamplePercent())
+            : makeFromClause(QContext.getQInstance(), table.getName(), joinsContext, params);
 
          String sql = "SELECT " + StringUtils.join(", ", selectClauses)
             + " FROM " + fromClause
@@ -111,7 +125,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
 
          if(filter != null && CollectionUtils.nullSafeHasContents(filter.getOrderBys()))
          {
-            sql += " ORDER BY " + makeAggregateOrderByClause(table, filter.getOrderBys(), joinsContext, params, orderByPositionMap);
+            sql += " ORDER BY " + makeAggregateOrderByClause(aggregateInput, table, filter.getOrderBys(), joinsContext, params, orderByPositionMap);
          }
 
          if(aggregateInput.getLimit() != null)
@@ -124,6 +138,8 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
          AggregateOutput       rs      = new AggregateOutput();
          List<AggregateResult> results = new ArrayList<>();
          rs.setResults(results);
+         rs.setSampled(sampled);
+         rs.setSamplePercent(sampled ? aggregateInput.getSamplePercent() : null);
 
          Long mark = System.currentTimeMillis();
 
@@ -174,7 +190,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
                   int selectionIndex = 1;
                   for(GroupBy groupBy : CollectionUtils.nonNullList(aggregateInput.getGroupBys()))
                   {
-                     Serializable value = getFieldValueFromResultSet(groupBy.getType(), resultSet, selectionIndex++);
+                     Serializable value = getFieldValueFromResultSet(AggregateAnalysis.bucketType(groupBy), resultSet, selectionIndex++);
                      result.withGroupByValue(groupBy, value);
                   }
 
@@ -183,14 +199,15 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
                      JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(aggregate.getFieldName(), true /* allowVirtualFields */);
                      QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
 
-                     QFieldType fieldType = aggregate.getFieldType();
+                     QFieldType fieldType = aggregate.getOperator().getSqlPrefix() == null
+                        ? AggregateAnalysis.resultType(aggregate, field.getType()) : aggregate.getFieldType();
                      if(fieldType == null)
                      {
                         if((field.getType().equals(QFieldType.INTEGER) || field.getType().equals(QFieldType.LONG)) && (aggregate.getOperator().equals(AggregateOperator.AVG)))
                         {
                            fieldType = QFieldType.DECIMAL;
                         }
-                        else if(field.getType().isTemporal() && (aggregate.getOperator().equals(AggregateOperator.COUNT)) || aggregate.getOperator().equals(AggregateOperator.COUNT_DISTINCT))
+                        else if((field.getType().isTemporal() || field.getType().equals(QFieldType.BOOLEAN)) && (aggregate.getOperator().equals(AggregateOperator.COUNT)) || aggregate.getOperator().equals(AggregateOperator.COUNT_DISTINCT))
                         {
                            fieldType = QFieldType.INTEGER;
                         }
@@ -273,6 +290,10 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
             if(orderBy instanceof QFilterOrderByGroupBy orderByGroupBy)
             {
                GroupBy                               groupBy                  = orderByGroupBy.getGroupBy();
+               if(groupBy.getBucket() != null)
+               {
+                  continue;
+               }
                JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(groupBy.getFieldName(), true);
                QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
 
@@ -322,31 +343,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
 
       for(Aggregate aggregate : aggregateInput.getAggregates())
       {
-         JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(aggregate.getFieldName(), true /* allowVirtualFields */);
-         QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
-
-         String columnExpression;
-         if(field instanceof QVirtualFieldMetaData virtualField)
-         {
-            String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
-            String         realFieldName  = virtualField.getFieldFunction().getFieldName();
-            QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-            String         columnName     = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
-
-            QTableMetaData                     fieldTable           = joinsContext.getTable(fieldTableName);
-            FieldFunction                      fieldFunction        = virtualField.getFieldFunction();
-            RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
-            requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
-
-            columnExpression = fieldFunctionAdapter.wrapColumnName(columnName, fieldFunction, makeFieldNameToColumnReferenceFunction(fieldAndTableNameOrAlias.tableNameOrAlias(), fieldTable));
-            CollectionUtils.addAllIfNotNull(params, fieldFunctionAdapter.getParams(fieldFunction));
-         }
-         else
-         {
-            columnExpression = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
-         }
-
-         rs.add(aggregate.getOperator().getSqlPrefix() + columnExpression + ")");
+         rs.add(buildAggregateExpression(aggregate, joinsContext, params));
       }
       return (rs);
    }
@@ -361,7 +358,8 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
       List<String> columns = new ArrayList<>();
       for(GroupBy groupBy : CollectionUtils.nonNullList(aggregateInput.getGroupBys()))
       {
-         columns.add(getSingleGroupByClause(groupBy, joinsContext, params, false));
+         columns.add(groupBy.getBucket() == null ? getSingleGroupByClause(groupBy, joinsContext, params, false)
+            : String.valueOf(columns.size() + 1));
       }
 
       return (StringUtils.join(",", columns));
@@ -374,7 +372,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
     ** for group-by entries whose ORDER BY expression differs from their SELECT
     ** expression.
     *******************************************************************************/
-   private String makeAggregateOrderByClause(QTableMetaData table, List<QFilterOrderBy> orderBys, JoinsContext joinsContext, List<Serializable> params, Map<GroupBy, Integer> orderByPositionMap)
+   private String makeAggregateOrderByClause(AggregateInput input, QTableMetaData table, List<QFilterOrderBy> orderBys, JoinsContext joinsContext, List<Serializable> params, Map<GroupBy, Integer> orderByPositionMap)
    {
       List<String> clauses = new ArrayList<>();
 
@@ -382,7 +380,14 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
       {
          String ascOrDesc = orderBy.getIsAscending() ? "ASC" : "DESC";
 
-         if(orderBy instanceof QFilterOrderByGroupBy orderByGroupBy && orderByPositionMap.containsKey(orderByGroupBy.getGroupBy()))
+         if(orderBy instanceof QFilterOrderByAggregate aggregateOrder)
+         {
+            int position = CollectionUtils.nonNullList(input.getAggregates()).indexOf(aggregateOrder.getAggregate());
+            String expression = position < 0 ? buildAggregateExpression(aggregateOrder.getAggregate(), joinsContext, params)
+               : String.valueOf(CollectionUtils.nonNullList(input.getGroupBys()).size() + position + 1);
+            clauses.add(expression + " " + ascOrDesc);
+         }
+         else if(orderBy instanceof QFilterOrderByGroupBy orderByGroupBy && orderByPositionMap.containsKey(orderByGroupBy.getGroupBy()))
          {
             clauses.add(orderByPositionMap.get(orderByGroupBy.getGroupBy()) + " " + ascOrDesc);
          }
@@ -409,4 +414,32 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
       doCancelQuery();
    }
 
+
+
+
+   /*******************************************************************************
+    ** Resolve both operands through joins and virtual-field adapters before applying dialect SQL.
+    *******************************************************************************/
+   private String buildAggregateExpression(Aggregate aggregate, JoinsContext joins, List<Serializable> params)
+   {
+      List<Serializable> columnParams = new ArrayList<>();
+      String column = getSingleGroupByClause(new GroupBy(null, aggregate.getFieldName()), joins, columnParams, false);
+      List<Serializable> otherParams = new ArrayList<>();
+      String other = aggregate.getOtherFieldName() == null ? "" : getSingleGroupByClause(new GroupBy(null, aggregate.getOtherFieldName()), joins, otherParams, false);
+      List<Serializable> expressionParams = new ArrayList<>();
+      String template = getActionStrategy().getAggregateExpression(aggregate.getOperator(), "@column@", "@other@", aggregate, backendMetaData, expressionParams);
+      return (bindExpressionTemplate(template, column, columnParams, other, otherParams, expressionParams, params));
+   }
+
+
+
+   /*******************************************************************************
+    ** Expose the active dialect's capabilities to the core planner.
+    *******************************************************************************/
+   @Override
+   public Set<AggregateCapability> getSupportedCapabilities(AggregateInput input)
+   {
+      setBackendMetaData(input.getBackend());
+      return (getActionStrategy().getSupportedAggregateCapabilities(input));
+   }
 }

@@ -178,6 +178,7 @@ public class MongoDBAggregateAction extends AbstractMongoDBAction implements Agg
                case MIN -> Accumulators.min(fieldName, expression);
                case MAX -> Accumulators.max(fieldName, expression);
                case AVG -> Accumulators.avg(fieldName, expression);
+               default -> throw new QException("Aggregate operator is not supported by MongoDB: " + aggregate.getOperator());
             });
          }
 

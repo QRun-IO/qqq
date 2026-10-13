@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
@@ -109,6 +110,7 @@ public class AggregateAction
          throw (new QException("Table is not available for aggregate input"));
       }
       aggregateInput.setTableMetaData(table);
+      aggregateInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, aggregateInput.getFilter(), aggregateInput.getTransaction()));
 
       FilterValidationHelper.validateFieldNamesInFilter(aggregateInput);
       validateFieldNames(aggregateInput);

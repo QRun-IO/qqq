@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -31,6 +32,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.WidgetResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.WidgetDataSchemas;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.HttpMethod;
 import com.kingsrook.qqq.openapi.model.In;
@@ -98,7 +100,8 @@ public class WidgetSpecV1 extends AbstractEndpointSpec<WidgetInput, WidgetRespon
             ContentType.APPLICATION_JSON.getMimeType(), new Content()
                .withSchema(new Schema()
                   .withType(Type.OBJECT)
-                  .withDescription("Dynamic query parameters to pass to the widget renderer.")
+                  .withDescription("Dynamic inputs to pass to the widget renderer (e.g. the record id, dropdown selections).  The same inputs may instead be sent as query parameters; a body value wins over a query parameter of the same name.")
+                  .withAdditionalProperties(new Schema().withType(Type.STRING))
                )
          );
    }
@@ -146,7 +149,9 @@ public class WidgetSpecV1 extends AbstractEndpointSpec<WidgetInput, WidgetRespon
    @Override
    public Map<String, Schema> defineComponentSchemas()
    {
-      return Map.of(WidgetResponseV1.class.getSimpleName(), new WidgetResponseV1().toSchema());
+      Map<String, Schema> schemas = new LinkedHashMap<>(WidgetDataSchemas.componentSchemas());
+      schemas.put(WidgetResponseV1.class.getSimpleName(), new WidgetResponseV1().toSchema());
+      return (schemas);
    }
 
 
@@ -158,8 +163,8 @@ public class WidgetSpecV1 extends AbstractEndpointSpec<WidgetInput, WidgetRespon
    public BasicResponse defineBasicSuccessResponse()
    {
       return new BasicResponse("""
-         The rendered widget data, whose shape varies by widget type.""",
-         WidgetResponseV1.class.getSimpleName()
+         The rendered widget data itself (not wrapped): one of the WidgetData shapes, chosen by its `type`.""",
+         WidgetDataSchemas.UNION_SCHEMA_NAME
       );
    }
 

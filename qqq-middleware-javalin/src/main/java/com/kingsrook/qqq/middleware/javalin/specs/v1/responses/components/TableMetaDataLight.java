@@ -197,4 +197,26 @@ public class TableMetaDataLight implements ToSchema
       return (this.wrapped.getHelpContents());
    }
 
+
+
+
+   /*******************************************************************************
+    ** Publish the session-specific collaboration metadata.
+    *******************************************************************************/
+   @OpenAPIDescription("Enabled record collaboration features, public settings, and this session's table capabilities.")
+   public RecordFeaturesV1 getRecordFeatures()
+   {
+      return (wrapped.getRecordFeatures() == null ? null : new RecordFeaturesV1(wrapped.getRecordFeatures()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish the current runtime metadata generation.
+    *******************************************************************************/
+   @OpenAPIDescription("Runtime metadata generation; refetch metadata when this changes.")
+   public Long getMetaDataGeneration()
+   {
+      return (wrapped.getMetaDataGeneration());
+   }
 }

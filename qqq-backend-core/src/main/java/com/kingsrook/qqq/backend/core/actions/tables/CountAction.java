@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.actions.tables;
 
 import java.util.Collections;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
@@ -102,6 +103,7 @@ public class CountAction
          throw (new QException("Count table is not available"));
       }
       countInput.setTableMetaData(table);
+      countInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, countInput.getFilter(), countInput.getTransaction()));
 
       FilterValidationHelper.validateFieldNamesInFilter(countInput);
 

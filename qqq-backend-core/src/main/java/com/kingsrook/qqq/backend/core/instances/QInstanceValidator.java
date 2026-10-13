@@ -73,6 +73,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.automation.QAutomationProvi
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeType;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeaturesMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.ParentWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
@@ -2638,6 +2639,11 @@ public class QInstanceValidator
       {
          qInstance.getApps().forEach((appName, app) ->
          {
+            RecordFeaturesMetaData recordFeatures = RecordFeaturesMetaData.of(app);
+            if(recordFeatures != null)
+            {
+               recordFeatures.validate(qInstance, this);
+            }
             assertCondition(Objects.equals(appName, app.getName()), "Inconsistent naming for app: " + appName + "/" + app.getName() + ".");
 
             validateAppChildHasValidParentAppName(qInstance, app);

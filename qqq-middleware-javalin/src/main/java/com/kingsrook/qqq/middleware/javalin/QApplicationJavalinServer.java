@@ -52,6 +52,7 @@ import com.kingsrook.qqq.middleware.javalin.routeproviders.SpaPathUtils;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderAfterHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
+import com.kingsrook.qqq.middleware.javalin.specs.UiApiRouteAuditor;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.RealtimeStreamSpecV1;
 import io.javalin.Javalin;
@@ -95,6 +96,7 @@ public class QApplicationJavalinServer
    private Boolean                              serveFrontendNext                   = null;
    private String                               frontendMaterialDashboardHostedPath = "/";
    private boolean                              serveLegacyUnversionedMiddlewareAPI = true;
+   private Boolean                              strictUiApiRoutes                   = null;
    private List<AbstractMiddlewareVersion>      middlewareVersionList               = List.of(new MiddlewareVersionV1());
    private List<QJavalinRouteProviderInterface> additionalRouteProviders            = null;
    private Consumer<Javalin>                    javalinConfigurationCustomizer      = null;
@@ -321,6 +323,15 @@ public class QApplicationJavalinServer
             javalinConfigCustomizer.accept(config);
          }
       });
+
+      ///////////////////////////////////////////////////////////////////////////
+      // every route under a UI API version must be described by a spec - warn //
+      // about raw ones (or fail, in strict mode).  docs/UI-API-EXTENSIONS.md   //
+      ///////////////////////////////////////////////////////////////////////////
+      if(CollectionUtils.nullSafeHasContents(middlewareVersionList))
+      {
+         UiApiRouteAuditor.audit(service, middlewareVersionList, isStrictUiApiRoutes());
+      }
 
       /////////////////////////////////////////////////////////////////////
       // Service observers run after all route configuration is complete. //
@@ -623,6 +634,46 @@ public class QApplicationJavalinServer
    public QInstance getQInstance()
    {
       return (this.qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** The port the running service is bound to (differs from getPort when the
+    ** server was configured with port 0); the configured port before start.
+    *******************************************************************************/
+   public Integer getBoundPort()
+   {
+      return (service == null ? port : service.port());
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether routes under a UI API version without an endpoint spec fail startup
+    ** (true) or are only logged as warnings (false, the default).  When not set,
+    ** the system property qqq.uiApi.strictRoutes or the environment variable
+    ** QQQ_UI_API_STRICT_ROUTES decides.
+    *******************************************************************************/
+   public boolean isStrictUiApiRoutes()
+   {
+      if(strictUiApiRoutes != null)
+      {
+         return (strictUiApiRoutes);
+      }
+      String value = System.getProperty("qqq.uiApi.strictRoutes", System.getenv("QQQ_UI_API_STRICT_ROUTES"));
+      return ("true".equalsIgnoreCase(value));
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for strictUiApiRoutes
+    *******************************************************************************/
+   public QApplicationJavalinServer withStrictUiApiRoutes(boolean strictUiApiRoutes)
+   {
+      this.strictUiApiRoutes = strictUiApiRoutes;
+      return (this);
    }
 
 

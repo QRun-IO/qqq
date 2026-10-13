@@ -19,6 +19,10 @@ independently of QQQ's own release version.
   operation, parameter, property, schema, enum value or response code; changing a type or format;
   and making something required that was optional. v1 and v2 are then served side by side, and v1
   gets a sunset date here.
+- **One bump per QQQ release, not per PR.** All additive changes between two releases share one
+  MINOR. The contract test compares against the last *released* document (`baseline.yaml`), so
+  the version only has to be above the released one. Later PRs in the same release add their notes
+  to the open entry below.
 - **Clients must tolerate additions.** Ignore unknown properties, and treat unknown enum values as
   "other" (see `UI-API-CLIENTS.md`).
 - **Extensions.** Each extension (module or qbit, registered through
@@ -49,14 +53,30 @@ spec'd routes.
 
 ## Versions
 
-### 1.1.0 (QQQ 4.1.0-RC.6, unreleased)
+### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
+1.1.0 was never released; its additions ship here.
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.
 - Added the extension point: modules and qbits register endpoint specs
-  (`MiddlewareSpecExtensionsMetaData`); they are served under `/qqq/v1/qbit/{name}/...` (or an
-  established prefix: `/esb`, `/alerts`, `/assistant`, `/sql-workbench`) and included in the served
-  OpenAPI document.
+  (`MiddlewareSpecExtensionsMetaData`, `AbstractJsonEndpointSpec`); they are served under
+  `/qqq/v1/qbit/{name}/...` (or an established prefix: `/esb`, `/alerts`, `/assistant`,
+  `/sql-workbench`) and included in the served OpenAPI document. `UiApiInvoker` invokes spec'd
+  operations in-process with the caller's credentials.
 - `info.version` is now semver (it was `v1`).
+- `POST /widget/{name}`: its response is now typed as `WidgetData`, a discriminated union (by
+  `type`) of one schema per widget type, built from the backend's widget data classes. The request
+  body is documented as string inputs, which may also be sent as query parameters.
+  - This corrects the document to what the server always returned: the data itself, not a
+    `{widgetData}` wrapper.
+  - The contract test accepts the `$ref` change as a correction (`accepted-breaking-changes.txt`).
+- `FieldAdornment.type` now lists every adornment type (adds FILE_UPLOAD and TOOLTIP).
+  `FieldAdornment.values` documents its known keys.
+- `FrontendComponent.type` now lists every component type (adds the three BULK_LOAD forms).
+- Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
+
+**Accepted corrections.** A change the checker reports as breaking can be accepted only when it
+corrects the document to the server's actual, unchanged behaviour. List it, with the reason, in
+`openapi/v1/accepted-breaking-changes.txt`. The list is cleared when the baseline is refreshed.
 
 ### 1.0.0 (baseline)
 - The 32 operations of QQQ 4.1.0-RC.5: authentication, session, metaData, tables (query, count,

@@ -21,8 +21,11 @@
 package com.kingsrook.qqq.backend.core.modules.backend.implementations.memory;
 
 
+import java.util.EnumSet;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOutput;
 
@@ -54,4 +57,15 @@ public class MemoryAggregateAction implements AggregateInterface
       }
    }
 
+
+
+
+   /*******************************************************************************
+    ** Memory implements all analysis extensions.
+    *******************************************************************************/
+   @Override
+   public Set<AggregateCapability> getSupportedCapabilities(AggregateInput input)
+   {
+      return (EnumSet.allOf(AggregateCapability.class));
+   }
 }

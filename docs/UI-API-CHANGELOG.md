@@ -81,6 +81,10 @@ spec'd routes.
     default wall that keeps the assistant away from its own configuration, identity, permissions,
     audits, API keys, credentials and secrets.
 - Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
+- Added related-record pickers (`docs/RELATED-RECORD-PICKER.md`): the operations
+  `POST /table/{tableName}/relatedRecordPicker/{pickerName}/query|prepare|add|remove` with the
+  `RelatedRecordPicker{Query,Prepare,Add,Remove}ResponseV1` schemas, and the table metadata
+  properties `relatedRecordPickers` (`RelatedRecordPicker` schema) and `quickCreateSectionName`.
 
 **Accepted corrections.** A change the checker reports as breaking can be accepted only when it
 corrects the document to the server's actual, unchanged behaviour. List it, with the reason, in

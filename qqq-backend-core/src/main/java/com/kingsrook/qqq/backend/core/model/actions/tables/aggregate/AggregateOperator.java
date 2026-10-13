@@ -31,7 +31,19 @@ public enum AggregateOperator
    SUM("SUM("),
    MIN("MIN("),
    MAX("MAX("),
-   AVG("AVG(");
+   AVG("AVG("),
+   STDDEV_SAMP(null),
+   STDDEV_POP(null),
+   VAR_SAMP(null),
+   VAR_POP(null),
+   PERCENTILE_CONT(null),
+   PERCENTILE_DISC(null),
+   CORR(null),
+   COUNT_NULL(null),
+   COUNT_BLANK(null),
+   MIN_LENGTH(null),
+   MAX_LENGTH(null),
+   AVG_LENGTH(null);
 
    private final String sqlPrefix;
 

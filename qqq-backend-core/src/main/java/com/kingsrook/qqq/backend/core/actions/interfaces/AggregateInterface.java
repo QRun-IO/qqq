@@ -21,7 +21,9 @@
 package com.kingsrook.qqq.backend.core.actions.interfaces;
 
 
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOutput;
 
@@ -36,4 +38,14 @@ public interface AggregateInterface extends BaseQueryInterface
     **
     *******************************************************************************/
    AggregateOutput execute(AggregateInput aggregateInput) throws QException;
+
+
+
+   /*******************************************************************************
+    ** Optional aggregate extensions supported by this backend.
+    *******************************************************************************/
+   default Set<AggregateCapability> getSupportedCapabilities(AggregateInput input)
+   {
+      return (Set.of());
+   }
 }

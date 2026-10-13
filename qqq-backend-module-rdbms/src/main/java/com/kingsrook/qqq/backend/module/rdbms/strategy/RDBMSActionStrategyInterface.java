@@ -22,19 +22,27 @@ package com.kingsrook.qqq.backend.module.rdbms.strategy;
 
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 
 
 /*******************************************************************************
@@ -154,5 +162,45 @@ public interface RDBMSActionStrategyInterface
        **
        *******************************************************************************/
       void processResultSet(ResultSet rs) throws SQLException, QException;
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional extensions; third-party strategies remain source compatible.
+    *******************************************************************************/
+   default Set<AggregateCapability> getSupportedAggregateCapabilities(AggregateInput input)
+   {
+      return (Set.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** Render the complete aggregate expression. Operands are resolved SQL, never client field names.
+    *******************************************************************************/
+   default String getAggregateExpression(AggregateOperator operator, String columnExpression, String otherColumnExpression, Aggregate aggregate, RDBMSBackendMetaData backend, List<Serializable> params)
+   {
+      return (operator.getSqlPrefix() + columnExpression + ")");
+   }
+
+
+
+   /*******************************************************************************
+    ** Render a bucket around an already resolved SQL column.
+    *******************************************************************************/
+   default String getGroupByBucketExpression(GroupBy group, String column, QFieldType sourceType, RDBMSBackendMetaData backend, List<Serializable> params)
+   {
+      throw (new UnsupportedOperationException("Bucketed grouping is not supported"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Sample only the main table; called before rendering any joins.
+    *******************************************************************************/
+   default String getSampledTableExpression(String table, String alias, BigDecimal percent, List<Serializable> params)
+   {
+      return (table + " AS " + alias);
    }
 }

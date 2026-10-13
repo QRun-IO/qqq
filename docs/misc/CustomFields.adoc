@@ -1,0 +1,113 @@
+= Custom fields
+
+`JsonPathStorage` maps ordinary `QFieldMetaData` to a key in a shared backend JSON column.
+Runtime providers can publish these fields without rebuilding the application.
+The host owns schema migrations; refreshing metadata never runs DDL.
+
+== Storage declaration
+
+[source,java]
+----
+new QFieldMetaData("priority", QFieldType.INTEGER)
+   .withBackendStorage(new JsonPathStorage()
+      .withColumnName("qqq_custom_fields")
+      .withKey("priority"));
+----
+
+`FieldBackendStorage` is the extensible storage contract. Storage declarations are cloned
+with their fields. A storage declaration overrides the field's `backendName`.
+
+* The JSON column must not also be declared as a normal table field, including a normal
+  field whose `backendName` points to that column.
+* Keys match `[a-z][a-z0-9_]{0,40}`. Two logical fields cannot share a column/key pair.
+* Supported types: STRING, TEXT, INTEGER, LONG, DECIMAL, BOOLEAN, DATE and DATE_TIME.
+* Reads expose typed values under the logical field name. The backing column is internal.
+* Inserts collect non-null values into one object per JSON column.
+* Updates include only fields present in the update record. Null removes a key; an absent
+  field leaves its key unchanged. Empty strings remain values.
+
+== Backend support
+
+[cols="1,3"]
+|===
+|Backend |Support
+|PostgreSQL |JSONB insert, typed select, filters, ordering, aggregation/grouping and atomic key merges.
+|Memory |Nested maps, typed projection, filters, ordering and key merges; no schema needed.
+|H2 |Unsupported for JsonPathStorage. Use memory for portable unit tests and PostgreSQL Testcontainers for SQL integration tests.
+|MySQL |Not implemented in this phase. Ordinary fields continue using the existing dialect.
+|MongoDB |Not implemented in this phase.
+|===
+
+Unsupported RDBMS dialects reject JsonPathStorage operations explicitly. No test-only
+H2 aliases are installed. H2 has a https://github.com/h2database/h2database/issues/4001[simplified JSON accessor],
+but lacks the extraction and merge functions needed for this dialect implementation.
+This phase deliberately implements the complete storage contract only for PostgreSQL and memory. The qbit's EAV fallback,
+field designer, schema availability checks and index management are separate work.
+
+=== PostgreSQL
+
+The host migration adds the column and, optionally, a containment index:
+
+[source,sql]
+----
+ALTER TABLE orders ADD COLUMN qqq_custom_fields jsonb NOT NULL DEFAULT '{}';
+CREATE INDEX orders_custom_fields_gin ON orders
+   USING gin (qqq_custom_fields jsonb_path_ops);
+----
+
+STRING and TEXT read with `(column->>'key')`. Other types append `::integer`, `::bigint`,
+`::numeric`, `::boolean`, `::date` or `::timestamptz`. The same expression is used for
+selection, range predicates, ordering, aggregates and group-by. Dates and instants are
+stored as ISO strings; numbers and booleans are native JSON scalar values.
+
+Equality uses `column @> ?::jsonb` with one typed JSON object parameter. IN is an OR
+of these containment predicates, one parameter per alternative, allowing a GIN index.
+Case-insensitive or field-function comparisons use the typed expression instead.
+Ranges and sorting can benefit from host-managed expression indexes.
+
+Updates use:
+
+[source,sql]
+----
+column = (COALESCE(column, '{}'::jsonb) || ?::jsonb) - ?::text[]
+----
+
+The first parameter contains changed non-null keys; the second lists changed null keys.
+The merge executes inside PostgreSQL's row update, so concurrent updates of different keys
+survive. Updates to the same key have ordinary database last-writer semantics.
+
+== Runtime field overlay
+
+Register a `RuntimeMetaDataProviderInterface` through
+`RecordFeaturesMetaData.ofOrWithNew(instance).withRuntimeProviders(...)`.
+Its contribution can include fields, virtual fields, section placement, search field names,
+feature overrides and a generation:
+
+[source,java]
+----
+return new RuntimeMetaDataContribution()
+   .withGeneration(revision)
+   .withTables(Map.of("order", new RuntimeTableMetaDataContribution()
+      .withFields(List.of(priorityField))
+      .withSectionPlacements(Map.of("priority", "customFields"))
+      .withSearchFields(List.of("priority"))));
+----
+
+Call `RuntimeMetaDataOverlay.refresh(instance)` after the provider's data is committed.
+Each refresh gathers providers, clones affected tables, removes the overlay's former fields,
+applies the new contributions, and runs table enrichment and validation. Code-defined names
+win clashes, which are logged. An invalid table keeps its previous published metadata while
+valid tables can advance. Removing a provider or a field removes its prior contribution.
+
+New sections are appended after existing sections, labeled "Custom fields", at tier T2.
+Stored fields without explicit placement use `customFields`. Hidden and virtual fields are not
+automatically placed in base sections; virtual fields retain their existing table presentation rules.
+Search fields must satisfy the normal table search validation rules.
+
+Validated replacements publish through one copy-on-write table map under the instance lock.
+The instance's startup validation state is preserved. Readers holding an older table object
+may finish using it; new metadata lookups see the replacement. Refresh increments
+`metaDataGeneration` (or adopts a higher provider generation). Frontend metadata and the v1
+metadata endpoints read the current fields and generation. Consumers should refetch when the
+generation changes. Polling, after-commit registration and cross-pod notifications belong to
+the runtime provider/qbit integration.

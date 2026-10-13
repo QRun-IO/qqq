@@ -281,7 +281,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
                   String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
                   String         realFieldName  = virtualField.getFieldFunction().getFieldName();
                   QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-                  String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
+                  String         columnName     = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
 
                   FieldFunction                      fieldFunction              = virtualField.getFieldFunction();
                   RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter       = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
@@ -331,7 +331,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
             String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
             String         realFieldName  = virtualField.getFieldFunction().getFieldName();
             QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-            String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
+            String         columnName     = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
 
             QTableMetaData                     fieldTable           = joinsContext.getTable(fieldTableName);
             FieldFunction                      fieldFunction        = virtualField.getFieldFunction();
@@ -343,7 +343,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
          }
          else
          {
-            columnExpression = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
+            columnExpression = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
          }
 
          rs.add(aggregate.getOperator().getSqlPrefix() + columnExpression + ")");

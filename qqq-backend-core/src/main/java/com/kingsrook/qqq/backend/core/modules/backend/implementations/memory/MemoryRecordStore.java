@@ -74,6 +74,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
@@ -87,6 +88,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsUti
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.utils.BackendQueryFilterUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonFieldUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
@@ -430,6 +432,11 @@ public class MemoryRecordStore
       {
          QRecord recordToReturn = new QRecord(storedRecord);
          recordToReturn.setTableName(input.getTableName());
+         JsonFieldUtils.project(recordToReturn, input.getTable(), "");
+         for(QueryJoin queryJoin : queryJoins)
+         {
+            JsonFieldUtils.project(recordToReturn, personalizedTables.get(queryJoin.getJoinTable()), queryJoin.getJoinTableOrItsAlias() + ".");
+         }
          if(BackendQueryFilterUtils.doesRecordMatch(filter, joinsContext, recordToReturn))
          {
             addVirtualFieldsToRecord(recordToReturn, input.getTable(), null, input.getFieldNamesToInclude(), joinsContext);
@@ -786,7 +793,16 @@ public class MemoryRecordStore
 
             if(CollectionUtils.nullSafeHasContents(recordToInsert.getErrors()))
             {
-               outputRecords.add(recordToInsert);
+               if(table.getFields().values().stream().anyMatch(field -> field.getBackendStorage() instanceof JsonPathStorage))
+               {
+                  QRecord projected = new QRecord(recordToInsert);
+                  JsonFieldUtils.project(projected, table, "");
+                  outputRecords.add(projected);
+               }
+               else
+               {
+                  outputRecords.add(recordToInsert);
+               }
                continue;
             }
 
@@ -805,7 +821,16 @@ public class MemoryRecordStore
             if(key == null || existingKeys.contains(key))
             {
                recordToInsert.addError(new BadInputStatusMessage(key == null ? "A primary key is required" : "A record with this primary key already exists"));
-               outputRecords.add(recordToInsert);
+               if(table.getFields().values().stream().anyMatch(field -> field.getBackendStorage() instanceof JsonPathStorage))
+               {
+                  QRecord projected = new QRecord(recordToInsert);
+                  JsonFieldUtils.project(projected, table, "");
+                  outputRecords.add(projected);
+               }
+               else
+               {
+                  outputRecords.add(recordToInsert);
+               }
                continue;
             }
 
@@ -817,11 +842,35 @@ public class MemoryRecordStore
                nextSerial = recordToInsert.getValueInteger(primaryKeyField.getName()) + 1;
             }
 
+            QRecord logicalValues = new QRecord(recordToInsert);
+            for(QFieldMetaData field : table.getFields().values())
+            {
+               if(field.getBackendStorage() instanceof JsonPathStorage)
+               {
+                  recordToInsert.getValues().remove(field.getName());
+               }
+            }
+            for(QFieldMetaData field : table.getFields().values())
+            {
+               if(field.getBackendStorage() instanceof JsonPathStorage)
+               {
+                  JsonFieldUtils.write(recordToInsert, field, logicalValues.getValue(field.getName()));
+               }
+            }
             tableData.put(recordToInsert.getValue(primaryKeyField.getName()), recordToInsert);
             existingKeys.add(key);
             if(returnInsertedRecords)
             {
-               outputRecords.add(recordToInsert);
+               if(table.getFields().values().stream().anyMatch(field -> field.getBackendStorage() instanceof JsonPathStorage))
+               {
+                  QRecord projected = new QRecord(recordToInsert);
+                  JsonFieldUtils.project(projected, table, "");
+                  outputRecords.add(projected);
+               }
+               else
+               {
+                  outputRecords.add(recordToInsert);
+               }
             }
          }
 
@@ -959,52 +1008,54 @@ public class MemoryRecordStore
 
       List<QRecord>  outputRecords   = new ArrayList<>();
       QFieldMetaData primaryKeyField = table.getField(table.getPrimaryKeyField());
-      for(QRecord record : input.getRecords())
+      synchronized(tableData)
       {
-         Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
-
-         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         for(QRecord record : input.getRecords())
          {
-            outputRecords.add(record);
-            continue;
-         }
+            Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
 
-         if(tableData.containsKey(primaryKeyValue))
-         {
-            QRecord recordToUpdate = tableData.get(primaryKeyValue);
-            for(Map.Entry<String, Serializable> valueEntry : record.getValues().entrySet())
-            {
-               if(!table.getFields().containsKey(valueEntry.getKey()))
-               {
-                  /////////////////////////////////////////////////////////////
-                  // don't update values in fields that aren't in the table  //
-                  // (or that the user doesn't have, due to personalization) //
-                  /////////////////////////////////////////////////////////////
-                  continue;
-               }
-
-               String fieldName = valueEntry.getKey();
-               try
-               {
-                  ///////////////////////////////////////////////
-                  // try to make field values match field type //
-                  ///////////////////////////////////////////////
-                  recordToUpdate.setValue(fieldName, ValueUtils.getValueAsFieldType(table.getField(fieldName).getType(), valueEntry.getValue()));
-               }
-               catch(Exception e)
-               {
-                  LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", valueEntry.getValue()));
-                  recordToUpdate.setValue(fieldName, valueEntry.getValue());
-               }
-            }
-
-            if(returnUpdatedRecords)
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
             {
                outputRecords.add(record);
+               continue;
+            }
+
+            if(tableData.containsKey(primaryKeyValue))
+            {
+               QRecord recordToUpdate = tableData.get(primaryKeyValue);
+               for(Map.Entry<String, Serializable> valueEntry : record.getValues().entrySet())
+               {
+                  if(!table.getFields().containsKey(valueEntry.getKey()))
+                  {
+                     /////////////////////////////////////////////////////////////
+                     // don't update values in fields that aren't in the table  //
+                     // (or that the user doesn't have, due to personalization) //
+                     /////////////////////////////////////////////////////////////
+                     continue;
+                  }
+
+                  String fieldName = valueEntry.getKey();
+                  try
+                  {
+                     ///////////////////////////////////////////////
+                     // try to make field values match field type //
+                     ///////////////////////////////////////////////
+                     JsonFieldUtils.write(recordToUpdate, table.getField(fieldName), ValueUtils.getValueAsFieldType(table.getField(fieldName).getType(), valueEntry.getValue()));
+                  }
+                  catch(Exception e)
+                  {
+                     LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", valueEntry.getValue()));
+                     recordToUpdate.setValue(fieldName, valueEntry.getValue());
+                  }
+               }
+
+               if(returnUpdatedRecords)
+               {
+                  outputRecords.add(record);
+               }
             }
          }
       }
-
       return (outputRecords);
    }
 

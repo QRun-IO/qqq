@@ -55,6 +55,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunct
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunctionTypeRegistry;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonFieldUtils;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
@@ -309,7 +310,8 @@ public class BackendQueryFilterUtils
    private static Serializable getValue(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord, JoinsContext joinsContext)
    {
       String       fieldName = criterion.getFieldName();
-      Serializable value     = qRecord.getValue(fieldName);
+      String prefix = fieldName.contains(".") ? fieldName.substring(0, fieldName.lastIndexOf('.') + 1) : "";
+      Serializable value = field == null ? qRecord.getValue(fieldName) : JsonFieldUtils.read(qRecord, field, prefix);
 
       if(value == null)
       {
@@ -324,7 +326,7 @@ public class BackendQueryFilterUtils
             Map<String, Serializable> values = qRecord.getValues();
             if(values.keySet().stream().noneMatch(n -> n.contains(".")) || parts[0].equals(qRecord.getTableName()))
             {
-               value = qRecord.getValue(parts[1]);
+               value = field == null ? qRecord.getValue(parts[1]) : JsonFieldUtils.read(qRecord, field, "");
             }
          }
       }
@@ -798,6 +800,7 @@ public class BackendQueryFilterUtils
       ////////////////////////////////////////////////////////////////////////////////////////////////////
       // figure out if any order-bys need to have a field-function used to apply to valuels for sorting //
       ////////////////////////////////////////////////////////////////////////////////////////////////////
+      Map<String, QFieldMetaData> sortFields = new HashMap<>();
       Map<String, FieldFunctionType> fieldFunctionTypes = new HashMap<>();
       Map<String, FieldFunction>     fieldFunctions     = new HashMap<>();
       if(joinsContext != null)
@@ -810,6 +813,7 @@ public class BackendQueryFilterUtils
             }
 
             JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(orderBy.getFieldName(), true);
+            sortFields.put(orderBy.getFieldName(), fieldAndTableNameOrAlias.field());
             if(fieldAndTableNameOrAlias.field() instanceof QVirtualFieldMetaData virtualField)
             {
                FieldFunction fieldFunction = virtualField.getFieldFunction();
@@ -835,6 +839,13 @@ public class BackendQueryFilterUtils
 
             Serializable valueA = a.getValue(orderBy.getFieldName());
             Serializable valueB = b.getValue(orderBy.getFieldName());
+            QFieldMetaData sortField = sortFields.get(orderBy.getFieldName());
+            if(sortField != null && sortField.getBackendStorage() != null)
+            {
+               QFilterCriteria readCriteria = new QFilterCriteria().withFieldName(orderBy.getFieldName());
+               valueA = getValue(readCriteria, sortField, a, joinsContext);
+               valueB = getValue(readCriteria, sortField, b, joinsContext);
+            }
 
             //////////////////////////////////////
             // apply a field function if needed //

@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 
@@ -155,4 +156,44 @@ public interface RDBMSActionStrategyInterface
        *******************************************************************************/
       void processResultSet(ResultSet rs) throws SQLException, QException;
    }
+
+
+   /*******************************************************************************
+    ** Render a typed JSON path. Unsupported dialects fail explicitly.
+    *******************************************************************************/
+   default String jsonPathExpression(String column, JsonPathStorage storage, QFieldType type)
+   {
+      throw (new UnsupportedOperationException("JsonPathStorage requires PostgreSQL or the memory backend"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Placeholder for a serialized JSON object.
+    *******************************************************************************/
+   default String jsonObjectPlaceholder()
+   {
+      throw (new UnsupportedOperationException("JsonPathStorage requires PostgreSQL or the memory backend"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Atomic merge assignment for non-null keys and removed keys.
+    *******************************************************************************/
+   default String jsonMergeAssignment(String column)
+   {
+      throw (new UnsupportedOperationException("JsonPathStorage requires PostgreSQL or the memory backend"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional indexed JSON predicate. Values are already typed; replace bind values when used.
+    *******************************************************************************/
+   default String jsonPathPredicate(String column, QFieldMetaData field, QFilterCriteria criterion, List<Serializable> values)
+   {
+      return (null);
+   }
+
 }

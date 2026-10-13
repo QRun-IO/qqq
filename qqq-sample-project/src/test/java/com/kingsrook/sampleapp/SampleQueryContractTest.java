@@ -129,7 +129,12 @@ class SampleQueryContractTest
          entry(new QFilterCriteria("boundedValue", QCriteriaOperator.NOT_BETWEEN, 10, 20), Set.of("Beta")),
          entry(new QFilterCriteria("name", QCriteriaOperator.TRUE), Set.of("Alpha", "Alphabet", "Beta", "Empty", "Null")),
          entry(new QFilterCriteria("name", QCriteriaOperator.FALSE), Set.of()));
-      assertEquals(Set.copyOf(Arrays.asList(QCriteriaOperator.values())), cases.keySet().stream().map(QFilterCriteria::getOperator).collect(Collectors.toSet()));
+      ///////////////////////////////////////////////////////////////////////
+      // CONTAINS_ALL is only valid on virtual fields with a criteria       //
+      // expander (core expands it before any backend), so not on a column //
+      ///////////////////////////////////////////////////////////////////////
+      Set<QCriteriaOperator> columnOperators = Arrays.stream(QCriteriaOperator.values()).filter(operator -> operator != QCriteriaOperator.CONTAINS_ALL).collect(Collectors.toSet());
+      assertEquals(columnOperators, cases.keySet().stream().map(QFilterCriteria::getOperator).collect(Collectors.toSet()));
       for(Map.Entry<QFilterCriteria, Set<String>> testCase : cases.entrySet())
       {
          List<QRecord> records = QueryAction.execute(TABLE, new QQueryFilter(testCase.getKey()));

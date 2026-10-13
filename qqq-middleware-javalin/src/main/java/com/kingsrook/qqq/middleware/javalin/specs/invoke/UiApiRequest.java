@@ -41,6 +41,7 @@ public class UiApiRequest
    private Map<String, String> formParams;
    private Object              jsonBody;
    private UiApiCredentials    credentials;
+   private String              clientDetail;
    private String              userTimezone;
    private String              invokedBy;
    private Duration            timeout     = Duration.ofSeconds(60);
@@ -230,6 +231,28 @@ public class UiApiRequest
    public Object getJsonBody()
    {
       return (this.jsonBody);
+   }
+
+
+
+   /*******************************************************************************
+    ** Detail appended to the invoker's client channel (channel/detail), e.g.
+    ** the assistant turn id.  Letters, digits and . _ : - only.
+    *******************************************************************************/
+   public UiApiRequest withClientDetail(String clientDetail)
+   {
+      this.clientDetail = clientDetail;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientDetail
+    *******************************************************************************/
+   public String getClientDetail()
+   {
+      return (this.clientDetail);
    }
 
 

@@ -48,10 +48,10 @@ import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipeBufferedWrappe
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.CurrentUserFilterHelper;
-import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.SelectionValidationHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocessor;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -212,8 +212,8 @@ public class QueryAction
       queryInput.setTableMetaData(table);
       queryInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, queryInput.getFilter(), queryInput.getTransaction()));
 
+      QueryFilterPreprocessor.prepare(queryInput);
       validateFieldNamesToInclude(queryInput);
-      FilterValidationHelper.validateFieldNamesInFilter(queryInput);
       QBackendMetaData backend = queryInput.getBackend();
       postQueryRecordCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_QUERY_RECORD.getRole());
       this.queryInput = queryInput;

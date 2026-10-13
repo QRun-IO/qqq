@@ -60,7 +60,8 @@ public class TestExtensionSpecs
          .withName("test-ext")
          .withSemanticVersion("1.2.3")
          .withDescription("Test extension")
-         .withSpec(EchoSpec.class));
+         .withSpec(EchoSpec.class)
+         .withSpec(JsonSumSpec.class));
    }
 
 
@@ -253,6 +254,86 @@ public class TestExtensionSpecs
       public BasicResponse defineBasicSuccessResponse()
       {
          return (new BasicResponse("Successful Response", TestExtEchoResponseV1.class.getSimpleName()));
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** POST /qbit/test-ext/sum/{label}?scale= with body {"numbers": [..]}
+    ** - an AbstractJsonEndpointSpec
+    ***************************************************************************/
+   public static class JsonSumSpec extends AbstractJsonEndpointSpec
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public BasicOperation defineBasicOperation()
+      {
+         return (new BasicOperation()
+            .withPath("/qbit/test-ext/sum/{label}")
+            .withHttpMethod(HttpMethod.POST)
+            .withShortSummary("Sum numbers")
+            .withLongDescription("Sums the numbers in the body, times the scale."));
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      protected Schema defineRequestBodySchema()
+      {
+         return (new Schema().withType(Type.OBJECT).withProperties(Map.of("numbers", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.NUMBER)))));
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      protected String getResponseSchemaName()
+      {
+         return ("TestExtSumResponseV1");
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public Map<String, Schema> defineComponentSchemas()
+      {
+         return (Map.of("TestExtSumResponseV1", new Schema().withType(Type.OBJECT).withProperties(Map.of(
+            "label", new Schema().withType(Type.STRING),
+            "sum", new Schema().withType(Type.NUMBER),
+            "note", new Schema().withType(Type.STRING).withNullable(true)))));
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      protected Object handle(JsonInput input) throws Exception
+      {
+         Integer scale = input.getQueryParamInteger("scale");
+         double  sum   = 0;
+         for(Object number : (List<?>) input.getBody().getOrDefault("numbers", List.of()))
+         {
+            sum += ((Number) number).doubleValue();
+         }
+
+         Map<String, Object> rs = new java.util.LinkedHashMap<>();
+         rs.put("label", input.getPathParam("label"));
+         rs.put("sum", sum * (scale == null ? 1 : scale));
+         rs.put("note", input.getQueryParam("note"));
+         return (rs);
       }
    }
 

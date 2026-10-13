@@ -37,6 +37,9 @@ import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.tables.query.CriteriaExpansionContext;
+import com.kingsrook.qqq.backend.core.actions.tables.query.SearchTermKind;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldCriteriaExpanderInterface;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -67,6 +70,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -437,7 +441,8 @@ public class RecordSearchAction
     *******************************************************************************/
    private TableSearch searchTable(RecordSearchInput input, QTableMetaData table, QTableMetaData personalized, SearchParameters parameters) throws QException
    {
-      String searchTerm = parameters.searchTerm();
+      String searchTerm = parameters.searchTerm().trim();
+      boolean tagSearch = searchTerm.startsWith("#") && searchTerm.length() > 1;
 
       ////////////////////////////////////////////////////////////////////////////
       // search only the fields this session can see (personalization may      //
@@ -452,6 +457,21 @@ public class RecordSearchAction
             continue;
          }
 
+         if(field instanceof QVirtualFieldMetaData virtualField && virtualField.getCriteriaExpander() != null)
+         {
+            CriteriaExpansionContext context = new CriteriaExpansionContext(QContext.getQInstance(), QContext.getQSession(), null);
+            QQueryFilter expanded = QCodeLoader.getAdHoc(VirtualFieldCriteriaExpanderInterface.class, virtualField.getCriteriaExpander())
+               .expandSearchTerm(personalized, tagSearch ? searchTerm.substring(1) : searchTerm, tagSearch ? SearchTermKind.TAG : SearchTermKind.TEXT, context);
+            if(expanded != null)
+            {
+               filter.addSubFilter(expanded);
+            }
+            continue;
+         }
+         if(tagSearch)
+         {
+            continue;
+         }
          if(field.getType().isStringLike())
          {
             filter.withCriteria(new QFilterCriteria(fieldName, QCriteriaOperator.CONTAINS, searchTerm).withOption(CriteriaOption.CASE_INSENSITIVE));
@@ -466,7 +486,7 @@ public class RecordSearchAction
          }
       }
 
-      if(CollectionUtils.nullSafeIsEmpty(filter.getCriteria()))
+      if(!filter.hasAnyCriteria())
       {
          return (new TableSearch(new ArrayList<>(), false, null));
       }
@@ -621,6 +641,14 @@ public class RecordSearchAction
    private static QFieldMetaData visibleField(QTableMetaData personalized, String fieldName)
    {
       QFieldMetaData field = fieldName == null || personalized == null ? null : personalized.getFields().get(fieldName);
+      if(field == null && personalized != null)
+      {
+         QVirtualFieldMetaData virtualField = CollectionUtils.nonNullMap(personalized.getVirtualFields()).get(fieldName);
+         if(virtualField != null && virtualField.getCriteriaExpander() != null)
+         {
+            field = virtualField;
+         }
+      }
       if(field == null || field.getIsHidden() || field.getType() == null || field.getType().needsMasked())
       {
          return (null);

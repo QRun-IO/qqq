@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.module.rdbms.actions;
 
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -361,10 +362,20 @@ public abstract class AbstractRDBMSAction
     *******************************************************************************/
    protected String makeFromClause(QInstance instance, String tableName, JoinsContext joinsContext, List<Serializable> params)
    {
+      return (makeFromClause(instance, tableName, joinsContext, params, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Aggregate-only overload adds sampling to the main table before joins.
+    *******************************************************************************/
+   protected String makeFromClause(QInstance instance, String tableName, JoinsContext joinsContext, List<Serializable> params, BigDecimal samplePercent)
+   {
       //////////////////////////////////////////////////////////////////////
       // start with the main table - un-aliased (well, aliased as itself) //
       //////////////////////////////////////////////////////////////////////
-      StringBuilder rs = new StringBuilder(escapeIdentifier(getTableName(joinsContext.getTable(tableName))) + " AS " + escapeIdentifier(tableName));
+      StringBuilder rs = new StringBuilder(getActionStrategy().getSampledTableExpression(escapeIdentifier(getTableName(joinsContext.getTable(tableName))), escapeIdentifier(tableName), samplePercent, params));
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////
       // sort the query joins from the main table "outward"...                                              //
@@ -1007,6 +1018,7 @@ public abstract class AbstractRDBMSAction
       JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(groupBy.getFieldName(), true /* allowVirtualFields */);
       QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
 
+      int firstColumnParam = params.size();
       String fullFieldName;
       if(field instanceof QVirtualFieldMetaData virtualField && virtualField.getFieldFunction() != null)
       {
@@ -1032,6 +1044,14 @@ public abstract class AbstractRDBMSAction
          fullFieldName = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
       }
 
+      if(groupBy.getBucket() != null)
+      {
+         List<Serializable> columnParams = new ArrayList<>(params.subList(firstColumnParam, params.size()));
+         params.subList(firstColumnParam, params.size()).clear();
+         List<Serializable> bucketParams = new ArrayList<>();
+         String template = getActionStrategy().getGroupByBucketExpression(groupBy, "@column@", field.getType(), backendMetaData, bucketParams);
+         return (bindExpressionTemplate(template, fullFieldName, columnParams, "", List.of(), bucketParams, params));
+      }
       if(groupBy.getFormatString() == null)
       {
          return (fullFieldName);
@@ -1314,5 +1334,47 @@ public abstract class AbstractRDBMSAction
    protected RDBMSActionStrategyInterface getActionStrategy()
    {
       return (this.actionStrategy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Expand resolved operands while preserving bind order, including repeated virtual-field operands.
+    *******************************************************************************/
+   protected String bindExpressionTemplate(String template, String column, List<Serializable> columnParams, String otherColumn,
+      List<Serializable> otherParams, List<Serializable> expressionParams, List<Serializable> params)
+   {
+      StringBuilder sql = new StringBuilder();
+      int parameter = 0;
+      boolean quoted = false;
+      for(int i = 0; i < template.length();)
+      {
+         if(template.startsWith("@column@", i))
+         {
+            sql.append(column);
+            params.addAll(columnParams);
+            i += "@column@".length();
+         }
+         else if(template.startsWith("@other@", i))
+         {
+            sql.append(otherColumn);
+            params.addAll(otherParams);
+            i += "@other@".length();
+         }
+         else
+         {
+            char character = template.charAt(i++);
+            sql.append(character);
+            if(character == '\'')
+            {
+               quoted = !quoted;
+            }
+            else if(character == '?' && !quoted)
+            {
+               params.add(expressionParams.get(parameter++));
+            }
+         }
+      }
+      return (sql.toString());
    }
 }

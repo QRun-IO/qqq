@@ -29,7 +29,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
@@ -43,10 +42,13 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -54,12 +56,24 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucket;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucketUnit;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.NumericBucket;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.core.utils.aggregates.AggregateAnalysis;
+import com.kingsrook.qqq.backend.module.rdbms.jdbc.ConnectionManager;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
@@ -69,6 +83,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
 {
    private static final QLogger LOG = QLogger.getLogger(BaseRDBMSActionStrategy.class);
+
+   private static final Map<RDBMSBackendMetaData, Map<String, Boolean>> MYSQL_TIME_ZONE_SUPPORT = new WeakHashMap<>();
 
    private static final int MILLIS_PER_SECOND = 1000;
 
@@ -960,4 +976,213 @@ public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
       return (RDBMSActionStrategyInterface.super.beginConsistentRead(connection, input));
    }
 
+
+
+
+   /*******************************************************************************
+    ** H2 supports ordered-set aggregates; MySQL supports the remaining extensions.
+    *******************************************************************************/
+   @Override
+   public Set<AggregateCapability> getSupportedAggregateCapabilities(AggregateInput input)
+   {
+      RDBMSBackendMetaData backend = (RDBMSBackendMetaData) input.getBackend();
+      if(!isH2(backend) && !RDBMSBackendMetaData.VENDOR_MYSQL.equals(backend.getVendor()) && !RDBMSBackendMetaData.VENDOR_AURORA_MYSQL.equals(backend.getVendor()))
+      {
+         return (Set.of());
+      }
+      Set<AggregateCapability> capabilities = EnumSet.allOf(AggregateCapability.class);
+      if(!isH2(backend))
+      {
+         capabilities.remove(AggregateCapability.PERCENTILE);
+         capabilities.remove(AggregateCapability.CORRELATION);
+         if(AggregateAnalysis.requiredCapabilities(input).contains(AggregateCapability.DATE_BUCKET)
+            && !mysqlSupportsTimeZone(backend, getBucketTimeZone(ValueUtils.getSessionOrInstanceZoneId())))
+         {
+            capabilities.remove(AggregateCapability.DATE_BUCKET);
+         }
+      }
+      return (capabilities);
+   }
+
+
+
+   /*******************************************************************************
+    ** Cache CONVERT_TZ availability per backend and zone, including missing named-zone tables.
+    *******************************************************************************/
+   private boolean mysqlSupportsTimeZone(RDBMSBackendMetaData backend, String zone)
+   {
+      synchronized(MYSQL_TIME_ZONE_SUPPORT)
+      {
+         Map<String, Boolean> zones = MYSQL_TIME_ZONE_SUPPORT.computeIfAbsent(backend, ignored -> new HashMap<>());
+         if(zones.containsKey(zone))
+         {
+            return (zones.get(zone));
+         }
+         try(Connection connection = ConnectionManager.getConnection(backend);
+             PreparedStatement statement = connection.prepareStatement("SELECT CONVERT_TZ('2000-01-01 00:00:00','+00:00',?)"))
+         {
+            statement.setString(1, zone);
+            try(ResultSet result = statement.executeQuery())
+            {
+               boolean supported = result.next() && result.getObject(1) != null;
+               zones.put(zone, supported);
+               return (supported);
+            }
+         }
+         catch(SQLException e)
+         {
+            // A transient connection failure must not poison the cached zone support.
+            LOG.warn("Unable to probe MySQL date bucket timezone", e, logPair("backend", backend.getName()), logPair("zone", zone));
+            return (false);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** SQL offset parameters use ISO signs and an explicit zero offset instead of Z.
+    *******************************************************************************/
+   protected String getBucketTimeZone(ZoneId zone)
+   {
+      if(zone.normalized() instanceof ZoneOffset offset)
+      {
+         return (ZoneOffset.UTC.equals(offset) ? "+00:00" : offset.getId());
+      }
+      return (zone.getId());
+   }
+
+
+
+   /*******************************************************************************
+    ** Use explicit backend metadata to identify H2.
+    *******************************************************************************/
+   protected boolean isH2(RDBMSBackendMetaData backend)
+   {
+      return (RDBMSBackendMetaData.VENDOR_H2.equals(backend.getVendor()));
+   }
+
+
+
+   /*******************************************************************************
+    ** ANSI aggregate functions used by H2 and MySQL where supported.
+    *******************************************************************************/
+   @Override
+   public String getAggregateExpression(AggregateOperator operator, String column, String otherColumn, Aggregate aggregate, RDBMSBackendMetaData backend, List<Serializable> params)
+   {
+      // H2 CHAR_LENGTH counts UTF-16 units. Its Unicode-aware regex counts code
+      // points, matching CHAR_LENGTH on PostgreSQL/MySQL and the memory evaluator.
+      String length = isH2(backend) ? "LENGTH(REGEXP_REPLACE(" + column + ", '(?s).', 'x'))" : "CHAR_LENGTH(" + column + ")";
+      return (switch(operator)
+      {
+         case STDDEV_SAMP, STDDEV_POP, VAR_SAMP, VAR_POP -> operator.name() + "(" + column + ")";
+         case PERCENTILE_CONT, PERCENTILE_DISC ->
+         {
+            params.add(aggregate.getPercentile());
+            yield operator.name() + "(?) WITHIN GROUP (ORDER BY " + column + ")";
+         }
+         case CORR -> "CORR(" + otherColumn + ", " + column + ")";
+         case COUNT_NULL -> "(COUNT(*) - COUNT(" + column + "))";
+         case COUNT_BLANK -> "COALESCE(SUM(CASE WHEN " + column + " IS NULL OR TRIM(" + column + ") = '' THEN 1 ELSE 0 END), 0)";
+         case MIN_LENGTH -> "MIN(" + length + ")";
+         case MAX_LENGTH -> "MAX(" + length + ")";
+         case AVG_LENGTH -> "AVG(" + length + ")";
+         default -> operator.getSqlPrefix() + column + ")";
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Sample the main relation before joining. RAND is supported by H2 and MySQL.
+    *******************************************************************************/
+   @Override
+   public String getSampledTableExpression(String table, String alias, BigDecimal percent, List<Serializable> params)
+   {
+      if(percent == null)
+      {
+         return (table + " AS " + alias);
+      }
+      params.add(percent.movePointLeft(2));
+      return ("(SELECT * FROM " + table + " WHERE RAND() < ?) AS " + alias);
+   }
+
+
+
+   /*******************************************************************************
+    ** Equal-width bins with max included in the last bin, and session-local date buckets.
+    *******************************************************************************/
+   @Override
+   public String getGroupByBucketExpression(GroupBy group, String column, QFieldType sourceType, RDBMSBackendMetaData backend, List<Serializable> params)
+   {
+      if(group.getBucket() instanceof NumericBucket numeric)
+      {
+         params.addAll(List.of(numeric.getMin(), numeric.getMax(), numeric.getCount() + 1, numeric.getMax(), numeric.getCount(),
+            numeric.getMin(), numeric.getCount(), numeric.getMax(), numeric.getMin(), numeric.getCount()));
+         String numericColumn = isH2(backend) ? "CAST(" + column + " AS DECIMAL(65, 30))" : column;
+         return ("CASE WHEN " + column + " IS NULL THEN NULL WHEN " + column + " < ? THEN 0 WHEN " + column + " > ? THEN ? WHEN " + column
+            + " = ? THEN ? ELSE LEAST(FLOOR((" + numericColumn + " - ?) * ? / (? - ?)) + 1, ?) END");
+      }
+      DateBucketUnit unit = ((DateBucket) group.getBucket()).getUnit();
+      String zone = getBucketTimeZone(ValueUtils.getSessionOrInstanceZoneId());
+      if(isH2(backend))
+      {
+         if(sourceType == QFieldType.DATE_TIME)
+         {
+            params.add(zone);
+            // H2 interprets timezone-free timestamps in the JVM zone on AT TIME ZONE.
+            // Attach UTC explicitly, then retain the offset while bucketing.
+            column = "(CAST(CASE WHEN " + column + " IS NULL THEN NULL ELSE CONCAT(" + column + ", ' UTC') END AS TIMESTAMP WITH TIME ZONE) AT TIME ZONE ?)";
+         }
+         else if(unit == DateBucketUnit.HOUR)
+         {
+            params.add(zone);
+            column = "CAST(CASE WHEN " + column + " IS NULL THEN NULL ELSE CONCAT(" + column + ", ' 00:00:00 ', ?) END AS TIMESTAMP WITH TIME ZONE)";
+         }
+         else
+         {
+            column = "CAST(" + column + " AS TIMESTAMP)";
+         }
+         if(unit == DateBucketUnit.DAY_OF_WEEK || unit == DateBucketUnit.HOUR_OF_DAY)
+         {
+            return ("EXTRACT(" + (unit == DateBucketUnit.DAY_OF_WEEK ? "ISO_DAY_OF_WEEK" : "HOUR") + " FROM " + column + ")");
+         }
+         String expression = "DATE_TRUNC('" + (unit == DateBucketUnit.WEEK ? "ISO_WEEK" : unit.name()) + "', " + column + ")";
+         if(unit == DateBucketUnit.HOUR)
+         {
+            return (expression);
+         }
+         return ("CAST(FORMATDATETIME(" + expression + ", 'yyyy-MM-dd') AS DATE)");
+      }
+      if(sourceType == QFieldType.DATE_TIME)
+      {
+         params.add(zone);
+         column = "CONVERT_TZ(" + column + ", '+00:00', ?)";
+      }
+      return (mysqlDateBucket(unit, column, zone, params));
+   }
+
+
+
+   /*******************************************************************************
+    ** MySQL date expressions use named-zone tables for non-UTC session zones.
+    *******************************************************************************/
+   private String mysqlDateBucket(DateBucketUnit unit, String column, String zone, List<Serializable> params)
+   {
+      return (switch(unit)
+      {
+         case DAY_OF_WEEK -> "WEEKDAY(" + column + ") + 1";
+         case HOUR_OF_DAY -> "HOUR(" + column + ")";
+         case YEAR -> "CAST(DATE_FORMAT(" + column + ", '%Y-01-01') AS DATE)";
+         case MONTH -> "CAST(DATE_FORMAT(" + column + ", '%Y-%m-01') AS DATE)";
+         case DAY -> "DATE(" + column + ")";
+         case WEEK -> "STR_TO_DATE(DATE_FORMAT(" + column + ", '%x%v Monday'), '%x%v %W')";
+         case QUARTER -> "TIMESTAMPADD(QUARTER, TIMESTAMPDIFF(QUARTER, '1000-01-01', " + column + "), DATE('1000-01-01'))";
+         case HOUR ->
+         {
+            params.add(zone);
+            yield "CONVERT_TZ(CAST(DATE_FORMAT(" + column + ", '%Y-%m-%d %H:00:00') AS DATETIME), ?, '+00:00')";
+         }
+      });
+   }
 }

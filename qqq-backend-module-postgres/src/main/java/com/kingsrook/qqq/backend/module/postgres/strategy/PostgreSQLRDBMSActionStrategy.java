@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.module.postgres.strategy;
 
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -33,12 +34,24 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyScope;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucket;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucketUnit;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.NumericBucket;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.ConsistentReadStart;
 
@@ -392,4 +405,81 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
       }
    }
 
+
+
+
+   /*******************************************************************************
+    ** PostgreSQL implements every aggregate extension.
+    *******************************************************************************/
+   @Override
+   public Set<AggregateCapability> getSupportedAggregateCapabilities(AggregateInput input)
+   {
+      return (EnumSet.allOf(AggregateCapability.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Block sampling belongs to the main relation, after its alias and before joins.
+    *******************************************************************************/
+   @Override
+   public String getSampledTableExpression(String table, String alias, BigDecimal percent, List<Serializable> params)
+   {
+      if(percent == null)
+      {
+         return (table + " AS " + alias);
+      }
+      params.add(percent);
+      return (table + " AS " + alias + " TABLESAMPLE SYSTEM (?)");
+   }
+
+
+
+   /*******************************************************************************
+    ** PostgreSQL date_trunc and width_bucket with an explicitly closed final numeric bin.
+    *******************************************************************************/
+   @Override
+   public String getGroupByBucketExpression(GroupBy group, String column, QFieldType sourceType, RDBMSBackendMetaData backend, List<Serializable> params)
+   {
+      if(group.getBucket() instanceof NumericBucket numeric)
+      {
+         params.addAll(List.of(numeric.getMax(), numeric.getCount(), numeric.getMin(), numeric.getMax(), numeric.getCount()));
+         return ("CASE WHEN " + column + " = ? THEN ? ELSE width_bucket(" + column + ", ?, ?, ?) END");
+      }
+      if(sourceType == QFieldType.DATE)
+      {
+         column = "CAST(" + column + " AS TIMESTAMP)";
+      }
+      DateBucketUnit unit = ((DateBucket) group.getBucket()).getUnit();
+      String zone = getBucketTimeZone(ValueUtils.getSessionOrInstanceZoneId());
+      // PostgreSQL AT TIME ZONE accepts an interval with the ISO offset sign.
+      // Text offsets (including UTC-05:00) use the opposite POSIX sign.
+      // See https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-ZONECONVERT
+      String zoneParameter = ValueUtils.getSessionOrInstanceZoneId().normalized() instanceof ZoneOffset ? "CAST(? AS INTERVAL)" : "?";
+      if(sourceType == QFieldType.DATE_TIME)
+      {
+         ///////////////////////////////////////////////////////////////////////////////
+         // QQQ stores DATE_TIME as a zoneless TIMESTAMP holding UTC (it binds Instants //
+         // as UTC LocalDateTimes), so: UTC wall time -> absolute -> session wall time  //
+         ///////////////////////////////////////////////////////////////////////////////
+         params.add(zone);
+         column = "((" + column + " AT TIME ZONE 'UTC') AT TIME ZONE " + zoneParameter + ")";
+      }
+      if(unit == DateBucketUnit.DAY_OF_WEEK || unit == DateBucketUnit.HOUR_OF_DAY)
+      {
+         return ("EXTRACT(" + (unit == DateBucketUnit.DAY_OF_WEEK ? "ISODOW" : "HOUR") + " FROM " + column + ")");
+      }
+      String expression = "date_trunc('" + unit.name().toLowerCase(Locale.ROOT) + "', " + column + ")";
+      if(unit == DateBucketUnit.HOUR)
+      {
+         //////////////////////////////////////////////////////////////////////////////
+         // back to an absolute time, then to a zoneless UTC wall time: QQQ reads    //
+         // DATE_TIME results as UTC (the convention it binds Instants with), so the //
+         // value must not depend on the connection's TimeZone setting.             //
+         //////////////////////////////////////////////////////////////////////////////
+         params.add(zone);
+         return ("((" + expression + " AT TIME ZONE " + zoneParameter + ") AT TIME ZONE 'UTC')");
+      }
+      return ("CAST(" + expression + " AS DATE)");
+   }
 }

@@ -28,14 +28,31 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 
 
 /*******************************************************************************
- **
+ ** Version 1 of the QQQ UI API (`/qqq/v1`).  Its semantic version (see
+ ** docs/UI-API-CHANGELOG.md) is published as the OpenAPI info.version and by
+ ** GET /qqq/v1/version.
  *******************************************************************************/
 public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
 {
+   /***************************************************************************
+    ** The semantic version of the v1 UI API.  Bump MINOR for additive changes
+    ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
+    ** needs a new URL version (/qqq/v2).
+    ***************************************************************************/
+   public static final String SEMANTIC_VERSION = "1.1.0";
+
+   /***************************************************************************
+    ** Optional core features, published by GET /version.
+    ***************************************************************************/
+   public static final List<String> FEATURES = List.of(
+      "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions");
+
    private static List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
    static
    {
+      list.add(new VersionSpecV1());
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());
@@ -91,6 +108,28 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public String getVersion()
    {
       return "v1";
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public String getSemanticVersion()
+   {
+      return (SEMANTIC_VERSION);
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public List<String> getFeatures()
+   {
+      return (FEATURES);
    }
 
 

@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
@@ -169,10 +170,40 @@ public class PermissionsHelper
 
 
    /*******************************************************************************
-    ** Feature grants require table READ. Standard implications retain the table's
-    ** permission-level mapping and custom permission checker behavior.
+    ** Feature permission check for the session in QContext (see the overload).
     *******************************************************************************/
    public static boolean hasTableFeaturePermission(QTableMetaData table, String suffix)
+   {
+      return (hasTableFeaturePermission(QContext.getQInstance(), QContext.getQSession(), table, suffix));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the given session may use a table feature permission (registered in
+    ** TableFeaturePermissionsMetaData) on the given table.  Feature grants require
+    ** table READ.  Standard implications retain the table's permission-level
+    ** mapping and custom permission checker behavior.  Runs in a temporary
+    ** context when the instance or session differ from QContext's.
+    *******************************************************************************/
+   public static boolean hasTableFeaturePermission(QInstance instance, QSession session, QTableMetaData table, String suffix)
+   {
+      if(instance == QContext.getQInstance() && session == QContext.getQSession())
+      {
+         return (hasTableFeaturePermissionInContext(table, suffix));
+      }
+
+      boolean[] result = new boolean[1];
+      QContext.withTemporaryContext(new CapturedContext(instance, session), () -> result[0] = hasTableFeaturePermissionInContext(table, suffix));
+      return (result[0]);
+   }
+
+
+
+   /*******************************************************************************
+    ** Implementation of hasTableFeaturePermission against QContext.
+    *******************************************************************************/
+   private static boolean hasTableFeaturePermissionInContext(QTableMetaData table, String suffix)
    {
       QInstance instance = QContext.getQInstance();
       TableFeaturePermissionsMetaData metadata = TableFeaturePermissionsMetaData.of(instance);

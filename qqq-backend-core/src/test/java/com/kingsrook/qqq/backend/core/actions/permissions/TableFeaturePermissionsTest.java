@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRule
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermission;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.apache.commons.lang3.SerializationUtils;
 import org.junit.jupiter.api.Test;
@@ -83,6 +84,30 @@ class TableFeaturePermissionsTest extends BaseTest
       QContext.getQSession().setPermissions(Set.of());
       assertTrue(PermissionsHelper.hasTableFeaturePermission(table, "analyze"));
       assertFalse(PermissionsHelper.hasTableFeaturePermission(table, "unregistered"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The explicit instance/session overload checks the given session, not
+    ** QContext's, and leaves QContext unchanged.
+    *******************************************************************************/
+   @Test
+   void explicitSessionOverload()
+   {
+      QInstance      instance = QContext.getQInstance();
+      QTableMetaData table    = protectedTable();
+      TableFeaturePermissionsMetaData.ofOrWithNew(instance).withPermission(new TableFeaturePermission().withSuffix("analyze").withLabel("Analyze"));
+
+      QSession contextSession = QContext.getQSession();
+      contextSession.setPermissions(Set.of());
+
+      QSession other = new QSession();
+      other.setPermissions(Set.of("purchase.read", "purchase.analyze"));
+      assertTrue(PermissionsHelper.hasTableFeaturePermission(instance, other, table, "analyze"));
+      assertSame(contextSession, QContext.getQSession());
+      assertFalse(PermissionsHelper.hasTableFeaturePermission(table, "analyze"));
+      assertFalse(PermissionsHelper.hasTableFeaturePermission(instance, contextSession, table, "analyze"));
    }
 
 

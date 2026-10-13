@@ -76,6 +76,13 @@ public class VersionExecutor extends AbstractMiddlewareExecutor<VersionInput, Ve
    static int majorOf(String semver)
    {
       String major = semver == null ? "" : semver.replaceFirst("\\..*", "").replaceAll("\\D", "");
-      return (major.matches("\\d{1,9}") ? Integer.parseInt(major) : 1);
+      try
+      {
+         return (major.isEmpty() ? 1 : Integer.parseInt(major));
+      }
+      catch(NumberFormatException e)
+      {
+         return (1);
+      }
    }
 }

@@ -58,6 +58,8 @@ public class QueryInput extends AbstractTableActionInput implements QueryOrGetIn
    private boolean shouldOmitHiddenFields        = true;
    private boolean shouldMaskPasswords           = true;
 
+   private RawReadReason rawReadReason;
+
    /////////////////////////////////////////////////////////////////////////////////////////
    // this field - only applies if shouldTranslatePossibleValues is true.                 //
    // if this field is null, then ALL possible value fields get translated.               //
@@ -808,4 +810,50 @@ public class QueryInput extends AbstractTableActionInput implements QueryOrGetIn
       super.withInputSource(inputSource);
       return (this);
    }
+
+   /*******************************************************************************
+    ** Opt in to a "raw read": hidden fields are returned, password fields are not
+    ** masked, heavy fields are fetched, and possible-value translation and display
+    ** values are skipped.
+    **
+    ** The flags are set here, and re-applied (and the reason's permission check and
+    ** an audit are done) when the query executes, so a raw read can't be granted
+    ** by flipping the individual flags, nor undone later by them.  Record locks
+    ** and field security locks still apply, unless the session has the all-access
+    ** security keys.
+    *******************************************************************************/
+   public QueryInput withRawRead(RawReadReason rawReadReason)
+   {
+      this.rawReadReason = rawReadReason;
+      if(rawReadReason != null)
+      {
+         applyRawReadFlags();
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set the individual flags that make up a raw read.
+    *******************************************************************************/
+   public void applyRawReadFlags()
+   {
+      this.shouldOmitHiddenFields = false;
+      this.shouldMaskPasswords = false;
+      this.shouldFetchHeavyFields = true;
+      this.shouldTranslatePossibleValues = false;
+      this.shouldGenerateDisplayValues = false;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for rawReadReason - non-null if this is a raw read.
+    *******************************************************************************/
+   public RawReadReason getRawReadReason()
+   {
+      return (rawReadReason);
+   }
+
 }

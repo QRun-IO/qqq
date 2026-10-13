@@ -33,7 +33,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
+import com.kingsrook.qqq.backend.core.crypto.KeyMaterialUtils;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData;
@@ -65,7 +65,6 @@ public class RefreshTokenCipher
    private static final int     KEY_LENGTH_BYTES    = 32;
    private static final int     NONCE_LENGTH_BYTES  = 12;
    private static final int     TAG_LENGTH_BITS     = 128;
-   private static final Pattern KEY_ID_PATTERN      = Pattern.compile("[A-Za-z0-9_.-]{1,64}");
    private static final String  AAD_CONTEXT_PREFIX  = "qqq.oauth2.refreshToken." + VERSION;
 
    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -247,10 +246,7 @@ public class RefreshTokenCipher
     *******************************************************************************/
    private static void validateKeyId(String keyId, String settingName) throws QException
    {
-      if(keyId == null || !KEY_ID_PATTERN.matcher(keyId).matches())
-      {
-         throw (new QException(settingName + " must be 1-64 characters of letters, digits, '_', '.' or '-'"));
-      }
+      KeyMaterialUtils.validateKeyId(keyId, settingName);
    }
 
 
@@ -260,27 +256,7 @@ public class RefreshTokenCipher
     *******************************************************************************/
    private static SecretKey decodeKey(String base64Key, String settingName) throws QException
    {
-      if(!StringUtils.hasContent(base64Key))
-      {
-         throw (new QException(settingName + " is not set (or its variable did not resolve)"));
-      }
-
-      byte[] keyBytes;
-      try
-      {
-         keyBytes = Base64.getDecoder().decode(base64Key.trim());
-      }
-      catch(IllegalArgumentException e)
-      {
-         throw (new QException(settingName + " is not valid base64"));
-      }
-
-      if(keyBytes.length != KEY_LENGTH_BYTES)
-      {
-         throw (new QException(settingName + " must decode to " + KEY_LENGTH_BYTES + " bytes (e.g., from: openssl rand -base64 32)"));
-      }
-
-      return (new SecretKeySpec(keyBytes, "AES"));
+      return (new SecretKeySpec(KeyMaterialUtils.decodeBase64Key(base64Key, settingName, KEY_LENGTH_BYTES), "AES"));
    }
 
 }

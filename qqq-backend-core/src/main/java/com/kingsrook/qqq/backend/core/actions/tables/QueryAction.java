@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.audits.AuditAction;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -62,6 +63,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.RawReadReason;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -75,6 +77,7 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -126,6 +129,11 @@ public class QueryAction
     *******************************************************************************/
    private QueryOutput execute(QueryInput queryInput, boolean preservePrimaryKeys) throws QException
    {
+      if(queryInput.getRawReadReason() != null)
+      {
+         authorizeAndAuditRawRead(queryInput);
+      }
+
       boolean enforce = false;
       if(queryInput.getTableName() != null && queryInput.getTable() != null)
       {
@@ -140,6 +148,36 @@ public class QueryAction
       {
          return (executeInAuthorizedScope(queryInput, preservePrimaryKeys, enforce));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** A raw read (see QueryInput.withRawRead) must pass its reason's permission
+    ** check, is audited, and has its flags (re)applied.  This always applies, not
+    ** only when core permission enforcement is turned on, since a raw read is an
+    ** explicit opt-in to see more than a normal query does.  Record locks and
+    ** field security locks are not touched here.
+    *******************************************************************************/
+   private void authorizeAndAuditRawRead(QueryInput queryInput) throws QException
+   {
+      QTableMetaData table = queryInput.getTable();
+      if(table == null)
+      {
+         throw (new QException("A table named [" + queryInput.getTableName() + "] was not found in the active QInstance"));
+      }
+
+      RawReadReason rawReadReason = queryInput.getRawReadReason();
+      rawReadReason.checkPermission(queryInput, table);
+      queryInput.applyRawReadFlags();
+
+      String userName = QContext.getQSession() == null || QContext.getQSession().getUser() == null ? null : QContext.getQSession().getUser().getIdReference();
+      LOG.info("Raw read of table", logPair("tableName", table.getName()), logPair("reason", rawReadReason.getReason()), logPair("user", userName));
+      CorePermissionEnforcer.runTrusted("audit of a raw read", () ->
+      {
+         AuditAction.execute(table.getName(), null, null, "Raw read of table (hidden, password, and heavy fields included): " + rawReadReason.getReason());
+         return (null);
+      });
    }
 
 

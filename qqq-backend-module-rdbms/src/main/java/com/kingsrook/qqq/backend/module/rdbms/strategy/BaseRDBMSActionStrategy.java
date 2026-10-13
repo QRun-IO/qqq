@@ -28,6 +28,7 @@ import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
@@ -45,11 +46,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -876,6 +880,84 @@ public class BaseRDBMSActionStrategy implements RDBMSActionStrategyInterface
          return (field.getBackendName());
       }
       return (field.getName());
+   }
+
+
+   /*******************************************************************************
+    ** MySQL/MariaDB (InnoDB): START TRANSACTION WITH CONSISTENT SNAPSHOT (READ
+    ** ONLY).  Tables on other engines (e.g., MyISAM) aren't covered by the
+    ** snapshot, and are reported as BEST_EFFORT.  H2: REPEATABLE READ (MVCC), pinned by a first read.
+    ** Other databases: as the interface default.
+    *******************************************************************************/
+   @Override
+   public ConsistentReadStart beginConsistentRead(Connection connection, ConsistentReadInput input) throws SQLException
+   {
+      String product = connection.getMetaData().getDatabaseProductName();
+      String vendor  = product == null ? "" : product.toLowerCase();
+
+      if(vendor.contains("mysql") || vendor.contains("mariadb"))
+      {
+         if(input.getImportSnapshotId().isPresent())
+         {
+            throw (new SQLException("Importing a snapshot is not supported by " + product));
+         }
+
+         try(Statement statement = connection.createStatement())
+         {
+            statement.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+            statement.execute("START TRANSACTION WITH CONSISTENT SNAPSHOT" + (input.getReadOnly() ? ", READ ONLY" : ""));
+         }
+
+         ConsistencyGuarantee guarantee = ConsistencyGuarantee.ONE_INSTANT;
+         try(Statement statement = connection.createStatement();
+            ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' AND engine <> 'InnoDB'"))
+         {
+            if(resultSet.next() && resultSet.getInt(1) > 0)
+            {
+               guarantee = ConsistencyGuarantee.BEST_EFFORT;
+            }
+         }
+
+         return (new ConsistentReadStart(Optional.empty(), guarantee));
+      }
+
+      if(vendor.startsWith("h2"))
+      {
+         if(input.getImportSnapshotId().isPresent())
+         {
+            throw (new SQLException("Importing a snapshot is not supported by " + product));
+         }
+
+         connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+
+         /////////////////////////////////////////////////////////////////////////////
+         // h2 takes a table's snapshot at the transaction's first read of that     //
+         // table - so read from each table now, rather than at the caller's first  //
+         // read (which may be later, after other writers have committed).  (h2 is  //
+         // mostly for tests - so a read per table at open time is fine.)           //
+         /////////////////////////////////////////////////////////////////////////////
+         List<String> tableNames = new ArrayList<>();
+         try(ResultSet tables = connection.getMetaData().getTables(null, connection.getSchema(), null, new String[] { "BASE TABLE", "TABLE" }))
+         {
+            while(tables.next())
+            {
+               tableNames.add(tables.getString("TABLE_NAME"));
+            }
+         }
+
+         String quote = getIdentifierQuoteString();
+         for(String tableName : tableNames)
+         {
+            try(Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery("SELECT 1 FROM " + quote + tableName + quote + " LIMIT 1"))
+            {
+               resultSet.next();
+            }
+         }
+
+         return (new ConsistentReadStart(Optional.empty(), ConsistencyGuarantee.ONE_INSTANT));
+      }
+
+      return (RDBMSActionStrategyInterface.super.beginConsistentRead(connection, input));
    }
 
 }

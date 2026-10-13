@@ -642,7 +642,15 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          }
       }
 
-      return (connection.prepareStatement(sql));
+      PreparedStatement statement = connection.prepareStatement(sql);
+      if(queryInput.hasQueryHint(QueryHint.POTENTIALLY_LARGE_NUMBER_OF_RESULTS))
+      {
+         /////////////////////////////////////////////////////////////////////////////////
+         // let the vendor strategy ask its driver to stream (e.g., postgres fetch size) //
+         /////////////////////////////////////////////////////////////////////////////////
+         getActionStrategy().configureStatementForLargeResults(connection, statement);
+      }
+      return (statement);
    }
 
 

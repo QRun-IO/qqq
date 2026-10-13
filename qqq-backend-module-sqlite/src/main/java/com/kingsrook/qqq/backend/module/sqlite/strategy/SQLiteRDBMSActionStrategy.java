@@ -26,18 +26,23 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.module.rdbms.jdbc.QueryManager;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
+import com.kingsrook.qqq.backend.module.rdbms.strategy.ConsistentReadStart;
 
 
 /*******************************************************************************
@@ -159,6 +164,29 @@ public class SQLiteRDBMSActionStrategy extends BaseRDBMSActionStrategy
          }
          return (rs);
       }
+   }
+
+   /*******************************************************************************
+    ** SQLite: with autocommit off, the driver issues BEGIN (deferred), and the
+    ** first read - which we do here, so the snapshot is taken now rather than at
+    ** the caller's first query - takes the read lock/snapshot.  In WAL mode,
+    ** writers then proceed without being seen; in rollback-journal mode, they
+    ** are blocked until this transaction ends.  Either way, one instant.
+    *******************************************************************************/
+   @Override
+   public ConsistentReadStart beginConsistentRead(Connection connection, ConsistentReadInput input) throws SQLException
+   {
+      if(input.getImportSnapshotId().isPresent())
+      {
+         throw (new SQLException("Importing a snapshot is not supported by SQLite"));
+      }
+
+      try(Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM sqlite_master"))
+      {
+         resultSet.next();
+      }
+
+      return (new ConsistentReadStart(Optional.empty(), ConsistencyGuarantee.ONE_INSTANT));
    }
 
 }

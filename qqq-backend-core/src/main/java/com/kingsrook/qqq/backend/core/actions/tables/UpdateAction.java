@@ -50,6 +50,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDis
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
@@ -60,6 +61,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -142,6 +144,8 @@ public class UpdateAction
     *******************************************************************************/
    UpdateOutput execute(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
    {
+      CorePermissionEnforcer.checkRestoreWriteFlag(updateInput, updateInput.getFlags());
+
       boolean enforce = false;
       if(StringUtils.hasContent(updateInput.getTableName()) && updateInput.getTable() != null)
       {
@@ -210,7 +214,9 @@ public class UpdateAction
       // isn't expected to be used much - by design, only for the process that is meant to //
       // heal automation status, so that it can force us into status=Pending-inserts       //
       ///////////////////////////////////////////////////////////////////////////////////////
-      if(!updateInput.getOmitTriggeringAutomations())
+      RestoreWriteFlag restoreWriteFlag    = RestoreWriteFlag.from(updateInput.getFlags());
+      boolean          suppressAutomations = restoreWriteFlag != null && restoreWriteFlag.getSuppressAutomations();
+      if(!updateInput.getOmitTriggeringAutomations() && !suppressAutomations)
       {
          setAutomationStatusField(updateInput, oldRecordList);
       }
@@ -271,6 +277,10 @@ public class UpdateAction
       {
          LOG.debug("Requested to omit DML audit");
       }
+      else if(restoreWriteFlag != null && !restoreWriteFlag.getPerRecordAudit())
+      {
+         RestoreWriteHelper.writeSummaryAudit(updateInput, "update", updateOutput.getRecords());
+      }
       else
       {
          DMLAuditInput dmlAuditInput = new DMLAuditInput()
@@ -282,7 +292,10 @@ public class UpdateAction
          new DMLAuditAction().execute(dmlAuditInput);
       }
 
-      fireRecordChangeListeners(updateInput, table, updateOutput.getRecords(), listenerOldRecords);
+      if(restoreWriteFlag == null || restoreWriteFlag.getPublishEvents())
+      {
+         fireRecordChangeListeners(updateInput, table, updateOutput.getRecords(), listenerOldRecords);
+      }
 
       //////////////////////////////////////////////////////////////
       // finally, run the post-update customizer, if there is one //
@@ -291,7 +304,10 @@ public class UpdateAction
       {
          ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
       }
-      runPostUpdateCustomizers(updateInput, table, updateOutput, oldRecordList);
+      if(!skipsCustomizers(updateInput))
+      {
+         runPostUpdateCustomizers(updateInput, table, updateOutput, oldRecordList);
+      }
       if(failOnRecordErrors)
       {
          ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
@@ -425,6 +441,18 @@ public class UpdateAction
 
 
    /*******************************************************************************
+    ** In restore mode, pre- and post-update customizers (table-level and
+    ** instance-level) only run if the flag says so.
+    *******************************************************************************/
+   private static boolean skipsCustomizers(UpdateInput updateInput)
+   {
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(updateInput.getFlags());
+      return (restoreWriteFlag != null && !restoreWriteFlag.getRunCustomizers());
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public void performValidations(UpdateInput updateInput, Optional<List<QRecord>> oldRecordList, boolean isPreview) throws QException
@@ -440,7 +468,14 @@ public class UpdateAction
          behaviorsToOmit = Set.of(DynamicDefaultValueBehavior.MODIFY_DATE);
       }
 
-      ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.UPDATE, QContext.getQInstance(), table, updateInput.getRecords(), behaviorsToOmit);
+      if(RestoreWriteFlag.from(updateInput.getFlags()) != null)
+      {
+         RestoreWriteHelper.applyFieldBehaviorsKeepingDates(ValueBehaviorApplier.Action.UPDATE, table, updateInput.getRecords(), behaviorsToOmit);
+      }
+      else
+      {
+         ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.UPDATE, QContext.getQInstance(), table, updateInput.getRecords(), behaviorsToOmit);
+      }
       validatePrimaryKeysAreGiven(updateInput);
 
       if(oldRecordList.isPresent())
@@ -460,7 +495,10 @@ public class UpdateAction
       ///////////////////////////////////////////////////////////////////////////
       // after all validations, run the pre-update customizer, if there is one //
       ///////////////////////////////////////////////////////////////////////////
-      runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+      if(!skipsCustomizers(updateInput))
+      {
+         runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+      }
       UniqueKeyHelper.validateUpdateUniqueKeys(updateInput);
    }
 

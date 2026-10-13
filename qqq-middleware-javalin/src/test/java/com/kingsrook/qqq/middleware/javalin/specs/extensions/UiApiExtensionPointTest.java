@@ -33,6 +33,7 @@ import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.UiApiRouteAuditor;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiCredentials;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInvoker;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiRequest;
@@ -342,6 +343,20 @@ class UiApiExtensionPointTest
          .withInvokedBy("test"));
       assertEquals(200, echo.getStatus());
       assertEquals("two words", echo.getJson().get("word").asText());
+
+      //////////////////////////////////////////////////////////////////////////////
+      // the invoker acts as the exact calling user (MOCK auth here): the caller's //
+      // own HTTP call and the forwarded calls see the same user                   //
+      //////////////////////////////////////////////////////////////////////////////
+      String callerUser = new JSONObject(Unirest.get("http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/echo/x").header("Cookie", "sessionUUID=caller-session").asString().getBody()).getString("userId");
+      String bySessionUuid = invoker.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/qbit/test-ext/echo/{word}").withPathParam("word", "x")
+         .withSessionUUID("caller-session")).getJson().get("userId").asText();
+      String byCredentials = invoker.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/qbit/test-ext/echo/{word}").withPathParam("word", "x")
+         .withCredentials(new UiApiCredentials("caller-session", null, null, null))).getJson().get("userId").asText();
+      assertEquals(callerUser, bySessionUuid);
+      assertEquals(callerUser, byCredentials);
+      assertFalse(new UiApiCredentials(null, null, null, null).isPresent());
+      assertThat(new UiApiCredentials("secret", null, null, null).toString()).doesNotContain("secret");
 
       UiApiResponse metaData = invoker.invoke(new UiApiRequest()
          .withMethod(HttpMethod.GET)

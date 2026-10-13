@@ -145,7 +145,7 @@ UiApiResponse response = invoker.invoke(new UiApiRequest()
    .withPathParam("tableName", "person")
    .withQueryParam("limit", "20")
    .withJsonBody(Map.of("filter", filter))
-   .withSessionUUID(QContext.getQSession().getUuid())   // the user's own session; required
+   .withCredentials(callerCredentials)            // UiApiCredentials.fromContext(ctx) of the user's request; required
    .withInvokedBy("assistant"));                  // X-QQQ-Invoked-By, written to the access log
 response.getStatus(); response.getJson(); response.getHeaders();
 ```
@@ -153,8 +153,12 @@ response.getStatus(); response.getJson(); response.getHeaders();
 - **Only spec'd operations can be invoked.** The invoker resolves `method + path template`
   against the version's spec list (core plus extensions). Anything else is refused before any
   request is made, so the assistant cannot reach raw or legacy routes.
-- **The session is the user's.** The invoker sends the `sessionUUID` cookie it is given; there is
-  no service session and no way to elevate. A 401/403 comes back exactly as the UI would see it.
+- **The session is the user's.** The invoker forwards the caller's credentials exactly as their
+  request carried them (`UiApiCredentials.fromContext`: the sessionUUID/sessionId cookies, the
+  Authorization header, x-api-key), so the call authenticates as the same user under any module
+  (OAuth2/OIDC and Auth0 resume by sessionUUID, table-based by sessionId, API keys by header, MOCK
+  by either). `withSessionUUID(uuid)` is the shorthand when only the session UUID is known. There
+  is no service session and no way to elevate; a 401/403 comes back exactly as the UI would see it.
 - **`listOperations()`** returns each invocable operation (method, path template, summary,
   parameters, request/response schema refs) from the same OpenAPI model, so the assistant can build
   its tool list from the spec instead of hand-written tool definitions.

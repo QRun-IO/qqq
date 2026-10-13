@@ -338,13 +338,130 @@ components:
           - "RENDER_HTML"
           - "REVEAL"
           - "FILE_DOWNLOAD"
+          - "FILE_UPLOAD"
+          - "TOOLTIP"
           - "WIDGET"
           - "ERROR"
           - "FILE_PREVIEW"
           type: "string"
         values:
           description: "Values associated with this adornment.  Keys and the meanings\
-            \ of their values will differ by type."
+            \ of their values differ by type; the known\nkeys are listed (each names\
+            \ the type(s) it applies to).  CHIP also uses pattern keys: `color.{fieldValue}`\n\
+            (one of default, info, primary, secondary, success, warning, error) and\
+            \ `icon.{fieldValue}` (an icon name),\ngiving the chip colour and icon\
+            \ for a field value.  Clients ignore keys they do not know."
+          properties:
+            target:
+              description: "LINK: where to open the link: _blank for a new window/tab;\
+                \ otherwise the same view."
+              type: "string"
+            toRecordFromTable:
+              description: "LINK: the field value is a primary key of this table;\
+                \ link to that record (a client navigates to the record view)."
+              type: "string"
+            toRecordFromTableDynamic:
+              description: "LINK: the target table is per record - read it from the\
+                \ record displayValue `{fieldName}:toRecordFromTableDynamic`."
+              type: "boolean"
+            fileNameField:
+              description: "FILE_DOWNLOAD, FILE_PREVIEW: the field holding the file\
+                \ name to save or show."
+              type: "string"
+            defaultExtension:
+              description: "FILE_DOWNLOAD: extension for the saved file when the name\
+                \ has none."
+              type: "string"
+            defaultMimeType:
+              description: "FILE_DOWNLOAD, FILE_PREVIEW: MIME type to assume when\
+                \ none is known."
+              type: "string"
+            supplementalProcessName:
+              description: "FILE_DOWNLOAD: process the server runs to produce the\
+                \ file (the client just downloads)."
+              type: "string"
+            supplementalCodeReference:
+              additionalProperties: true
+              description: "FILE_DOWNLOAD: code the server runs to produce the file\
+                \ (the client just downloads)."
+              type: "object"
+            downloadUrlDynamic:
+              description: "FILE_DOWNLOAD: the download URL is per record - read it\
+                \ from the record displayValue `{fieldName}:downloadUrlDynamic`."
+              type: "boolean"
+            fileNameFormat:
+              description: "FILE_DOWNLOAD: format (with %s placeholders) for the saved\
+                \ file name."
+              type: "string"
+            fileNameFormatFields:
+              description: "FILE_DOWNLOAD: fields whose values fill fileNameFormat,\
+                \ in order."
+              items:
+                type: "string"
+              type: "array"
+            width:
+              description: "SIZE: display width of the field - one of xsmall, small,\
+                \ medium, medlarge, large, xlarge (semantic widths; each client maps\
+                \ them to its own columns or characters). FILE_UPLOAD: width of the\
+                \ upload control."
+              enum:
+              - "xsmall"
+              - "small"
+              - "medium"
+              - "medlarge"
+              - "large"
+              - "xlarge"
+              type: "string"
+            format:
+              description: "FILE_UPLOAD: accepted file formats (e.g. .csv,.xlsx)."
+              type: "string"
+            languageMode:
+              description: "CODE_EDITOR: language of the code (e.g. javascript, sql,\
+                \ json, velocity) - for highlighting; a client without an editor shows\
+                \ it monospaced."
+              type: "string"
+            staticText:
+              description: "TOOLTIP: the tooltip text."
+              type: "string"
+            tooltipDynamic:
+              description: "TOOLTIP: the text is per record - read it from the record\
+                \ displayValue `{fieldName}:tooltipDynamic`."
+              type: "boolean"
+            thumbnailUrlField:
+              description: "FILE_PREVIEW: field holding a thumbnail image URL."
+              type: "string"
+            fullSizeUrlField:
+              description: "FILE_PREVIEW: field holding the full-size file URL."
+              type: "string"
+            mimeTypeField:
+              description: "FILE_PREVIEW: field holding the MIME type (decides image,\
+                \ video, PDF or download-only)."
+              type: "string"
+            altTextField:
+              description: "FILE_PREVIEW: field holding alternative text."
+              type: "string"
+            captionField:
+              description: "FILE_PREVIEW: field holding a caption."
+              type: "string"
+            widthField:
+              description: "FILE_PREVIEW: field holding the pixel width."
+              type: "string"
+            heightField:
+              description: "FILE_PREVIEW: field holding the pixel height."
+              type: "string"
+            sizeBytesField:
+              description: "FILE_PREVIEW: field holding the size in bytes."
+              type: "string"
+            thumbnailMaxSize:
+              description: "FILE_PREVIEW: largest thumbnail edge in pixels."
+              type: "integer"
+            previewable:
+              description: "FILE_PREVIEW: whether the file may be previewed (false:\
+                \ download only)."
+              type: "boolean"
+            widgetName:
+              description: "WIDGET: the widget that renders this field."
+              type: "string"
           type: "object"
       type: "object"
     FieldMetaData:
@@ -579,6 +696,9 @@ components:
           enum:
           - "HELP_TEXT"
           - "BULK_EDIT_FORM"
+          - "BULK_LOAD_FILE_MAPPING_FORM"
+          - "BULK_LOAD_VALUE_MAPPING_FORM"
+          - "BULK_LOAD_PROFILE_FORM"
           - "VALIDATION_REVIEW_SCREEN"
           - "EDIT_FORM"
           - "VIEW_FORM"
@@ -3343,6 +3463,2376 @@ components:
       type: "object"
     WidgetBlockValues:
       type: "object"
+    WidgetData:
+      description: "The data of a widget: one of the per-type shapes, chosen by `type`\
+        \ (the widget type). Clients render by type and ignore unknown properties;\
+        \ an unknown type is rendered as the widget label with its footerHTML/label\
+        \ only."
+      discriminator:
+        mapping:
+          alert: "#/components/schemas/WidgetDataAlert"
+          barChart: "#/components/schemas/WidgetDataChart"
+          chart: "#/components/schemas/WidgetDataChart"
+          childRecordList: "#/components/schemas/WidgetDataChildRecordList"
+          composite: "#/components/schemas/WidgetDataComposite"
+          cronUI: "#/components/schemas/WidgetDataCronUI"
+          customComponent: "#/components/schemas/WidgetDataGeneric"
+          dataBagViewer: "#/components/schemas/WidgetDataGeneric"
+          divider: "#/components/schemas/WidgetDataDivider"
+          dynamicForm: "#/components/schemas/WidgetDataDynamicForm"
+          fieldValueList: "#/components/schemas/WidgetDataFieldValueList"
+          filterAndColumnsSetup: "#/components/schemas/WidgetDataFilterAndColumnsSetup"
+          generic: "#/components/schemas/WidgetDataGeneric"
+          horizontalBarChart: "#/components/schemas/WidgetDataChart"
+          html: "#/components/schemas/WidgetDataRawHTML"
+          lineChart: "#/components/schemas/WidgetDataLineChart"
+          location: "#/components/schemas/WidgetDataLocation"
+          multiStatistics: "#/components/schemas/WidgetDataMultiStatistics"
+          multiTable: "#/components/schemas/WidgetDataMultiTable"
+          parentWidget: "#/components/schemas/WidgetDataParent"
+          pieChart: "#/components/schemas/WidgetDataPieChart"
+          pivotTableSetup: "#/components/schemas/WidgetDataGeneric"
+          process: "#/components/schemas/WidgetDataProcess"
+          quickSightChart: "#/components/schemas/WidgetDataQuickSightChart"
+          rowBuilder: "#/components/schemas/WidgetDataRowBuilder"
+          scriptViewer: "#/components/schemas/WidgetDataGeneric"
+          smallLineChart: "#/components/schemas/WidgetDataLineChart"
+          stackedBarChart: "#/components/schemas/WidgetDataChart"
+          statistics: "#/components/schemas/WidgetDataStatistics"
+          stepper: "#/components/schemas/WidgetDataStepper"
+          table: "#/components/schemas/WidgetDataTable"
+          usaMap: "#/components/schemas/WidgetDataUSMap"
+        propertyName: "type"
+      oneOf:
+      - $ref: "#/components/schemas/WidgetDataAlert"
+      - $ref: "#/components/schemas/WidgetDataChart"
+      - $ref: "#/components/schemas/WidgetDataLineChart"
+      - $ref: "#/components/schemas/WidgetDataPieChart"
+      - $ref: "#/components/schemas/WidgetDataChildRecordList"
+      - $ref: "#/components/schemas/WidgetDataComposite"
+      - $ref: "#/components/schemas/WidgetDataCronUI"
+      - $ref: "#/components/schemas/WidgetDataDivider"
+      - $ref: "#/components/schemas/WidgetDataDynamicForm"
+      - $ref: "#/components/schemas/WidgetDataFieldValueList"
+      - $ref: "#/components/schemas/WidgetDataFilterAndColumnsSetup"
+      - $ref: "#/components/schemas/WidgetDataLocation"
+      - $ref: "#/components/schemas/WidgetDataMultiStatistics"
+      - $ref: "#/components/schemas/WidgetDataMultiTable"
+      - $ref: "#/components/schemas/WidgetDataParent"
+      - $ref: "#/components/schemas/WidgetDataProcess"
+      - $ref: "#/components/schemas/WidgetDataQuickSightChart"
+      - $ref: "#/components/schemas/WidgetDataRawHTML"
+      - $ref: "#/components/schemas/WidgetDataRowBuilder"
+      - $ref: "#/components/schemas/WidgetDataStatistics"
+      - $ref: "#/components/schemas/WidgetDataStepper"
+      - $ref: "#/components/schemas/WidgetDataTable"
+      - $ref: "#/components/schemas/WidgetDataUSMap"
+      - $ref: "#/components/schemas/WidgetDataGeneric"
+    WidgetDataAlert:
+      description: "Data of alert widgets."
+      properties:
+        alertType:
+          enum:
+          - "ERROR"
+          - "SUCCESS"
+          - "WARNING"
+          type: "string"
+        bulletList:
+          type: "array"
+        hideWidget:
+          type: "boolean"
+        html:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "alert"
+          type: "string"
+      type: "object"
+    WidgetDataChart:
+      description: "Data of chart, barChart, horizontalBarChart, and stackedBarChart\
+        \ widgets."
+      properties:
+        chartData:
+          properties:
+            datasets:
+              type: "array"
+            labels:
+              type: "array"
+            urls:
+              type: "array"
+          type: "object"
+        chartSubheaderData:
+          properties:
+            isGoodVsPrevious:
+              type: "boolean"
+            isUpVsPrevious:
+              type: "boolean"
+            mainNumber:
+              properties:
+                serialVersionUID:
+                  type: "object"
+              type: "object"
+            mainNumberUrl:
+              type: "string"
+            previousNumberUrl:
+              type: "string"
+            vsDescription:
+              type: "string"
+            vsPreviousNumber:
+              properties:
+                serialVersionUID:
+                  type: "object"
+              type: "object"
+            vsPreviousPercent:
+              properties:
+                serialVersionUID:
+                  type: "object"
+              type: "object"
+          type: "object"
+        description:
+          type: "string"
+        height:
+          type: "object"
+        isCurrency:
+          type: "object"
+        title:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "chart"
+          - "barChart"
+          - "horizontalBarChart"
+          - "stackedBarChart"
+          type: "string"
+      type: "object"
+    WidgetDataChildRecordList:
+      description: "Data of childRecordList widgets."
+      properties:
+        allowRecordDelete:
+          type: "boolean"
+        allowRecordEdit:
+          type: "boolean"
+        canAddChildRecord:
+          type: "object"
+        childFrontendTableMetaData:
+          properties:
+            LOG:
+              properties:
+                logSessionIdEnabled:
+                  type: "object"
+                logger:
+                  type: "object"
+                loggerMap:
+                  type: "object"
+                processTagLogPairJson:
+                  type: "string"
+              type: "object"
+            associations:
+              type: "array"
+            capabilities:
+              type: "object"
+            deletePermission:
+              type: "object"
+            editPermission:
+              type: "object"
+            exposedJoins:
+              type: "array"
+            fields:
+              type: "object"
+            helpContents:
+              type: "object"
+            icon:
+              properties:
+                color:
+                  type: "string"
+                name:
+                  type: "string"
+                path:
+                  type: "string"
+              type: "object"
+            insertPermission:
+              type: "object"
+            isHidden:
+              type: "object"
+            label:
+              type: "string"
+            menus:
+              type: "array"
+            name:
+              type: "string"
+            primaryKeyField:
+              type: "string"
+            readPermission:
+              type: "object"
+            searchFields:
+              type: "array"
+            sections:
+              type: "array"
+            shareableTableMetaData:
+              properties:
+                assetIdFieldName:
+                  type: "string"
+                audiencePossibleValueSourceName:
+                  type: "string"
+                audienceTypes:
+                  type: "object"
+                audienceTypesPossibleValueSourceName:
+                  type: "string"
+                scopeFieldName:
+                  type: "string"
+                sharedRecordTableName:
+                  type: "string"
+                thisTableOwnerIdFieldName:
+                  type: "string"
+              type: "object"
+            supplementalTableMetaData:
+              type: "object"
+            usesVariants:
+              type: "object"
+            variantTableLabel:
+              type: "string"
+            virtualFields:
+              type: "object"
+          type: "object"
+        childTableMetaData:
+          properties:
+            LOG:
+              properties:
+                logSessionIdEnabled:
+                  type: "object"
+                logger:
+                  type: "object"
+                loggerMap:
+                  type: "object"
+                processTagLogPairJson:
+                  type: "string"
+              type: "object"
+            associatedScripts:
+              type: "array"
+            associations:
+              type: "array"
+            auditRules:
+              properties:
+                auditLevel:
+                  enum:
+                  - "NONE"
+                  - "RECORD"
+                  - "FIELD"
+                  type: "string"
+              type: "object"
+            automationDetails:
+              properties:
+                actions:
+                  type: "array"
+                overrideBatchSize:
+                  type: "number"
+                providerName:
+                  type: "string"
+                schedule:
+                  properties:
+                    cronExpression:
+                      type: "string"
+                    cronTimeZoneId:
+                      type: "string"
+                    description:
+                      type: "string"
+                    initialDelayMillis:
+                      type: "number"
+                    initialDelaySeconds:
+                      type: "number"
+                    repeatMillis:
+                      type: "number"
+                    repeatSeconds:
+                      type: "number"
+                    schedulerName:
+                      type: "string"
+                  type: "object"
+                shardByFieldName:
+                  type: "string"
+                shardIdFieldName:
+                  type: "string"
+                shardLabelFieldName:
+                  type: "string"
+                shardSourceTableName:
+                  type: "string"
+                statusTracking:
+                  properties:
+                    fieldName:
+                      type: "string"
+                    type:
+                      enum:
+                      - "FIELD_IN_TABLE"
+                      type: "string"
+                  type: "object"
+              type: "object"
+            backendDetails:
+              properties:
+                backendType:
+                  type: "string"
+              type: "object"
+            backendName:
+              type: "string"
+            cacheOf:
+              properties:
+                cachedDateFieldName:
+                  type: "string"
+                expirationSeconds:
+                  type: "number"
+                sourceTable:
+                  type: "string"
+                useCases:
+                  type: "array"
+              type: "object"
+            customizers:
+              type: "object"
+            disabledCapabilities:
+              type: "object"
+            enabledCapabilities:
+              type: "object"
+            exposedJoins:
+              type: "array"
+            fields:
+              type: "object"
+            helpContent:
+              type: "object"
+            icon:
+              properties:
+                color:
+                  type: "string"
+                name:
+                  type: "string"
+                path:
+                  type: "string"
+              type: "object"
+            isHidden:
+              type: "object"
+            label:
+              type: "string"
+            menus:
+              type: "array"
+            name:
+              type: "string"
+            permissionRules:
+              properties:
+                customPermissionChecker:
+                  properties:
+                    codeType:
+                      enum:
+                      - "JAVA"
+                      - "JAVA_SCRIPT"
+                      type: "string"
+                    inlineCode:
+                      type: "string"
+                    name:
+                      type: "string"
+                  type: "object"
+                denyBehavior:
+                  enum:
+                  - "DISABLED"
+                  - "HIDDEN"
+                  type: "string"
+                level:
+                  enum:
+                  - "NOT_PROTECTED"
+                  - "HAS_ACCESS_PERMISSION"
+                  - "READ_WRITE_PERMISSIONS"
+                  - "READ_INSERT_EDIT_DELETE_PERMISSIONS"
+                  type: "string"
+                permissionBaseName:
+                  type: "string"
+              type: "object"
+            primaryKeyField:
+              type: "string"
+            recordLabelFields:
+              type: "array"
+            recordLabelFormat:
+              type: "string"
+            recordSecurityLocks:
+              type: "array"
+            searchFields:
+              type: "array"
+            sections:
+              type: "array"
+            shareableTableMetaData:
+              properties:
+                assetIdFieldName:
+                  type: "string"
+                audiencePossibleValueSourceName:
+                  type: "string"
+                audienceTypes:
+                  type: "object"
+                audienceTypesPossibleValueSourceName:
+                  type: "string"
+                scopeFieldName:
+                  type: "string"
+                sharedRecordTableName:
+                  type: "string"
+                thisTableOwnerIdFieldName:
+                  type: "string"
+              type: "object"
+            sourceQBitName:
+              type: "string"
+            supplementalMetaData:
+              type: "object"
+            uniqueKeys:
+              type: "array"
+            virtualFields:
+              type: "object"
+          type: "object"
+        defaultValuesForNewChildRecords:
+          type: "object"
+        defaultValuesForNewChildRecordsFromParentFields:
+          type: "object"
+        disableRowClick:
+          type: "boolean"
+        disabledFieldsForNewChildRecords:
+          type: "object"
+        includeExposedJoinTables:
+          type: "array"
+        isInProcess:
+          type: "boolean"
+        omitFieldNames:
+          type: "array"
+        onlyIncludeFieldNames:
+          type: "array"
+        queryOutput:
+          properties:
+            storage:
+              type: "object"
+          type: "object"
+        tableName:
+          type: "string"
+        tablePath:
+          type: "string"
+        title:
+          type: "string"
+        totalRows:
+          type: "number"
+        viewAllLink:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "childRecordList"
+          type: "string"
+      type: "object"
+    WidgetDataComposite:
+      description: "Data of composite widgets."
+      properties:
+        blockId:
+          type: "string"
+        conditional:
+          type: "string"
+        link:
+          properties:
+            href:
+              type: "string"
+          type: "object"
+        linkMap:
+          type: "object"
+        styles:
+          type: "object"
+        tooltip:
+          properties:
+            blockData:
+              properties:
+                blocks:
+                  type: "array"
+                layout:
+                  enum:
+                  - "FLEX_COLUMN"
+                  - "FLEX_ROW"
+                  - "FLEX_ROW_WRAPPED"
+                  - "FLEX_ROW_SPACE_BETWEEN"
+                  - "FLEX_ROW_CENTER"
+                  - "TABLE_SUB_ROW_DETAILS"
+                  - "BADGES_WRAPPER"
+                  type: "string"
+                modalMode:
+                  enum:
+                  - "MODAL"
+                  type: "string"
+                overlayHtml:
+                  type: "string"
+                overlayStyleOverrides:
+                  type: "object"
+                styleOverrides:
+                  type: "object"
+              type: "object"
+            placement:
+              enum:
+              - "BOTTOM"
+              - "LEFT"
+              - "RIGHT"
+              - "TOP"
+              type: "string"
+            title:
+              type: "string"
+          type: "object"
+        tooltipMap:
+          type: "object"
+        values:
+          type: "object"
+        blocks:
+          type: "array"
+        layout:
+          enum:
+          - "FLEX_COLUMN"
+          - "FLEX_ROW"
+          - "FLEX_ROW_WRAPPED"
+          - "FLEX_ROW_SPACE_BETWEEN"
+          - "FLEX_ROW_CENTER"
+          - "TABLE_SUB_ROW_DETAILS"
+          - "BADGES_WRAPPER"
+          type: "string"
+        modalMode:
+          enum:
+          - "MODAL"
+          type: "string"
+        overlayHtml:
+          type: "string"
+        overlayStyleOverrides:
+          type: "object"
+        styleOverrides:
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "composite"
+          type: "string"
+      type: "object"
+    WidgetDataCronUI:
+      description: "Data of cronUI widgets."
+      properties:
+        cronDescription:
+          type: "string"
+        error:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "cronUI"
+          type: "string"
+      type: "object"
+    WidgetDataDivider:
+      description: "Data of divider widgets."
+      properties:
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "divider"
+          type: "string"
+      type: "object"
+    WidgetDataDynamicForm:
+      description: "Data of dynamicForm widgets."
+      properties:
+        fieldList:
+          type: "array"
+        mergedDynamicFormValuesIntoFieldName:
+          type: "string"
+        noFieldsMessage:
+          type: "string"
+        recordOfFieldValues:
+          properties:
+            BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS:
+              type: "string"
+            BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT:
+              type: "string"
+            LOG:
+              properties:
+                logSessionIdEnabled:
+                  type: "object"
+                logger:
+                  type: "object"
+                loggerMap:
+                  type: "object"
+                processTagLogPairJson:
+                  type: "string"
+              type: "object"
+            associatedRecords:
+              type: "object"
+            backendDetails:
+              type: "object"
+            copyIdentity:
+              type: "object"
+            displayValues:
+              type: "object"
+            errors:
+              type: "array"
+            primaryKeyIdentity:
+              properties:
+                fieldName:
+                  type: "string"
+                present:
+                  type: "object"
+                presentationValue:
+                  type: "object"
+                primaryKey:
+                  type: "object"
+                tableName:
+                  type: "string"
+                type:
+                  enum:
+                  - "STRING"
+                  - "INTEGER"
+                  - "LONG"
+                  - "DECIMAL"
+                  - "BOOLEAN"
+                  - "DATE"
+                  - "TIME"
+                  - "DATE_TIME"
+                  - "TEXT"
+                  - "HTML"
+                  - "PASSWORD"
+                  - "BLOB"
+                  type: "string"
+              type: "object"
+            recordLabel:
+              type: "string"
+            tableName:
+              type: "string"
+            values:
+              type: "object"
+            warnings:
+              type: "array"
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "dynamicForm"
+          type: "string"
+      type: "object"
+    WidgetDataFieldValueList:
+      description: "Data of fieldValueList widgets."
+      properties:
+        fieldIndentLevels:
+          type: "object"
+        fieldLabelPrefixIconColors:
+          type: "object"
+        fieldLabelPrefixIconNames:
+          type: "object"
+        fields:
+          type: "array"
+        record:
+          properties:
+            BACKEND_DETAILS_TYPE_HEAVY_FIELD_LENGTHS:
+              type: "string"
+            BACKEND_DETAILS_TYPE_JSON_SOURCE_OBJECT:
+              type: "string"
+            LOG:
+              properties:
+                logSessionIdEnabled:
+                  type: "object"
+                logger:
+                  type: "object"
+                loggerMap:
+                  type: "object"
+                processTagLogPairJson:
+                  type: "string"
+              type: "object"
+            associatedRecords:
+              type: "object"
+            backendDetails:
+              type: "object"
+            copyIdentity:
+              type: "object"
+            displayValues:
+              type: "object"
+            errors:
+              type: "array"
+            primaryKeyIdentity:
+              properties:
+                fieldName:
+                  type: "string"
+                present:
+                  type: "object"
+                presentationValue:
+                  type: "object"
+                primaryKey:
+                  type: "object"
+                tableName:
+                  type: "string"
+                type:
+                  enum:
+                  - "STRING"
+                  - "INTEGER"
+                  - "LONG"
+                  - "DECIMAL"
+                  - "BOOLEAN"
+                  - "DATE"
+                  - "TIME"
+                  - "DATE_TIME"
+                  - "TEXT"
+                  - "HTML"
+                  - "PASSWORD"
+                  - "BLOB"
+                  type: "string"
+              type: "object"
+            recordLabel:
+              type: "string"
+            tableName:
+              type: "string"
+            values:
+              type: "object"
+            warnings:
+              type: "array"
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "fieldValueList"
+          type: "string"
+      type: "object"
+    WidgetDataFilterAndColumnsSetup:
+      description: "Data of filterAndColumnsSetup widgets."
+      properties:
+        allowVariables:
+          type: "boolean"
+        apiName:
+          type: "string"
+        apiPath:
+          type: "string"
+        apiVersion:
+          type: "string"
+        columnFieldName:
+          type: "string"
+        editButtonLabel:
+          type: "string"
+        filterDefaultFieldNameSourceFieldNames:
+          type: "object"
+        filterDefaultFieldNames:
+          type: "array"
+        filterFieldName:
+          type: "string"
+        hideColumns:
+          type: "boolean"
+        hidePreview:
+          type: "boolean"
+        hideSortBy:
+          type: "boolean"
+        isApiVersioned:
+          type: "boolean"
+        modalHeader:
+          type: "string"
+        omitExposedJoins:
+          type: "array"
+        overrideIsEditable:
+          type: "boolean"
+        tableName:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "filterAndColumnsSetup"
+          type: "string"
+      type: "object"
+    WidgetDataGeneric:
+      additionalProperties: true
+      description: "Data of widget types without a fixed shape (generic, customComponent,\
+        \ dataBagViewer, pivotTableSetup, and scriptViewer): the common properties\
+        \ plus widget-specific ones."
+      properties:
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "generic"
+          - "customComponent"
+          - "dataBagViewer"
+          - "pivotTableSetup"
+          - "scriptViewer"
+          type: "string"
+      type: "object"
+    WidgetDataLineChart:
+      description: "Data of lineChart and smallLineChart widgets."
+      properties:
+        chartData:
+          properties:
+            datasets:
+              type: "array"
+            labels:
+              type: "array"
+            lineLabels:
+              type: "array"
+          type: "object"
+        isYAxisCurrency:
+          type: "object"
+        title:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "lineChart"
+          - "smallLineChart"
+          type: "string"
+      type: "object"
+    WidgetDataLocation:
+      description: "Data of location widgets."
+      properties:
+        description:
+          type: "string"
+        footerText:
+          type: "string"
+        imageUrl:
+          type: "string"
+        location:
+          type: "string"
+        title:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "location"
+          type: "string"
+      type: "object"
+    WidgetDataMultiStatistics:
+      description: "Data of multiStatistics widgets."
+      properties:
+        statisticsGroupData:
+          type: "array"
+        title:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "multiStatistics"
+          type: "string"
+      type: "object"
+    WidgetDataMultiTable:
+      description: "Data of multiTable widgets."
+      properties:
+        tableDataList:
+          type: "array"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "multiTable"
+          type: "string"
+      type: "object"
+    WidgetDataParent:
+      description: "Data of parentWidget widgets."
+      properties:
+        childWidgetNameList:
+          type: "array"
+        isLabelPageTitle:
+          type: "object"
+        layoutType:
+          enum:
+          - "GRID"
+          - "TABS"
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "parentWidget"
+          type: "string"
+      type: "object"
+    WidgetDataPieChart:
+      description: "Data of pieChart widgets."
+      properties:
+        chartData:
+          properties:
+            datasets:
+              type: "array"
+            labels:
+              type: "array"
+            urls:
+              type: "array"
+          type: "object"
+        chartSubheaderData:
+          properties:
+            isGoodVsPrevious:
+              type: "boolean"
+            isUpVsPrevious:
+              type: "boolean"
+            mainNumber:
+              properties:
+                serialVersionUID:
+                  type: "object"
+              type: "object"
+            mainNumberUrl:
+              type: "string"
+            previousNumberUrl:
+              type: "string"
+            vsDescription:
+              type: "string"
+            vsPreviousNumber:
+              properties:
+                serialVersionUID:
+                  type: "object"
+              type: "object"
+            vsPreviousPercent:
+              properties:
+                serialVersionUID:
+                  type: "object"
+              type: "object"
+          type: "object"
+        description:
+          type: "string"
+        height:
+          type: "object"
+        isCurrency:
+          type: "object"
+        title:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "pieChart"
+          type: "string"
+      type: "object"
+    WidgetDataProcess:
+      description: "Data of process widgets."
+      properties:
+        defaultValues:
+          type: "object"
+        processMetaData:
+          properties:
+            basepullConfiguration:
+              properties:
+                hoursBackForInitialTimestamp:
+                  type: "number"
+                keyField:
+                  type: "string"
+                keyValue:
+                  type: "string"
+                lastRunTimeFieldName:
+                  type: "string"
+                secondsToSubtractFromLastRunTimeForTimestampQuery:
+                  type: "number"
+                secondsToSubtractFromThisRunTimeForTimestampQuery:
+                  type: "number"
+                tableName:
+                  type: "string"
+                timestampField:
+                  type: "string"
+              type: "object"
+            cancelStep:
+              properties:
+                code:
+                  properties:
+                    codeType:
+                      enum:
+                      - "JAVA"
+                      - "JAVA_SCRIPT"
+                      type: "string"
+                    inlineCode:
+                      type: "string"
+                    name:
+                      type: "string"
+                  type: "object"
+                inputMetaData:
+                  properties:
+                    fieldList:
+                      type: "array"
+                    recordListMetaData:
+                      properties:
+                        fields:
+                          type: "object"
+                        tableName:
+                          type: "string"
+                      type: "object"
+                  type: "object"
+                outputMetaData:
+                  properties:
+                    fieldList:
+                      type: "array"
+                    recordListMetaData:
+                      properties:
+                        fields:
+                          type: "object"
+                        tableName:
+                          type: "string"
+                      type: "object"
+                  type: "object"
+              type: "object"
+            icon:
+              properties:
+                color:
+                  type: "string"
+                name:
+                  type: "string"
+                path:
+                  type: "string"
+              type: "object"
+            isHidden:
+              type: "object"
+            label:
+              type: "string"
+            maxInputRecords:
+              type: "number"
+            minInputRecords:
+              type: "number"
+            name:
+              type: "string"
+            permissionRules:
+              properties:
+                customPermissionChecker:
+                  properties:
+                    codeType:
+                      enum:
+                      - "JAVA"
+                      - "JAVA_SCRIPT"
+                      type: "string"
+                    inlineCode:
+                      type: "string"
+                    name:
+                      type: "string"
+                  type: "object"
+                denyBehavior:
+                  enum:
+                  - "DISABLED"
+                  - "HIDDEN"
+                  type: "string"
+                level:
+                  enum:
+                  - "NOT_PROTECTED"
+                  - "HAS_ACCESS_PERMISSION"
+                  - "READ_WRITE_PERMISSIONS"
+                  - "READ_INSERT_EDIT_DELETE_PERMISSIONS"
+                  type: "string"
+                permissionBaseName:
+                  type: "string"
+              type: "object"
+            processTracerCodeReference:
+              properties:
+                codeType:
+                  enum:
+                  - "JAVA"
+                  - "JAVA_SCRIPT"
+                  type: "string"
+                inlineCode:
+                  type: "string"
+                name:
+                  type: "string"
+              type: "object"
+            schedule:
+              properties:
+                cronExpression:
+                  type: "string"
+                cronTimeZoneId:
+                  type: "string"
+                description:
+                  type: "string"
+                initialDelayMillis:
+                  type: "number"
+                initialDelaySeconds:
+                  type: "number"
+                repeatMillis:
+                  type: "number"
+                repeatSeconds:
+                  type: "number"
+                schedulerName:
+                  type: "string"
+              type: "object"
+            sourceQBitName:
+              type: "string"
+            stepFlow:
+              enum:
+              - "LINEAR"
+              - "STATE_MACHINE"
+              type: "string"
+            stepList:
+              type: "array"
+            steps:
+              type: "object"
+            supplementalMetaData:
+              type: "object"
+            tableName:
+              type: "string"
+            variantBackend:
+              type: "string"
+            variantRunStrategy:
+              enum:
+              - "PARALLEL"
+              - "SERIAL"
+              type: "string"
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "process"
+          type: "string"
+      type: "object"
+    WidgetDataQuickSightChart:
+      description: "Data of quickSightChart widgets."
+      properties:
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        name:
+          type: "string"
+        url:
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "quickSightChart"
+          type: "string"
+      type: "object"
+    WidgetDataRawHTML:
+      description: "Data of html widgets."
+      properties:
+        html:
+          type: "string"
+        title:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "html"
+          type: "string"
+      type: "object"
+    WidgetDataRowBuilder:
+      description: "Data of rowBuilder widgets."
+      properties:
+        defaultValuesForNewRecords:
+          type: "object"
+        hiddenValues:
+          type: "object"
+        records:
+          type: "array"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "rowBuilder"
+          type: "string"
+      type: "object"
+    WidgetDataStatistics:
+      description: "Data of statistics widgets."
+      properties:
+        count:
+          type: "object"
+        countContext:
+          type: "string"
+        countFontSize:
+          type: "string"
+        countURL:
+          type: "string"
+        increaseIsGood:
+          type: "object"
+        isCurrency:
+          type: "object"
+        percentageAmount:
+          properties:
+            serialVersionUID:
+              type: "object"
+          type: "object"
+        percentageLabel:
+          type: "string"
+        percentageURL:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "statistics"
+          type: "string"
+      type: "object"
+    WidgetDataStepper:
+      description: "Data of stepper widgets."
+      properties:
+        activeStep:
+          type: "object"
+        steps:
+          type: "array"
+        title:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "stepper"
+          type: "string"
+      type: "object"
+    WidgetDataTable:
+      description: "Data of table widgets."
+      properties:
+        columns:
+          type: "array"
+        fixedHeight:
+          type: "number"
+        fixedStickyLastRow:
+          type: "boolean"
+        hidePaginationDropdown:
+          type: "boolean"
+        linkText:
+          type: "string"
+        linkURL:
+          type: "string"
+        noRowsFoundHTML:
+          type: "string"
+        rows:
+          type: "array"
+        rowsPerPage:
+          type: "number"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "table"
+          type: "string"
+      type: "object"
+    WidgetDataUSMap:
+      description: "Data of usaMap widgets."
+      properties:
+        height:
+          type: "string"
+        mapMarkerList:
+          type: "array"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "usaMap"
+          type: "string"
+      type: "object"
     WidgetResponseV1:
       properties:
         widgetData:
@@ -3379,7 +5869,7 @@ info:
     \ with apps, tables, process, etc, the frontend utilizes the appropriate endpoints\
     \ as required.\n"
   title: "QQQ Middleware API"
-  version: "1.1.0"
+  version: "1.2.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/version:
@@ -4921,7 +7411,12 @@ paths:
         content:
           application/json:
             schema:
-              description: "Dynamic query parameters to pass to the widget renderer."
+              additionalProperties:
+                type: "string"
+              description: "Dynamic inputs to pass to the widget renderer (e.g. the\
+                \ record id, dropdown selections).  The same inputs may instead be\
+                \ sent as query parameters; a body value wins over a query parameter\
+                \ of the same name."
               type: "object"
         required: false
       responses:
@@ -4929,8 +7424,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WidgetResponseV1"
-          description: "The rendered widget data, whose shape varies by widget type."
+                $ref: "#/components/schemas/WidgetData"
+          description: "The rendered widget data itself (not wrapped): one of the\
+            \ WidgetData shapes, chosen by its `type`."
       security:
       - sessionUuidCookie:
         - "N/A"

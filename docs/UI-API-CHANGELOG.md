@@ -49,6 +49,22 @@ spec'd routes.
 
 ## Versions
 
+### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
+- `POST /widget/{name}`: its response is now typed as `WidgetData`, a discriminated union (by
+  `type`) of one schema per widget type, built from the backend's widget data classes. The request
+  body is documented as string inputs, which may also be sent as query parameters.
+  - This corrects the document to what the server always returned: the data itself, not a
+    `{widgetData}` wrapper.
+  - The contract test accepts the `$ref` change as a correction (`accepted-breaking-changes.txt`).
+- `FieldAdornment.type` now lists every adornment type (adds FILE_UPLOAD and TOOLTIP).
+  `FieldAdornment.values` documents its known keys.
+- `FrontendComponent.type` now lists every component type (adds the three BULK_LOAD forms).
+- Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
+
+**Accepted corrections.** A change the checker reports as breaking can be accepted only when it
+corrects the document to the server's actual, unchanged behaviour. List it, with the reason, in
+`openapi/v1/accepted-breaking-changes.txt`. The list is cleared when the baseline is refreshed.
+
 ### 1.1.0 (QQQ 4.1.0-RC.6, unreleased)
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.

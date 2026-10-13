@@ -39,7 +39,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.1.0";
+   public static final String SEMANTIC_VERSION = "1.2.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.

@@ -41,8 +41,9 @@ public class AiFieldMetaData extends QSupplementalFieldMetaData
 {
    public static final String TYPE = "ai";
 
-   private AiExposure exposure;
-   private String     aiDescription;
+   private AiExposure         exposure;
+   private String             aiDescription;
+   private DataClassification classification;
 
 
 
@@ -127,6 +128,37 @@ public class AiFieldMetaData extends QSupplementalFieldMetaData
    public AiFieldMetaData withAiDescription(String aiDescription)
    {
       this.aiDescription = aiDescription;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for classification (null means not classified)
+    *******************************************************************************/
+   public DataClassification getClassification()
+   {
+      return (this.classification);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for classification
+    *******************************************************************************/
+   public void setClassification(DataClassification classification)
+   {
+      this.classification = classification;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for classification
+    *******************************************************************************/
+   public AiFieldMetaData withClassification(DataClassification classification)
+   {
+      this.classification = classification;
       return (this);
    }
 }

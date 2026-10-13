@@ -668,6 +668,7 @@ components:
           - "STARTS_WITH"
           - "ENDS_WITH"
           - "CONTAINS"
+          - "CONTAINS_ALL"
           - "NOT_STARTS_WITH"
           - "NOT_ENDS_WITH"
           - "NOT_CONTAINS"
@@ -2922,6 +2923,15 @@ components:
         basePath:
           description: "Base path of this API version, e.g. /qqq/v1."
           type: "string"
+        clientChannels:
+          description: "Client channel names the server accepts in the X-QQQ-Client\
+            \ request header (`channel[/detail]`, e.g. next-ui, assistant/<turnId>).\
+            \ A client names itself on every request; it is recorded in audits and\
+            \ some objects are denied to some channels. The actor is always the signed-in\
+            \ user; a channel never grants anything."
+          items:
+            type: "string"
+          type: "array"
         extensions:
           description: "Extensions (modules and qbits) registered on this server,\
             \ each with its own path prefix and semantic version."
@@ -5512,7 +5522,14 @@ info:
     \ the apps, tables, processes, etc, that the application is made up of (and that\
     \ the authenticated user has permission to access).\n6. As the user interacts\
     \ with apps, tables, process, etc, the frontend utilizes the appropriate endpoints\
-    \ as required.\n"
+    \ as required.\n\n## Client channel\nEvery request should name its client in the\
+    \ `X-QQQ-Client` header: `channel[/detail]`, e.g. `next-ui`, `cli`,\nor `assistant/<turnId>`\
+    \ (the accepted channels are listed by `GET .../version`; an unknown one is refused\
+    \ with 400).\nThe channel is recorded in audits.  It is attribution only: the\
+    \ actor is always the signed-in user, and a channel\nnever grants anything - but\
+    \ some objects are denied to some channels (e.g. the AI assistant can never see\
+    \ its own\nconfiguration, identity and permission administration, audits, API\
+    \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
   version: "1.2.0"
 openapi: "3.0.3"

@@ -52,6 +52,10 @@ public class VersionResponseV1 implements VersionOutputInterface, ToSchema
    @OpenAPIListItems(value = UiApiExtensionInfo.class, useRef = true)
    private List<UiApiExtensionInfo> extensions;
 
+   @OpenAPIDescription("Client channel names the server accepts in the X-QQQ-Client request header (`channel[/detail]`, e.g. next-ui, assistant/<turnId>). A client names itself on every request; it is recorded in audits and some objects are denied to some channels. The actor is always the signed-in user; a channel never grants anything.")
+   @OpenAPIListItems(value = String.class)
+   private List<String> clientChannels;
+
 
 
    /*******************************************************************************
@@ -155,5 +159,26 @@ public class VersionResponseV1 implements VersionOutputInterface, ToSchema
    public void setExtensions(List<UiApiExtensionInfo> extensions)
    {
       this.extensions = extensions;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannels
+    *******************************************************************************/
+   public List<String> getClientChannels()
+   {
+      return (this.clientChannels);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannels
+    *******************************************************************************/
+   @Override
+   public void setClientChannels(List<String> clientChannels)
+   {
+      this.clientChannels = clientChannels;
    }
 }

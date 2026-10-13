@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QSubQuery;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
@@ -159,7 +160,7 @@ public class ValueBehaviorApplier
          }
 
          QFilterCriteria criteriaToUse = criteria;
-         if(field != null)
+         if(field != null && CollectionUtils.nonNullList(criteria.getValues()).stream().noneMatch(value -> value instanceof QSubQuery))
          {
             for(FieldBehavior<?> fieldBehavior : CollectionUtils.nonNullCollection(field.getBehaviors()))
             {

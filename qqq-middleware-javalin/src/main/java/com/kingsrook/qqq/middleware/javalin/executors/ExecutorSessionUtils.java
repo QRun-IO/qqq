@@ -25,9 +25,11 @@ import java.util.HashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
@@ -48,6 +50,7 @@ public class ExecutorSessionUtils
 
    public static final int    SESSION_COOKIE_AGE       = 60 * 60 * 24;
    public static final String SESSION_ID_COOKIE_NAME   = "sessionId";
+   public static final String CLIENT_CHANNEL_HEADER    = "X-QQQ-Client";
    public static final String API_KEY_NAME             = "apiKey";
 
 
@@ -55,7 +58,7 @@ public class ExecutorSessionUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException
+   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException, QBadRequestException
    {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
@@ -148,6 +151,7 @@ public class ExecutorSessionUtils
 
          setUserTimezoneOffsetMinutesInSession(context, session);
          setUserTimezoneInSession(context, session);
+         setClientChannelInSession(context, qInstance, session);
 
          return (session);
       }
@@ -163,6 +167,33 @@ public class ExecutorSessionUtils
 
          throw (qae);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** The client channel of the request (X-QQQ-Client: channel[/detail]) - set
+    ** on the session for every request (null when the header is absent), so a
+    ** session object never carries another request's channel.  The channel must
+    ** be allowed by ClientChannelsMetaData (else 400).  Attribution only: the
+    ** actor is the authenticated user, and a channel can only be denied things.
+    *******************************************************************************/
+   static void setClientChannelInSession(Context context, QInstance qInstance, QSession session) throws QBadRequestException
+   {
+      String header = context.header(CLIENT_CHANNEL_HEADER);
+      if(!StringUtils.hasContent(header))
+      {
+         session.setClientChannel(null);
+         return;
+      }
+
+      String value = header.strip();
+      String name  = ClientChannelsMetaData.channelName(value);
+      if(value.length() > 200 || !ClientChannelsMetaData.of(qInstance).isAllowedChannel(name))
+      {
+         throw (new QBadRequestException("Unknown client channel in " + CLIENT_CHANNEL_HEADER + ": " + name));
+      }
+      session.setClientChannel(value);
    }
 
 

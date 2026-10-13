@@ -123,3 +123,49 @@ delete); rollback discards their callbacks. No session elevation is introduced.
 Unpinned queries over unmirrored parent locks still need the post-filter, paging
 refill and approximate-count behavior described in collaboration spec 3.2 item 4.
 That work is explicitly deferred from this phase (a) implementation.
+
+== Virtual criteria and tag search
+
+Core query hooks let a qbit implement tags without storing the tag list on each
+parent record. Register an implementation of `VirtualFieldCriteriaExpanderInterface`
+on a virtual field:
+
+[source,java]
+----
+new QVirtualFieldMetaData("tags", QFieldType.STRING)
+   .withCriteriaExpander(new QCodeReference(TagCriteriaExpander.class));
+
+// An expander can return this filter for a parent table's tags criterion:
+new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.IN,
+   new QSubQuery("tag_link", "recordId", linkFilter)));
+----
+
+An expander makes the field queryable without a field function, including the
+frontend `isQueryCriteria` flag. It does not make the field selectable: use a
+field function or a post-query customizer for displayed values. Query, count and
+aggregate expand criteria before validation. Each replacement remains a nested
+filter under the original AND/OR operator. Expansion is one pass; a replacement
+containing another expander criterion is rejected. The expander decides which
+operators it supports and throws `QUserFacingException` for unsupported operators.
+`CONTAINS_ALL` is reserved for expander virtual fields; an implementation can
+return an AND of membership sub-queries.
+
+`QSubQuery` is the sole value of an `IN` or `NOT_IN` criterion. Its selected field
+and filter fields are validated against the inner table. Same-backend RDBMS
+queries generate a native SELECT with their own aliases, parameters and record
+security locks. Other backends, and queries across backend names, materialize the
+selected values through `QueryAction` with permissions explicitly enforced and
+the current session's security. The bound is `QSubQuery.MAX_MATERIALIZED` (10,000
+rows); exceeding it raises “This filter matches too many records to combine
+across databases.” Empty IN matches nothing; empty NOT_IN matches everything.
+The context exposes the instance, session and transaction. Inner queries reuse
+the transaction only within the same backend; a different backend cannot share
+that transaction.
+
+Include the virtual field in the table's `searchFields` to enable default quick
+search. Its `expandSearchTerm` filter is ORed with normal text-field matches.
+Returning null means no match. After trimming, a term beginning with `#` and at
+least one following character asks only expanders, with `SearchTermKind.TAG` and
+the prefix removed. Ordinary terms use `SearchTermKind.TEXT`. The expander owns
+exact versus partial matching. A table without an expander search field returns
+no matches for a tag term. Record-search providers receive `#` terms unchanged.

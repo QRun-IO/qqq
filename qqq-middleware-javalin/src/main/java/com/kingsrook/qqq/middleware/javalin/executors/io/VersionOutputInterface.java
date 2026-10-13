@@ -54,4 +54,11 @@ public interface VersionOutputInterface extends AbstractMiddlewareOutputInterfac
     ** set the registered extensions
     ***************************************************************************/
    void setExtensions(List<UiApiExtensionInfo> extensions);
+
+
+
+   /***************************************************************************
+    ** set the client channels the server accepts in X-QQQ-Client
+    ***************************************************************************/
+   void setClientChannels(List<String> clientChannels);
 }

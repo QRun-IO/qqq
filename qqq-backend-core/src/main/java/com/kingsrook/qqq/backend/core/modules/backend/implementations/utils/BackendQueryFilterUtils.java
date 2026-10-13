@@ -260,6 +260,7 @@ public class BackendQueryFilterUtils
 
       boolean criterionMatches = switch(criterion.getOperator())
       {
+         case CONTAINS_ALL -> throw new IllegalArgumentException("CONTAINS_ALL must be expanded before backend execution.");
          case EQUALS -> testEquals(criterion, value);
          case NOT_EQUALS -> !testEquals(criterion, value);
          case NOT_EQUALS_OR_IS_NULL -> !testEquals(criterion, value) || testBlank(criterion, value);

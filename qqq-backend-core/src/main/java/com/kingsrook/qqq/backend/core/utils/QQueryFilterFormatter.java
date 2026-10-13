@@ -121,6 +121,7 @@ public class QQueryFilterFormatter
          case NOT_LIKE -> rs.append(" is not like ");
          case STARTS_WITH -> rs.append(" starts with ");
          case ENDS_WITH -> rs.append(" ends with ");
+         case CONTAINS_ALL -> rs.append(" contains all of ");
          case CONTAINS -> rs.append(" contains ");
          case NOT_STARTS_WITH -> rs.append(" does not start with ");
          case NOT_ENDS_WITH -> rs.append(" does not end with ");

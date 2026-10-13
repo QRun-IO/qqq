@@ -111,6 +111,11 @@ public class TestExtensionSpecs
        ** set the user id of the session
        ***************************************************************************/
       void setUserId(String userId);
+
+      /***************************************************************************
+       ** set the client channel of the session
+       ***************************************************************************/
+      void setClientChannel(String clientChannel);
    }
 
 
@@ -125,6 +130,30 @@ public class TestExtensionSpecs
 
       @OpenAPIDescription("The user id of the session.")
       private String userId;
+
+      @OpenAPIDescription("The client channel of the session.")
+      private String clientChannel;
+
+
+
+      /***************************************************************************
+       ** Getter for clientChannel
+       ***************************************************************************/
+      public String getClientChannel()
+      {
+         return (clientChannel);
+      }
+
+
+
+      /***************************************************************************
+       ** Setter for clientChannel
+       ***************************************************************************/
+      @Override
+      public void setClientChannel(String clientChannel)
+      {
+         this.clientChannel = clientChannel;
+      }
 
 
 
@@ -183,6 +212,7 @@ public class TestExtensionSpecs
       public void execute(EchoInput input, EchoOutputInterface output) throws QException
       {
          output.setWord(input.getWord());
+         output.setClientChannel(QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel());
          output.setUserId(QContext.getQSession() == null || QContext.getQSession().getUser() == null ? null : QContext.getQSession().getUser().getIdReference());
       }
    }

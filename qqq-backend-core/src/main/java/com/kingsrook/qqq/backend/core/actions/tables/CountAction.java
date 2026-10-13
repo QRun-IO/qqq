@@ -28,8 +28,8 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocessor;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -105,7 +105,7 @@ public class CountAction
       countInput.setTableMetaData(table);
       countInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, countInput.getFilter(), countInput.getTransaction()));
 
-      FilterValidationHelper.validateFieldNamesInFilter(countInput);
+      QueryFilterPreprocessor.prepare(countInput);
 
       QBackendMetaData backend = countInput.getBackend();
 

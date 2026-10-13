@@ -39,7 +39,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.1.0";
+   public static final String SEMANTIC_VERSION = "1.2.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
@@ -75,6 +75,11 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableInsertSpecV1());
       list.add(new TableUpdateSpecV1());
       list.add(new TableDeleteSpecV1());
+
+      list.add(new RelatedRecordPickerQuerySpecV1());
+      list.add(new RelatedRecordPickerPrepareSpecV1());
+      list.add(new RelatedRecordPickerAddSpecV1());
+      list.add(new RelatedRecordPickerRemoveSpecV1());
 
       list.add(new RecordDeveloperModeSpecV1());
       list.add(new RecordDeveloperPanelsSpecV1());

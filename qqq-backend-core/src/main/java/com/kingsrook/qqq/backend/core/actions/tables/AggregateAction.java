@@ -37,11 +37,17 @@ import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocess
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.querystats.QueryStat;
@@ -49,6 +55,7 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import com.kingsrook.qqq.backend.core.utils.aggregates.AggregateAnalysis;
 
 
 /*******************************************************************************
@@ -114,6 +121,7 @@ public class AggregateAction
 
       QueryFilterPreprocessor.prepare(aggregateInput);
       validateFieldNames(aggregateInput);
+      AggregateAnalysis.validate(aggregateInput);
 
       QBackendMetaData backend = aggregateInput.getBackend();
 
@@ -129,7 +137,20 @@ public class AggregateAction
 
       aggregateInterface = qModule.getAggregateInterface();
       aggregateInterface.setQueryStat(queryStat);
-      AggregateOutput aggregateOutput = aggregateInterface.execute(aggregateInput);
+      Set<AggregateCapability> supported = aggregateInterface.getSupportedCapabilities(aggregateInput);
+      Set<AggregateCapability> missing = AggregateAnalysis.requiredCapabilities(aggregateInput);
+      missing.removeAll(supported);
+      if(!missing.isEmpty() && !aggregateInput.getAllowStreamedFallback())
+      {
+         throw (new QUserFacingException("Backend does not support aggregate capabilities: " + missing));
+      }
+      AggregateOutput aggregateOutput = missing.isEmpty() ? aggregateInterface.execute(aggregateInput)
+         : new StreamedAggregateEvaluator().execute(aggregateInput, aggregateInput.getStreamedRowLimit(), supported.contains(AggregateCapability.SAMPLING));
+      if(!supported.contains(AggregateCapability.SAMPLING))
+      {
+         aggregateOutput.setSampled(false);
+         aggregateOutput.setSamplePercent(null);
+      }
 
       // todo, maybe, not real important? ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.READ, QContext.getQInstance(), table, aggregateOutput.getResults(), null);
       //  issue being, the signature there... it takes a list of QRecords, which aren't what we have...
@@ -174,12 +195,14 @@ public class AggregateAction
       for(Aggregate aggregate : CollectionUtils.nonNullList(aggregateInput.getAggregates()))
       {
          CollectionUtils.addIfNotNull(inputFieldNames, aggregate.getFieldName());
+         CollectionUtils.addIfNotNull(inputFieldNames, aggregate.getOtherFieldName());
       }
 
       for(GroupBy groupBy : CollectionUtils.nonNullList(aggregateInput.getGroupBys()))
       {
          CollectionUtils.addIfNotNull(inputFieldNames, groupBy.getFieldName());
       }
+      addOrderByFields(aggregateInput.getFilter(), inputFieldNames);
       return (inputFieldNames);
    }
 
@@ -197,5 +220,34 @@ public class AggregateAction
       }
 
       aggregateInterface.cancelAction();
+   }
+
+
+
+   /*******************************************************************************
+    ** Order-only aggregate operands must receive the same field security checks.
+    *******************************************************************************/
+   private static void addOrderByFields(QQueryFilter filter, Set<String> fields)
+   {
+      if(filter == null)
+      {
+         return;
+      }
+      for(QFilterOrderBy order : CollectionUtils.nonNullList(filter.getOrderBys()))
+      {
+         if(order instanceof QFilterOrderByAggregate sort && sort.getAggregate() != null)
+         {
+            CollectionUtils.addIfNotNull(fields, sort.getAggregate().getFieldName());
+            CollectionUtils.addIfNotNull(fields, sort.getAggregate().getOtherFieldName());
+         }
+         else if(order instanceof QFilterOrderByGroupBy sort && sort.getGroupBy() != null)
+         {
+            CollectionUtils.addIfNotNull(fields, sort.getGroupBy().getFieldName());
+         }
+      }
+      for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
+      {
+         addOrderByFields(subFilter, fields);
+      }
    }
 }

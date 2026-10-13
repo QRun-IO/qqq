@@ -51,6 +51,7 @@ public class VersionSpecV1 extends AbstractEndpointSpec<VersionInput, VersionRes
    /***************************************************************************
     **
     ***************************************************************************/
+   @Override
    public BasicOperation defineBasicOperation()
    {
       return new BasicOperation()

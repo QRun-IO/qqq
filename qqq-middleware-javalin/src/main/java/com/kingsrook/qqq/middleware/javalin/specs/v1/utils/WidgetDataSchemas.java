@@ -162,6 +162,7 @@ public class WidgetDataSchemas
             properties.putAll(schema.getProperties());
          }
          properties.putAll(commonProperties());
+         properties = shallow(properties);
          properties.put("type", new Schema().withType(Type.STRING).withDescription("The widget type this data is for.").withEnumValues(types));
          schema.withProperties(properties);
 
@@ -189,6 +190,33 @@ public class WidgetDataSchemas
          .withOneOf(oneOf)
          .withDiscriminator(new Discriminator().withPropertyName("type").withMapping(mapping)));
 
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep the top-level properties typed, but describe nested objects only as
+    ** objects: the reflected shapes of nested backend classes (table metadata,
+    ** records) are not part of the widget contract, and would otherwise pull in
+    ** internals.  Sorted by name, so the document is stable.
+    *******************************************************************************/
+   private static Map<String, Schema> shallow(Map<String, Schema> properties)
+   {
+      Map<String, Schema> rs = new TreeMap<>();
+      for(Map.Entry<String, Schema> entry : properties.entrySet())
+      {
+         Schema property = entry.getValue();
+         if(property.getProperties() != null)
+         {
+            property = new Schema().withType(Type.OBJECT).withDescription(property.getDescription()).withAdditionalProperties(true);
+         }
+         else if(property.getItems() != null && property.getItems().getProperties() != null)
+         {
+            property = new Schema().withType(Type.ARRAY).withDescription(property.getDescription()).withItems(new Schema().withType(Type.OBJECT).withAdditionalProperties(true));
+         }
+         rs.put(entry.getKey(), property);
+      }
       return (rs);
    }
 

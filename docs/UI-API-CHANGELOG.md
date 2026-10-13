@@ -19,6 +19,10 @@ independently of QQQ's own release version.
   operation, parameter, property, schema, enum value or response code; changing a type or format;
   and making something required that was optional. v1 and v2 are then served side by side, and v1
   gets a sunset date here.
+- **One bump per QQQ release, not per PR.** All additive changes between two releases share one
+  MINOR. The contract test compares against the last *released* document (`baseline.yaml`), so
+  the version only has to be above the released one. Later PRs in the same release add their notes
+  to the open entry below.
 - **Clients must tolerate additions.** Ignore unknown properties, and treat unknown enum values as
   "other" (see `UI-API-CLIENTS.md`).
 - **Extensions.** Each extension (module or qbit, registered through
@@ -65,7 +69,7 @@ spec'd routes.
 corrects the document to the server's actual, unchanged behaviour. List it, with the reason, in
 `openapi/v1/accepted-breaking-changes.txt`. The list is cleared when the baseline is refreshed.
 
-### 1.1.0 (QQQ 4.1.0-RC.6, unreleased)
+### 1.1.0 (folded into 1.2.0, never released)
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.
 - Added the extension point: modules and qbits register endpoint specs

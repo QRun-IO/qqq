@@ -109,7 +109,7 @@ public class UiApiContract
 
       String generated = normalize(generatedYaml);
       String committed = normalize(committedYaml);
-      if(!generated.equals(committed))
+      if(!generated.equals(committed) && !isSameDocument(generated, committed))
       {
          problems.add("The committed OpenAPI document differs from the one generated from the code (" + firstDifference(committed, generated) + "). Regenerate and commit it: " + regenerateHint);
       }
@@ -159,6 +159,25 @@ public class UiApiContract
       }
 
       return (problems);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether two documents are equal as data - ignoring the order of object keys,
+    ** which is not stable for some serialized examples (POJO property order
+    ** follows reflection order, which can differ between JVM runs).
+    *******************************************************************************/
+   private static boolean isSameDocument(String a, String b)
+   {
+      try
+      {
+         return (OpenApiCompatibilityChecker.parse(a).equals(OpenApiCompatibilityChecker.parse(b)));
+      }
+      catch(Exception e)
+      {
+         return (false);
+      }
    }
 
 

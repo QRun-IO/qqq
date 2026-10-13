@@ -29,6 +29,7 @@ import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
+import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.UiApiRouteAuditor;
@@ -77,6 +78,11 @@ class UiApiExtensionPointTest
          javalinServer.stop();
          javalinServer = null;
       }
+
+      ////////////////////////////////////////////////////////////////////////////
+      // the server sets this static from its dashboard choice; restore default //
+      ////////////////////////////////////////////////////////////////////////////
+      QJavalinImplementation.setSessionCookieHttpOnly(false);
       Unirest.config().reset();
    }
 

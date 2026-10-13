@@ -101,7 +101,11 @@ the distribution etc."
 | `<table>.analyze` (per table, using the table's permission base name) | Use any analysis operation on that table. The user must also hold the table's READ permission. |
 | `data_analysis.saved.read` / `.insert` / `.edit` / `.delete` | The standard table permissions of `data_analysis_saved` (plus its schedule and star child tables). |
 | `data_analysis.watch.read` / `.insert` / `.edit` / `.delete` | `data_analysis_watch`. |
-| `data_analysis.admin` | `data_analysis_table_config`, `data_analysis_run` admin screens, and editing others' saved analyses. |
+| `data_analysis.settings.read` / `.insert` / `.edit` / `.delete` | `data_analysis_table_config` (Analysis Settings). |
+| `data_analysis.run.read` / `.insert` / `.edit` / `.delete` | `data_analysis_run` (Analysis Runs), still subject to the user lock. |
+| `data_analysis.admin` | The all-access key of the `data_analysis_user` record locks: see and edit others' saved analyses, stars and runs. |
+
+All qbit tables use standard permission rules (no custom checker), so every name appears in the core catalog and the qbit-authentik policy editor.
 
 - `<table>.analyze` is registered through the core **table feature permission** hook (§3.6), so
   it appears in `PermissionsHelper.getAllAvailablePermissions` and in the qbit-authentik policy

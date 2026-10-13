@@ -80,6 +80,17 @@ public class RDBMSBackendModule implements QBackendModuleInterface
    }
 
    /*******************************************************************************
+    ** RDBMS actions translate same-backend sub-queries into SQL.
+    *******************************************************************************/
+   @Override
+   public boolean supportsSubQueries(QBackendMetaData backend)
+   {
+      return (true);
+   }
+
+
+
+   /*******************************************************************************
     ** Method where a backend module must be able to provide its type (name).
     *******************************************************************************/
    public String getBackendType()

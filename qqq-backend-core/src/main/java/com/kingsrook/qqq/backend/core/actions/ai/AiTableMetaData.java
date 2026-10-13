@@ -39,8 +39,9 @@ public class AiTableMetaData extends QSupplementalTableMetaData
 {
    public static final String TYPE = "ai";
 
-   private AiExposure exposure;
-   private String     aiDescription;
+   private AiExposure         exposure;
+   private String             aiDescription;
+   private DataClassification classification;
 
 
 
@@ -84,6 +85,7 @@ public class AiTableMetaData extends QSupplementalTableMetaData
       AiTableMetaData clone = (AiTableMetaData) abstractClone;
       clone.exposure = this.exposure;
       clone.aiDescription = this.aiDescription;
+      clone.classification = this.classification;
       return (clone);
    }
 
@@ -145,6 +147,37 @@ public class AiTableMetaData extends QSupplementalTableMetaData
    public AiTableMetaData withAiDescription(String aiDescription)
    {
       this.aiDescription = aiDescription;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for classification (null means not classified)
+    *******************************************************************************/
+   public DataClassification getClassification()
+   {
+      return (this.classification);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for classification
+    *******************************************************************************/
+   public void setClassification(DataClassification classification)
+   {
+      this.classification = classification;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for classification
+    *******************************************************************************/
+   public AiTableMetaData withClassification(DataClassification classification)
+   {
+      this.classification = classification;
       return (this);
    }
 }

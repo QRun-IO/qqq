@@ -886,6 +886,12 @@ public class AbstractMongoDBAction
             case NOT_BETWEEN -> Filters.nor(filterBetween(fieldBackendName, values));
             case TRUE -> Filters.or(Filters.eq(fieldBackendName, "true"), Filters.ne(fieldBackendName, "true"), Filters.eq(fieldBackendName, null)); // todo test!!
             case FALSE -> Filters.and(Filters.eq(fieldBackendName, "true"), Filters.ne(fieldBackendName, "true"), Filters.eq(fieldBackendName, null));
+
+            ////////////////////////////////////////////////////////////////////////
+            // only valid on virtual fields with a criteria expander, which core //
+            // expands before any backend runs                                    //
+            ////////////////////////////////////////////////////////////////////////
+            case CONTAINS_ALL -> throw (new IllegalArgumentException("CONTAINS_ALL must be expanded before backend execution."));
          });
       }
 

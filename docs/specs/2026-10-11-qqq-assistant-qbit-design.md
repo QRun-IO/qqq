@@ -482,6 +482,8 @@ Defaults:
 - Tables of the qbit's own audit and session tables, `UserSession*`, OAuth tables, and `assistant*` itself → `NONE`.
 - An app-level `defaultExposure` (VALUES or METADATA_ONLY) supports high-sensitivity deployments.
 
+**Data classification.** Core `AiTableMetaData` and `AiFieldMetaData` (supplemental type `"ai"`) accept `.withClassification(DataClassification.PHI)`, independently of exposure. Sensitivity increases from `PUBLIC` (may be shown to anyone), through `CONFIDENTIAL` (business-confidential) and `PII` (personally identifiable information), to `PHI` (protected health information under HIPAA). The default is null (not classified). `AiDataClassifications.ofField(table, fieldName)` uses the field's classification or falls back to the table's; `ofTable(table)` returns only the table's classification. `highest(table)` includes the table and every field, while `highest(table, fieldNames)` considers only the named fields with table fallback (null/empty subsets use the table). Null inputs are supported. These declarations support provider-routing decisions; they do not enforce routing, change exposure defaults, or appear in frontend metadata.
+
 **Proposed core addition:** `QFieldMetaData.isSensitive` (or a `FieldSensitivity` enum). The UI could also use it for masking, and the assistant maps it to `METADATA_ONLY`. Until then, apps annotate the fields with assistant supplemental metadata.
 
 **PII and secret redaction pass** (`Redactor`) runs on every outbound payload, tool results included:

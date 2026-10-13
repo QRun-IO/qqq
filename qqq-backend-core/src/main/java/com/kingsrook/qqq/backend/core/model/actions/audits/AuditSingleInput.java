@@ -48,6 +48,12 @@ public class AuditSingleInput implements Serializable
    private String       message;
    private Serializable recordId;
 
+   //////////////////////////////////////////////////////////////////////////
+   // the client channel of the session that made the change - captured at //
+   // construction, so an audit stored later (asynchronously) keeps it     //
+   //////////////////////////////////////////////////////////////////////////
+   private String clientChannel = QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel();
+
    private Map<String, Serializable> securityKeyValues;
 
    private List<QRecord> details;
@@ -353,4 +359,34 @@ public class AuditSingleInput implements Serializable
       this.details.add(detail);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public AuditSingleInput withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
+   }
 }

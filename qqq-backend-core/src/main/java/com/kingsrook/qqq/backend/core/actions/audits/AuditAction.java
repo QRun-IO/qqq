@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
+import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
@@ -305,6 +306,18 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
                   .withValue("timestamp", timestamp)
                   .withValue("message", auditSingleInput.getMessage())
                   .withValue("recordId", auditSingleInput.getRecordId());
+
+               ///////////////////////////////////////////////////////////////////////////
+               // which client made the change (when the audit table has the field) -   //
+               // the session's channel, e.g. next-ui or assistant/<turnId>; the actor  //
+               // (auditUserId) is always the human user                                //
+               ///////////////////////////////////////////////////////////////////////////
+               if(auditTableHasClientChannel())
+               {
+                  String clientChannel = auditSingleInput.getClientChannel() != null ? auditSingleInput.getClientChannel()
+                     : (QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel());
+                  record.setValue(AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL, clientChannel);
+               }
 
                if(auditSingleInput.getSecurityKeyValues() != null)
                {
@@ -606,4 +619,15 @@ public class AuditAction extends AbstractQActionFunction<AuditInput, AuditOutput
       return (null);
    }
 
+
+
+   /*******************************************************************************
+    ** Whether the audit table has the clientChannel field
+    ** (AuditsMetaDataProvider.withClientChannelField).
+    *******************************************************************************/
+   private static boolean auditTableHasClientChannel()
+   {
+      QTableMetaData auditTable = QContext.getQInstance() == null ? null : QContext.getQInstance().getTable(AuditsMetaDataProvider.TABLE_NAME_AUDIT);
+      return (auditTable != null && auditTable.getFields().containsKey(AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL));
+   }
 }

@@ -65,12 +65,14 @@ public class UiApiInvoker
    public static final int    MAX_DEPTH          = 8;
    public static final String INVOKED_BY_HEADER  = "X-QQQ-Invoked-By";
    public static final String TIMEZONE_HEADER    = "X-QQQ-UserTimezone";
+   public static final String CLIENT_CHANNEL_HEADER = "X-QQQ-Client";
 
    private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
 
    private final Supplier<String>            baseUrlSupplier;
    private final AbstractMiddlewareVersion   middlewareVersion;
    private final HttpClient                  httpClient;
+   private String                            clientChannel = "api";
 
 
 
@@ -101,6 +103,43 @@ public class UiApiInvoker
          throw (new IllegalStateException("The server serves no UI API version"));
       }
       return (new UiApiInvoker(() -> "http://127.0.0.1:" + server.getBoundPort(), versions.get(0)));
+   }
+
+
+
+   /*******************************************************************************
+    ** An invoker for a running server, labelling every call with a client
+    ** channel (e.g. assistant) - fixed here, server side: a request can only add
+    ** detail (assistant/<turnId>), never change or remove the channel.
+    *******************************************************************************/
+   public static UiApiInvoker forServer(QApplicationJavalinServer server, String clientChannel)
+   {
+      return (forServer(server).withClientChannel(clientChannel));
+   }
+
+
+
+   /*******************************************************************************
+    ** Set the client channel name every call is labelled with (default api).
+    *******************************************************************************/
+   public UiApiInvoker withClientChannel(String clientChannel)
+   {
+      if(!StringUtils.hasContent(clientChannel) || clientChannel.contains("/"))
+      {
+         throw (new IllegalArgumentException("A client channel name (without /detail) is required"));
+      }
+      this.clientChannel = clientChannel.strip().toLowerCase();
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
    }
 
 
@@ -264,6 +303,13 @@ public class UiApiInvoker
          builder.header(TIMEZONE_HEADER, request.getUserTimezone());
       }
       builder.header(INVOKED_BY_HEADER, StringUtils.hasContent(request.getInvokedBy()) ? request.getInvokedBy() : "in-process");
+
+      ////////////////////////////////////////////////////////////////////////////////
+      // the client channel is always this invoker's: the request may only add the //
+      // detail after the slash (e.g. a turn id) - it cannot change or remove it    //
+      ////////////////////////////////////////////////////////////////////////////////
+      String detail = request.getClientDetail() == null ? "" : request.getClientDetail().replaceAll("[^A-Za-z0-9._:-]", "");
+      builder.header(CLIENT_CHANNEL_HEADER, clientChannel + (detail.isEmpty() ? "" : "/" + detail));
       return (builder.build());
    }
 

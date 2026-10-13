@@ -237,6 +237,14 @@ known:
   masks; its OpenAPI field schemas gain `x-qqq-access-tier`.
 - Exports and reports stream through `QueryAction`, so cells are masked; a MASKED or HIDDEN field
   in a report's group-by, pivot or sort is refused by §3.2.
+- **Audit details** carry old and new values of another table's fields.
+  `FieldAccessHelper.applyToAuditDetails(String tableName, List<QRecord> auditDetails)` drops rows
+  for HIDDEN fields and masks old/new values for MASKED and REVEALABLE ones (reveals do not apply
+  to history). The audit screens and the collaboration timeline call it.
+- **Realtime** (`RealtimeHub`, #1144) sends field names only; names of HIDDEN fields are dropped
+  per subscriber (`tier.isInMetaData()`).
+- **Stored labels** (favorites, recents, notifications): code that persists or forwards a record
+  label checks `FieldAccessHelper.isRecordLabelFullAccess(table)` and stores null otherwise.
 
 ### 3.5 Fingerprint and caching
 Anything that caches per-user results (data analysis, quick-search result caches, widget caches)

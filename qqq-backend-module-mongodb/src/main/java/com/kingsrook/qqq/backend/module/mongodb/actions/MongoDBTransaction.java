@@ -80,7 +80,19 @@ public class MongoDBTransaction extends QBackendTransaction
     ******************************************************************************/
    public MongoDBTransaction(MongoDBBackendMetaData backend, MongoClient mongoClient, ClientSession clientSession)
    {
-      this.transactionsSupported = backend.getTransactionsSupported();
+      this(backend, mongoClient, clientSession, true);
+   }
+
+
+
+   /*******************************************************************************
+    ** As above - but with allowTransactions false, no mongo transaction is started
+    ** (e.g., for a snapshot-read-concern session, which can't have one), whatever
+    ** the backend's transactionsSupported says.
+    ******************************************************************************/
+   protected MongoDBTransaction(MongoDBBackendMetaData backend, MongoClient mongoClient, ClientSession clientSession, boolean allowTransactions)
+   {
+      this.transactionsSupported = allowTransactions && backend.getTransactionsSupported();
 
       try
       {

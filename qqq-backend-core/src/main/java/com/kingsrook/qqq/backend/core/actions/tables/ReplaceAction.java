@@ -36,9 +36,11 @@ import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer
 import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -82,6 +84,8 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
    @Override
    public ReplaceOutput execute(ReplaceInput input) throws QException
    {
+      CorePermissionEnforcer.checkRestoreWriteFlag(input, input.getFlags());
+
       if(input.getTableName() != null && input.getTable() != null)
       {
          boolean enforce = input.getPerformDeletes()
@@ -229,8 +233,14 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
             deleteInput.setQueryFilter(deleteFilter);
             deleteInput.withFlags(input.getFlags());
             deleteInput.setTransaction(transaction);
-            deleteInput.setOmitDmlAudit(input.getOmitDmlAudit());
+            RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(input.getFlags());
+            boolean          summarizeDeletes =  restoreWriteFlag != null && !restoreWriteFlag.getPerRecordAudit() && !input.getOmitDmlAudit();
+            deleteInput.setOmitDmlAudit(input.getOmitDmlAudit() || summarizeDeletes);
             DeleteOutput deleteOutput = new DeleteAction().execute(deleteInput);
+            if(summarizeDeletes)
+            {
+               RestoreWriteHelper.writeSummaryAudit(deleteInput, "delete", deleteOutput.getDeletedRecordCount());
+            }
             requireSuccessfulRecords(deleteOutput.getRecordsWithErrors(), "DELETE");
             output.setDeleteOutput(deleteOutput);
          }

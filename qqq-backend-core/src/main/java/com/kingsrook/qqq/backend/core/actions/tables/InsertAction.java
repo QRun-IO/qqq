@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelpe
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
@@ -54,6 +55,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -153,6 +155,8 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
     *******************************************************************************/
    private InsertOutput execute(InsertInput insertInput, List<QRecord> nativeRecords, Set<Object> originalIdentities, boolean failOnRecordErrors) throws QException
    {
+      CorePermissionEnforcer.checkRestoreWriteFlag(insertInput, insertInput.getFlags());
+
       boolean enforce = false;
       if(StringUtils.hasContent(insertInput.getTableName()) && insertInput.getTable() != null)
       {
@@ -300,9 +304,14 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
       //////////////////
       // do the audit //
       //////////////////
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(insertInput.getFlags());
       if(insertInput.getOmitDmlAudit())
       {
          LOG.debug("Requested to omit DML audit");
+      }
+      else if(restoreWriteFlag != null && !restoreWriteFlag.getPerRecordAudit())
+      {
+         RestoreWriteHelper.writeSummaryAudit(insertInput, "insert", insertOutput.getRecords());
       }
       else
       {
@@ -313,7 +322,10 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
             .withRecordList(insertOutput.getRecords()));
       }
 
-      fireRecordChangeListeners(insertInput, insertOutput.getRecords());
+      if(restoreWriteFlag == null || restoreWriteFlag.getPublishEvents())
+      {
+         fireRecordChangeListeners(insertInput, insertOutput.getRecords());
+      }
 
       ////////////////////////////////////////////////////////////////
       // finally, run the post-insert customizers, if there are any //
@@ -330,7 +342,10 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
             nativeRecords.add(new QRecord(record));
          }
       }
-      runPostInsertCustomizers(insertInput, table, insertOutput);
+      if(!skipsCustomizers(insertInput))
+      {
+         runPostInsertCustomizers(insertInput, table, insertOutput);
+      }
       if(failOnRecordErrors)
       {
          ReplaceAction.requireSuccessfulRecords(insertOutput.getRecords(), "INSERT");
@@ -463,17 +478,26 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
 
       QTableMetaData table = insertInput.getTable();
 
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(insertInput.getFlags());
+
       ///////////////////////////////////////////////////////////////////
       // load the pre-insert customizer and set it up, if there is one //
       // then we'll run it based on its WhenToRun value                //
       // note - if we already ran it, then don't re-run it!            //
       ///////////////////////////////////////////////////////////////////
-      Optional<TableCustomizerInterface> preInsertCustomizer = didAlreadyRunCustomizer ? Optional.empty() : QCodeLoader.getTableCustomizer(table, TableCustomizers.PRE_INSERT_RECORD.getRole());
+      Optional<TableCustomizerInterface> preInsertCustomizer = didAlreadyRunCustomizer || skipsCustomizers(insertInput) ? Optional.empty() : QCodeLoader.getTableCustomizer(table, TableCustomizers.PRE_INSERT_RECORD.getRole());
       runPreInsertCustomizerIfItIsTime(insertInput, isPreview, preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun.BEFORE_ALL_VALIDATIONS);
 
       setDefaultValuesInRecords(table, insertInput.getRecords());
 
-      ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.INSERT, QContext.getQInstance(), table, insertInput.getRecords(), null);
+      if(restoreWriteFlag != null)
+      {
+         RestoreWriteHelper.applyFieldBehaviorsKeepingDates(ValueBehaviorApplier.Action.INSERT, table, insertInput.getRecords(), null);
+      }
+      else
+      {
+         ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.INSERT, QContext.getQInstance(), table, insertInput.getRecords(), null);
+      }
 
       runPreInsertCustomizerIfItIsTime(insertInput, isPreview, preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun.BEFORE_UNIQUE_KEY_CHECKS);
       UniqueKeyHelper.validateInsertStoredKeys(insertInput);
@@ -520,10 +544,27 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
 
 
    /*******************************************************************************
+    ** In restore mode, pre- and post-insert customizers (table-level and
+    ** instance-level) only run if the flag says so.
+    *******************************************************************************/
+   private static boolean skipsCustomizers(InsertInput insertInput)
+   {
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(insertInput.getFlags());
+      return (restoreWriteFlag != null && !restoreWriteFlag.getRunCustomizers());
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private void runPreInsertCustomizerIfItIsTime(InsertInput insertInput, boolean isPreview, Optional<TableCustomizerInterface> preInsertCustomizer, AbstractPreInsertCustomizer.WhenToRun whenToRun) throws QException
    {
+      if(skipsCustomizers(insertInput))
+      {
+         return;
+      }
+
       if(preInsertCustomizer.isPresent())
       {
          if(whenToRun.equals(preInsertCustomizer.get().whenToRunPreInsert(insertInput, isPreview)))
@@ -758,6 +799,13 @@ public class InsertAction extends AbstractQActionFunction<InsertInput, InsertOut
     *******************************************************************************/
    private void setAutomationStatusField(InsertInput insertInput)
    {
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(insertInput.getFlags());
+      if(restoreWriteFlag != null && restoreWriteFlag.getSuppressAutomations())
+      {
+         RestoreWriteHelper.setAutomationStatusOk(insertInput.getTable(), insertInput.getRecords());
+         return;
+      }
+
       RecordAutomationStatusUpdater.setAutomationStatusInRecords(insertInput.getTable(), insertInput.getRecords(), AutomationStatus.PENDING_INSERT_AUTOMATIONS, insertInput.getTransaction(), null);
    }
 

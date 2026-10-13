@@ -26,6 +26,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -33,8 +34,13 @@ import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyScope;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
+import com.kingsrook.qqq.backend.module.rdbms.strategy.ConsistentReadStart;
 
 
 /*******************************************************************************
@@ -46,6 +52,49 @@ import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
  *******************************************************************************/
 public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
 {
+   public static final int DEFAULT_LARGE_RESULT_FETCH_SIZE = 1_000;
+
+   private int largeResultFetchSize = DEFAULT_LARGE_RESULT_FETCH_SIZE;
+
+
+
+   /***************************************************************************
+    ** The pgjdbc driver buffers the entire result set in memory unless the
+    ** connection is in a transaction (autocommit off) and a fetch size is set
+    ** (it then uses a server-side cursor).  So, for queries hinted as potentially
+    ** large, when we are inside a transaction, set a fetch size.  Outside a
+    ** transaction (autocommit on), a fetch size has no effect, so it is left alone.
+    ***************************************************************************/
+   @Override
+   public void configureStatementForLargeResults(Connection connection, PreparedStatement statement) throws SQLException
+   {
+      if(largeResultFetchSize > 0 && !connection.getAutoCommit())
+      {
+         statement.setFetchSize(largeResultFetchSize);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for largeResultFetchSize (0 disables)
+    *******************************************************************************/
+   public void setLargeResultFetchSize(int largeResultFetchSize)
+   {
+      this.largeResultFetchSize = largeResultFetchSize;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for largeResultFetchSize
+    *******************************************************************************/
+   public int getLargeResultFetchSize()
+   {
+      return largeResultFetchSize;
+   }
+
+
 
    /*******************************************************************************
     ** PostgreSQL requires DEFAULT VALUES when no columns are supplied.
@@ -284,6 +333,63 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
    public String getIdentifierQuoteString()
    {
       return "\"";
+   }
+
+   /*******************************************************************************
+    ** PostgreSQL: REPEATABLE READ (READ ONLY, if so requested) - so every table
+    ** reflects the one snapshot the transaction takes at its first statement.
+    **
+    ** For BACKEND scope, the snapshot is exported (pg_export_snapshot), and the id
+    ** returned, so that other connections (parallel workers, pg_dump --snapshot)
+    ** can attach to it with SET TRANSACTION SNAPSHOT (via importSnapshotId on the
+    ** input).  The exporting transaction must stay open for as long as others may
+    ** import.  Not done on a hot standby, which can't export snapshots.
+    **
+    ** Caveat:  a long-lived snapshot holds back vacuum (xmin), and, on a standby,
+    ** can be cancelled by recovery conflicts (unless hot_standby_feedback is on).
+    *******************************************************************************/
+   @Override
+   public ConsistentReadStart beginConsistentRead(Connection connection, ConsistentReadInput input) throws SQLException
+   {
+      try(Statement statement = connection.createStatement())
+      {
+         statement.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ" + (input.getReadOnly() ? " READ ONLY" : ""));
+
+         if(input.getImportSnapshotId().isPresent())
+         {
+            ////////////////////////////////////////////////////////////////////////
+            // SET can't take bind parameters - so be strict about what's in the  //
+            // id (postgres snapshot ids look like 00000003-0000001B-1)           //
+            ////////////////////////////////////////////////////////////////////////
+            String snapshotId = input.getImportSnapshotId().get();
+            if(!snapshotId.matches("[0-9A-Fa-f-]{1,64}"))
+            {
+               throw (new SQLException("Invalid snapshot id: " + snapshotId));
+            }
+
+            statement.execute("SET TRANSACTION SNAPSHOT '" + snapshotId + "'");
+            return (new ConsistentReadStart(Optional.empty(), ConsistencyGuarantee.ONE_INSTANT));
+         }
+
+         boolean inRecovery = false;
+         try(ResultSet resultSet = statement.executeQuery("SELECT pg_is_in_recovery()"))
+         {
+            inRecovery = resultSet.next() && resultSet.getBoolean(1);
+         }
+
+         if(input.getScope() == ConsistencyScope.BACKEND && !inRecovery)
+         {
+            try(ResultSet resultSet = statement.executeQuery("SELECT pg_export_snapshot()"))
+            {
+               if(resultSet.next())
+               {
+                  return (new ConsistentReadStart(Optional.of(resultSet.getString(1)), ConsistencyGuarantee.ONE_INSTANT));
+               }
+            }
+         }
+
+         return (new ConsistentReadStart(Optional.empty(), ConsistencyGuarantee.ONE_INSTANT));
+      }
    }
 
 }

@@ -41,6 +41,11 @@ public class MemoryAggregateAction implements AggregateInterface
    {
       try
       {
+         if(aggregateInput.getTransaction() instanceof MemoryConsistentReadTransaction snapshotTransaction)
+         {
+            return (snapshotTransaction.callInSnapshot(() -> MemoryRecordStore.getInstance().aggregate(aggregateInput)));
+         }
+
          return (MemoryRecordStore.getInstance().aggregate(aggregateInput));
       }
       catch(Exception e)

@@ -55,7 +55,7 @@ public class RecordFeatureSummaryHelper
          return (null);
       }
       ResolvedRecordFeatures resolved = RecordFeaturesResolver.resolve(instance, table);
-      FrontendRecordFeatures result = new FrontendRecordFeatures().withFeatures(resolved.enabledFeatures());
+      FrontendRecordFeatures result = new FrontendRecordFeatures().withFeatures(resolved.enabledFeatures()).withOwnership(resolved.getOwnership());
       for(RecordFeature feature : resolved.enabledFeatures())
       {
          result.getSettings().put(feature, new LinkedHashMap<>(resolved.getFeatures().get(feature).getSettings()));

@@ -229,4 +229,15 @@ public class TableMetaData extends TableMetaDataLight implements ToSchema
    {
       return (wrapped.getQuickCreateSectionName());
    }
+
+
+   /*******************************************************************************
+    ** Built-in session-relative views published by core.
+    *******************************************************************************/
+   @OpenAPIDescription("Built-in views; evaluate their filters in the current session without persisting the resolved user id.")
+   @OpenAPIListItems(value = BuiltInViewV1.class, useRef = true)
+   public List<BuiltInViewV1> getBuiltInViews()
+   {
+      return (wrapped.getBuiltInViews() == null ? null : wrapped.getBuiltInViews().stream().map(BuiltInViewV1::new).toList());
+   }
 }

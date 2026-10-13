@@ -28,6 +28,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.CurrentUserFilterHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -112,6 +113,7 @@ public class CountAction
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // apply any available field behaviors to the filter (noting that, if anything changes, a new filter is returned) //
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      countInput.setFilter(CurrentUserFilterHelper.resolve(countInput, countInput.getFilter()));
       countInput.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, countInput.getFilter(), Collections.emptySet()));
 
       QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, countInput.getFilter(), CountAction.class.getSimpleName());

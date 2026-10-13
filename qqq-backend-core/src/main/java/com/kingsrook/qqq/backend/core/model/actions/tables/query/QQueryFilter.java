@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.CurrentUser;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.FilterVariableExpression;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -602,7 +603,11 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   Serializable interpretedValue = value;
                   Exception    caughtException  = null;
 
-                  if(value instanceof AbstractFilterExpression<?>)
+                  if("${currentUser}".equals(value))
+                  {
+                     interpretedValue = new CurrentUser();
+                  }
+                  else if(value instanceof AbstractFilterExpression<?>)
                   {
                      ///////////////////////////////////////////////////////////////////////
                      // if a filter variable expression, evaluate the input values, which //

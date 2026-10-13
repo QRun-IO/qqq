@@ -290,6 +290,42 @@ components:
           description: "Text color, as a CSS color value."
           type: "string"
       type: "object"
+    BuiltInViewV1:
+      properties:
+        filter:
+          properties:
+            booleanOperator:
+              enum:
+              - "OR"
+              type: "string"
+            criteria:
+              items:
+                properties:
+                  fieldName:
+                    type: "string"
+                  operator:
+                    enum:
+                    - "EQUALS"
+                    type: "string"
+                  values:
+                    items:
+                      description: "The executing session's user id. Display as Me.\
+                        \ A missing user matches nothing."
+                      properties:
+                        type:
+                          enum:
+                          - "CurrentUser"
+                          type: "string"
+                      type: "object"
+                    type: "array"
+                type: "object"
+              type: "array"
+          type: "object"
+        label:
+          type: "string"
+        name:
+          type: "string"
+      type: "object"
     ExposedJoin:
       properties:
         isMany:
@@ -1904,6 +1940,13 @@ components:
             - "ASSIGNMENT"
             type: "string"
           type: "array"
+        ownership:
+          properties:
+            assigneeFieldName:
+              type: "string"
+            ownerFieldName:
+              type: "string"
+          type: "object"
         settings:
           additionalProperties:
             additionalProperties: true
@@ -2438,6 +2481,12 @@ components:
           items:
             $ref: "#/components/schemas/Association"
           type: "array"
+        builtInViews:
+          description: "Built-in views; evaluate their filters in the current session\
+            \ without persisting the resolved user id."
+          items:
+            $ref: "#/components/schemas/BuiltInViewV1"
+          type: "array"
         capabilities:
           description: "List of strings describing actions that are supported by the\
             \ backend application for the table."
@@ -2628,6 +2677,12 @@ components:
             \ access"
           items:
             $ref: "#/components/schemas/Association"
+          type: "array"
+        builtInViews:
+          description: "Built-in views; evaluate their filters in the current session\
+            \ without persisting the resolved user id."
+          items:
+            $ref: "#/components/schemas/BuiltInViewV1"
           type: "array"
         capabilities:
           description: "List of strings describing actions that are supported by the\

@@ -123,3 +123,52 @@ delete); rollback discards their callbacks. No session elevation is introduced.
 Unpinned queries over unmirrored parent locks still need the post-filter, paging
 refill and approximate-count behavior described in collaboration spec 3.2 item 4.
 That work is explicitly deferred from this phase (a) implementation.
+
+
+== Owner, assignee, and My records
+
+Declare ownership using existing STRING or INTEGER user-id fields. Validation checks
+both declared fields against each table, including ownership inherited from an instance
+or app; the table's ownership declaration replaces the inherited declaration.
+
+[source,java]
+----
+RecordFeaturesMetaData.ofOrWithNew(table)
+   .withEnabled(RecordFeature.ASSIGNMENT, true)
+   .withOwnership(new RecordOwnership()
+      .withOwnerFieldName("ownerUserId")
+      .withAssigneeFieldName("assigneeUserId"));
+----
+
+Either field may be omitted. When ASSIGNMENT is enabled after resolution and at least
+one field is declared, frontend table metadata includes `builtInViews` with a view named
+`myRecords`, labeled `My records`. Its filter is `ownerUserId = CurrentUser OR
+assigneeUserId = CurrentUser`, omitting an undeclared field. An empty ownership declaration,
+a disabled feature, or a feature hard limit publishes no view. This is a metadata preset;
+it does not insert or modify persisted user saved views. `recordFeatures.ownership`
+exposes the effective `ownerFieldName` and `assigneeFieldName`.
+
+`CurrentUser` extends `AbstractFilterExpression` and evaluates to
+`QContext.getQSession().getUser().getIdReference()`. Like `Now`, it is stored as a JSON
+object with a type discriminator: `{"type":"CurrentUser"}`. The existing criteria
+deserializer reconstructs the expression by class name. Clients display this value as
+`Me` and retain the expression when saving a view, rather than saving a specific user id.
+The typed `BuiltInViewV1` schema describes the ownership view and its expression values;
+the older string-only `QueryFilter` response contract is unchanged.
+
+[source,java]
+----
+new QQueryFilter(new QFilterCriteria("ownerUserId", QCriteriaOperator.EQUALS, new CurrentUser()));
+----
+
+EQUALS, NOT_EQUALS, and IN work for STRING and INTEGER user-id fields. Core query, count,
+and aggregate actions resolve a copy before backend execution, including nested filters,
+so a shared filter remains session-relative. If the session, user, or user id is absent,
+a criterion containing CurrentUser becomes FALSE, including NOT_EQUALS and mixed IN lists;
+it never selects unowned rows or all rows by accident. Other criteria in an OR filter
+retain their normal meaning. Existing permissions and record locks still apply.
+
+The filter variable interpreter also recognizes the exact string `${currentUser}` and
+converts it to a deferred CurrentUser expression. Query/count/aggregate accept this spelling
+directly as well, including filters restored from saved-view JSON. There is no string
+interpolation inside larger values.

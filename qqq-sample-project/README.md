@@ -23,6 +23,31 @@ Press Ctrl+C to stop the application. Edit Java files under `qqq-sample/qqq-samp
 
 ## Framework development
 
+### CircleCI sample acceptance
+
+`sample_acceptance` builds the framework and pinned Material dashboard, then runs
+sample data/HTTP/browser acceptance, the Python regression suite, and Lambda source
+acceptance. In parallel, `sample_consumer_acceptance` installs the framework and
+runs the starter/application proof with live MySQL and the generated extension
+check. The starter runner keeps its own fresh, uncached Maven repository.
+Material npm downloads are cached by pinned commit and lockfile checksum; every
+run still uses `npm ci`, tests, and a production build.
+
+Both jobs persist reports and browser artifacts under separate workspace paths.
+`sample_coverage_gate` combines them under `target`, stages reviewed Next evidence,
+and reports coverage without another Maven build. Candidate, GA-tag, and hotfix
+gates also wait for `sample_bootstrap_source` and run strict coverage. Each job
+uploads test results and available diagnostics even when a test fails.
+
+Workflow job names retain their `feature_`, `snapshot_`, `candidate_`, `release_`,
+and `hotfix_` prefixes (unprefixed in `test_only`). Feature publishing requires the
+reporting gate, bootstrap and ESB; RC/GA publishing requires the strict gate,
+bootstrap, ESB and static analysis. Hotfix keeps its existing strict gate,
+bootstrap and ESB prerequisites. On develop, `publish_snapshot` publishes after
+bootstrap and ESB only: sample acceptance and static analysis still report in the
+same workflow, but do not delay SNAPSHOT publication. PR acceptance and the full
+RC/GA gates remain required at their respective stages.
+
 ### Candidate bootstrap acceptance (#605)
 
 Run the source stage from this checkout after installing JDK 21 and Maven:

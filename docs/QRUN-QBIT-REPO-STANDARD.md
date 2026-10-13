@@ -49,18 +49,19 @@ An item is **pass**, **fail**, or **owner-action** (it needs the owner's UI or c
 
 | # | Item | Standard |
 |---|---|---|
-| C1 | `.circleci/config.yml` | Identical in every reference: `kingsrook/qqq-orb@0.6.8`, the `configure-package-install` pre-step, context `qqq-maven-registry-credentials`, workflows `test_only` (all branches except develop, release/*, hotfix/*), `publish_snapshot` (develop), `publish_release_candidate` (release/*), `publish_release` (GA tags only, see C5), `publish_hotfix_release` (hotfix/*). |
+| C1 | `.circleci/config.yml` | Identical in every reference: `kingsrook/qqq-orb@0.6.8`, the `configure-package-install` pre-step, context `qqq-maven-registry-credentials`, workflows `test_only` (all branches except develop and release/*; `hotfix/*` included), `publish_snapshot` (develop), `publish_release_candidate` (release/*), `publish_release` (GA tags only, see C5). **No `publish_hotfix_release`**: a `hotfix/*` branch push published qbit-cdn 0.1.1 to Central with no tag or review (QRun-IO/qbit-cdn#12, #1121). A hotfix releases from a reviewed `vX.Y.Z` tag on the hotfix commit through `publish_release`. |
 | C2 | Project followed | The repository is a CircleCI project (`gh/QRun-IO/<repo>`), `oss: true`, `set-github-status`, fork PRs not built. Following a project immediately builds the default branch: with `develop` as default that runs `publish_snapshot` and publishes a SNAPSHOT, so follow only once `develop` is ready to publish. |
 | C3 | Checkout key | A **GitHub user key** (preferred) so the orb can push version bumps and tags; a deploy key alone is not enough for releases. **owner-action** (Project Settings, SSH Keys, Add User Key). |
 | C4 | Publishing | Only through the orb: SNAPSHOTs from `develop`, RCs from `release/*`, releases from `vX.Y.Z` tags, to Maven Central. Nobody publishes by hand. |
 | C5 | Release tag filter | The `publish_release` workflow's tag filter is `only: /^v\d+\.\d+\.\d+$/`, never `/v.*/`. Write it without brackets: `[0-9]` inside a YAML flow sequence breaks parsing. Under `/v.*/` an RC tag build is treated as a release branch build and the orb increments the RC, so pushing `v1.0.0-RC.2` published `qbit-sql-workbench` 1.0.0-RC.3 with the RC.2 code (QRun-IO/qqq-orb#20). RC tags are bookkeeping only; RCs publish from `release/*` branch builds. |
+| C6 | Automated RCs | `.github/workflows/release-rc.yml` calls the reusable `QRun-IO/.github/.github/workflows/qbit-release-rc.yml@main` on `workflow_dispatch` (with `dry_run`) and when a develop PR labelled **`release:rc`** is merged (the label exists in the repo). It merges develop into `release/X.Y.Z`, else `release/X.Y` (created from develop when missing), using develop's `X.Y.Z-SNAPSHOT` revision, through the GitHub merges API (GitHub signs the merge). The `release/*` push runs `publish_release_candidate`, which bumps the RC, publishes to Central and tags. Nobody cuts RCs by hand-merging any more; there is no hotfix path. A merge conflict fails the run; resolve it with a PR into the release branch. |
 
 ## 4. Branches and flow
 
 | # | Item | Standard |
 |---|---|---|
 | G1 | Branches | `main` and `develop` exist; default branch **`develop`** (GitFlow, as `qbit-quick-search` and `qbit-sql-workbench`). |
-| G2 | Flow | `feature/*` from `develop`, PR to `develop`; `release/X.Y` cut from `develop` publishes RCs; a `vX.Y.Z` tag publishes the release; `hotfix/*` for fixes; `main` holds reviewed final release source. |
+| G2 | Flow | `feature/*` from `develop`, PR to `develop`; `release/X.Y` cut from `develop` publishes RCs (automated, C6); a `vX.Y.Z` tag publishes the release; `hotfix/*` for fixes (tests only; release from a reviewed `vX.Y.Z` tag); `main` holds reviewed final release source. |
 | G3 | Commits | Signed, Conventional Commits. |
 
 ## 5. Repository settings

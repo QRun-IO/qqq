@@ -1,5 +1,7 @@
 # QQQ Sample Project
 
+By owner decision on 2026-10-13, the per-RC Next waiver approval gate was removed. Releases no longer require an owner comment on issue #798. Acceptance results for the seven Next-owned successor features are a non-blocking release report: missing receipts, pending mappings and pending review are recorded with reasons in `next_report_only_features`, excluded from verified counts, and keep `complete=false`. Reviewed receipts are evaluated as before and all native results remain in `next_acceptance`. Failed mapped tests and supplied receipts or bundles rejected as invalid or tampered still fail strict coverage. All non-Next strict requirements remain unchanged.
+
 QRun-owned reference application for QQQ 4.1: tables, related records, processes, widgets, the default Next dashboard, the optional Material Dashboard 0.42.0-RC.2, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
 
 ## Quickstart with Next — 4.1 RC3

@@ -2075,6 +2075,160 @@ components:
             \ search knows it (records the user may not read can make it high)."
           type: "number"
       type: "object"
+    RelatedRecordPicker:
+      properties:
+        associationName:
+          description: "The association whose rows the picker adds (MULTI_CHILD, LINK)"
+          type: "string"
+        canAddChildren:
+          description: "Whether the user may add child or join rows (prepare and add\
+            \ routes)"
+          type: "boolean"
+        canCreateTarget:
+          description: "Whether to offer quick-create of a target record (insert route\
+            \ of targetTableName)"
+          type: "boolean"
+        canRemoveChildren:
+          description: "Whether the user may unlink (remove route; LINK only)"
+          type: "boolean"
+        childTableName:
+          description: "The child or join table new rows go into (MULTI_CHILD, LINK)"
+          type: "string"
+        childTargetFieldName:
+          description: "The child table's field that holds the picked record's key\
+            \ (MULTI_CHILD, LINK)"
+          type: "string"
+        columns:
+          description: "Target fields to show as result columns"
+          items:
+            type: "string"
+          type: "array"
+        defaultFilter:
+          $ref: "#/components/schemas/QueryFilter"
+          description: "Initial, user-editable filter; the query route returns it\
+            \ resolved as resolvedDefaultFilter"
+        fieldName:
+          description: "The foreign-key field the picker sets (SINGLE)"
+          type: "string"
+        filter:
+          $ref: "#/components/schemas/QueryFilter"
+          description: "Filter the server always applies to the picker's queries (may\
+            \ contain ${input.fieldName} variables, read from the parent record)"
+        label:
+          description: "Dialog title, and the label of the button that opens it"
+          type: "string"
+        maxSelections:
+          description: "Most records one add or link may pick (MULTI_CHILD, LINK)"
+          type: "number"
+        mode:
+          description: "SINGLE: choose one record for fieldName.  MULTI_CHILD: add\
+            \ child rows through associationName, after a review of reviewFieldNames.\
+            \  LINK: link and unlink through associationName (a join table)."
+          type: "string"
+        name:
+          description: "Picker name; the {pickerName} path segment of the relatedRecordPicker\
+            \ routes"
+          type: "string"
+        previewFields:
+          description: "Target fields to show for the highlighted record"
+          items:
+            type: "string"
+          type: "array"
+        reviewFieldNames:
+          description: "Child fields the user fills per picked record before saving\
+            \ (MULTI_CHILD); empty means no review step"
+          items:
+            type: "string"
+          type: "array"
+        targetTableName:
+          description: "The table records are picked from (read its metadata for fields,\
+            \ sections and quickCreateSectionName)"
+          type: "string"
+        thumbnailField:
+          description: "Target field holding an image URL, for thumbnails"
+          type: "string"
+      type: "object"
+    RelatedRecordPickerAddResponseV1:
+      properties:
+        records:
+          description: "The inserted child or join rows"
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        warnings:
+          description: "Warnings from the inserts, if any"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    RelatedRecordPickerPrepareResponseV1:
+      properties:
+        records:
+          description: "One unsaved child row per target id, in request order, with\
+            \ defaults, values copied from the target, and the parent and target keys\
+            \ (whose display value is the target's label)"
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        reviewFieldNames:
+          description: "Child fields for the user to review per row before the add\
+            \ route; empty means add without a review"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    RelatedRecordPickerQueryResponseV1:
+      properties:
+        hasMore:
+          description: "Whether more records follow (request the next page with skip);\
+            \ there is no count"
+          type: "boolean"
+        linkedIds:
+          description: "Ids (as strings) of the returned records the parent already\
+            \ has a child or join row for (MULTI_CHILD, LINK with primaryKey)"
+          items:
+            type: "string"
+          type: "array"
+        records:
+          description: "One page of target records (values and display values), in\
+            \ order"
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        resolvedDefaultFilter:
+          description: "The picker's defaultFilter with its variables resolved, to\
+            \ start the dialog's filter from (first page only)"
+          properties:
+            booleanOperator:
+              description: "Boolean operator to apply between criteria"
+              enum:
+              - "AND"
+              - "OR"
+              type: "string"
+            criteria:
+              description: "Field level criteria that make up the query filter"
+              items:
+                $ref: "#/components/schemas/FilterCriteria"
+              type: "array"
+            limit:
+              description: "Maximum number of results to return."
+              type: "number"
+            orderBys:
+              description: "How the query's results should be ordered (sorted)."
+              items:
+                $ref: "#/components/schemas/OrderBy"
+              type: "array"
+            skip:
+              description: "Records to skip (e.g., to implement pagination)"
+              type: "number"
+          type: "object"
+      type: "object"
+    RelatedRecordPickerRemoveResponseV1:
+      properties:
+        deletedCount:
+          description: "How many join rows were deleted"
+          type: "number"
+      type: "object"
     ReportMetaData:
       properties:
         hasPermission:
@@ -2342,6 +2496,10 @@ components:
         primaryKeyField:
           description: "Name of the primary key field in this table"
           type: "string"
+        quickCreateSectionName:
+          description: "Name of the section whose editable fields a quick-create form\
+            \ shows (else the required, editable fields)"
+          type: "string"
         readPermission:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
@@ -2350,6 +2508,12 @@ components:
           $ref: "#/components/schemas/RecordFeaturesV1"
           description: "Enabled record collaboration features, public settings, and\
             \ this session's table capabilities."
+        relatedRecordPickers:
+          description: "Related-record pickers of this table whose target the user\
+            \ may read (docs/RELATED-RECORD-PICKER.md)"
+          items:
+            $ref: "#/components/schemas/RelatedRecordPicker"
+          type: "array"
         searchFields:
           description: "Names of the fields that record search (POST /search) matches\
             \ for this table. Only present when the table is searchable and the user\
@@ -2534,12 +2698,22 @@ components:
         primaryKeyField:
           description: "Name of the primary key field in this table"
           type: "string"
+        quickCreateSectionName:
+          description: "Name of the section whose editable fields a quick-create form\
+            \ shows (else the required, editable fields)"
+          type: "string"
         readPermission:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
         recordFeatures:
           $ref: "#/components/schemas/RecordFeaturesV1"
+        relatedRecordPickers:
+          description: "Related-record pickers of this table whose target the user\
+            \ may read (docs/RELATED-RECORD-PICKER.md)"
+          items:
+            $ref: "#/components/schemas/RelatedRecordPicker"
+          type: "array"
         searchFields:
           description: "Names of the fields that record search (POST /search) matches\
             \ for this table. Only present when the table is searchable and the user\
@@ -6334,6 +6508,244 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Insert a record into a table"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/query:
+    post:
+      description: "Lists one page of the picker's target records as the user may\
+        \ read them: the user's filter (the target table's own filter builder or a\
+        \ saved view), ANDed with the picker's filter (resolved from the parent record\
+        \ or form values) and the search term. Needs READ on the target table; table\
+        \ permissions, record security locks and field security locks apply as on\
+        \ the table query route. Reads limit + 1 rows for hasMore (no count). For\
+        \ MULTI_CHILD and LINK with a primaryKey, linkedIds says which returned records\
+        \ the parent already has rows for."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record (required for MULTI_CHILD\
+                    \ and LINK; for SINGLE, the record being edited, if any). Read\
+                    \ with the user's own security."
+                  type: "string"
+                values:
+                  description: "Current form values (SINGLE on a create form, when\
+                    \ there is no primaryKey), for ${input.fieldName} variables in\
+                    \ the picker's filters"
+                  type: "object"
+                searchTerm:
+                  description: "Case-insensitive text matched (contains) against the\
+                    \ target table's search fields, or its record-label fields"
+                  type: "string"
+                filter:
+                  $ref: "#/components/schemas/QueryFilter"
+                  description: "The user's filter on the target table (criteria and\
+                    \ orderBys on target fields only); ANDed with the picker's filter"
+                skip:
+                  description: "Records to skip (offset paging)"
+                  type: "integer"
+                limit:
+                  description: "Records per page, 1 to 200 (default 50)"
+                  type: "integer"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerQueryResponseV1"
+          description: "Query the records a related-record picker offers: result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Query the records a related-record picker offers"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/prepare:
+    post:
+      description: "Builds, without saving, one child row per picked target: the picker's\
+        \ child field defaults, values copied from the target, and the parent and\
+        \ target keys. The client shows the reviewFieldNames of each row for the user\
+        \ to fill, then calls add. Needs INSERT on the child table; every target must\
+        \ be available through the picker's query (else 400)."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record. Read with the user's\
+                    \ own security."
+                  type: "string"
+                targetIds:
+                  description: "Primary keys of the picked target records"
+                  items:
+                    type: "string"
+                  type: "array"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerPrepareResponseV1"
+          description: "Prepare child rows for picked records (MULTI_CHILD, LINK):\
+            \ result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Prepare child rows for picked records (MULTI_CHILD, LINK)"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/add:
+    post:
+      description: "Inserts one row per picked target (targetIds) or per reviewed\
+        \ row (records), all or nothing, through the standard insert action: INSERT\
+        \ permission on the child table, record security locks, validation, customizers,\
+        \ automations and audit. Only the picker's review fields are taken from the\
+        \ client; the parent and target keys always come from the server. Every target\
+        \ must be available through the picker's query (else 400). Row errors are\
+        \ a 400 naming each row, and nothing is saved."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record. Read with the user's\
+                    \ own security."
+                  type: "string"
+                targetIds:
+                  description: "Primary keys of the picked target records"
+                  items:
+                    type: "string"
+                  type: "array"
+                records:
+                  description: "Reviewed child rows (instead of targetIds), e.g. the\
+                    \ prepare route's rows after the user filled the review fields"
+                  items:
+                    properties:
+                      values:
+                        description: "The row's values: the childTargetFieldName (which\
+                          \ target) and the picker's reviewFieldNames; other values\
+                          \ are ignored, and the parent and target keys always come\
+                          \ from the server"
+                        type: "object"
+                    type: "object"
+                  type: "array"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerAddResponseV1"
+          description: "Add child or join rows for picked records (MULTI_CHILD, LINK):\
+            \ result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Add child or join rows for picked records (MULTI_CHILD, LINK)"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/remove:
+    post:
+      description: "Deletes the parent's join rows for the given targets through the\
+        \ standard delete action (DELETE permission on the join table, record security\
+        \ locks, audit). Only for LINK pickers (else 400); child rows of a MULTI_CHILD\
+        \ picker are deleted with the table delete route."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record. Read with the user's\
+                    \ own security."
+                  type: "string"
+                targetIds:
+                  description: "Primary keys of the picked target records"
+                  items:
+                    type: "string"
+                  type: "array"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerRemoveResponseV1"
+          description: "Unlink picked records (LINK): result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Unlink picked records (LINK)"
       tags:
       - "Tables"
   /qqq/v1/table/{tableName}/{primaryKey}/developer:

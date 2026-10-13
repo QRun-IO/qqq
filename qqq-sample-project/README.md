@@ -1,5 +1,7 @@
 # QQQ Sample Project
 
+By owner decision on 2026-10-13, the per-RC Next waiver approval gate was removed. Releases no longer require an owner comment on issue #798. Acceptance results for the seven Next-owned successor features are a non-blocking release report: missing receipts, pending mappings and pending review are recorded with reasons in `next_report_only_features`, excluded from verified counts, and keep `complete=false`. Reviewed receipts are evaluated as before and all native results remain in `next_acceptance`. Failed mapped tests and supplied receipts or bundles rejected as invalid or tampered still fail strict coverage. All non-Next strict requirements remain unchanged.
+
 QRun-owned reference application for QQQ 4.1: tables, related records, processes, widgets, the default Next dashboard, the optional Material Dashboard 0.42.0-RC.2, and a PicoCLI entry point. The default database is an in-memory H2 database populated with sample data at server startup.
 
 ## Quickstart with Next — 4.1 RC3
@@ -20,6 +22,31 @@ Create a Person, edit and refresh it, then choose **Actions → Greet Interactiv
 Press Ctrl+C to stop the application. Edit Java files under `qqq-sample/qqq-sample-project/src/main/java`, then run `QQQ_QUICKSTART_VERSION=4.1.0-RC.3 ./quickstart.sh` from `qqq-sample` to recompile and restart. Seeded data resets on each launch. Build and application output is in `qqq-sample/quickstart.log`. Use `bash quickstart.sh my-directory` for another destination; an existing destination is never overwritten. The script prints prerequisite installation links and reports an occupied port before downloading or starting anything. Run `QQQ_FRONTEND=material bash quickstart.sh` to open the Material Dashboard instead.
 
 ## Framework development
+
+### CircleCI sample acceptance
+
+`sample_acceptance` builds the framework and pinned Material dashboard, then runs
+sample data/HTTP/browser acceptance, the Python regression suite, and Lambda source
+acceptance. In parallel, `sample_consumer_acceptance` installs the framework and
+runs the starter/application proof with live MySQL and the generated extension
+check. The starter runner keeps its own fresh, uncached Maven repository.
+Material npm downloads are cached by pinned commit and lockfile checksum; every
+run still uses `npm ci`, tests, and a production build.
+
+Both jobs persist reports and browser artifacts under separate workspace paths.
+`sample_coverage_gate` combines them under `target`, stages reviewed Next evidence,
+and reports coverage without another Maven build. Candidate, GA-tag, and hotfix
+gates also wait for `sample_bootstrap_source` and run strict coverage. Each job
+uploads test results and available diagnostics even when a test fails.
+
+Workflow job names retain their `feature_`, `snapshot_`, `candidate_`, `release_`,
+and `hotfix_` prefixes (unprefixed in `test_only`). Feature publishing requires the
+reporting gate, bootstrap and ESB; RC/GA publishing requires the strict gate,
+bootstrap, ESB and static analysis. Hotfix keeps its existing strict gate,
+bootstrap and ESB prerequisites. On develop, `publish_snapshot` publishes after
+bootstrap and ESB only: sample acceptance and static analysis still report in the
+same workflow, but do not delay SNAPSHOT publication. PR acceptance and the full
+RC/GA gates remain required at their respective stages.
 
 ### Candidate bootstrap acceptance (#605)
 

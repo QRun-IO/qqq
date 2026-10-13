@@ -31,6 +31,7 @@ include::metaData/PermissionRules.adoc[leveloffset=+1]
 include::misc/CorePermissionEnforcement.adoc[leveloffset=+1]
 include::misc/RecordPicker.adoc[leveloffset=+1]
 include::misc/Alerts.adoc[leveloffset=+1]
+include::misc/RecordFeatures.adoc[leveloffset=+1]
 
 == Services
 

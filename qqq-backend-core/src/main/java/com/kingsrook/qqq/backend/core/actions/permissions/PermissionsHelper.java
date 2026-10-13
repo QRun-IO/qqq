@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
@@ -36,6 +37,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.ImplicitQueryJoinForSecurityLock;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -49,6 +51,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithNam
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermission;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
@@ -160,6 +164,41 @@ public class PermissionsHelper
       {
          return (false);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Feature grants require table READ. Standard implications retain the table's
+    ** permission-level mapping and custom permission checker behavior.
+    *******************************************************************************/
+   public static boolean hasTableFeaturePermission(QTableMetaData table, String suffix)
+   {
+      QInstance instance = QContext.getQInstance();
+      TableFeaturePermissionsMetaData metadata = TableFeaturePermissionsMetaData.of(instance);
+      if(metadata == null || table.getIsHidden())
+      {
+         return (false);
+      }
+      TableFeaturePermission feature = metadata.getPermissions().stream()
+         .filter(permission -> Objects.equals(permission.getSuffix(), suffix)).findFirst().orElse(null);
+      if(feature == null || (feature.getAppliesTo() != null && !feature.getAppliesTo().test(instance, table)))
+      {
+         return (false);
+      }
+      GetInput input = new GetInput(table.getName());
+      if(!hasTablePermission(input, table.getName(), TablePermissionSubType.READ))
+      {
+         return (false);
+      }
+      QPermissionRules rules = getEffectivePermissionRules(table, instance);
+      if(rules.getLevel() == PermissionLevel.NOT_PROTECTED
+         || QContext.getQSession().hasPermission(getEffectivePermissionBaseName(rules, table.getName()) + "." + suffix))
+      {
+         return (true);
+      }
+      TablePermissionSubType implication = feature.getImpliedBy() == null ? null : feature.getImpliedBy().impliedBy(instance, table);
+      return (implication != null && hasTablePermission(input, table.getName(), implication));
    }
 
 
@@ -402,6 +441,19 @@ public class PermissionsHelper
          QPermissionRules rules    = getEffectivePermissionRules(tableMetaData, instance);
          String           baseName = getEffectivePermissionBaseName(rules, tableMetaData.getName());
 
+         TableFeaturePermissionsMetaData features = TableFeaturePermissionsMetaData.of(instance);
+         if(features != null)
+         {
+            for(TableFeaturePermission feature : features.getPermissions())
+            {
+               if(feature.getAppliesTo() == null || feature.getAppliesTo().test(instance, tableMetaData))
+               {
+                  rs.add(new AvailablePermission().withName(baseName + "." + feature.getSuffix())
+                     .withObjectName(tableMetaData.getLabel()).withObjectType("Table").withPermissionType(feature.getLabel()));
+               }
+            }
+         }
+
          QBackendMetaData backend = instance.getBackend(tableMetaData.getBackendName());
          if(tableMetaData.isCapabilityEnabled(backend, Capability.TABLE_INSERT))
          {
@@ -566,7 +618,7 @@ public class PermissionsHelper
    /*******************************************************************************
     **
     *******************************************************************************/
-   static String getEffectivePermissionBaseName(QPermissionRules rules, String standardName)
+   public static String getEffectivePermissionBaseName(QPermissionRules rules, String standardName)
    {
       if(rules != null && StringUtils.hasContent(rules.getPermissionBaseName()))
       {

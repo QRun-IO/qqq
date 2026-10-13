@@ -179,8 +179,13 @@ public class EsbUiApiSchemas
     *******************************************************************************/
    static Schema object(String description, Object... namesAndSchemas)
    {
+      if(namesAndSchemas.length % 2 != 0)
+      {
+         throw (new IllegalArgumentException("Expected name/schema pairs, got an odd number of arguments"));
+      }
+
       Map<String, Schema> properties = new LinkedHashMap<>();
-      for(int i = 0; i < namesAndSchemas.length; i += 2)
+      for(int i = 0; i + 1 < namesAndSchemas.length; i += 2)
       {
          properties.put((String) namesAndSchemas[i], (Schema) namesAndSchemas[i + 1]);
       }

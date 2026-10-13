@@ -43,6 +43,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2Authen
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QSessionStoreRegistry;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.OAuth2AuthenticationModule;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 import com.kingsrook.qqq.middleware.javalin.executors.io.BackChannelLogoutInput;
@@ -209,6 +211,8 @@ public class BackChannelLogoutExecutor extends AbstractMiddlewareExecutor<BackCh
             finally
             {
                sessionUuids.forEach(OAuth2AuthenticationModule::clearAccessTokenCache);
+               sessionUuids.forEach(uuid -> RealtimeBus.get(QContext.getQInstance())
+                  .publish(new RealtimeMessage().withChannel("session:" + uuid).withEvent("session-ended")));
             }
          }
       }

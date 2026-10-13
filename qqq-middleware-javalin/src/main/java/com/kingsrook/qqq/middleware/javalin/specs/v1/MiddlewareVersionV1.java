@@ -32,10 +32,12 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
  *******************************************************************************/
 public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
 {
-   private static List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
+   private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
-   static
    {
+      RealtimeStreamSpecV1 realtime = new RealtimeStreamSpecV1();
+      list.add(realtime);
+      list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());

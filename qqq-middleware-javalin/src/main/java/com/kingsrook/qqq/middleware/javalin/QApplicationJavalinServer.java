@@ -53,6 +53,7 @@ import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProvide
 import com.kingsrook.qqq.middleware.javalin.routeproviders.handlers.RouteProviderBeforeHandlerInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.RealtimeStreamSpecV1;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.config.JavalinConfig;
@@ -524,6 +525,16 @@ public class QApplicationJavalinServer
          return;
       }
 
+      for(AbstractMiddlewareVersion version : middlewareVersionList)
+      {
+         for(var spec : version.getEndpointSpecs())
+         {
+            if(spec instanceof RealtimeStreamSpecV1 realtime)
+            {
+               realtime.close();
+            }
+         }
+      }
       this.service.stop();
    }
 

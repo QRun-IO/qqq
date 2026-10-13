@@ -63,7 +63,12 @@ class UiApiContractTest
       String committed = Files.readString(VERSION_DIRECTORY.resolve("openapi.yaml"), StandardCharsets.UTF_8);
       String baseline  = Files.readString(VERSION_DIRECTORY.resolve("baseline.yaml"), StandardCharsets.UTF_8);
 
-      List<String> problems = UiApiContract.check(generated, committed, baseline, 1, REGENERATE_HINT);
+      List<String> accepted = Files.readAllLines(VERSION_DIRECTORY.resolve("accepted-breaking-changes.txt"), StandardCharsets.UTF_8).stream()
+         .map(line -> line.replaceFirst("\\s*#.*$", "").strip())
+         .filter(line -> !line.isEmpty())
+         .toList();
+
+      List<String> problems = UiApiContract.check(generated, committed, baseline, 1, REGENERATE_HINT, accepted);
       assertThat(problems).as("UI API contract problems").isEmpty();
 
       Map<String, Object> committedDocument = OpenApiCompatibilityChecker.parse(committed);

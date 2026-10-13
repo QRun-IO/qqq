@@ -21,8 +21,6 @@
 package com.kingsrook.qqq.backend.core.actions.permissions;
 
 
-import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,6 +61,8 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucket;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucketUnit;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
@@ -85,7 +85,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -925,4 +925,27 @@ class CorePermissionEnforcerTest extends BaseTest
       }
    }
 
+
+
+
+   /*******************************************************************************
+    ** New aggregate operands, CORR's second operand and bucket fields retain field security enforcement.
+    *******************************************************************************/
+   @Test
+   void analysisFieldSecurity() throws Exception
+   {
+      setSession(TABLE + ".read");
+      enableInstanceEnforcement();
+      for(Aggregate aggregate : List.of(AggregateOperator.COUNT_BLANK.of("email"), AggregateOperator.CORR.of("id").withOtherFieldName("email")))
+      {
+         assertThatThrownBy(() -> new AggregateAction().execute(new AggregateInput(TABLE).withAggregate(aggregate).withAllowStreamedFallback(true)))
+            .isInstanceOf(QPermissionDeniedException.class);
+      }
+      GroupBy group = new GroupBy(QFieldType.DATE_TIME, "email").withBucket(new DateBucket(DateBucketUnit.MONTH));
+      assertThatThrownBy(() -> new AggregateAction().execute(new AggregateInput(TABLE).withAggregate(AggregateOperator.COUNT.of("id")).withGroupBy(group)))
+         .isInstanceOf(QPermissionDeniedException.class);
+      setSession();
+      assertThatThrownBy(() -> new AggregateAction().execute(new AggregateInput(TABLE).withAggregate(AggregateOperator.VAR_POP.of("id"))))
+         .isInstanceOf(QPermissionDeniedException.class);
+   }
 }

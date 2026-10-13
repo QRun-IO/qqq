@@ -338,13 +338,130 @@ components:
           - "RENDER_HTML"
           - "REVEAL"
           - "FILE_DOWNLOAD"
+          - "FILE_UPLOAD"
+          - "TOOLTIP"
           - "WIDGET"
           - "ERROR"
           - "FILE_PREVIEW"
           type: "string"
         values:
           description: "Values associated with this adornment.  Keys and the meanings\
-            \ of their values will differ by type."
+            \ of their values differ by type; the known\nkeys are listed (each names\
+            \ the type(s) it applies to).  CHIP also uses pattern keys: `color.{fieldValue}`\n\
+            (one of default, info, primary, secondary, success, warning, error) and\
+            \ `icon.{fieldValue}` (an icon name),\ngiving the chip colour and icon\
+            \ for a field value.  Clients ignore keys they do not know."
+          properties:
+            target:
+              description: "LINK: where to open the link: _blank for a new window/tab;\
+                \ otherwise the same view."
+              type: "string"
+            toRecordFromTable:
+              description: "LINK: the field value is a primary key of this table;\
+                \ link to that record (a client navigates to the record view)."
+              type: "string"
+            toRecordFromTableDynamic:
+              description: "LINK: the target table is per record - read it from the\
+                \ record displayValue `{fieldName}:toRecordFromTableDynamic`."
+              type: "boolean"
+            fileNameField:
+              description: "FILE_DOWNLOAD, FILE_PREVIEW: the field holding the file\
+                \ name to save or show."
+              type: "string"
+            defaultExtension:
+              description: "FILE_DOWNLOAD: extension for the saved file when the name\
+                \ has none."
+              type: "string"
+            defaultMimeType:
+              description: "FILE_DOWNLOAD, FILE_PREVIEW: MIME type to assume when\
+                \ none is known."
+              type: "string"
+            supplementalProcessName:
+              description: "FILE_DOWNLOAD: process the server runs to produce the\
+                \ file (the client just downloads)."
+              type: "string"
+            supplementalCodeReference:
+              additionalProperties: true
+              description: "FILE_DOWNLOAD: code the server runs to produce the file\
+                \ (the client just downloads)."
+              type: "object"
+            downloadUrlDynamic:
+              description: "FILE_DOWNLOAD: the download URL is per record - read it\
+                \ from the record displayValue `{fieldName}:downloadUrlDynamic`."
+              type: "boolean"
+            fileNameFormat:
+              description: "FILE_DOWNLOAD: format (with %s placeholders) for the saved\
+                \ file name."
+              type: "string"
+            fileNameFormatFields:
+              description: "FILE_DOWNLOAD: fields whose values fill fileNameFormat,\
+                \ in order."
+              items:
+                type: "string"
+              type: "array"
+            width:
+              description: "SIZE: display width of the field - one of xsmall, small,\
+                \ medium, medlarge, large, xlarge (semantic widths; each client maps\
+                \ them to its own columns or characters). FILE_UPLOAD: width of the\
+                \ upload control."
+              enum:
+              - "xsmall"
+              - "small"
+              - "medium"
+              - "medlarge"
+              - "large"
+              - "xlarge"
+              type: "string"
+            format:
+              description: "FILE_UPLOAD: accepted file formats (e.g. .csv,.xlsx)."
+              type: "string"
+            languageMode:
+              description: "CODE_EDITOR: language of the code (e.g. javascript, sql,\
+                \ json, velocity) - for highlighting; a client without an editor shows\
+                \ it monospaced."
+              type: "string"
+            staticText:
+              description: "TOOLTIP: the tooltip text."
+              type: "string"
+            tooltipDynamic:
+              description: "TOOLTIP: the text is per record - read it from the record\
+                \ displayValue `{fieldName}:tooltipDynamic`."
+              type: "boolean"
+            thumbnailUrlField:
+              description: "FILE_PREVIEW: field holding a thumbnail image URL."
+              type: "string"
+            fullSizeUrlField:
+              description: "FILE_PREVIEW: field holding the full-size file URL."
+              type: "string"
+            mimeTypeField:
+              description: "FILE_PREVIEW: field holding the MIME type (decides image,\
+                \ video, PDF or download-only)."
+              type: "string"
+            altTextField:
+              description: "FILE_PREVIEW: field holding alternative text."
+              type: "string"
+            captionField:
+              description: "FILE_PREVIEW: field holding a caption."
+              type: "string"
+            widthField:
+              description: "FILE_PREVIEW: field holding the pixel width."
+              type: "string"
+            heightField:
+              description: "FILE_PREVIEW: field holding the pixel height."
+              type: "string"
+            sizeBytesField:
+              description: "FILE_PREVIEW: field holding the size in bytes."
+              type: "string"
+            thumbnailMaxSize:
+              description: "FILE_PREVIEW: largest thumbnail edge in pixels."
+              type: "integer"
+            previewable:
+              description: "FILE_PREVIEW: whether the file may be previewed (false:\
+                \ download only)."
+              type: "boolean"
+            widgetName:
+              description: "WIDGET: the widget that renders this field."
+              type: "string"
           type: "object"
       type: "object"
     FieldMetaData:
@@ -579,6 +696,9 @@ components:
           enum:
           - "HELP_TEXT"
           - "BULK_EDIT_FORM"
+          - "BULK_LOAD_FILE_MAPPING_FORM"
+          - "BULK_LOAD_VALUE_MAPPING_FORM"
+          - "BULK_LOAD_PROFILE_FORM"
           - "VALIDATION_REVIEW_SCREEN"
           - "EDIT_FORM"
           - "VIEW_FORM"
@@ -1955,6 +2075,160 @@ components:
             \ search knows it (records the user may not read can make it high)."
           type: "number"
       type: "object"
+    RelatedRecordPicker:
+      properties:
+        associationName:
+          description: "The association whose rows the picker adds (MULTI_CHILD, LINK)"
+          type: "string"
+        canAddChildren:
+          description: "Whether the user may add child or join rows (prepare and add\
+            \ routes)"
+          type: "boolean"
+        canCreateTarget:
+          description: "Whether to offer quick-create of a target record (insert route\
+            \ of targetTableName)"
+          type: "boolean"
+        canRemoveChildren:
+          description: "Whether the user may unlink (remove route; LINK only)"
+          type: "boolean"
+        childTableName:
+          description: "The child or join table new rows go into (MULTI_CHILD, LINK)"
+          type: "string"
+        childTargetFieldName:
+          description: "The child table's field that holds the picked record's key\
+            \ (MULTI_CHILD, LINK)"
+          type: "string"
+        columns:
+          description: "Target fields to show as result columns"
+          items:
+            type: "string"
+          type: "array"
+        defaultFilter:
+          $ref: "#/components/schemas/QueryFilter"
+          description: "Initial, user-editable filter; the query route returns it\
+            \ resolved as resolvedDefaultFilter"
+        fieldName:
+          description: "The foreign-key field the picker sets (SINGLE)"
+          type: "string"
+        filter:
+          $ref: "#/components/schemas/QueryFilter"
+          description: "Filter the server always applies to the picker's queries (may\
+            \ contain ${input.fieldName} variables, read from the parent record)"
+        label:
+          description: "Dialog title, and the label of the button that opens it"
+          type: "string"
+        maxSelections:
+          description: "Most records one add or link may pick (MULTI_CHILD, LINK)"
+          type: "number"
+        mode:
+          description: "SINGLE: choose one record for fieldName.  MULTI_CHILD: add\
+            \ child rows through associationName, after a review of reviewFieldNames.\
+            \  LINK: link and unlink through associationName (a join table)."
+          type: "string"
+        name:
+          description: "Picker name; the {pickerName} path segment of the relatedRecordPicker\
+            \ routes"
+          type: "string"
+        previewFields:
+          description: "Target fields to show for the highlighted record"
+          items:
+            type: "string"
+          type: "array"
+        reviewFieldNames:
+          description: "Child fields the user fills per picked record before saving\
+            \ (MULTI_CHILD); empty means no review step"
+          items:
+            type: "string"
+          type: "array"
+        targetTableName:
+          description: "The table records are picked from (read its metadata for fields,\
+            \ sections and quickCreateSectionName)"
+          type: "string"
+        thumbnailField:
+          description: "Target field holding an image URL, for thumbnails"
+          type: "string"
+      type: "object"
+    RelatedRecordPickerAddResponseV1:
+      properties:
+        records:
+          description: "The inserted child or join rows"
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        warnings:
+          description: "Warnings from the inserts, if any"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    RelatedRecordPickerPrepareResponseV1:
+      properties:
+        records:
+          description: "One unsaved child row per target id, in request order, with\
+            \ defaults, values copied from the target, and the parent and target keys\
+            \ (whose display value is the target's label)"
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        reviewFieldNames:
+          description: "Child fields for the user to review per row before the add\
+            \ route; empty means add without a review"
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    RelatedRecordPickerQueryResponseV1:
+      properties:
+        hasMore:
+          description: "Whether more records follow (request the next page with skip);\
+            \ there is no count"
+          type: "boolean"
+        linkedIds:
+          description: "Ids (as strings) of the returned records the parent already\
+            \ has a child or join row for (MULTI_CHILD, LINK with primaryKey)"
+          items:
+            type: "string"
+          type: "array"
+        records:
+          description: "One page of target records (values and display values), in\
+            \ order"
+          items:
+            $ref: "#/components/schemas/OutputRecord"
+          type: "array"
+        resolvedDefaultFilter:
+          description: "The picker's defaultFilter with its variables resolved, to\
+            \ start the dialog's filter from (first page only)"
+          properties:
+            booleanOperator:
+              description: "Boolean operator to apply between criteria"
+              enum:
+              - "AND"
+              - "OR"
+              type: "string"
+            criteria:
+              description: "Field level criteria that make up the query filter"
+              items:
+                $ref: "#/components/schemas/FilterCriteria"
+              type: "array"
+            limit:
+              description: "Maximum number of results to return."
+              type: "number"
+            orderBys:
+              description: "How the query's results should be ordered (sorted)."
+              items:
+                $ref: "#/components/schemas/OrderBy"
+              type: "array"
+            skip:
+              description: "Records to skip (e.g., to implement pagination)"
+              type: "number"
+          type: "object"
+      type: "object"
+    RelatedRecordPickerRemoveResponseV1:
+      properties:
+        deletedCount:
+          description: "How many join rows were deleted"
+          type: "number"
+      type: "object"
     ReportMetaData:
       properties:
         hasPermission:
@@ -2222,6 +2496,10 @@ components:
         primaryKeyField:
           description: "Name of the primary key field in this table"
           type: "string"
+        quickCreateSectionName:
+          description: "Name of the section whose editable fields a quick-create form\
+            \ shows (else the required, editable fields)"
+          type: "string"
         readPermission:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
@@ -2230,6 +2508,12 @@ components:
           $ref: "#/components/schemas/RecordFeaturesV1"
           description: "Enabled record collaboration features, public settings, and\
             \ this session's table capabilities."
+        relatedRecordPickers:
+          description: "Related-record pickers of this table whose target the user\
+            \ may read (docs/RELATED-RECORD-PICKER.md)"
+          items:
+            $ref: "#/components/schemas/RelatedRecordPicker"
+          type: "array"
         searchFields:
           description: "Names of the fields that record search (POST /search) matches\
             \ for this table. Only present when the table is searchable and the user\
@@ -2414,12 +2698,22 @@ components:
         primaryKeyField:
           description: "Name of the primary key field in this table"
           type: "string"
+        quickCreateSectionName:
+          description: "Name of the section whose editable fields a quick-create form\
+            \ shows (else the required, editable fields)"
+          type: "string"
         readPermission:
           description: "Boolean to indicate if the user has read permission for the\
             \ table."
           type: "boolean"
         recordFeatures:
           $ref: "#/components/schemas/RecordFeaturesV1"
+        relatedRecordPickers:
+          description: "Related-record pickers of this table whose target the user\
+            \ may read (docs/RELATED-RECORD-PICKER.md)"
+          items:
+            $ref: "#/components/schemas/RelatedRecordPicker"
+          type: "array"
         searchFields:
           description: "Names of the fields that record search (POST /search) matches\
             \ for this table. Only present when the table is searchable and the user\
@@ -3448,6 +3742,1742 @@ components:
       type: "object"
     WidgetBlockValues:
       type: "object"
+    WidgetData:
+      description: "The data of a widget: one of the per-type shapes, chosen by `type`\
+        \ (the widget type). Clients render by type and ignore unknown properties;\
+        \ an unknown type is rendered as the widget label with its footerHTML/label\
+        \ only."
+      discriminator:
+        mapping:
+          alert: "#/components/schemas/WidgetDataAlert"
+          barChart: "#/components/schemas/WidgetDataChart"
+          chart: "#/components/schemas/WidgetDataChart"
+          childRecordList: "#/components/schemas/WidgetDataChildRecordList"
+          composite: "#/components/schemas/WidgetDataComposite"
+          cronUI: "#/components/schemas/WidgetDataCronUI"
+          customComponent: "#/components/schemas/WidgetDataGeneric"
+          dataBagViewer: "#/components/schemas/WidgetDataGeneric"
+          divider: "#/components/schemas/WidgetDataDivider"
+          dynamicForm: "#/components/schemas/WidgetDataDynamicForm"
+          fieldValueList: "#/components/schemas/WidgetDataFieldValueList"
+          filterAndColumnsSetup: "#/components/schemas/WidgetDataFilterAndColumnsSetup"
+          generic: "#/components/schemas/WidgetDataGeneric"
+          horizontalBarChart: "#/components/schemas/WidgetDataChart"
+          html: "#/components/schemas/WidgetDataRawHTML"
+          lineChart: "#/components/schemas/WidgetDataLineChart"
+          location: "#/components/schemas/WidgetDataLocation"
+          multiStatistics: "#/components/schemas/WidgetDataMultiStatistics"
+          multiTable: "#/components/schemas/WidgetDataMultiTable"
+          parentWidget: "#/components/schemas/WidgetDataParent"
+          pieChart: "#/components/schemas/WidgetDataPieChart"
+          pivotTableSetup: "#/components/schemas/WidgetDataGeneric"
+          process: "#/components/schemas/WidgetDataProcess"
+          quickSightChart: "#/components/schemas/WidgetDataQuickSightChart"
+          rowBuilder: "#/components/schemas/WidgetDataRowBuilder"
+          scriptViewer: "#/components/schemas/WidgetDataGeneric"
+          smallLineChart: "#/components/schemas/WidgetDataLineChart"
+          stackedBarChart: "#/components/schemas/WidgetDataChart"
+          statistics: "#/components/schemas/WidgetDataStatistics"
+          stepper: "#/components/schemas/WidgetDataStepper"
+          table: "#/components/schemas/WidgetDataTable"
+          usaMap: "#/components/schemas/WidgetDataUSMap"
+        propertyName: "type"
+      oneOf:
+      - $ref: "#/components/schemas/WidgetDataAlert"
+      - $ref: "#/components/schemas/WidgetDataChart"
+      - $ref: "#/components/schemas/WidgetDataLineChart"
+      - $ref: "#/components/schemas/WidgetDataPieChart"
+      - $ref: "#/components/schemas/WidgetDataChildRecordList"
+      - $ref: "#/components/schemas/WidgetDataComposite"
+      - $ref: "#/components/schemas/WidgetDataCronUI"
+      - $ref: "#/components/schemas/WidgetDataDivider"
+      - $ref: "#/components/schemas/WidgetDataDynamicForm"
+      - $ref: "#/components/schemas/WidgetDataFieldValueList"
+      - $ref: "#/components/schemas/WidgetDataFilterAndColumnsSetup"
+      - $ref: "#/components/schemas/WidgetDataLocation"
+      - $ref: "#/components/schemas/WidgetDataMultiStatistics"
+      - $ref: "#/components/schemas/WidgetDataMultiTable"
+      - $ref: "#/components/schemas/WidgetDataParent"
+      - $ref: "#/components/schemas/WidgetDataProcess"
+      - $ref: "#/components/schemas/WidgetDataQuickSightChart"
+      - $ref: "#/components/schemas/WidgetDataRawHTML"
+      - $ref: "#/components/schemas/WidgetDataRowBuilder"
+      - $ref: "#/components/schemas/WidgetDataStatistics"
+      - $ref: "#/components/schemas/WidgetDataStepper"
+      - $ref: "#/components/schemas/WidgetDataTable"
+      - $ref: "#/components/schemas/WidgetDataUSMap"
+      - $ref: "#/components/schemas/WidgetDataGeneric"
+    WidgetDataAlert:
+      description: "Data of alert widgets."
+      properties:
+        alertType:
+          enum:
+          - "ERROR"
+          - "SUCCESS"
+          - "WARNING"
+          type: "string"
+        bulletList:
+          type: "array"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        hideWidget:
+          type: "boolean"
+        html:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "alert"
+          type: "string"
+      type: "object"
+    WidgetDataChart:
+      description: "Data of chart, barChart, horizontalBarChart, and stackedBarChart\
+        \ widgets."
+      properties:
+        chartData:
+          additionalProperties: true
+          type: "object"
+        chartSubheaderData:
+          additionalProperties: true
+          type: "object"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        description:
+          type: "string"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        height:
+          additionalProperties: true
+          type: "object"
+        isCurrency:
+          additionalProperties: true
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        title:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "chart"
+          - "barChart"
+          - "horizontalBarChart"
+          - "stackedBarChart"
+          type: "string"
+      type: "object"
+    WidgetDataChildRecordList:
+      description: "Data of childRecordList widgets."
+      properties:
+        allowRecordDelete:
+          type: "boolean"
+        allowRecordEdit:
+          type: "boolean"
+        canAddChildRecord:
+          additionalProperties: true
+          type: "object"
+        childFrontendTableMetaData:
+          additionalProperties: true
+          type: "object"
+        childTableMetaData:
+          additionalProperties: true
+          type: "object"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        defaultValuesForNewChildRecords:
+          type: "object"
+        defaultValuesForNewChildRecordsFromParentFields:
+          type: "object"
+        disableRowClick:
+          type: "boolean"
+        disabledFieldsForNewChildRecords:
+          additionalProperties: true
+          type: "object"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        includeExposedJoinTables:
+          type: "array"
+        isInProcess:
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        omitFieldNames:
+          type: "array"
+        onlyIncludeFieldNames:
+          type: "array"
+        queryOutput:
+          additionalProperties: true
+          type: "object"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        tableName:
+          type: "string"
+        tablePath:
+          type: "string"
+        title:
+          type: "string"
+        totalRows:
+          type: "number"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "childRecordList"
+          type: "string"
+        viewAllLink:
+          type: "string"
+      type: "object"
+    WidgetDataComposite:
+      description: "Data of composite widgets."
+      properties:
+        blockId:
+          type: "string"
+        blocks:
+          type: "array"
+        conditional:
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        layout:
+          enum:
+          - "FLEX_COLUMN"
+          - "FLEX_ROW"
+          - "FLEX_ROW_WRAPPED"
+          - "FLEX_ROW_SPACE_BETWEEN"
+          - "FLEX_ROW_CENTER"
+          - "TABLE_SUB_ROW_DETAILS"
+          - "BADGES_WRAPPER"
+          type: "string"
+        link:
+          additionalProperties: true
+          type: "object"
+        linkMap:
+          type: "object"
+        modalMode:
+          enum:
+          - "MODAL"
+          type: "string"
+        overlayHtml:
+          type: "string"
+        overlayStyleOverrides:
+          type: "object"
+        styleOverrides:
+          type: "object"
+        styles:
+          additionalProperties: true
+          type: "object"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        tooltip:
+          additionalProperties: true
+          type: "object"
+        tooltipMap:
+          type: "object"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "composite"
+          type: "string"
+        values:
+          additionalProperties: true
+          type: "object"
+      type: "object"
+    WidgetDataCronUI:
+      description: "Data of cronUI widgets."
+      properties:
+        cronDescription:
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        error:
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "cronUI"
+          type: "string"
+      type: "object"
+    WidgetDataDivider:
+      description: "Data of divider widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "divider"
+          type: "string"
+      type: "object"
+    WidgetDataDynamicForm:
+      description: "Data of dynamicForm widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        fieldList:
+          type: "array"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        mergedDynamicFormValuesIntoFieldName:
+          type: "string"
+        noFieldsMessage:
+          type: "string"
+        recordOfFieldValues:
+          additionalProperties: true
+          type: "object"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "dynamicForm"
+          type: "string"
+      type: "object"
+    WidgetDataFieldValueList:
+      description: "Data of fieldValueList widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        fieldIndentLevels:
+          type: "object"
+        fieldLabelPrefixIconColors:
+          type: "object"
+        fieldLabelPrefixIconNames:
+          type: "object"
+        fields:
+          type: "array"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        record:
+          additionalProperties: true
+          type: "object"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "fieldValueList"
+          type: "string"
+      type: "object"
+    WidgetDataFilterAndColumnsSetup:
+      description: "Data of filterAndColumnsSetup widgets."
+      properties:
+        allowVariables:
+          type: "boolean"
+        apiName:
+          type: "string"
+        apiPath:
+          type: "string"
+        apiVersion:
+          type: "string"
+        columnFieldName:
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        editButtonLabel:
+          type: "string"
+        filterDefaultFieldNameSourceFieldNames:
+          type: "object"
+        filterDefaultFieldNames:
+          type: "array"
+        filterFieldName:
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        hideColumns:
+          type: "boolean"
+        hidePreview:
+          type: "boolean"
+        hideSortBy:
+          type: "boolean"
+        isApiVersioned:
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        modalHeader:
+          type: "string"
+        omitExposedJoins:
+          type: "array"
+        overrideIsEditable:
+          type: "boolean"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        tableName:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "filterAndColumnsSetup"
+          type: "string"
+      type: "object"
+    WidgetDataGeneric:
+      additionalProperties: true
+      description: "Data of widget types without a fixed shape (generic, customComponent,\
+        \ dataBagViewer, pivotTableSetup, and scriptViewer): the common properties\
+        \ plus widget-specific ones."
+      properties:
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "generic"
+          - "customComponent"
+          - "dataBagViewer"
+          - "pivotTableSetup"
+          - "scriptViewer"
+          type: "string"
+      type: "object"
+    WidgetDataLineChart:
+      description: "Data of lineChart and smallLineChart widgets."
+      properties:
+        chartData:
+          additionalProperties: true
+          type: "object"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        isYAxisCurrency:
+          additionalProperties: true
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        title:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "lineChart"
+          - "smallLineChart"
+          type: "string"
+      type: "object"
+    WidgetDataLocation:
+      description: "Data of location widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        description:
+          type: "string"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        footerText:
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        imageUrl:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        location:
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        title:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "location"
+          type: "string"
+      type: "object"
+    WidgetDataMultiStatistics:
+      description: "Data of multiStatistics widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        statisticsGroupData:
+          type: "array"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        title:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "multiStatistics"
+          type: "string"
+      type: "object"
+    WidgetDataMultiTable:
+      description: "Data of multiTable widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        tableDataList:
+          type: "array"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "multiTable"
+          type: "string"
+      type: "object"
+    WidgetDataParent:
+      description: "Data of parentWidget widgets."
+      properties:
+        childWidgetNameList:
+          type: "array"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        isLabelPageTitle:
+          additionalProperties: true
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        layoutType:
+          enum:
+          - "GRID"
+          - "TABS"
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "parentWidget"
+          type: "string"
+      type: "object"
+    WidgetDataPieChart:
+      description: "Data of pieChart widgets."
+      properties:
+        chartData:
+          additionalProperties: true
+          type: "object"
+        chartSubheaderData:
+          additionalProperties: true
+          type: "object"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        description:
+          type: "string"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        height:
+          additionalProperties: true
+          type: "object"
+        isCurrency:
+          additionalProperties: true
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        title:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "pieChart"
+          type: "string"
+      type: "object"
+    WidgetDataProcess:
+      description: "Data of process widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        defaultValues:
+          type: "object"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        processMetaData:
+          additionalProperties: true
+          type: "object"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "process"
+          type: "string"
+      type: "object"
+    WidgetDataQuickSightChart:
+      description: "Data of quickSightChart widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        name:
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "quickSightChart"
+          type: "string"
+        url:
+          type: "string"
+      type: "object"
+    WidgetDataRawHTML:
+      description: "Data of html widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        html:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        title:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "html"
+          type: "string"
+      type: "object"
+    WidgetDataRowBuilder:
+      description: "Data of rowBuilder widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        defaultValuesForNewRecords:
+          type: "object"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        hiddenValues:
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        records:
+          type: "array"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "rowBuilder"
+          type: "string"
+      type: "object"
+    WidgetDataStatistics:
+      description: "Data of statistics widgets."
+      properties:
+        count:
+          additionalProperties: true
+          type: "object"
+        countContext:
+          type: "string"
+        countFontSize:
+          type: "string"
+        countURL:
+          type: "string"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        increaseIsGood:
+          additionalProperties: true
+          type: "object"
+        isCurrency:
+          additionalProperties: true
+          type: "object"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        percentageAmount:
+          additionalProperties: true
+          type: "object"
+        percentageLabel:
+          type: "string"
+        percentageURL:
+          type: "string"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "statistics"
+          type: "string"
+      type: "object"
+    WidgetDataStepper:
+      description: "Data of stepper widgets."
+      properties:
+        activeStep:
+          additionalProperties: true
+          type: "object"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        steps:
+          type: "array"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        title:
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "stepper"
+          type: "string"
+      type: "object"
+    WidgetDataTable:
+      description: "Data of table widgets."
+      properties:
+        columns:
+          type: "array"
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        fixedHeight:
+          type: "number"
+        fixedStickyLastRow:
+          type: "boolean"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        hidePaginationDropdown:
+          type: "boolean"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        linkText:
+          type: "string"
+        linkURL:
+          type: "string"
+        noRowsFoundHTML:
+          type: "string"
+        rows:
+          type: "array"
+        rowsPerPage:
+          type: "number"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "table"
+          type: "string"
+      type: "object"
+    WidgetDataUSMap:
+      description: "Data of usaMap widgets."
+      properties:
+        csvData:
+          description: "Rows (each a list of cells) for exporting the widget as CSV."
+          items:
+            items: {}
+            type: "array"
+          type: "array"
+        dropdownDataList:
+          description: "Options of each dropdown filter: a list per dropdown of {id,\
+            \ label} objects."
+          items:
+            items:
+              additionalProperties:
+                type: "string"
+              type: "object"
+            type: "array"
+          type: "array"
+        dropdownDefaultValueList:
+          description: "Default value of each dropdown filter."
+          items:
+            type: "string"
+          type: "array"
+        dropdownLabelList:
+          description: "Labels of the dropdown filters."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNameList:
+          description: "Names of the dropdown filters the widget offers (parallel\
+            \ to the other dropdown lists)."
+          items:
+            type: "string"
+          type: "array"
+        dropdownNeedsSelectedText:
+          description: "Message to show until every dropdown has a value."
+          type: "string"
+        footerHTML:
+          description: "Footer, as HTML. Non-web clients render it as plain text."
+          type: "string"
+        hasPermission:
+          description: "False when the user may not see this widget's data; show the\
+            \ label and a permission message only."
+          type: "boolean"
+        height:
+          type: "string"
+        label:
+          description: "Title of the widget (overrides the metadata label when present)."
+          type: "string"
+        mapMarkerList:
+          type: "array"
+        sublabel:
+          description: "Secondary title."
+          type: "string"
+        type:
+          description: "The widget type this data is for."
+          enum:
+          - "usaMap"
+          type: "string"
+      type: "object"
     WidgetResponseV1:
       properties:
         widgetData:
@@ -3484,7 +5514,7 @@ info:
     \ with apps, tables, process, etc, the frontend utilizes the appropriate endpoints\
     \ as required.\n"
   title: "QQQ Middleware API"
-  version: "1.1.0"
+  version: "1.2.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/version:
@@ -4480,6 +6510,244 @@ paths:
       summary: "Insert a record into a table"
       tags:
       - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/query:
+    post:
+      description: "Lists one page of the picker's target records as the user may\
+        \ read them: the user's filter (the target table's own filter builder or a\
+        \ saved view), ANDed with the picker's filter (resolved from the parent record\
+        \ or form values) and the search term. Needs READ on the target table; table\
+        \ permissions, record security locks and field security locks apply as on\
+        \ the table query route. Reads limit + 1 rows for hasMore (no count). For\
+        \ MULTI_CHILD and LINK with a primaryKey, linkedIds says which returned records\
+        \ the parent already has rows for."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record (required for MULTI_CHILD\
+                    \ and LINK; for SINGLE, the record being edited, if any). Read\
+                    \ with the user's own security."
+                  type: "string"
+                values:
+                  description: "Current form values (SINGLE on a create form, when\
+                    \ there is no primaryKey), for ${input.fieldName} variables in\
+                    \ the picker's filters"
+                  type: "object"
+                searchTerm:
+                  description: "Case-insensitive text matched (contains) against the\
+                    \ target table's search fields, or its record-label fields"
+                  type: "string"
+                filter:
+                  $ref: "#/components/schemas/QueryFilter"
+                  description: "The user's filter on the target table (criteria and\
+                    \ orderBys on target fields only); ANDed with the picker's filter"
+                skip:
+                  description: "Records to skip (offset paging)"
+                  type: "integer"
+                limit:
+                  description: "Records per page, 1 to 200 (default 50)"
+                  type: "integer"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerQueryResponseV1"
+          description: "Query the records a related-record picker offers: result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Query the records a related-record picker offers"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/prepare:
+    post:
+      description: "Builds, without saving, one child row per picked target: the picker's\
+        \ child field defaults, values copied from the target, and the parent and\
+        \ target keys. The client shows the reviewFieldNames of each row for the user\
+        \ to fill, then calls add. Needs INSERT on the child table; every target must\
+        \ be available through the picker's query (else 400)."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record. Read with the user's\
+                    \ own security."
+                  type: "string"
+                targetIds:
+                  description: "Primary keys of the picked target records"
+                  items:
+                    type: "string"
+                  type: "array"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerPrepareResponseV1"
+          description: "Prepare child rows for picked records (MULTI_CHILD, LINK):\
+            \ result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Prepare child rows for picked records (MULTI_CHILD, LINK)"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/add:
+    post:
+      description: "Inserts one row per picked target (targetIds) or per reviewed\
+        \ row (records), all or nothing, through the standard insert action: INSERT\
+        \ permission on the child table, record security locks, validation, customizers,\
+        \ automations and audit. Only the picker's review fields are taken from the\
+        \ client; the parent and target keys always come from the server. Every target\
+        \ must be available through the picker's query (else 400). Row errors are\
+        \ a 400 naming each row, and nothing is saved."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record. Read with the user's\
+                    \ own security."
+                  type: "string"
+                targetIds:
+                  description: "Primary keys of the picked target records"
+                  items:
+                    type: "string"
+                  type: "array"
+                records:
+                  description: "Reviewed child rows (instead of targetIds), e.g. the\
+                    \ prepare route's rows after the user filled the review fields"
+                  items:
+                    properties:
+                      values:
+                        description: "The row's values: the childTargetFieldName (which\
+                          \ target) and the picker's reviewFieldNames; other values\
+                          \ are ignored, and the parent and target keys always come\
+                          \ from the server"
+                        type: "object"
+                    type: "object"
+                  type: "array"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerAddResponseV1"
+          description: "Add child or join rows for picked records (MULTI_CHILD, LINK):\
+            \ result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Add child or join rows for picked records (MULTI_CHILD, LINK)"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/relatedRecordPicker/{pickerName}/remove:
+    post:
+      description: "Deletes the parent's join rows for the given targets through the\
+        \ standard delete action (DELETE permission on the join table, record security\
+        \ locks, audit). Only for LINK pickers (else 400); child rows of a MULTI_CHILD\
+        \ picker are deleted with the table delete route."
+      parameters:
+      - description: "Name of the table that declares the picker (e.g. the order)."
+        example: "sales_order"
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Name of the picker, from the table metadata's relatedRecordPickers."
+        example: "addSkus"
+        in: "path"
+        name: "pickerName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              properties:
+                primaryKey:
+                  description: "Primary key of the parent record. Read with the user's\
+                    \ own security."
+                  type: "string"
+                targetIds:
+                  description: "Primary keys of the picked target records"
+                  items:
+                    type: "string"
+                  type: "array"
+              type: "object"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedRecordPickerRemoveResponseV1"
+          description: "Unlink picked records (LINK): result"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Unlink picked records (LINK)"
+      tags:
+      - "Tables"
   /qqq/v1/table/{tableName}/{primaryKey}/developer:
     get:
       description: "Fetch a single record (with display values), along with each of\
@@ -5057,7 +7325,12 @@ paths:
         content:
           application/json:
             schema:
-              description: "Dynamic query parameters to pass to the widget renderer."
+              additionalProperties:
+                type: "string"
+              description: "Dynamic inputs to pass to the widget renderer (e.g. the\
+                \ record id, dropdown selections).  The same inputs may instead be\
+                \ sent as query parameters; a body value wins over a query parameter\
+                \ of the same name."
               type: "object"
         required: false
       responses:
@@ -5065,8 +7338,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WidgetResponseV1"
-          description: "The rendered widget data, whose shape varies by widget type."
+                $ref: "#/components/schemas/WidgetData"
+          description: "The rendered widget data itself (not wrapped): one of the\
+            \ WidgetData shapes, chosen by its `type`."
       security:
       - sessionUuidCookie:
         - "N/A"

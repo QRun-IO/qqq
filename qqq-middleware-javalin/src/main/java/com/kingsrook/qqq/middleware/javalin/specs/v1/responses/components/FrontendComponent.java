@@ -80,9 +80,6 @@ public class FrontendComponent implements ToSchema
          if(subSet == null)
          {
             EnumSet<QComponentType> subSet = EnumSet.allOf(QComponentType.class);
-            subSet.remove(QComponentType.BULK_LOAD_FILE_MAPPING_FORM);
-            subSet.remove(QComponentType.BULK_LOAD_VALUE_MAPPING_FORM);
-            subSet.remove(QComponentType.BULK_LOAD_PROFILE_FORM);
             QComponentTypeSubSet.subSet = subSet;
          }
 

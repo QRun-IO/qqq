@@ -52,9 +52,11 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QSubQuery;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
@@ -691,6 +693,29 @@ public abstract class AbstractRDBMSAction
          {
             column = "LOWER(" + column + ")";
             values.replaceAll(value -> value instanceof String string ? string.toLowerCase(Locale.ROOT) : value);
+         }
+
+         if(values.size() == 1 && values.get(0) instanceof QSubQuery subQuery)
+         {
+            try
+            {
+               if(fieldFunctionAdapter != null)
+               {
+                  params.addAll(CollectionUtils.nonNullList(fieldFunctionAdapter.getParams(fieldFunction)));
+               }
+               QQueryFilter innerFilter = subQuery.getFilter() == null ? new QQueryFilter() : subQuery.getFilter().clone();
+               JoinsContext innerContext = joinsContext.forSubQuery(subQuery.getTableName(), innerFilter);
+               QTableMetaData innerTable = innerContext.getTable(subQuery.getTableName());
+               String selectedColumn = escapeIdentifier(subQuery.getTableName()) + "." + escapeIdentifier(getColumnName(innerTable.getField(subQuery.getFieldName())));
+               String from = makeFromClause(QContext.getQInstance(), subQuery.getTableName(), innerContext, params);
+               String where = makeWhereClause(innerContext, innerFilter, params);
+               clauses.add("(" + column + (criterion.getOperator() == QCriteriaOperator.NOT_IN ? " NOT IN " : " IN ") + "(SELECT " + selectedColumn + " FROM " + from + " WHERE " + where + "))");
+               continue;
+            }
+            catch(QException e)
+            {
+               throw (new IllegalArgumentException("Unable to translate sub-query", e));
+            }
          }
 
          Integer expectedNoOfParams = actionStrategy.appendCriterionToWhereClause(criterion, clause, column, values, field);

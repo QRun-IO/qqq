@@ -31,9 +31,9 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.SelectionValidationHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocessor;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -112,7 +112,7 @@ public class AggregateAction
       aggregateInput.setTableMetaData(table);
       aggregateInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, aggregateInput.getFilter(), aggregateInput.getTransaction()));
 
-      FilterValidationHelper.validateFieldNamesInFilter(aggregateInput);
+      QueryFilterPreprocessor.prepare(aggregateInput);
       validateFieldNames(aggregateInput);
 
       QBackendMetaData backend = aggregateInput.getBackend();

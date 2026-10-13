@@ -28,6 +28,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
+ ** Search terms beginning with # are passed through to providers as-is.
+ **
  ** Instance-level provider that {@link RecordSearchAction} (and so the v1
  ** POST /search endpoint) asks to search the tables it claims - e.g., a search
  ** index such as OpenSearch - instead of the default "contains" query over each

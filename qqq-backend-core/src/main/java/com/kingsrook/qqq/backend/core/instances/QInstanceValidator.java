@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustom
 import com.kingsrook.qqq.backend.core.actions.scripts.TestScriptActionInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.RecordSearchProviderInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldCriteriaExpanderInterface;
 import com.kingsrook.qqq.backend.core.actions.values.QCustomPossibleValueProvider;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.validation.plugins.QInstanceValidatorPluginInterface;
@@ -1140,9 +1141,14 @@ public class QInstanceValidator
    {
       String prefix = "Table [" + tableName + "], Virtual field [" + fieldName + "]: ";
 
+      if(virtualFieldMetaData.getCriteriaExpander() != null)
+      {
+         validateSimpleCodeReference(prefix + "criteria expander ", virtualFieldMetaData.getCriteriaExpander(), VirtualFieldCriteriaExpanderInterface.class);
+      }
+
       boolean requireFieldFunction = false;
       String requireFieldFunctionReason = null;
-      if(virtualFieldMetaData.getIsQueryCriteria())
+      if(virtualFieldMetaData.getIsQueryCriteria() && virtualFieldMetaData.getCriteriaExpander() == null)
       {
          requireFieldFunction = true;
          requireFieldFunctionReason = "To be a queryCriteria";
@@ -1312,6 +1318,14 @@ public class QInstanceValidator
          assertCondition(usedSearchFields.add(searchFieldName), "Table " + tableName + " lists search field " + searchFieldName + " more than once.");
 
          QFieldMetaData field = CollectionUtils.nonNullMap(table.getFields()).get(searchFieldName);
+         if(field == null)
+         {
+            QVirtualFieldMetaData virtualField = CollectionUtils.nonNullMap(table.getVirtualFields()).get(searchFieldName);
+            if(virtualField != null && virtualField.getCriteriaExpander() != null)
+            {
+               field = virtualField;
+            }
+         }
          if(assertCondition(field != null, "Table " + tableName + " search field " + searchFieldName + " is not a field on this table."))
          {
             assertCondition(!field.getIsHidden(), "Table " + tableName + " search field " + searchFieldName + " is hidden (hidden fields may not be searched).");

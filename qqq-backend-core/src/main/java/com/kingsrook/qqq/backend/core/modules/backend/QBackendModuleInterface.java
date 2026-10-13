@@ -53,6 +53,16 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 public interface QBackendModuleInterface
 {
    /*******************************************************************************
+    ** Whether query, count and aggregate can translate same-backend sub-queries.
+    *******************************************************************************/
+   default boolean supportsSubQueries(QBackendMetaData backend)
+   {
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
     ** Method where a backend module must be able to provide its type (name).
     *******************************************************************************/
    String getBackendType();

@@ -219,6 +219,34 @@ class NextAcceptanceCiTest(unittest.TestCase):
         bom.write_text(bom_content)
         self.assertEqual(0, self.coverage())
 
+    def test_rc5_candidate_exception_is_bound_to_next_rc14_release_branch_rc4_source_and_its_approval(self):
+        policy_path = self.sample / 'release-deferrals.json'
+        entries = json.loads(policy_path.read_text())['accepted_next_release']
+        rc4_entry, rc5_entry = entries[3], entries[4]
+        self.assertEqual(('4.1.0-RC.5', '1.0.0-RC.14'), (rc5_entry['qqq_version'], rc5_entry['next_version']))
+        self.assertEqual({f: rc4_entry[f] for f in ('next_version', 'next_sha', 'jar_sha256')},
+                         {f: rc5_entry[f] for f in ('next_version', 'next_sha', 'jar_sha256')})
+        self.assertNotEqual(rc4_entry['owner_approval'], rc5_entry['owner_approval'])
+        self.fixture.configure_accepted_next('4.1.0-RC.4', '1.0.0-RC.14')
+        rc5 = {'QQQ_ACCEPTED_NEXT_CANDIDATE': '4.1.0-RC.5'}
+        self.env = {**rc5, 'CIRCLECI': 'true', 'CIRCLE_BRANCH': 'release/4.1'}
+        self.assertEqual(0, self.coverage())
+        result = json.loads((self.sample / 'target/feature-coverage-result.json').read_text())
+        self.assertEqual('4.1.0-RC.5', result['accepted_next_release']['qqq_version'])
+        self.assertEqual(rc5_entry['owner_approval'], result['accepted_next_release']['owner_approval'])
+        for branch in ('release/4.2', 'develop', 'main', 'hotfix/4.1.1'):
+            with self.subTest(branch=branch):
+                self.env['CIRCLE_BRANCH'] = branch
+                self.assertEqual(1, self.coverage())
+        self.env = {**rc5, 'CIRCLE_TAG': 'v4.1.0-RC.5', 'CIRCLE_BRANCH': 'release/4.1'}
+        self.assertEqual(1, self.coverage())
+        # The RC.4 approval cannot stand in for RC.5's own decision.
+        changed = json.loads(policy_path.read_text())
+        changed['accepted_next_release'][4]['owner_approval'] = rc4_entry['owner_approval']
+        policy_path.write_text(json.dumps(changed))
+        self.env = {**rc5, 'CIRCLE_BRANCH': 'release/4.1'}
+        self.assertEqual(1, self.coverage())
+
     def test_rc4_candidate_exception_is_bound_to_next_rc14_release_branch_rc3_source_and_its_approval(self):
         policy_path = self.sample / 'release-deferrals.json'
         entries = json.loads(policy_path.read_text())['accepted_next_release']

@@ -224,6 +224,25 @@ public class JoinsContext
 
 
    /*******************************************************************************
+    ** Build an independent, secured context for a sub-query, preserving the
+    ** input source used by table personalization. Aliases remain local to it.
+    *******************************************************************************/
+   public JoinsContext forSubQuery(String tableName, QQueryFilter filter) throws QException
+   {
+      QueryInput input = new QueryInput(tableName).withFilter(filter);
+      input.setInputSource(inputSource);
+      QTableMetaData table = TableMetaDataPersonalizerAction.execute(input, true);
+      if(table == null)
+      {
+         throw (new QException("Sub-query table is not available"));
+      }
+      input.setTableMetaData(table);
+      return (new JoinsContext(instance, input, filter));
+   }
+
+
+
+   /*******************************************************************************
     ** Constructor that starts with an empty join list and optionally skips
     ** security-lock processing.  Obtains the {@link QInstance} from {@link QContext}.
     **

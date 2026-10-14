@@ -404,6 +404,7 @@ public class ApiImplementation
          // but, instead we're trying to just put the query joins in here FROM the query input...                              //
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          CountInput countInput = new CountInput();
+         countInput.setInputSource(QInputSource.USER);
          countInput.setTableName(tableName);
          countInput.setQueryJoins(queryInput.getQueryJoins());
          countInput.setFilter(filter);

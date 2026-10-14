@@ -274,6 +274,19 @@ ALTER TABLE sales_order_line ALTER COLUMN id RESTART WITH 100;
 ALTER TABLE sales_order_tag ALTER COLUMN id RESTART WITH 100;
 
 
+DROP TABLE IF EXISTS user_preference;
+CREATE TABLE user_preference
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT now(),
+   modify_date TIMESTAMP DEFAULT now(),
+   user_id VARCHAR(100) NOT NULL,
+   section_name VARCHAR(100) NOT NULL,
+   preference_name VARCHAR(100) NOT NULL,
+   preference_value MEDIUMTEXT
+);
+ALTER TABLE user_preference ADD UNIQUE u_user_preference (user_id, section_name, preference_name);
+
 DROP TABLE IF EXISTS place_address;
 DROP TABLE IF EXISTS state_city;
 DROP TABLE IF EXISTS country_state;

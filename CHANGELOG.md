@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Data-driven in-app help now supports summaries, permission/client-channel targeting, process/report/possible-value-source slots, author coverage, ranked search, and typed `/qqq/v1` help payloads. The AI `search_help` tool shares candidate collection and retains its exposure restrictions.
 - Help edits on other nodes are detected using count/max-modifyDate, at most once per 30 seconds per instance (`QInstanceHelpContentManager.setReloadIntervalMillis`). Explicit reloads preserve code-declared help, including declarations overridden by a data row. Help tables enable field audit when the audit, auditDetail, auditTable, and auditUser tables are already registered.
-
+- Per-user Preferences: validated supplemental sections, a provider SPI with fixed row lists, an audited key-value store, and typed `/qqq/v1/preferences` list, get and partial-update operations. See `docs/USER-PREFERENCES.md`.
 - Optional AI table/field `DataClassification` (`PUBLIC`, `CONFIDENTIAL`, `PII`, `PHI`) and null-safe `AiDataClassifications` lookup/aggregation helpers. Existing exposure defaults and frontend metadata are unchanged.
 - Core aggregate analysis extensions: variance/deviation, percentiles, correlation, null/blank counts, string lengths, date/numeric buckets, dialect capabilities, opt-in paged fallback with row limits, and main-table sampling. SQL pushdown supports H2/MySQL and PostgreSQL according to advertised capabilities; existing aggregate callers retain their defaults.
 

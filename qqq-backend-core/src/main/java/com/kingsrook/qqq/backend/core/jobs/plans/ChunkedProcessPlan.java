@@ -64,7 +64,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.savedbulkloadprofiles.SavedBulkLoadProfile;
-import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.BulkInsertStepUtils;
+import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.assist.BulkLoadAssist;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.filehandling.FileToRowsInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.filehandling.JsonlFileToRows;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.model.BulkLoadFileRow;
@@ -354,7 +354,7 @@ public class ChunkedProcessPlan implements JobPlan
          }
          else if(source.get(SOURCE_PROFILE_JSON) != null)
          {
-            values.put(BulkInsertStepUtils.FIELD_BULK_LOAD_PROFILE_JSON, String.valueOf(source.get(SOURCE_PROFILE_JSON)));
+            values.put(BulkLoadAssist.VALUE_BULK_LOAD_PROFILE_JSON, String.valueOf(source.get(SOURCE_PROFILE_JSON)));
          }
       }
       else

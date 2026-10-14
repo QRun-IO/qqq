@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobSemantics;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.processes.JobControlProcesses;
+import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
@@ -52,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
+import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.assist.BulkLoadUploadSources;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.DEFAULT_MAX_ATTEMPTS;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.DEFAULT_PRIORITY;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.SECURITY_KEY_USER;
@@ -107,6 +109,12 @@ public class DurableJobsMetaDataProvider
       instance.addTable(enrich(defineEventTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineWorkerTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineUploadTable(backendName), backendDetailEnricher));
+
+      ////////////////////////////////////////////////////////////////////////
+      // assisted bulk load (profile, suggestMapping, validate) reads files //
+      // by the same opaque upload refs that jobs take                      //
+      ////////////////////////////////////////////////////////////////////////
+      BulkLoadUploadSources.register(UploadRefs::open);
 
       instance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_JOB));
       instance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_CHUNK));

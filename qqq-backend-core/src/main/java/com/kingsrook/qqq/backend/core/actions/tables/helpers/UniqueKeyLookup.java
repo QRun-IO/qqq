@@ -179,7 +179,7 @@ public class UniqueKeyLookup
       QFieldMetaData field = requirePhysicalField(table, fieldName);
       try
       {
-         return ValueUtils.getValueAsFieldType(field.getType(), value);
+         return ValueUtils.getValueAsFieldType(table, field, value);
       }
       catch(RuntimeException e)
       {

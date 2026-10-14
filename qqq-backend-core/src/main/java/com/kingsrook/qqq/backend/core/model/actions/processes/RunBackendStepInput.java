@@ -57,6 +57,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class RunBackendStepInput extends AbstractActionInput
 {
    private InputSource inputSource = QInputSource.SYSTEM;
+   private boolean fieldAccessEnforced;
 
    private static final QLogger LOG = QLogger.getLogger(RunBackendStepInput.class);
 
@@ -106,6 +107,7 @@ public class RunBackendStepInput extends AbstractActionInput
    public void cloneFieldsInto(RunBackendStepInput target)
    {
       target.setInputSource(getInputSource());
+      target.setFieldAccessEnforced(isFieldAccessEnforced());
       target.setStepName(getStepName());
       target.setTableName(getTableName());
       target.setProcessName(getProcessName());
@@ -674,5 +676,25 @@ public class RunBackendStepInput extends AbstractActionInput
    {
       setInputSource(inputSource);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Boundary decision, independent of nested authorized scopes and caller values.
+    *******************************************************************************/
+   public boolean isFieldAccessEnforced()
+   {
+      return (fieldAccessEnforced);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set only from the process boundary; never from the process values map.
+    *******************************************************************************/
+   public void setFieldAccessEnforced(boolean fieldAccessEnforced)
+   {
+      this.fieldAccessEnforced = fieldAccessEnforced;
    }
 }

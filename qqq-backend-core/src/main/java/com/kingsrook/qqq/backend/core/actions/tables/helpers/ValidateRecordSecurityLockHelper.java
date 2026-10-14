@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -334,8 +335,8 @@ public class ValidateRecordSecurityLockHelper
                boolean updatingAnyLockJoinFields = false;
                for(JoinOn joinOn : rightMostJoin.getJoinOns())
                {
-                  QFieldType   type             = rightMostJoinTable.getField(joinOn.getRightField()).getType();
-                  Serializable inputRecordValue = ValueUtils.getValueAsFieldType(type, inputRecord.getValue(joinOn.getRightField()));
+                  QFieldMetaData field          = rightMostJoinTable.getField(joinOn.getRightField());
+                  Serializable inputRecordValue = ValueUtils.getValueAsFieldType(rightMostJoinTable, field, inputRecord.getValue(joinOn.getRightField()));
                   inputRecordJoinValues.add(inputRecordValue);
 
                   // if we have a value in this field (and it's not the primary key), then it means we're updating part of the lock
@@ -601,7 +602,7 @@ public class ValidateRecordSecurityLockHelper
             else
             {
                QFieldMetaData field = table.getField(recordSecurityLock.getFieldName());
-               String valueDescription = "with a value of " + recordSecurityValue;
+               String valueDescription = "with a value of " + ClassifiedValues.diagnostic(table, field.getName(), recordSecurityValue);
                if(recordSecurityValue == null || "".equals(recordSecurityValue))
                {
                   valueDescription = "with an empty value";

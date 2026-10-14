@@ -41,8 +41,8 @@ import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
-import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.BufferedRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipeBufferedWrapper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
@@ -88,6 +88,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QueryAction
 {
+   private int fieldAccessRecordCount;
+   private String fieldAccessActionName = "query";
+
    private static final QLogger LOG = QLogger.getLogger(QueryAction.class);
 
    private Optional<TableCustomizerInterface> postQueryRecordCustomizer;
@@ -107,6 +110,7 @@ public class QueryAction
     *******************************************************************************/
    public QueryOutput execute(QueryInput queryInput) throws QException
    {
+      fieldAccessActionName = "query";
       return execute(queryInput, false);
    }
 
@@ -136,19 +140,27 @@ public class QueryAction
          authorizeAndAuditRawRead(queryInput);
       }
 
+      FieldAccessHelper.PendingExactMatch exactMatch = null;
       boolean enforce = false;
       if(queryInput.getTableName() != null && queryInput.getTable() != null)
       {
-         enforce = CorePermissionEnforcer.checkTablePermissions(queryInput, TablePermissionSubType.READ);
+         CorePermissionEnforcer.checkTablePermissions(queryInput, TablePermissionSubType.READ);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(queryInput);
          if(enforce)
          {
-            CorePermissionEnforcer.checkReadCriteria(queryInput, queryInput.getQueryJoins(), queryInput.getFilter(), queryInput.getFieldNamesToInclude());
+            FieldAccessHelper.assertSelectedFieldsAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFieldNamesToInclude());
+            exactMatch = CorePermissionEnforcer.checkReadCriteria(queryInput, queryInput.getQueryJoins(), queryInput.getFilter(), null);
          }
       }
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
       {
-         return (executeInAuthorizedScope(queryInput, preservePrimaryKeys, enforce));
+         QueryOutput output = executeInAuthorizedScope(queryInput, preservePrimaryKeys, enforce);
+         if(exactMatch != null)
+         {
+            exactMatch.complete(fieldAccessRecordCount, fieldAccessActionName);
+         }
+         return (output);
       }
    }
 
@@ -191,6 +203,7 @@ public class QueryAction
    {
       this.preservePrimaryKeys = preservePrimaryKeys;
       this.enforcingPermissions = enforce;
+      this.fieldAccessRecordCount = 0;
       nativePrimaryKeys.clear();
       ActionHelper.validateSession(queryInput);
 
@@ -565,7 +578,7 @@ public class QueryAction
       {
          if(qPossibleValueTranslator == null)
          {
-            qPossibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession());
+            qPossibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession()).withFieldAccessEnforcement(enforcingPermissions);
          }
          qPossibleValueTranslator.translatePossibleValuesInRecords(queryInput.getTable(), records, queryInput.getQueryJoins(), queryInput.getFieldsToTranslatePossibleValues());
       }
@@ -599,7 +612,8 @@ public class QueryAction
       ////////////////////////////////////////////////////////////////////////////
       if(enforcingPermissions)
       {
-         FieldSecurityLockHelper.removeDeniedValues(queryInput.getTableName(), queryInput.getQueryJoins(), records);
+         fieldAccessRecordCount += records.size();
+         FieldAccessHelper.applyToRecords(queryInput.getTableName(), queryInput.getQueryJoins(), records, fieldAccessActionName);
       }
 
       //////////////////////////////
@@ -712,5 +726,16 @@ public class QueryAction
       }
 
       queryInterface.cancelAction();
+   }
+
+
+
+   /*******************************************************************************
+    ** Execute with the owning egress action name, including export reveal suppression.
+    *******************************************************************************/
+   public QueryOutput execute(QueryInput input, String actionName) throws QException
+   {
+      fieldAccessActionName = actionName;
+      return (execute(input, false));
    }
 }

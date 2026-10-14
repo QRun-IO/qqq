@@ -15,6 +15,13 @@ components:
           items:
             $ref: "#/components/schemas/AppTreeNode"
           type: "array"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the app."
@@ -688,10 +695,27 @@ components:
       type: "object"
     FieldMetaData:
       properties:
+        accessTier:
+          description: "Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN.\
+            \ Omitted means FULL. Restricted values are strings, regardless of field\
+            \ type."
+          enum:
+          - "FULL"
+          - "REVEALABLE"
+          - "MASKED"
+          - "HIDDEN"
+          type: "string"
         adornments:
           description: "Special UI dressings to add to the field."
           items:
             $ref: "#/components/schemas/FieldAdornment"
+          type: "array"
+        allowedFilterOperators:
+          description: "Allowed filter operators when restricted: EQUALS and IN for\
+            \ REVEALABLE when exact match is enabled, otherwise empty. Omitted means\
+            \ unrestricted."
+          items:
+            type: "string"
           type: "array"
         behaviors:
           description: "Names of the field's behaviors that a frontend applies while\
@@ -713,6 +737,8 @@ components:
           type: "number"
         helpContents:
           description: "Help Contents for this field."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         inlinePossibleValueSource:
           description: "Inline possible-value source for this field; enumValues supply\
@@ -732,6 +758,8 @@ components:
               type: "object"
             enumValues:
               type: "array"
+            helpContent:
+              type: "object"
             idType:
               enum:
               - "STRING"
@@ -809,6 +837,9 @@ components:
           type: "boolean"
         isRequired:
           description: "Indicate if a value in this field is required."
+          type: "boolean"
+        isSortable:
+          description: "False for restricted fields; omitted means sortable."
           type: "boolean"
         label:
           description: "User-facing name for this field"
@@ -1020,6 +1051,8 @@ components:
           type: "string"
         helpContents:
           description: "Help content shown on the step/screen."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         label:
           description: "The user-facing name for this step"
@@ -1037,6 +1070,124 @@ components:
           items:
             $ref: "#/components/schemas/FieldMetaData"
           type: "array"
+      type: "object"
+    HelpContentV1:
+      properties:
+        content:
+          description: "Long help in the declared format."
+          type: "string"
+        contentAsHtml:
+          description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
+            \ Explicit HTML is unchanged and clients must sanitize it."
+          type: "string"
+        format:
+          description: "Format of the long help."
+          enum:
+          - "TEXT"
+          - "HTML"
+          - "MARKDOWN"
+          type: "string"
+        roles:
+          description: "Screen roles covered by this entry."
+          items:
+            type: "string"
+          type: "array"
+        summary:
+          description: "Optional short plain-text tooltip."
+          type: "string"
+      type: "object"
+    HelpCoverageEntryV1:
+      properties:
+        hasContent:
+          description: "Whether visible help has long content."
+          type: "boolean"
+        hasSummary:
+          description: "Whether visible help has an explicit summary."
+          type: "boolean"
+        hidden:
+          description: "Whether the target is hidden in metadata."
+          type: "boolean"
+        key:
+          description: "Canonical helpContent address."
+          type: "string"
+        kind:
+          description: "Help target kind."
+          type: "string"
+        label:
+          description: "User-facing target label."
+          type: "string"
+        parentKey:
+          description: "Canonical parent address."
+          type: "string"
+        roles:
+          description: "Screen roles covered by this entry."
+          items:
+            type: "string"
+          type: "array"
+      type: "object"
+    HelpCoverageResponseV1:
+      properties:
+        entries:
+          items:
+            $ref: "#/components/schemas/HelpCoverageEntryV1"
+          type: "array"
+        totals:
+          items:
+            $ref: "#/components/schemas/HelpCoverageTotalV1"
+          type: "array"
+      type: "object"
+    HelpCoverageTotalV1:
+      properties:
+        kind:
+          description: "Help target kind."
+          type: "string"
+        total:
+          description: "Number of targets in the selected kind and parent scope."
+          type: "number"
+        withHelp:
+          description: "Targets with a visible summary or long content."
+          type: "number"
+      type: "object"
+    HelpSearchResponseV1:
+      properties:
+        results:
+          items:
+            $ref: "#/components/schemas/HelpSearchResultV1"
+          type: "array"
+      type: "object"
+    HelpSearchResultV1:
+      properties:
+        contentAsHtml:
+          description: "Rendered Markdown (raw HTML escaped, unsafe links removed).\
+            \ Explicit HTML is unchanged and clients must sanitize it."
+          type: "string"
+        href:
+          description: "Application-relative navigation link, when available."
+          type: "string"
+        key:
+          description: "Canonical helpContent address."
+          type: "string"
+        kind:
+          description: "Help target kind."
+          type: "string"
+        label:
+          description: "User-facing target label."
+          type: "string"
+        name:
+          description: "Target metadata name."
+          type: "string"
+        process:
+          description: "Related process name, when applicable."
+          type: "string"
+        summary:
+          description: "Optional short plain-text tooltip."
+          type: "string"
+        table:
+          description: "Related table name, when applicable."
+          type: "string"
+        text:
+          description: "Plain-text help excerpt, at most 600 characters."
+          type: "string"
       type: "object"
     Icon:
       properties:
@@ -1156,7 +1307,10 @@ components:
             \ allow-list - never the whole environment.  Omitted when none are set."
           type: "object"
         helpContents:
-          additionalProperties: true
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Instance-level help content, by slot name (for example the\
             \ query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource\
             \ slots).  Omitted when the instance defines none."
@@ -1180,6 +1334,13 @@ components:
             properties:
               hasPermission:
                 description: "Whether the user may run the report."
+                type: "object"
+              helpContents:
+                additionalProperties:
+                  items:
+                    $ref: "#/components/schemas/HelpContentV1"
+                  type: "array"
+                description: "Help entries by slot, filtered for the current session."
                 type: "object"
               iconName:
                 description: "Name of the report's icon."
@@ -1284,8 +1445,11 @@ components:
                 description: "Whether the user may render the widget."
                 type: "object"
               helpContent:
-                additionalProperties: true
-                description: "Help content by role."
+                additionalProperties:
+                  items:
+                    $ref: "#/components/schemas/HelpContentV1"
+                  type: "array"
+                description: "Help content by slot."
                 type: "object"
               icon:
                 description: "Name of the widget's icon."
@@ -1403,6 +1567,256 @@ components:
             $ref: "#/components/schemas/PossibleValueOption"
           type: "array"
       type: "object"
+    PreferenceActionRequestV1:
+      additionalProperties: false
+      description: "Only rowKey and values are accepted. Identity always comes from\
+        \ the authenticated session."
+      properties:
+        rowKey:
+          description: "Required for ROW actions: a key loaded for this user with\
+            \ the action allowed. Forbidden for SECTION and LIST actions."
+          type: "string"
+        values:
+          additionalProperties: {}
+          description: "Action input fields. Validated and coerced like PATCH fields;\
+            \ unknown fields are rejected."
+          type: "object"
+      type: "object"
+    PreferenceActionResponseV1:
+      description: "Action result and reloaded section. Secrets are shown once and\
+        \ must not be stored by clients. Response uses Cache-Control: no-store."
+      properties:
+        section:
+          $ref: "#/components/schemas/PreferenceSectionV1"
+        message:
+          description: "User-facing outcome message."
+          type: "string"
+        secrets:
+          description: "One-time secrets for immediate display; clients must not store\
+            \ them."
+          items:
+            $ref: "#/components/schemas/PreferenceSecretV1"
+          type: "array"
+        focusRowKey:
+          description: "Optional row key to focus after reloading the section."
+          type: "string"
+      type: "object"
+    PreferenceActionV1:
+      properties:
+        name:
+          description: "Stable action name used in URLs."
+          type: "string"
+        label:
+          description: "Human-readable action label."
+          type: "string"
+        icon:
+          $ref: "#/components/schemas/Icon"
+        description:
+          description: "Explanation for clients to display."
+          type: "string"
+        scope:
+          description: "Where to display this action. ROW actions require a loaded\
+            \ row key."
+          enum:
+          - "SECTION"
+          - "LIST"
+          - "ROW"
+          type: "string"
+        listName:
+          description: "List targeted by LIST or ROW actions; null for SECTION."
+          nullable: true
+          type: "string"
+        confirmationText:
+          description: "When set, clients must confirm with this text before running\
+            \ the action."
+          nullable: true
+          type: "string"
+        isDestructive:
+          description: "Whether clients should present this as a destructive action."
+          type: "boolean"
+        inputFields:
+          description: "Action inputs, using preference field validation and coercion."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        order:
+          description: "Display order, ascending then label; defaults to 100."
+          type: "integer"
+      type: "object"
+    PreferenceListV1:
+      description: "A list of fixed preference rows, rendered with the same typed\
+        \ field editors as scalar preferences."
+      properties:
+        name:
+          description: "List name used in PATCH lists."
+          type: "string"
+        label:
+          description: "Human-readable list title."
+          type: "string"
+        description:
+          description: "Explanation of this list."
+          type: "string"
+        rowLabel:
+          description: "Label for one row, such as Category."
+          type: "string"
+        fields:
+          description: "Editable columns and their validation rules."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        rows:
+          description: "Fixed rows available to this user."
+          items:
+            $ref: "#/components/schemas/PreferenceRowV1"
+          type: "array"
+      type: "object"
+    PreferenceRowV1:
+      description: "A provider-owned row. Clients change row membership only through\
+        \ registered actions."
+      properties:
+        actionNames:
+          description: "Null allows every ROW action of this list; empty allows none;\
+            \ otherwise only the named actions are allowed."
+          items:
+            type: "string"
+          nullable: true
+          type: "array"
+        key:
+          description: "Stable provider row key to send when patching."
+          type: "string"
+        label:
+          description: "Human-readable row label."
+          type: "string"
+        description:
+          description: "Explanation of this row."
+          type: "string"
+        values:
+          additionalProperties: {}
+          description: "Field name to typed value. Omitted fields retain their existing\
+            \ values; explicit null clears an optional field."
+          type: "object"
+        readOnlyFields:
+          description: "Field names that cannot be changed for this row."
+          items:
+            type: "string"
+          type: "array"
+        readOnlyReason:
+          description: "Explain why the indicated fields are read-only."
+          type: "string"
+      type: "object"
+    PreferenceSecretV1:
+      properties:
+        label:
+          description: "Human-readable secret label."
+          type: "string"
+        value:
+          description: "Shown once. Clients must not store, log, cache, or send this\
+            \ secret to analytics."
+          type: "string"
+        masked:
+          description: "Masked representation, for example qqq_…7f3a."
+          type: "string"
+        usageText:
+          description: "Usage guidance such as a curl example; may contain newlines."
+          type: "string"
+      type: "object"
+    PreferenceSectionPatchRequestV1:
+      additionalProperties: false
+      description: "Partial update for the signed-in user only. Unknown properties,\
+        \ fields, lists and rows, including userId, are rejected with 400. All validation\
+        \ errors are returned together; omitted fields and rows are unchanged."
+      properties:
+        values:
+          additionalProperties: {}
+          description: "Changed scalar fields only. Explicit null clears an optional\
+            \ field. Types, required, maxLength, ENUM membership and editability are\
+            \ validated."
+          type: "object"
+        lists:
+          additionalProperties:
+            items:
+              additionalProperties: false
+              properties:
+                key:
+                  description: "Required fixed row key from the section response.\
+                    \ No new rows can be created."
+                  type: "string"
+                values:
+                  additionalProperties: {}
+                  description: "Changed row fields only. Read-only fields are rejected."
+                  type: "object"
+              type: "object"
+            type: "array"
+          description: "List name to changed fixed rows. No add or remove operation\
+            \ is supported."
+          type: "object"
+      type: "object"
+    PreferenceSectionV1:
+      description: "One visible section with the signed-in user's current preferences."
+      properties:
+        showInUserMenu:
+          description: "Add a user-menu entry using the section label and icon to\
+            \ open this section; defaults to false."
+          type: "boolean"
+        name:
+          description: "Stable section name used in URLs."
+          type: "string"
+        label:
+          description: "Human-readable section title."
+          type: "string"
+        description:
+          description: "Explanation for clients to display."
+          type: "string"
+        appName:
+          description: "Optional owning application name."
+          type: "string"
+        icon:
+          $ref: "#/components/schemas/Icon"
+        order:
+          description: "Display order, ascending then label; defaults to 100."
+          type: "integer"
+        fields:
+          description: "Scalar field definitions with editability, type, defaults\
+            \ and validation."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        values:
+          additionalProperties: {}
+          description: "Field name to typed value. Omitted fields retain their existing\
+            \ values; explicit null clears an optional field."
+          type: "object"
+        actions:
+          description: "Registered section, list and row actions, ordered by order\
+            \ then label."
+          items:
+            $ref: "#/components/schemas/PreferenceActionV1"
+          type: "array"
+        lists:
+          description: "Optional fixed-row preference lists."
+          items:
+            $ref: "#/components/schemas/PreferenceListV1"
+          type: "array"
+        possibleValues:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/PossibleValueOption"
+            type: "array"
+          description: "Every ENUM possible-value source referenced by scalar, list\
+            \ or action input fields, keyed by source name."
+          type: "object"
+      type: "object"
+    PreferencesResponseV1:
+      description: "Visible sections in display order, with only the signed-in user's\
+        \ values."
+      properties:
+        sections:
+          description: "Installed sections the session may access; an empty list is\
+            \ valid."
+          items:
+            $ref: "#/components/schemas/PreferenceSectionV1"
+          type: "array"
+      type: "object"
     ProcessCancelResponseV1:
       type: "object"
     ProcessJobLaunchResponseV1:
@@ -1435,6 +1849,13 @@ components:
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
@@ -1496,6 +1917,13 @@ components:
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           $ref: "#/components/schemas/Icon"
           description: "Icon to display for the process."
@@ -1547,6 +1975,13 @@ components:
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         icon:
           description: "Icon to display for the process."
           properties:
@@ -1615,6 +2050,13 @@ components:
             \ step).  If there are no more steps in the process, this field will not\
             \ be included.  "
           type: "string"
+        oneTimeSecrets:
+          description: "Secrets shown once in synchronous init/step responses only.\
+            \ Never returned by status. Clients must not cache; response uses Cache-Control:\
+            \ no-store."
+          items:
+            $ref: "#/components/schemas/PreferenceSecretV1"
+          type: "array"
         processMetaDataAdjustment:
           description: "Changes to be made to the process's metaData."
           properties:
@@ -1651,6 +2093,8 @@ components:
                     type: "string"
                   helpContents:
                     description: "Help content shown on the step/screen."
+                    items:
+                      $ref: "#/components/schemas/HelpContentV1"
                     type: "array"
                   label:
                     description: "The user-facing name for this step"
@@ -1732,6 +2176,13 @@ components:
               \ step).  If there are no more steps in the process, this field will\
               \ not be included.  "
             type: "string"
+          oneTimeSecrets:
+            description: "Secrets shown once in synchronous init/step responses only.\
+              \ Never returned by status. Clients must not cache; response uses Cache-Control:\
+              \ no-store."
+            items:
+              $ref: "#/components/schemas/PreferenceSecretV1"
+            type: "array"
           processMetaDataAdjustment:
             description: "Changes to be made to the process's metaData."
             properties:
@@ -1768,6 +2219,8 @@ components:
                       type: "string"
                     helpContents:
                       description: "Help content shown on the step/screen."
+                      items:
+                        $ref: "#/components/schemas/HelpContentV1"
                       type: "array"
                     label:
                       description: "The user-facing name for this step"
@@ -2637,6 +3090,13 @@ components:
         hasPermission:
           description: "Whether the user may run the report."
           type: "object"
+        helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
+          description: "Help entries by slot, filtered for the current session."
+          type: "object"
         iconName:
           description: "Name of the report's icon."
           type: "string"
@@ -2871,7 +3331,15 @@ components:
             $ref: "#/components/schemas/FieldMetaData"
           description: "Fields in this table"
           type: "object"
+        hasRestrictedFields:
+          description: "True when any field has REVEALABLE, MASKED, or HIDDEN access\
+            \ for the current session."
+          type: "boolean"
         helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Help Contents for this table."
           type: "object"
         icon:
@@ -2988,6 +3456,10 @@ components:
             \ table."
           type: "boolean"
         helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Help Contents for this table."
           type: "object"
         icon:
@@ -3068,7 +3540,15 @@ components:
             $ref: "#/components/schemas/FieldMetaData"
           description: "Fields in this table"
           type: "object"
+        hasRestrictedFields:
+          description: "True when any field has REVEALABLE, MASKED, or HIDDEN access\
+            \ for the current session."
+          type: "boolean"
         helpContents:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HelpContentV1"
+            type: "array"
           description: "Help Contents for this table."
           type: "object"
         icon:
@@ -3209,6 +3689,8 @@ components:
           type: "number"
         helpContents:
           description: "Help Contents for this section table."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         icon:
           $ref: "#/components/schemas/Icon"
@@ -3386,10 +3868,27 @@ components:
       type: "object"
     VirtualFieldMetaData:
       properties:
+        accessTier:
+          description: "Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN.\
+            \ Omitted means FULL. Restricted values are strings, regardless of field\
+            \ type."
+          enum:
+          - "FULL"
+          - "REVEALABLE"
+          - "MASKED"
+          - "HIDDEN"
+          type: "string"
         adornments:
           description: "Special UI dressings to add to the field."
           items:
             $ref: "#/components/schemas/FieldAdornment"
+          type: "array"
+        allowedFilterOperators:
+          description: "Allowed filter operators when restricted: EQUALS and IN for\
+            \ REVEALABLE when exact match is enabled, otherwise empty. Omitted means\
+            \ unrestricted."
+          items:
+            type: "string"
           type: "array"
         behaviors:
           description: "Names of the field's behaviors that a frontend applies while\
@@ -3411,6 +3910,8 @@ components:
           type: "number"
         helpContents:
           description: "Help Contents for this field."
+          items:
+            $ref: "#/components/schemas/HelpContentV1"
           type: "array"
         inlinePossibleValueSource:
           description: "Inline possible-value source for this field; enumValues supply\
@@ -3430,6 +3931,8 @@ components:
               type: "object"
             enumValues:
               type: "array"
+            helpContent:
+              type: "object"
             idType:
               enum:
               - "STRING"
@@ -3515,6 +4018,9 @@ components:
           type: "boolean"
         isRequired:
           description: "Indicate if a value in this field is required."
+          type: "boolean"
+        isSortable:
+          description: "False for restricted fields; omitted means sortable."
           type: "boolean"
         label:
           description: "User-facing name for this field"
@@ -3805,10 +4311,27 @@ components:
               fieldMetaData:
                 description: "Metadata to define the field that this block controls"
                 properties:
+                  accessTier:
+                    description: "Effective field access: FULL, REVEALABLE, MASKED,\
+                      \ or HIDDEN. Omitted means FULL. Restricted values are strings,\
+                      \ regardless of field type."
+                    enum:
+                    - "FULL"
+                    - "REVEALABLE"
+                    - "MASKED"
+                    - "HIDDEN"
+                    type: "string"
                   adornments:
                     description: "Special UI dressings to add to the field."
                     items:
                       $ref: "#/components/schemas/FieldAdornment"
+                    type: "array"
+                  allowedFilterOperators:
+                    description: "Allowed filter operators when restricted: EQUALS\
+                      \ and IN for REVEALABLE when exact match is enabled, otherwise\
+                      \ empty. Omitted means unrestricted."
+                    items:
+                      type: "string"
                     type: "array"
                   behaviors:
                     description: "Names of the field's behaviors that a frontend applies\
@@ -3831,6 +4354,8 @@ components:
                     type: "number"
                   helpContents:
                     description: "Help Contents for this field."
+                    items:
+                      $ref: "#/components/schemas/HelpContentV1"
                     type: "array"
                   inlinePossibleValueSource:
                     description: "Inline possible-value source for this field; enumValues\
@@ -3850,6 +4375,8 @@ components:
                         type: "object"
                       enumValues:
                         type: "array"
+                      helpContent:
+                        type: "object"
                       idType:
                         enum:
                         - "STRING"
@@ -3927,6 +4454,9 @@ components:
                     type: "boolean"
                   isRequired:
                     description: "Indicate if a value in this field is required."
+                    type: "boolean"
+                  isSortable:
+                    description: "False for restricted fields; omitted means sortable."
                     type: "boolean"
                   label:
                     description: "User-facing name for this field"
@@ -6481,6 +7011,125 @@ paths:
       summary: "Get instance metaData"
       tags:
       - "General"
+  /qqq/v1/preferences:
+    get:
+      description: "Preferences always belong to the authenticated session user. No\
+        \ user identifier is accepted. Unknown or hidden sections return 404; unauthenticated\
+        \ requests return 401. PATCH changes only supplied fields and fixed rows;\
+        \ invalid changes return 400 with all messages before anything is stored.\
+        \ Writes are audited as the user and client channel."
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferencesResponseV1"
+          description: "Current preferences for the session user"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "List visible sections and the signed-in user's preferences"
+      tags:
+      - "General"
+  /qqq/v1/preferences/{sectionName}:
+    get:
+      description: "Preferences always belong to the authenticated session user. No\
+        \ user identifier is accepted. Unknown or hidden sections return 404; unauthenticated\
+        \ requests return 401. PATCH changes only supplied fields and fixed rows;\
+        \ invalid changes return 400 with all messages before anything is stored.\
+        \ Writes are audited as the user and client channel."
+      parameters:
+      - description: "Registered visible preference section name, from GET /preferences."
+        in: "path"
+        name: "sectionName"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferenceSectionV1"
+          description: "Current preferences for the session user"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Read one visible section for the signed-in user"
+      tags:
+      - "General"
+    patch:
+      description: "Preferences always belong to the authenticated session user. No\
+        \ user identifier is accepted. Unknown or hidden sections return 404; unauthenticated\
+        \ requests return 401. PATCH changes only supplied fields and fixed rows;\
+        \ invalid changes return 400 with all messages before anything is stored.\
+        \ Writes are audited as the user and client channel."
+      parameters:
+      - description: "Registered visible preference section name, from GET /preferences."
+        in: "path"
+        name: "sectionName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreferenceSectionPatchRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferenceSectionV1"
+          description: "Current preferences for the session user"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Partially update the signed-in user's preferences"
+      tags:
+      - "General"
+  /qqq/v1/preferences/{sectionName}/actions/{actionName}:
+    post:
+      description: "Runs a registered action for the authenticated session user. ROW\
+        \ actions target only rows loaded for that user and allowed by actionNames.\
+        \ Unknown actions or hidden sections return 404; invalid inputs return 400;\
+        \ unauthenticated requests return 401. Clients must confirm confirmationText\
+        \ before running. Secrets are shown once and must not be stored, logged, cached,\
+        \ or sent to analytics by clients. Responses use Cache-Control: no-store."
+      parameters:
+      - description: "Registered visible preference section name, from GET /preferences."
+        in: "path"
+        name: "sectionName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Registered action name from the visible section."
+        in: "path"
+        name: "actionName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreferenceActionRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferenceActionResponseV1"
+          description: "Current preferences for the session user"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Run an action on the signed-in user's preferences"
+      tags:
+      - "General"
   /qqq/v1/metaData/table/{tableName}:
     get:
       description: "Load the full metadata for a single table, including all fields,\
@@ -6522,6 +7171,7 @@ paths:
                           label: "Id"
                           name: "id"
                           type: "INTEGER"
+                      hasRestrictedFields: false
                       icon:
                         name: "person_outline"
                       insertPermission: true
@@ -6767,6 +7417,74 @@ paths:
       summary: "Search records across tables"
       tags:
       - "Tables"
+  /qqq/v1/help/search:
+    get:
+      description: "Search help visible to the session. Label hits weigh 3, summary\
+        \ hits 2 and content hits 1. Stable ties sort by kind and key. Limit defaults\
+        \ to 20 and is capped at 50."
+      parameters:
+      - in: "query"
+        name: "q"
+        required: true
+        schema:
+          type: "string"
+      - in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "number"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HelpSearchResponseV1"
+          description: "Help search results"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Search visible application help"
+      tags:
+      - "General"
+  /qqq/v1/help/coverage:
+    get:
+      description: "Requires INSERT or EDIT permission on helpContent. Includes hidden\
+        \ targets. Totals reflect kind and parent scope before missingOnly is applied."
+      parameters:
+      - in: "query"
+        name: "kind"
+        required: false
+        schema:
+          type: "string"
+      - in: "query"
+        name: "missingOnly"
+        required: false
+        schema:
+          type: "boolean"
+      - in: "query"
+        name: "parentKey"
+        required: false
+        schema:
+          type: "string"
+      responses:
+        403:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BasicErrorResponseV1"
+          description: "No INSERT or EDIT permission on helpContent"
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HelpCoverageResponseV1"
+          description: "Help coverage results"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Inspect application help coverage"
+      tags:
+      - "General"
   /qqq/v1/table/{tableName}/variants:
     get:
       description: "List the variants a table's backend can be scoped to (for example\

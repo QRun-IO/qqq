@@ -28,6 +28,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
 import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
@@ -36,7 +38,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
@@ -430,9 +431,10 @@ public class FieldMetaData implements ToSchema
     ** screens, per each entry's roles), as in the legacy table meta-data.
     ***************************************************************************/
    @OpenAPIDescription("Help Contents for this field.")
-   public List<QHelpContent> getHelpContents()
+   @OpenAPIListItems(value = HelpContentV1.class, useRef = true)
+   public List<HelpContentV1> getHelpContents()
    {
-      return (this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents());
+      return (HelpContentV1.of(this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents()));
    }
 
 
@@ -460,4 +462,39 @@ public class FieldMetaData implements ToSchema
       return (result.isEmpty() ? null : result);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Effective tier; HIDDEN fields are omitted from table metadata.
+    *******************************************************************************/
+   @OpenAPIDescription("Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN. Omitted means FULL. Restricted values are strings, regardless of field type.")
+   public FieldAccessTier getAccessTier()
+   {
+      return (wrappedFrontend == null || wrappedFrontend.getAccessTier() == null ? null : FieldAccessTier.valueOf(wrappedFrontend.getAccessTier()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Exact-match operators may also be disabled by the resolver.
+    *******************************************************************************/
+   @OpenAPIDescription("Allowed filter operators when restricted: EQUALS and IN for REVEALABLE when exact match is enabled, otherwise empty. Omitted means unrestricted.")
+   @OpenAPIListItems(String.class)
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   public List<String> getAllowedFilterOperators()
+   {
+      return (wrappedFrontend == null ? null : wrappedFrontend.getAllowedFilterOperators());
+   }
+
+
+
+   /*******************************************************************************
+    ** Sorting is available only for FULL fields.
+    *******************************************************************************/
+   @OpenAPIDescription("False for restricted fields; omitted means sortable.")
+   public Boolean getIsSortable()
+   {
+      return (wrappedFrontend == null ? null : wrappedFrontend.getIsSortable());
+   }
 }

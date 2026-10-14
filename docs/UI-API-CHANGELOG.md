@@ -74,7 +74,9 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.3.0 (QQQ 4.1.0-RC.7, unreleased)
+### Unreleased (after 1.2.0; no change to the document)
+- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
+### 1.3.0 (unreleased)
 - Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):
   - Added `POST /processes/{processName}/jobs`: launch an eligible process as a durable background
     job (`ProcessJobLaunchResponseV1 {jobId, status}`). Over the per-user queue cap it returns
@@ -95,6 +97,30 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
     does the work.
 
 ### Unreleased (after 1.2.0; no change to the document)
+- Process init/step responses now optionally include `oneTimeSecrets` using the shared
+  `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
+  in its own response; a step that went async hands them, once, to the first status poll that
+  sees the job complete. Stored state exposes only `values.oneTimeSecretsMasked`.
+  See `docs/misc/ProcessBackendSteps.adoc`.
+- Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
+  `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
+  `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,
+  confirmations and destructive styling; rows expose nullable `actionNames` permissions.
+  Action input ENUM choices are included in section `possibleValues`. Responses include the
+  reloaded section and optional one-time secrets with `Cache-Control: no-store`; clients must
+  not store or log secrets. ROW actions can target only allowed rows loaded for the session user.
+  Secrets use shared core `OneTimeSecret`; `PreferenceSecretV1` exposes `label`, `value`,
+  `masked` and multiline `usageText` (replacing `help`). Sections publish `showInUserMenu`
+  (default false) so clients can add a label/icon menu entry opening the section.
+  Provider validation and storage share the trusted scope with the original session.
+  The example `access-tokens` section is owned by qbit-authentik.
+  Core also exposes the session-derived `getUserEmailAddress()` for preference providers.
+- Added per-user preferences (`docs/USER-PREFERENCES.md`): `GET /preferences`,
+  `GET /preferences/{sectionName}` and `PATCH /preferences/{sectionName}`. The schemas
+  `PreferencesResponseV1`, `PreferenceSectionV1`, `PreferenceListV1`, `PreferenceRowV1`
+  and `PreferenceSectionPatchRequestV1` describe typed fields, fixed rows, inline ENUM
+  choices and partial updates scoped to the signed-in user. `preferences` is a core
+  feature and `/preferences` is reserved by core.
 - AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*` write-denied only: the assistant can read a record's history, but cannot write audits.
 - Scoped credentials: `QSession.credentialScope` (`QCredentialScope`) narrows a session to the apps, tables, processes, reports, widgets and operations it lists, optionally read-only.
   - It is intersected with the user's live permissions.
@@ -103,6 +129,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ### 1.2.0 (QQQ 4.1.0-RC.6)
 1.1.0 was never released; its additions ship here.
+- In-app help (docs/HELP-CONTENT.md):
+  - Typed `HelpContentV1` entries and slot maps across all existing help properties; new `helpContents` maps on apps, processes and reports. Targeting fields remain server-only.
+  - Added secured `GET /help/search?q=&limit=` with ranked results, canonical keys, summaries, long help and application-relative links (default 20, maximum 50).
+  - Added `GET /help/coverage?kind=&missingOnly=&parentKey=` for users with INSERT or EDIT permission on `helpContent`; includes hidden targets and scoped totals before the missing-only filter.
+  - Per-session permission and client-channel targeting, safe Markdown rendering and cross-node reload. `GET /version` advertises the `help` feature.
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to `UiApiInvoker`.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
@@ -125,6 +156,15 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves
   `${currentUser}` filter values per session; a missing user matches no records.
+- Secured data (field access tiers, docs/SECURED-DATA.md):
+  - Field policy enforcement is independent of table-permission opt-in, and the assistant uses the same field decision with its default channel policy.
+  - Field metadata adds `accessTier` (FULL, REVEALABLE, MASKED, HIDDEN),
+    `allowedFilterOperators`, and `isSortable`; table metadata adds `hasRestrictedFields`.
+    HIDDEN fields are omitted and restricted fields are not editable.
+  - Disallowed filters and sorting return 403 using the standard error body; exact-match
+    policy refusals preserve the resolver's user-facing message.
+  - Masked values and display values are strings, regardless of the underlying field type;
+    masking applies to records, process results, structured widgets, exports, and audit details.
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.
 - Added the extension point: modules and qbits register endpoint specs

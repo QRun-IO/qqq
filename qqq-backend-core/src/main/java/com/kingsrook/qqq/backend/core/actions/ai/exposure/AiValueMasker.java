@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.backend.core.actions.ai.exposure;
 
 
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldMaskStyle;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldValueMasker;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 
 
@@ -42,29 +44,6 @@ public class AiValueMasker
     *******************************************************************************/
    public static String mask(String value, QFieldType type)
    {
-      if(value == null)
-      {
-         return (null);
-      }
-
-      String trimmed = value.trim();
-      int    atIndex = trimmed.indexOf('@');
-      if(atIndex > 0 && atIndex < trimmed.length() - 1 && trimmed.indexOf('@', atIndex + 1) < 0)
-      {
-         return (trimmed.charAt(0) + MASK + trimmed.substring(atIndex));
-      }
-
-      String digits = trimmed.replaceAll("[^0-9]", "");
-      if((type != null && type.isNumeric()) || (!digits.isEmpty() && trimmed.matches("[0-9 ().+/-]+")))
-      {
-         return (digits.length() > 4 ? MASK + digits.substring(digits.length() - 4) : MASK);
-      }
-
-      if(trimmed.length() <= 4)
-      {
-         return (MASK);
-      }
-
-      return (trimmed.charAt(0) + MASK + trimmed.charAt(trimmed.length() - 1));
+      return (FieldValueMasker.mask(value, type, FieldMaskStyle.AUTO));
    }
 }

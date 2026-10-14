@@ -98,6 +98,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
@@ -235,6 +236,7 @@ public class QInstanceValidator
          validateJoins(qInstance);
          validateSecurityKeyTypes(qInstance);
          validateSupplementalMetaData(qInstance);
+         ClientChannelsMetaData.warnUnwalledSensitiveTables(qInstance, this);
          validateSupplementalCustomizers(qInstance);
 
          validateUniqueTopLevelNames(qInstance);

@@ -28,9 +28,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 
 
@@ -70,19 +72,42 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public static final String CHANNEL_TOKEN              = "token";
 
    /***************************************************************************
-    ** the assistant's default deny patterns (lower-cased glob over names)
+    ** the assistant's generic default deny patterns - security surfaces any
+    ** application may have, whoever defines them (lower-cased globs)
     ***************************************************************************/
-   public static final List<String> ASSISTANT_DEFAULT_DENIED_PATTERNS = List.of(
-      "assistant_*",   // its own configuration: providers, models, prices, profiles, skills, policy, budgets, usage, tool-call logs, conversations
-      "authentik_*",   // identity, permissions and policies
+   public static final List<String> ASSISTANT_GENERIC_DENIED_PATTERNS = List.of(
       "*api_key*", "*apikey*",
       "*credential*",
       "*secret*",
       "*password*",
       "*permission*", "role", "roles", "*_role", "*_roles", "*_role_*", "user_role*", "userrole*",
-      "*user_session*", "*usersession*",
-      "webhooks_*",    // webhook endpoints and their signing secrets
-      "worm_audit_*"); // the WORM audit chain, checkpoints, sealed exports and purges
+      "*user_session*", "*usersession*");
+
+   /***************************************************************************
+    ** TRANSITIONAL: qbit-specific assistant denies, kept in core only until each
+    ** qbit's producer registers its own rule (QRun-IO/qqq#1157) - each qbit owns
+    ** its wall from its next release; these are removed at 4.1.0 GA.  They stay
+    ** here meanwhile so the wall never opens (fail-closed) for an application
+    ** still on an older qbit.
+    ***************************************************************************/
+   public static final List<String> ASSISTANT_TRANSITIONAL_QBIT_DENIED_PATTERNS = List.of(
+      "assistant_*",   // qbit-assistant: providers, models, prices, profiles, skills, policy, budgets, usage, tool-call logs, conversations
+      "authentik_*",   // qbit-authentik: identity, permissions and policies
+      "webhooks_*",    // qbit-webhooks: endpoints and their signing secrets
+      "worm_audit_*"); // qbit-worm-audit: the audit chain, checkpoints, sealed exports and purges
+
+   /***************************************************************************
+    ** every assistant deny pattern applied by default (generic + transitional)
+    ***************************************************************************/
+   public static final List<String> ASSISTANT_DEFAULT_DENIED_PATTERNS = Stream.concat(ASSISTANT_TRANSITIONAL_QBIT_DENIED_PATTERNS.stream(), ASSISTANT_GENERIC_DENIED_PATTERNS.stream()).toList();
+
+   /***************************************************************************
+    ** table-name globs that look sensitive (configuration, policy, secrets,
+    ** tokens): the validator warns when one is not denied to the assistant
+    ***************************************************************************/
+   public static final List<String> SENSITIVE_TABLE_PATTERNS = List.of(
+      "*_policy", "*_policies", "*_policy_*", "*_config", "*_configs", "*_config_*", "*_configuration*", "*_settings", "*_setting",
+      "*_secret*", "*_token", "*_tokens", "*_token_*", "*_key", "*_keys");
 
    /***************************************************************************
     ** the assistant's default write-deny patterns: readable (e.g. a record's
@@ -96,6 +121,7 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    private Map<String, Set<String>>  deniedObjects  = new LinkedHashMap<>();
    private Map<String, List<String>> deniedPatterns = new LinkedHashMap<>();
    private Map<String, List<String>> deniedWritePatterns = new LinkedHashMap<>();
+   private Map<String, Set<String>>  reviewedObjects     = new LinkedHashMap<>();
 
 
 
@@ -285,6 +311,72 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public Map<String, List<String>> getDeniedWritePatterns()
    {
       return (deniedWritePatterns);
+   }
+
+
+
+   /*******************************************************************************
+    ** Tables whose names look sensitive (SENSITIVE_TABLE_PATTERNS) but that no
+    ** rule denies to the assistant - each should either be walled by its qbit
+    ** (withDeniedObject / withDeniedPattern / QPermissionRules.withDeniedClients)
+    ** or be reviewed as safe (withReviewedObject).
+    *******************************************************************************/
+   public static List<String> findUnwalledSensitiveTables(QInstance qInstance)
+   {
+      List<String> rs = new ArrayList<>();
+      if(qInstance == null || qInstance.getTables() == null)
+      {
+         return (rs);
+      }
+
+      for(QTableMetaData table : qInstance.getTables().values())
+      {
+         if(table == null || table.getName() == null)
+         {
+            continue;
+         }
+         String name = table.getName().toLowerCase();
+         if(SENSITIVE_TABLE_PATTERNS.stream().noneMatch(pattern -> globMatches(pattern, name)))
+         {
+            continue;
+         }
+         ClientChannelsMetaData registry = of(qInstance);
+         if(registry.reviewedObjects.getOrDefault(CHANNEL_ASSISTANT, Set.of()).contains(table.getName()))
+         {
+            continue;
+         }
+         if(!registry.isDenied(CHANNEL_ASSISTANT, table.getName(), table.getPermissionRules()))
+         {
+            rs.add(table.getName());
+         }
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** Validator warnings for findUnwalledSensitiveTables (called for every
+    ** instance, whether or not it registers a ClientChannelsMetaData).
+    *******************************************************************************/
+   public static void warnUnwalledSensitiveTables(QInstance qInstance, QInstanceValidator validator)
+   {
+      for(String tableName : findUnwalledSensitiveTables(qInstance))
+      {
+         validator.warn("Table [" + tableName + "] looks sensitive (configuration, policy, secret, token or key) but no client-channel rule denies it to the assistant.  Its qbit should register one (ClientChannelsMetaData.withDeniedObject / withDeniedPattern, or QPermissionRules.withDeniedClients) - or mark it reviewed with withReviewedObject(\"assistant\", name).");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Record that an object was reviewed as safe for a channel (silences the
+    ** sensitive-table warning; grants nothing).
+    *******************************************************************************/
+   public ClientChannelsMetaData withReviewedObject(String channelName, String objectName)
+   {
+      reviewedObjects.computeIfAbsent(channelName.toLowerCase(), k -> new LinkedHashSet<>()).add(objectName);
+      return (this);
    }
 
 

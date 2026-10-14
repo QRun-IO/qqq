@@ -289,4 +289,33 @@ class ClientChannelPermissionsTest extends BaseTest
       new AuditsMetaDataProvider().defineAll(plain, TestUtils.MEMORY_BACKEND_NAME, null);
       assertThat(plain.getTable("audit").getFields()).doesNotContainKey(AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL);
    }
+
+
+
+   /***************************************************************************
+    ** sensitive-looking tables must be walled by their qbit (or reviewed)
+    ***************************************************************************/
+   @Test
+   void testUnwalledSensitiveTablesAreReported()
+   {
+      QInstance qInstance = defineInstance();
+      qInstance.addTable(simpleTable("acme_policy"));
+      qInstance.addTable(simpleTable("acme_config"));
+      qInstance.addTable(simpleTable("acme_order"));
+      qInstance.addTable(simpleTable("assistant_policy_rule"));
+
+      assertThat(ClientChannelsMetaData.findUnwalledSensitiveTables(qInstance)).contains("acme_policy", "acme_config").doesNotContain("acme_order", "assistant_policy_rule");
+
+      ClientChannelsMetaData.ofOrWithNew(qInstance)
+         .withDeniedObject("assistant", "acme_policy")
+         .withReviewedObject("assistant", "acme_config");
+      assertThat(ClientChannelsMetaData.findUnwalledSensitiveTables(qInstance)).doesNotContain("acme_policy", "acme_config");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // the transitional qbit patterns and the generic ones are both applied    //
+      /////////////////////////////////////////////////////////////////////////////
+      assertThat(ClientChannelsMetaData.ASSISTANT_DEFAULT_DENIED_PATTERNS)
+         .containsAll(ClientChannelsMetaData.ASSISTANT_TRANSITIONAL_QBIT_DENIED_PATTERNS)
+         .containsAll(ClientChannelsMetaData.ASSISTANT_GENERIC_DENIED_PATTERNS);
+   }
 }

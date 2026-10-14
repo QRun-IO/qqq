@@ -95,3 +95,20 @@ permission narrows the token too:
 - The session's client channel is `token:<credentialId>`. The `X-QQQ-Client` header is ignored, so
   the request cannot relabel itself, and the channel is audited.
 - The assistant wall and field-access rules apply as usual.
+
+## Who owns the wall rules (#1157)
+- **Core keeps the generic rules** (`ASSISTANT_GENERIC_DENIED_PATTERNS`). These cover API keys,
+  credentials, secrets, passwords, permission and role tables, and user sessions, plus write-only
+  access to `audit*`.
+- **Each qbit owns its own rules.** Its producer registers them, for example
+  `ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "<qbit>_*")`,
+  `withDeniedObject(...)`, or `QPermissionRules.withDeniedClients(...)` on the table.
+- **The qbit prefixes still in core are transitional** (`ASSISTANT_TRANSITIONAL_QBIT_DENIED_PATTERNS`:
+  `assistant_*`, `authentik_*`, `webhooks_*`, `worm_audit_*`). They stay until each qbit registers
+  its own rule, so the wall never opens for an application still on an older qbit. They are removed
+  at 4.1.0 GA.
+- **The validator warns about uncovered sensitive tables.** For every table whose name looks
+  sensitive (`*_policy`, `*_config`, `*_settings`, `*_secret*`, `*_token`, `*_key`, ...), it warns
+  if no rule denies the table to the assistant. Fix it by walling the table in its qbit, or by
+  recording a deliberate review with `withReviewedObject("assistant", name)`. A review grants
+  nothing.

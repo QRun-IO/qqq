@@ -51,8 +51,10 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDis
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateContingentPossibleValuesHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
@@ -62,6 +64,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
@@ -208,7 +211,12 @@ public class UpdateAction
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(updateInput, updateInterface);
-      List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
+      if(updateInput.getExpectedVersions() != null && !updateInput.getExpectedVersions().isEmpty() && oldRecordList.isEmpty())
+      {
+         oldRecordList = Optional.of(queryOldRecords(updateInput));
+      }
+      RecordVersionCheck.check(updateInput, oldRecordList.orElse(List.of()));
+      List<QRecord> listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
 
       ///////////////////////////////////////////////////////////////////////////////////////
       // allow caller to specify that we don't want to trigger automations. this isn't     //
@@ -488,6 +496,10 @@ public class UpdateAction
       if(updateInput.getInputSource().shouldValidateRequiredFields())
       {
          validateRequiredFields(updateInput);
+         if(updateInput.getInputSource() != QInputSource.SYSTEM)
+         {
+            ValidateContingentPossibleValuesHelper.validate(table, updateInput.getRecords(), oldRecordList.orElse(List.of()), updateInput.getTransaction());
+         }
       }
 
       ///////////////////////////////////////////////////////////////////////////

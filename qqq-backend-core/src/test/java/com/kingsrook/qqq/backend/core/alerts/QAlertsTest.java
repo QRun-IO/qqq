@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
@@ -50,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -70,6 +72,8 @@ class QAlertsTest extends BaseTest
 
    private static AlertSignal lastSignal = null;
 
+   private static NotificationSignal lastNotification = null;
+
 
 
    /*******************************************************************************
@@ -80,6 +84,7 @@ class QAlertsTest extends BaseTest
    {
       events.clear();
       lastSignal = null;
+      lastNotification = null;
    }
 
 
@@ -480,6 +485,209 @@ class QAlertsTest extends BaseTest
 
 
    /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNotify_noImplementation_logsAndNeverThrows()
+   {
+      long before = QAlerts.getProducerFailureCount();
+      assertDoesNotThrow(() -> QAlerts.notify(new NotificationSignal("Your export is ready").withAudience(NotificationAudience.user("u1"))));
+      assertDoesNotThrow(() -> QAlerts.notify(new NotificationSignal("Export failed").withSeverity(NotificationSeverity.ERROR).withSourceKey("process:1").withAudience(NotificationAudience.allUsers())));
+      assertEquals(before, QAlerts.getProducerFailureCount());
+
+      LoggingAlertSink sink = new LoggingAlertSink();
+      Instant          now  = Instant.now();
+      assertDoesNotThrow(() -> sink.notify(new NotificationSignal("t").withCategory(NotificationCategory.JOB).withOccurredAt(now)));
+      assertDoesNotThrow(() -> sink.notify(new NotificationSignal("t").withCategory(NotificationCategory.JOB).withSeverity(NotificationSeverity.CRITICAL).withOccurredAt(now.plusSeconds(1))));
+      assertFalse(sink.shouldLog("notify|JOB|t", now.plusSeconds(2)));
+      assertTrue(sink.shouldLog("notify|JOB|k", now.plusSeconds(2)));
+
+      ///////////////////////////////////////////////////////////////////
+      // a sink written before notify existed still accepts the call   //
+      ///////////////////////////////////////////////////////////////////
+      AlertsInstanceMetaData.ofOrWithNew(QContext.getQInstance()).withSink(new QCodeReference(LegacySink.class));
+      before = QAlerts.getProducerFailureCount();
+      assertDoesNotThrow(() -> QAlerts.notify(new NotificationSignal("t").withAudience(NotificationAudience.allUsers())));
+      assertDoesNotThrow(() -> new LegacySink().notify(null));
+      assertEquals(before, QAlerts.getProducerFailureCount());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNotify_registeredSink_receivesWithDefaults()
+   {
+      useRecordingSink();
+      AlertLink link = AlertLink.toUrl("/app/orders", "Orders");
+      QAlerts.notify(new NotificationSignal("Your export failed")
+         .withBody("**Orders export** stopped")
+         .withSourceName("test")
+         .withSourceKey("process:1")
+         .withSourceTableName("person")
+         .withSourceRecordId("7")
+         .withLink(link)
+         .withSticky(true)
+         .withPublishAt(Instant.EPOCH)
+         .withExpireAt(Instant.EPOCH.plusSeconds(60))
+         .withAudience(NotificationAudience.user("u1")));
+
+      assertEquals(List.of("notify:Your export failed:USERS[u1]"), events);
+      assertEquals(NotificationSeverity.INFO, lastNotification.getSeverity());
+      assertEquals(NotificationCategory.SYSTEM, lastNotification.getCategory());
+      assertNotNull(lastNotification.getOccurredAt());
+      assertEquals("**Orders export** stopped", lastNotification.getBody());
+      assertEquals("test", lastNotification.getSourceName());
+      assertEquals("process:1", lastNotification.getSourceKey());
+      assertEquals("person", lastNotification.getSourceTableName());
+      assertEquals("7", lastNotification.getSourceRecordId());
+      assertSame(link, lastNotification.getLink());
+      assertTrue(lastNotification.getSticky());
+      assertEquals(Instant.EPOCH, lastNotification.getPublishAt());
+      assertEquals(Instant.EPOCH.plusSeconds(60), lastNotification.getExpireAt());
+
+      events.clear();
+      QAlerts.notify(new NotificationSignal("Done").withSeverity(NotificationSeverity.SUCCESS).withCategory(NotificationCategory.JOB).withAudience(NotificationAudience.allUsers()));
+      assertEquals(List.of("notify:Done:ALL_USERS"), events);
+      assertEquals(NotificationSeverity.SUCCESS, lastNotification.getSeverity());
+      assertEquals(NotificationCategory.JOB, lastNotification.getCategory());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNotify_deferredToCommit_droppedOnRollback() throws QException
+   {
+      useRecordingSink();
+
+      QBackendTransaction committed = new QBackendTransaction();
+      QAlerts.notify(new NotificationSignal("Shared with you").withAudience(NotificationAudience.user("u1")), committed);
+      assertThat(events).isEmpty();
+      committed.commit();
+      assertEquals(1, events.size());
+
+      events.clear();
+      QBackendTransaction rolledBack = new QBackendTransaction();
+      QAlerts.notify(new NotificationSignal("Shared with you").withAudience(NotificationAudience.user("u1")), rolledBack);
+      rolledBack.rollback();
+      rolledBack.commit();
+      assertThat(events).isEmpty();
+
+      QBackendTransaction ambient = new QBackendTransaction();
+      QContext.setTransaction(ambient);
+      try
+      {
+         QAlerts.notify(new NotificationSignal("Shared with you").withAudience(NotificationAudience.user("u1")));
+         assertThat(events).isEmpty();
+         ambient.commit();
+         assertEquals(1, events.size());
+      }
+      finally
+      {
+         QContext.setTransaction(null);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNotify_badInputAndThrowingSink_areCounted() throws QException
+   {
+      useRecordingSink();
+      long before = QAlerts.getProducerFailureCount();
+      assertDoesNotThrow(() -> QAlerts.notify(null));
+      assertDoesNotThrow(() -> QAlerts.notify(new NotificationSignal(" ").withAudience(NotificationAudience.allUsers())));
+      assertDoesNotThrow(() -> QAlerts.notify(new NotificationSignal().withAudience(NotificationAudience.allUsers())));
+      assertDoesNotThrow(() -> QAlerts.notify(new NotificationSignal("No audience")));
+      assertEquals(before + 4, QAlerts.getProducerFailureCount());
+      assertThat(events).isEmpty();
+
+      AlertsInstanceMetaData.of(QContext.getQInstance()).withSink(new QCodeReference(ThrowingSink.class));
+      before = QAlerts.getProducerFailureCount();
+      assertDoesNotThrow(() -> QAlerts.notify(new NotificationSignal("t").withAudience(NotificationAudience.allUsers())));
+      QBackendTransaction transaction = new QBackendTransaction();
+      QAlerts.notify(new NotificationSignal("t").withAudience(NotificationAudience.allUsers()), transaction);
+      assertDoesNotThrow(transaction::commit);
+      assertEquals(before + 2, QAlerts.getProducerFailureCount());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testNotificationAudienceAndSignalBounds()
+   {
+      assertEquals(NotificationAudience.Type.ALL_USERS, NotificationAudience.allUsers().getType());
+      assertThat(NotificationAudience.allUsers().getValues()).isEmpty();
+      assertEquals(List.of("admin", "ops"), NotificationAudience.roles("admin", null, " ", "ops").getValues());
+      assertEquals(NotificationAudience.Type.ROLES, NotificationAudience.roles("admin").getType());
+      assertEquals(NotificationAudience.Type.PERMISSION, NotificationAudience.permission("cdn.view").getType());
+      assertEquals(List.of("cdn.view"), NotificationAudience.permission("cdn.view").getValues());
+      assertEquals(NotificationAudience.users("u1"), NotificationAudience.user("u1"));
+      assertEquals(NotificationAudience.users("u1").hashCode(), NotificationAudience.user("u1").hashCode());
+      assertNotEquals(NotificationAudience.users("u1"), NotificationAudience.roles("u1"));
+      assertNotEquals(NotificationAudience.users("u1"), NotificationAudience.users("u2"));
+      assertNotEquals(NotificationAudience.users("u1"), (Object) "u1");
+      NotificationAudience same = NotificationAudience.allUsers();
+      assertEquals(same, same);
+      assertEquals(List.of("u1", "u2"), NotificationAudience.users("u1", "u2").getValues());
+      assertThat(NotificationAudience.users((String[]) null).getValues()).isEmpty();
+      assertEquals("ALL_USERS", NotificationAudience.allUsers().toString());
+      assertEquals("PERMISSION[cdn.view]", NotificationAudience.permission("cdn.view").toString());
+      assertThrows(UnsupportedOperationException.class, () -> NotificationAudience.user("u1").getValues().add("u2"));
+
+      NotificationSignal signal = new NotificationSignal("t");
+      for(int i = 0; i < 25; i++)
+      {
+         signal.withAttribute("k" + i, "v");
+      }
+      signal.withAttribute("k0", "replaced").withAttribute(null, "v");
+      assertEquals(NotificationSignal.MAX_ATTRIBUTES, signal.getAttributes().size());
+      assertEquals("replaced", signal.getAttributes().get("k0"));
+
+      signal.setAttributes(Map.of("a", "b"));
+      assertEquals(Map.of("a", "b"), signal.getAttributes());
+      signal.setAttributes(null);
+      assertThat(signal.getAttributes()).isEmpty();
+
+      signal.setTitle("x");
+      signal.setBody("b");
+      signal.setSeverity(NotificationSeverity.WARNING);
+      signal.setCategory(NotificationCategory.SECURITY);
+      signal.setSourceName("n");
+      signal.setSourceKey("k");
+      signal.setSourceTableName("t");
+      signal.setSourceRecordId("1");
+      signal.setLink(null);
+      signal.setAudience(NotificationAudience.permission("p"));
+      signal.setPublishAt(Instant.EPOCH);
+      signal.setExpireAt(Instant.EPOCH);
+      signal.setSticky(false);
+      signal.setOccurredAt(Instant.EPOCH);
+      assertEquals("x", signal.getTitle());
+      assertEquals("b", signal.getBody());
+      assertEquals("n", signal.getSourceName());
+      assertEquals(NotificationSeverity.WARNING, signal.getSeverity());
+      assertEquals(NotificationCategory.SECURITY, signal.getCategory());
+      assertEquals(NotificationAudience.permission("p"), signal.getAudience());
+      assertNull(signal.getLink());
+      assertFalse(signal.getSticky());
+      assertEquals(Instant.EPOCH, signal.getOccurredAt());
+   }
+
+
+
+   /*******************************************************************************
     ** A sink that records what it was sent.
     *******************************************************************************/
    public static class RecordingSink implements AlertSinkInterface
@@ -514,6 +722,57 @@ class QAlertsTest extends BaseTest
       public void heartbeat(String heartbeatKey, Instant at)
       {
          events.add("heartbeat:" + heartbeatKey);
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void notify(NotificationSignal signal)
+      {
+         lastNotification = signal;
+         events.add("notify:" + signal.getTitle() + ":" + signal.getAudience());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A sink written before notify existed: it inherits the default.
+    *******************************************************************************/
+   public static class LegacySink implements AlertSinkInterface
+   {
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void raise(AlertSignal signal)
+      {
+         events.add("legacy-raise");
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void resolve(AlertResolution resolution)
+      {
+         events.add("legacy-resolve");
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void heartbeat(String heartbeatKey, Instant at)
+      {
+         events.add("legacy-heartbeat");
       }
    }
 
@@ -551,6 +810,17 @@ class QAlertsTest extends BaseTest
        ***************************************************************************/
       @Override
       public void heartbeat(String heartbeatKey, Instant at)
+      {
+         throw (new IllegalStateException("sink down"));
+      }
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      @Override
+      public void notify(NotificationSignal signal)
       {
          throw (new IllegalStateException("sink down"));
       }

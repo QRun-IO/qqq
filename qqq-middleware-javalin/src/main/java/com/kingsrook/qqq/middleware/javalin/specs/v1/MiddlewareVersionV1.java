@@ -39,20 +39,23 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.2.0";
+   public static final String SEMANTIC_VERSION = "1.3.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
     ***************************************************************************/
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
-      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "preferences");
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
+      "preferences");
 
-   private static List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
+   private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
-   static
    {
       list.add(new VersionSpecV1());
+      RealtimeStreamSpecV1 realtime = new RealtimeStreamSpecV1();
+      list.add(realtime);
+      list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());
@@ -108,6 +111,10 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new RecordFieldDownloadSpecV1());
       list.add(new GeneralDownloadSpecV1());
       list.add(new ReportRunSpecV1());
+
+      list.add(new BulkLoadUploadProfileSpecV1());
+      list.add(new BulkLoadSuggestMappingSpecV1());
+      list.add(new BulkLoadValidateSpecV1());
    }
 
    /***************************************************************************

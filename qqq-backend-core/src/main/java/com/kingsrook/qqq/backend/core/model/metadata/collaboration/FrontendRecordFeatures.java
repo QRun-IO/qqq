@@ -34,6 +34,7 @@ import java.util.Map;
  *******************************************************************************/
 public class FrontendRecordFeatures implements Serializable
 {
+   private RecordOwnership ownership;
    private List<RecordFeature> features = new ArrayList<>();
    private Map<RecordFeature, Map<String, Serializable>> settings = new EnumMap<>(RecordFeature.class);
    private Map<String, Boolean> capabilities = new LinkedHashMap<>();
@@ -128,6 +129,37 @@ public class FrontendRecordFeatures implements Serializable
    public FrontendRecordFeatures withCapabilities(Map<String, Boolean> capabilities)
    {
       setCapabilities(capabilities);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for ownership
+    *******************************************************************************/
+   public RecordOwnership getOwnership()
+   {
+      return (this.ownership);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for ownership
+    *******************************************************************************/
+   public void setOwnership(RecordOwnership ownership)
+   {
+      this.ownership = ownership;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for ownership
+    *******************************************************************************/
+   public FrontendRecordFeatures withOwnership(RecordOwnership ownership)
+   {
+      setOwnership(ownership);
       return (this);
    }
 

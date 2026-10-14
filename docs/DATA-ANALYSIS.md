@@ -128,6 +128,53 @@ All qbit tables use standard permission rules (no custom checker), so every name
 - The guard runs in the qbit after the query and before caching, so the cache never holds
   un-merged groups for a guarded table.
 
+### 2.4 Field security tiers (qbit-secured-data)
+The secured-data program adds per-field tiers (FULL, REVEALABLE, MASKED, HIDDEN), enforced in
+core through `FieldSecurityLock` extensions. Analysis must not become a way around them: a
+distribution, a distinct-value list, an extreme, a bucket or a drill all reveal values.
+
+- **One resolver.** `AnalysisSecurity` asks a `FieldAnalysisAccess` resolver for each field. It
+  returns one of:
+  - `FULL`: every analysis is allowed;
+  - `EXACT_MATCH_ONLY`: the user may only count rows equal to a value they supply themselves;
+  - `NONE`.
+
+  Until the core tier hooks ship, the resolver maps `FieldSecurityLockHelper.isFieldAccessible` to
+  FULL or NONE. When they ship, it maps tiers using the core API, with no other change to the qbit:
+  - **FULL**, or a MASKED/HIDDEN field for a user who holds filter rights on it: `FULL`.
+  - **REVEALABLE**: `EXACT_MATCH_ONLY`.
+  - **MASKED or HIDDEN without filter rights**: `NONE`.
+- **`NONE` fields are absent everywhere.** They are left out of:
+  - capabilities, column profiles and the table profile (completeness, candidate keys, duplicates);
+  - pivot rows, columns and values, and compare;
+  - correlation, crosstabs and shift;
+  - watches and saved-analysis definitions.
+
+  A request that names one gets the same 400 as an unknown field, so the field's existence is not
+  confirmed. No drill filter ever contains a condition on such a field, including drills
+  generated for other fields.
+- **`EXACT_MATCH_ONLY` fields** do not appear in profiles, pivots, buckets, top or distinct values,
+  correlations or crosstabs. The only operation is the existing query path: the user types a value
+  in the standard filter (EQUALS / IN), and the grid count is the answer. Analysis adds nothing
+  for them.
+- **Core is the backstop.** Every analysis query runs through `AggregateAction` / `QueryAction` as the
+  user with `PermissionEnforcement.ENFORCE`. When core enforces tiers in `checkReadCriteria`
+  (aggregate, group-by, order-by and filter field names), a gap in the qbit's resolver still fails
+  closed: 403, never data.
+- **Caches and sharing.**
+  - Exact-run results are stored per user and keyed by a fingerprint of that user's field access,
+    so a change in tier invalidates them.
+  - Shared and saved analyses always re-run as the viewer. Fields the viewer cannot analyze are
+    dropped from the result, with a note saying "Some fields are not available to you". Nothing
+    cached is shown across users.
+  - Scheduled deliveries and watches re-check each recipient's field access before sending (§7.5).
+- **Tests**, once the core hooks land:
+  - a HIDDEN or MASKED field without filter rights is absent from capabilities and refused by
+    name;
+  - a REVEALABLE field is not profiled;
+  - core refuses an aggregate on a restricted field even if the qbit resolver is bypassed;
+  - a shared analysis drops the field for a viewer without rights.
+
 ## 3. Core aggregate extensions (qqq-backend-core, qqq-backend-module-rdbms)
 
 All additions are backwards compatible: new enum values, new optional fields, new interfaces with

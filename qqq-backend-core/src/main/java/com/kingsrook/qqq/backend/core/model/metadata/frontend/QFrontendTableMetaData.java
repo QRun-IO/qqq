@@ -43,9 +43,15 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.CurrentUser;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.FrontendRecordFeatures;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
@@ -72,6 +78,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class QFrontendTableMetaData
 {
    private FrontendRecordFeatures recordFeatures;
+   private List<QFrontendBuiltInView> builtInViews;
    private Long metaDataGeneration;
 
    private static final QLogger LOG = QLogger.getLogger(QFrontendTableMetaData.class);
@@ -128,6 +135,23 @@ public class QFrontendTableMetaData
    public QFrontendTableMetaData(AbstractActionInput actionInput, QBackendMetaData backendForTable, QTableMetaData tableMetaData, boolean includeFullMetaData, boolean includeJoins, Map<String, QFieldMetaData> overrideFields)
    {
       this.recordFeatures = RecordFeatureSummaryHelper.frontend(QContext.getQInstance(), tableMetaData);
+      if(recordFeatures != null && recordFeatures.getFeatures().contains(RecordFeature.ASSIGNMENT) && recordFeatures.getOwnership() != null)
+      {
+         RecordOwnership ownership = recordFeatures.getOwnership();
+         QQueryFilter filter = new QQueryFilter().withBooleanOperator(QQueryFilter.BooleanOperator.OR);
+         if(ownership.getOwnerFieldName() != null)
+         {
+            filter.addCriteria(new QFilterCriteria(ownership.getOwnerFieldName(), QCriteriaOperator.EQUALS, new CurrentUser()));
+         }
+         if(ownership.getAssigneeFieldName() != null)
+         {
+            filter.addCriteria(new QFilterCriteria(ownership.getAssigneeFieldName(), QCriteriaOperator.EQUALS, new CurrentUser()));
+         }
+         if(filter.hasAnyCriteria())
+         {
+            builtInViews = List.of(new QFrontendBuiltInView().withName("myRecords").withLabel("My records").withFilter(filter));
+         }
+      }
       this.metaDataGeneration = RuntimeMetaDataOverlay.getGeneration(QContext.getQInstance());
       this.name = tableMetaData.getName();
       this.label = tableMetaData.getLabel();
@@ -653,5 +677,14 @@ public class QFrontendTableMetaData
    {
       setMetaDataGeneration(metaDataGeneration);
       return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Views supplied by core; not persisted as user-owned saved views.
+    *******************************************************************************/
+   public List<QFrontendBuiltInView> getBuiltInViews()
+   {
+      return (builtInViews);
    }
 }

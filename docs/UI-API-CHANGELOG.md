@@ -51,13 +51,34 @@ Strict mode (`withStrictUiApiRoutes(true)` or `QQQ_UI_API_STRICT_ROUTES=true`) f
 instead. Strict becomes the default once the alerts, assistant and sql-workbench qbits ship their
 spec'd routes.
 
+## Extensions
+
+| Extension | Prefix | Version | Owner |
+|---|---|---|---|
+| esb | `/esb` | 1.0.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
+
+## Legacy unversioned routes (deprecated)
+
+The unversioned `QJavalinImplementation` routes (`/metaData`, `/data/...`, `/processes/...`,
+`/widget/...`, `/possibleValues/...`, `/download/...`, `/reports/...`, `/serverInfo`,
+`/manageSession`) are the Material Dashboard's API. They are **deprecated as of 2026-10-13**.
+Next UI makes no calls to them (see `UI-API-AUDIT.md`).
+
+- Every response from them carries `Deprecation: @1760313600` (RFC 9745) and
+  `Link: </qqq/v1/openapi.html>; rel="successor-version"`.
+- The first call to each route family is logged at INFO.
+- They stay served while the Material Dashboard uses them, because
+  `serveLegacyUnversionedMiddlewareAPI` defaults to true.
+- **Sunset:** they are removed together with the Material Dashboard. No date is set yet; it will be
+  announced here.
+
 ## Versions
 
-### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
-1.1.0 was never released; its additions ship here.
+### 1.3.0 (unreleased)
 - Process init/step responses now optionally include `oneTimeSecrets` using the shared
-  `PreferenceSecretV1` schema, with `Cache-Control: no-store`. Secrets are delivered only
-  on synchronous completion; status responses expose only `values.oneTimeSecretsMasked`.
+  `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
+  in its own response; a step that went async hands them, once, to the first status poll that
+  sees the job complete. Stored state exposes only `values.oneTimeSecretsMasked`.
   See `docs/misc/ProcessBackendSteps.adoc`.
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
@@ -78,6 +99,36 @@ spec'd routes.
   and `PreferenceSectionPatchRequestV1` describe typed fields, fixed rows, inline ENUM
   choices and partial updates scoped to the signed-in user. `preferences` is a core
   feature and `/preferences` is reserved by core.
+- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*` write-denied only: the assistant can read a record's history, but cannot write audits.
+- Scoped credentials: `QSession.credentialScope` (`QCredentialScope`) narrows a session to the apps, tables, processes, reports, widgets and operations it lists, optionally read-only.
+  - It is intersected with the user's live permissions.
+  - The session's client channel is `token:<id>`; "token" is a new default channel.
+  - Access tokens from qbit-authentik set it.
+
+### 1.2.0 (QQQ 4.1.0-RC.6)
+1.1.0 was never released; its additions ship here.
+- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to `UiApiInvoker`.
+- Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
+  `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
+  `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing
+  is stored). Uploads are read through `BulkLoadUploadSources` by their opaque ref, as the session
+  user. The `X-QQQ-AI-Route: hipaa` request header allows sample values of classified and unmapped
+  columns; without it they are left out.
+- Added contingent field metadata: `possibleValueSourceDependsOn` lists explicit and
+  inferred input dependencies; `possibleValueSourceDependencyBehavior` defaults to
+  `DISABLE_UNTIL_SET`. Both properties are absent for non-contingent fields.
+- Added `SHOW_ALL_UNTIL_SET`: FORM searches omit missing-input criteria while
+  retaining criteria for supplied inputs. FILTER searches remain unrestricted by
+  missing inputs; use-case parsing is consistent and case-insensitive.
+- User-sourced table writes validate contingent choices in batches, including
+  partial updates and custom providers; fields can opt out with
+  `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
+  See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
+  frontend obligations, sample fixtures and the process-step validation limitation.
+- Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
+  ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
+  expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves
+  `${currentUser}` filter values per session; a missing user matches no records.
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.
 - Added the extension point: modules and qbits register endpoint specs
@@ -104,6 +155,15 @@ spec'd routes.
     default wall that keeps the assistant away from its own configuration, identity, permissions,
     audits, API keys, credentials and secrets.
 - Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
+- Record collaboration (docs/COLLABORATION.md):
+  - Table metadata gains `recordFeatures` (`RecordFeaturesV1`), and the metadata responses gain
+    `metaDataGeneration`.
+  - Added `GET /table/{tableName}/{primaryKey}/features` (`RecordFeatureSummaryV1`).
+  - Added `GET /realtime/stream` (Server-Sent Events), with one schema per event type, and
+    `POST /realtime/subscriptions`.
+  - `PATCH /table/{tableName}/{primaryKey}` accepts an optional `expectedVersion`. A stale
+    version returns 409 `RecordConflictV1`.
+  - Core features `recordFeatures` and `realtime` are listed by `GET /version`.
 - Added related-record pickers (`docs/RELATED-RECORD-PICKER.md`): the operations
   `POST /table/{tableName}/relatedRecordPicker/{pickerName}/query|prepare|add|remove` with the
   `RelatedRecordPicker{Query,Prepare,Add,Remove}ResponseV1` schemas, and the table metadata

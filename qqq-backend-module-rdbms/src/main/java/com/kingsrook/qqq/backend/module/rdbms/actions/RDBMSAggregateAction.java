@@ -302,7 +302,7 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
                   String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
                   String         realFieldName  = virtualField.getFieldFunction().getFieldName();
                   QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-                  String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
+                  String         columnName     = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
 
                   FieldFunction                      fieldFunction              = virtualField.getFieldFunction();
                   RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter       = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());

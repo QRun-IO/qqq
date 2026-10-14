@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -88,6 +89,8 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(primaryKeyField, page.get(0).getValue(primaryKeyField.getName())));
             List<QFieldMetaData> insertableFields = table.getFields().values().stream()
                .filter(field -> suppliedKeys || !field.getName().equals(table.getPrimaryKeyField())).toList();
+            List<QFieldMetaData> logicalFields = insertableFields;
+            insertableFields = JsonStorageValues.columns(logicalFields);
             String columns = insertableFields.stream().map(field -> escapeIdentifier(getColumnName(field))).collect(Collectors.joining(", "));
             String backendTableName = escapeIdentifier(getTableName(table));
             sql = new StringBuilder("INSERT INTO ").append(backendTableName);
@@ -132,8 +135,16 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
                   {
                      sql.append(",");
                   }
-                  sql.append("?");
-                  params.add(scrubValue(field, record.getValue(field.getName())));
+                  if(field.getBackendStorage() instanceof JsonPathStorage storage)
+                  {
+                     sql.append(getActionStrategy().jsonObjectPlaceholder());
+                     params.add(JsonStorageValues.object(record, logicalFields, storage.getColumnName()));
+                  }
+                  else
+                  {
+                     sql.append("?");
+                     params.add(scrubValue(field, record.getValue(field.getName())));
+                  }
                }
                sql.append(")");
             }

@@ -23,7 +23,9 @@ package com.kingsrook.qqq.backend.core.model.metadata.collaboration;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 
 /*******************************************************************************
@@ -31,6 +33,7 @@ import java.util.List;
  *******************************************************************************/
 public class RuntimeMetaDataContribution implements Serializable
 {
+   private Map<String, RuntimeTableMetaDataContribution> tables = new LinkedHashMap<>();
    private long generation;
    private List<RecordFeatureOverride> featureOverrides = new ArrayList<>();
 
@@ -96,4 +99,35 @@ public class RuntimeMetaDataContribution implements Serializable
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for tables
+    *******************************************************************************/
+   public Map<String, RuntimeTableMetaDataContribution> getTables()
+   {
+      return (tables);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tables
+    *******************************************************************************/
+   public void setTables(Map<String, RuntimeTableMetaDataContribution> tables)
+   {
+      this.tables = tables;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tables
+    *******************************************************************************/
+   public RuntimeMetaDataContribution withTables(Map<String, RuntimeTableMetaDataContribution> tables)
+   {
+      setTables(tables);
+      return (this);
+   }
 }

@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
@@ -48,9 +49,14 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucket;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.DateBucketUnit;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.NumericBucket;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.module.rdbms.actions.JsonStorageValues;
 import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.BaseRDBMSActionStrategy;
 import com.kingsrook.qqq.backend.module.rdbms.strategy.ConsistentReadStart;
@@ -405,6 +411,76 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Extract JSON scalars using the declared QQQ type.
+    *******************************************************************************/
+   @Override
+   public String jsonPathExpression(String column, JsonPathStorage storage, QFieldType type)
+   {
+      if(storage.getKey() == null || !storage.getKey().matches("[a-z][a-z0-9_]{0,40}"))
+      {
+         throw (new IllegalArgumentException("Invalid JSON storage key"));
+      }
+      String cast = switch(type)
+      {
+         case STRING, TEXT -> "";
+         case DECIMAL -> "::numeric";
+         case LONG -> "::bigint";
+         case INTEGER -> "::integer";
+         case BOOLEAN -> "::boolean";
+         case DATE -> "::date";
+         case DATE_TIME -> "::timestamptz";
+         default -> throw new IllegalArgumentException("Unsupported JSON field type: " + type);
+      };
+      return ("(" + column + "->>'" + storage.getKey() + "')" + cast);
+   }
+
+
+
+   /*******************************************************************************
+    ** A JSON document is bound as text and explicitly cast to JSONB.
+    *******************************************************************************/
+   @Override
+   public String jsonObjectPlaceholder()
+   {
+      return ("?::jsonb");
+   }
+
+
+
+   /*******************************************************************************
+    ** Merge at the row lock; updates of independent keys cannot overwrite each other.
+    *******************************************************************************/
+   @Override
+   public String jsonMergeAssignment(String column)
+   {
+      return (column + " = (COALESCE(" + column + ",'{}'::jsonb) || ?::jsonb) - ?::text[]");
+   }
+
+
+
+   /*******************************************************************************
+    ** Equality and IN use GIN-compatible containment, one document per alternative.
+    *******************************************************************************/
+   @Override
+   public String jsonPathPredicate(String column, QFieldMetaData field, QFilterCriteria criterion, List<Serializable> values)
+   {
+      if((criterion.getOperator() != QCriteriaOperator.EQUALS && criterion.getOperator() != QCriteriaOperator.IN)
+         || values.isEmpty() || values.stream().anyMatch(java.util.Objects::isNull))
+      {
+         return (null);
+      }
+      JsonPathStorage storage = (JsonPathStorage) field.getBackendStorage();
+      List<String> clauses = new ArrayList<>();
+      for(int i = 0; i < values.size(); i++)
+      {
+         values.set(i, JsonUtils.toJson(Map.of(storage.getKey(), JsonStorageValues.jsonValue(field, values.get(i)))));
+         clauses.add(column + " @> ?::jsonb");
+      }
+      return (String.join(" OR ", clauses));
+   }
 
 
 

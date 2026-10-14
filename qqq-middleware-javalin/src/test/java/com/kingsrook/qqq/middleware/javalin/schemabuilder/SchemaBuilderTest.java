@@ -26,6 +26,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.AuthenticationMet
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.MetaDataResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.ProcessInitOrStepOrStatusResponseV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppTreeNode;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.FieldMetaData;
 import com.kingsrook.qqq.openapi.model.Schema;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -97,4 +98,16 @@ class SchemaBuilderTest
       System.out.println(schema);
    }
 
+
+
+
+   /*******************************************************************************
+    ** String-backed enum metadata must retain its allowed values in OpenAPI.
+    *******************************************************************************/
+   @Test
+   void contingentBehaviorStringEnum()
+   {
+      Schema schema = new SchemaBuilder().classToSchema(FieldMetaData.class);
+      assertEquals(List.of("DISABLE_UNTIL_SET", "SHOW_ALL_UNTIL_SET"), schema.getProperties().get("possibleValueSourceDependencyBehavior").getEnumValues());
+   }
 }

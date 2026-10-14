@@ -32,8 +32,6 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.filter.AiFilterBuilder;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiLinkBuilder;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
-import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
-import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
@@ -155,7 +153,7 @@ public class QueryRecordsTool extends AbstractAiTool
       queryInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
       context.prepareInput(queryInput);
 
-      List<QRecord> records = new QueryAction().execute(queryInput).getRecords();
+      List<QRecord> records = context.getDataGateway().query(queryInput);
       boolean       hasMore = records.size() > limit;
       if(hasMore)
       {
@@ -168,7 +166,7 @@ public class QueryRecordsTool extends AbstractAiTool
          CountInput countInput = new CountInput(table.getName());
          countInput.setFilter(linkFilter.clone());
          context.prepareInput(countInput);
-         totalCount = new CountAction().execute(countInput).getCount();
+         totalCount = context.getDataGateway().count(countInput);
       }
 
       //////////////////////////////////////

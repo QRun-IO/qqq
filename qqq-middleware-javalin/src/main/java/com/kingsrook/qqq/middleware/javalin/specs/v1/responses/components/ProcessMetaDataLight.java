@@ -129,6 +129,28 @@ public class ProcessMetaDataLight implements ToSchema
    /***************************************************************************
     **
     ***************************************************************************/
+   @OpenAPIDescription("True when the process can run as a durable background job (POST /processes/{processName}/jobs): clients may offer \"Run in background\".")
+   public Boolean getDurableJobEligible()
+   {
+      return (this.wrapped.getDurableJobEligible());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @OpenAPIDescription("True when the process always runs as a durable background job (too large to run while the user waits).")
+   public Boolean getDurableJobAlways()
+   {
+      return (this.wrapped.getDurableJobAlways());
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
    @OpenAPIDescription("Boolean to indicate if the user has permission for the process.")
    public Boolean getHasPermission()
    {

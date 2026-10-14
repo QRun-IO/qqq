@@ -27,6 +27,8 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobs;
+import com.kingsrook.qqq.backend.core.jobs.DurableProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
@@ -56,6 +58,9 @@ public class QFrontendProcessMetaData
    private String                      stepFlow;
 
    private boolean hasPermission;
+
+   private boolean durableJobEligible;
+   private boolean durableJobAlways;
 
    //////////////////////////////////////////////////////////////////////////////////
    // do not add setters.  take values from the source-object in the constructor!! //
@@ -105,6 +110,33 @@ public class QFrontendProcessMetaData
       this.icon = processMetaData.getIcon();
 
       hasPermission = PermissionsHelper.hasProcessPermission(actionInput, name);
+
+      //////////////////////////////////////////////////////////////////////
+      // can it run as a durable background job ("Run in background")?  //
+      //////////////////////////////////////////////////////////////////////
+      this.durableJobEligible = DurableJobs.isEligible(processMetaData);
+      DurableProcessMetaData durable = DurableProcessMetaData.of(processMetaData);
+      this.durableJobAlways = this.durableJobEligible && durable != null && Boolean.TRUE.equals(durable.getAlwaysDurable());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for durableJobEligible: the process may run as a durable job.
+    *******************************************************************************/
+   public boolean getDurableJobEligible()
+   {
+      return (this.durableJobEligible);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for durableJobAlways: the process always runs as a durable job.
+    *******************************************************************************/
+   public boolean getDurableJobAlways()
+   {
+      return (this.durableJobAlways);
    }
 
 

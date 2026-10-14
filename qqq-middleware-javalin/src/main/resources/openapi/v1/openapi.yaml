@@ -1218,6 +1218,15 @@ components:
       type: "object"
     ProcessMetaData:
       properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
         frontendSteps:
           description: "Frontend steps (aka, Screens) for this process."
           items:
@@ -1275,6 +1284,15 @@ components:
       type: "object"
     ProcessMetaDataLight:
       properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
         hasPermission:
           description: "Boolean to indicate if the user has permission for the process."
           type: "boolean"
@@ -1312,6 +1330,15 @@ components:
       type: "object"
     ProcessMetaDataResponseV1:
       properties:
+        durableJobAlways:
+          description: "True when the process always runs as a durable background\
+            \ job (too large to run while the user waits)."
+          type: "boolean"
+        durableJobEligible:
+          description: "True when the process can run as a durable background job\
+            \ (POST /processes/{processName}/jobs): clients may offer \"Run in background\"\
+            ."
+          type: "boolean"
         frontendSteps:
           description: "Frontend steps (aka, Screens) for this process."
           items:
@@ -6144,6 +6171,8 @@ paths:
                     metaDataGeneration: 0
                     processes:
                       person.bulkInsert:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         icon:
                           name: "library_add"
@@ -6154,6 +6183,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       person.bulkEdit:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         isHidden: true
                         label: "Person Bulk Edit"
@@ -6161,6 +6192,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       samplePersonProcess:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         icon:
                           name: "person_add"
@@ -6171,6 +6204,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       person.bulkDelete:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         isHidden: true
                         label: "Person Bulk Delete"
@@ -6178,6 +6213,8 @@ paths:
                         stepFlow: "LINEAR"
                         tableName: "person"
                       person.bulkEditWithFile:
+                        durableJobAlways: false
+                        durableJobEligible: false
                         hasPermission: true
                         isHidden: true
                         label: "Person Bulk Edit With File"

@@ -89,6 +89,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
     parameter): streams the file into the uploads storage table and returns `UploadRefResponseV1
     {ref, fileName, sizeBytes, contentType, expiresAt}`. The ref is opaque, bound to the caller, and
     expires (default 7 days); pass it in `uploadRefs` when launching a job.
+  - Process metadata gains `durableJobEligible` and `durableJobAlways`, so clients can offer
+    "Run in background".
   - A process run over `durableThresholdRows` (or `alwaysDurable`) no longer runs its execute step
     inline: the step returns at once with the value `durableJobId` and a summary line, and the job
     does the work.

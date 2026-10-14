@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.FailedRows;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
@@ -188,6 +189,17 @@ public class JobFinalizer
       }
       LOG.info("Durable job status changed", logPair("jobId", jobId), logPair("status", to));
 
+      if(to == JobStatus.COMPLETED || to == JobStatus.COMPLETED_WITH_ERRORS)
+      {
+         try
+         {
+            FailedRows.resolveAfterRetry(updated);
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Could not resolve the parent job's retried rows", e, logPair("jobId", jobId));
+         }
+      }
       if(to.isTerminal() || to == JobStatus.NEEDS_REVIEW)
       {
          JobSignals.finished(updated, to);

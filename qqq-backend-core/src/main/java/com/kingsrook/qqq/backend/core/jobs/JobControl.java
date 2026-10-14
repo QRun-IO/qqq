@@ -132,6 +132,13 @@ class JobControl
             require(store.setJobStatus(jobId, EnumSet.of(status), JobStatus.QUEUED, requeue()), action, status);
             event(jobId, JobEventType.RESTARTED, "Restarted; " + reset + " unfinished chunks will run again");
          }
+         case RETRY_FAILED_ROWS ->
+         {
+            Integer childId = FailedRows.retry(job, null, null);
+            event(jobId, JobEventType.RETRIED, "Retrying the failed rows as job " + childId);
+            return (label + ": failed rows are retrying as job " + childId + ".");
+         }
+         case DOWNLOAD_FAILED_ROWS -> throw (new QUserFacingException("Download the failed rows with the Download Failed Rows action."));
          case RUN_AGAIN ->
          {
             Integer newJobId = DurableJobs.launch(relaunchRequest(job));

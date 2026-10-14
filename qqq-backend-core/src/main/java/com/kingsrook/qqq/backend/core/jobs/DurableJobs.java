@@ -405,6 +405,57 @@ public final class DurableJobs
 
 
    /*******************************************************************************
+    ** Retry a job's failed rows as a child job, optionally with a corrected
+    ** bulk-load profile (JSON, or a saved profile id). Returns the new job id.
+    *******************************************************************************/
+   public static Integer retryFailedRows(Integer jobId, String correctedProfileJson, Integer correctedSavedProfileId) throws QException
+   {
+      QRecord job = controllableJob(jobId, JobAction.RETRY_FAILED_ROWS);
+      Integer childId = FailedRows.retry(job, correctedProfileJson, correctedSavedProfileId);
+      new DurableJobStore(settings()).recordEvent(jobId, null, JobEventType.RETRIED, DurableJobsSecurity.userId(QContext.getQSession()), QContext.getQSession().getClientChannel(), null, "Retrying the failed rows as job " + childId);
+      return (childId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Write a job's failed rows as CSV for download (standard process download
+    ** values: downloadFileName, storageTableName, storageReference).
+    *******************************************************************************/
+   public static Map<String, Serializable> downloadFailedRows(Integer jobId) throws QException
+   {
+      return (FailedRows.download(controllableJob(jobId, JobAction.DOWNLOAD_FAILED_ROWS)));
+   }
+
+
+
+   /*******************************************************************************
+    ** A job the current session may act on (owner or jobs_admin; assistant
+    ** gate), or an exception.
+    *******************************************************************************/
+   private static QRecord controllableJob(Integer jobId, JobAction action) throws QException
+   {
+      QRecord  job     = new DurableJobStore(settings()).getJob(jobId);
+      QSession session = QContext.getQSession();
+      if(job == null)
+      {
+         throw (new QNotFoundException("Job " + jobId + " was not found."));
+      }
+      String actor = DurableJobsSecurity.userId(session);
+      if(!(session.hasPermission(PERMISSION_ADMIN) || (actor != null && actor.equals(job.getValueString("userId")))))
+      {
+         throw (new QPermissionDeniedException("You can only control your own jobs."));
+      }
+      if(isAssistant(session) && !action.isAllowedFromAssistant())
+      {
+         throw (new QPermissionDeniedException("The assistant cannot " + action.getLabel().toLowerCase() + " for a job; do it in the app."));
+      }
+      return (job);
+   }
+
+
+
+   /*******************************************************************************
     ** Status of a job the current session can see (owner or jobs_admin).
     *******************************************************************************/
    public static QRecord status(Integer jobId) throws QException

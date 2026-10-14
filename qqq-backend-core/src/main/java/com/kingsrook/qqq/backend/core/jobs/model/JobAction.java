@@ -33,7 +33,9 @@ public enum JobAction
    CANCEL("Cancel", "cancelled"),
    RETRY_FAILED("Retry Failed", "set to retry"),
    RESTART("Restart", "restarted"),
-   RUN_AGAIN("Run Again", "run again");
+   RUN_AGAIN("Run Again", "run again"),
+   RETRY_FAILED_ROWS("Retry Failed Rows", "retried (failed rows)"),
+   DOWNLOAD_FAILED_ROWS("Download Failed Rows", "prepared for download");
 
    private final String label;
    private final String pastTense;

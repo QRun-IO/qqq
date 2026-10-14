@@ -178,7 +178,7 @@ class ChunkedJobsTest extends BaseTest
     ** numbers; good rows load.
     *******************************************************************************/
    @Test
-   void testFileChunks() throws QException
+   void testFileChunks() throws Exception
    {
       QInstance instance = defineInstance();
       QContext.init(instance, newSession());
@@ -211,6 +211,34 @@ class ChunkedJobsTest extends BaseTest
       assertThat(rowErrors.stream().map(r -> r.getValueInteger("rowNumber")).toList()).containsExactly(6, 19);
       assertThat(job.getValueInteger("rowsFailed")).isEqualTo(2);
       assertThat(job.getValueInteger("rowsOk")).isEqualTo(23);
+
+      ////////////////////////////////////////////////////////////////
+      // download the failed rows: original columns plus an Error  //
+      ////////////////////////////////////////////////////////////////
+      java.util.Map<String, java.io.Serializable> download = DurableJobs.downloadFailedRows(jobId);
+      String csvOut = new String(new com.kingsrook.qqq.backend.core.actions.tables.StorageAction().getInputStream(new com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput((String) download.get("storageTableName")).withReference((String) download.get("storageReference"))).readAllBytes(), StandardCharsets.UTF_8);
+      List<String> lines = csvOut.lines().toList();
+      assertThat(lines).hasSize(3);
+      assertThat(lines.get(0)).isEqualTo("code,name,amount,Error");
+      assertThat(lines.get(1)).startsWith("k5,Name 5,notANumber,");
+      assertThat(lines.get(2)).startsWith("k18,Name 18,notANumber,");
+
+      ////////////////////////////////////////////////////////////////////////////
+      // retry the failed rows with a corrected profile (amount not mapped):   //
+      // only those 2 rows run, they load, and the parent's errors resolve.    //
+      ////////////////////////////////////////////////////////////////////////////
+      String corrected = """
+         {"version":"v1","layout":"FLAT","hasHeaderRow":true,"fieldList":[
+           {"fieldName":"code","columnIndex":0},{"fieldName":"name","columnIndex":1}]}""";
+      Integer retryId = DurableJobs.retryFailedRows(jobId, corrected, null);
+      assertThat(store.getJob(retryId).getValueString("sourceType")).isEqualTo(JobSourceType.ROW_SET.name());
+      assertThat(store.getJob(retryId).getValueInteger("rowsTotal")).isEqualTo(2);
+      assertThat(store.getJob(retryId).getValueInteger("parentJobId")).isEqualTo(jobId);
+      QRecord retried = awaitStatus(retryId, Duration.ofSeconds(30), JobStatus.COMPLETED, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.FAILED);
+      assertThat(retried.getValueString("status")).as(retried.getValueString("errorMessage")).isEqualTo(JobStatus.COMPLETED.name());
+      assertThat(QueryAction.execute(TABLE_ITEM, new QQueryFilter())).hasSize(25);
+      assertThat(store.query(DurableJobsTables.TABLE_ROW_ERROR, new QQueryFilter(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, jobId))))
+         .hasSize(2).allMatch(e -> Boolean.TRUE.equals(e.getValueBoolean("resolved")) && retryId.equals(e.getValueInteger("retryJobId")));
    }
 
 

@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.DistinctFilteringRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
@@ -131,7 +132,13 @@ public class ExtractViaQueryStep extends AbstractExtractStep
 
       customizeInputPreQuery(runBackendStepInput, queryInput);
 
+      FieldAccessHelper.PendingExactMatch exactMatch = runBackendStepInput.isFieldAccessEnforced()
+         ? FieldAccessHelper.assertCriteriaAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFilter(), null) : null;
       new QueryAction().execute(queryInput);
+      if(exactMatch != null)
+      {
+         exactMatch.complete(queryInput.getRecordPipe().getTotalRecordCount(), "process");
+      }
 
       ///////////////////////////////////////////////////////////////////
       // output is done into the pipe - so, nothing for us to do here. //
@@ -203,7 +210,13 @@ public class ExtractViaQueryStep extends AbstractExtractStep
       countInput.setFilter(queryFilter);
       getQueryJoinsForOrderByIfNeeded(queryFilter).forEach(queryJoin -> countInput.withQueryJoin(queryJoin));
       countInput.setIncludeDistinctCount(true);
+      FieldAccessHelper.PendingExactMatch exactMatch = runBackendStepInput.isFieldAccessEnforced()
+         ? FieldAccessHelper.assertCriteriaAllowed(countInput.getTableName(), countInput.getQueryJoins(), countInput.getFilter(), null) : null;
       CountOutput countOutput = new CountAction().execute(countInput);
+      if(exactMatch != null)
+      {
+         exactMatch.complete(countOutput.getCount(), "process");
+      }
       Integer     count       = countOutput.getDistinctCount();
 
       /////////////////////////////////////////////////////////////////////////////////////////////

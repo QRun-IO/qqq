@@ -28,6 +28,7 @@ import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType
 import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceOutput;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -51,6 +52,7 @@ public class PossibleValuesExecutor extends AbstractMiddlewareExecutor<PossibleV
    public void execute(PossibleValuesInput input, PossibleValuesOutputInterface output) throws QException
    {
       SearchPossibleValueSourceInput searchInput = new SearchPossibleValueSourceInput();
+      searchInput.setInputSource(QInputSource.USER);
       checkPermissions(input, searchInput);
       if(input.getMissingDependency())
       {

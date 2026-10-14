@@ -35,8 +35,11 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeatureSummaryHelper;
 import com.kingsrook.qqq.backend.core.actions.collaboration.RuntimeMetaDataOverlay;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
 import com.kingsrook.qqq.backend.core.actions.tables.picker.RelatedRecordPickerAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -54,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
@@ -82,6 +86,8 @@ public class QFrontendTableMetaData
    private Long metaDataGeneration;
 
    private static final QLogger LOG = QLogger.getLogger(QFrontendTableMetaData.class);
+
+   private boolean hasRestrictedFields;
 
    private String  name;
    private String  label;
@@ -134,6 +140,7 @@ public class QFrontendTableMetaData
     *******************************************************************************/
    public QFrontendTableMetaData(AbstractActionInput actionInput, QBackendMetaData backendForTable, QTableMetaData tableMetaData, boolean includeFullMetaData, boolean includeJoins, Map<String, QFieldMetaData> overrideFields)
    {
+      boolean enforceFieldAccess = CorePermissionEnforcer.shouldEnforceFieldAccess(actionInput);
       this.recordFeatures = RecordFeatureSummaryHelper.frontend(QContext.getQInstance(), tableMetaData);
       if(recordFeatures != null && recordFeatures.getFeatures().contains(RecordFeature.ASSIGNMENT) && recordFeatures.getOwnership() != null)
       {
@@ -154,6 +161,8 @@ public class QFrontendTableMetaData
       }
       this.metaDataGeneration = RuntimeMetaDataOverlay.getGeneration(QContext.getQInstance());
       this.name = tableMetaData.getName();
+      QTableMetaData accessTable = QContext.getQInstance().getTable(tableMetaData.getName());
+      this.hasRestrictedFields = enforceFieldAccess && FieldAccessHelper.getTiers(accessTable == null ? tableMetaData : accessTable).values().stream().anyMatch(tier -> tier != FieldAccessTier.FULL);
       this.label = tableMetaData.getLabel();
       this.isHidden = tableMetaData.getIsHidden();
 
@@ -166,9 +175,9 @@ public class QFrontendTableMetaData
          for(String fieldName : inputFields.keySet())
          {
             QFieldMetaData field = inputFields.get(fieldName);
-            if(!field.getIsHidden())
+            if(!field.getIsHidden() && (!enforceFieldAccess || FieldAccessHelper.getDecision(tableMetaData, field).tier().isInMetaData()))
             {
-               this.fields.put(fieldName, new QFrontendFieldMetaData(field));
+               this.fields.put(fieldName, new QFrontendFieldMetaData(field, enforceFieldAccess ? FieldAccessHelper.getDecision(tableMetaData, field) : com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision.FULL));
             }
          }
 
@@ -176,13 +185,19 @@ public class QFrontendTableMetaData
          for(Map.Entry<String, QVirtualFieldMetaData> entry : CollectionUtils.nonNullMap(tableMetaData.getVirtualFields()).entrySet())
          {
             QVirtualFieldMetaData field = entry.getValue();
-            if(!field.getIsHidden())
+            if(!field.getIsHidden() && (!enforceFieldAccess || FieldAccessHelper.getDecision(tableMetaData, field).tier().isInMetaData()))
             {
-               this.virtualFields.put(entry.getKey(), new QFrontendVirtualFieldMetaData(field));
+               this.virtualFields.put(entry.getKey(), new QFrontendVirtualFieldMetaData(field, enforceFieldAccess ? FieldAccessHelper.getDecision(tableMetaData, field) : com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision.FULL));
             }
          }
 
-         this.sections = tableMetaData.getSections();
+         this.sections = new ArrayList<>();
+         for(QFieldSection section : CollectionUtils.nonNullList(tableMetaData.getSections()))
+         {
+            QFieldSection copy = section.clone();
+            copy.setHelpContents(HelpContentVisibility.filter(section.getHelpContents()));
+            this.sections.add(copy);
+         }
          this.associations = new ArrayList<>();
          for(Association association : CollectionUtils.nonNullList(tableMetaData.getAssociations()))
          {
@@ -275,6 +290,15 @@ public class QFrontendTableMetaData
       if(readPermission && CollectionUtils.nullSafeHasContents(tableMetaData.getSearchFields()))
       {
          this.searchFields = new ArrayList<>(tableMetaData.getSearchFields());
+
+         ////////////////////////////////////////////////////////////////////////
+         // record search never matches restricted fields, so don't offer them //
+         ////////////////////////////////////////////////////////////////////////
+         if(enforceFieldAccess)
+         {
+            QTableMetaData searchAccessTable = accessTable == null ? tableMetaData : accessTable;
+            this.searchFields.removeIf(fieldName -> !FieldAccessHelper.getTier(searchAccessTable, fieldName).canQuickSearch());
+         }
       }
 
       QBackendMetaData backend = QContext.getQInstance().getBackend(tableMetaData.getBackendName());
@@ -284,7 +308,7 @@ public class QFrontendTableMetaData
          variantTableLabel = QContext.getQInstance().getTable(backend.getBackendVariantsConfig().getOptionsTableName()).getLabel();
       }
 
-      this.helpContents = tableMetaData.getHelpContent();
+      this.helpContents = HelpContentVisibility.filter(tableMetaData.getHelpContent());
    }
 
 
@@ -686,5 +710,15 @@ public class QFrontendTableMetaData
    public List<QFrontendBuiltInView> getBuiltInViews()
    {
       return (builtInViews);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this session has any restricted fields, including omitted fields.
+    *******************************************************************************/
+   public boolean getHasRestrictedFields()
+   {
+      return (hasRestrictedFields);
    }
 }

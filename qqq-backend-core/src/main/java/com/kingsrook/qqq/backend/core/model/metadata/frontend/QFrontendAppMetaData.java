@@ -29,6 +29,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
@@ -125,7 +126,7 @@ public class QFrontendAppMetaData
          }
       }
 
-      this.helpContents = appMetaData.getHelpContent();
+      this.helpContents = HelpContentVisibility.filter(appMetaData.getHelpContent());
    }
 
 

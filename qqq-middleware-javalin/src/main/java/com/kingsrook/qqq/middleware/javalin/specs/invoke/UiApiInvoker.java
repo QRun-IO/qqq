@@ -72,6 +72,14 @@ public class UiApiInvoker
    public static final String TIMEZONE_HEADER    = "X-QQQ-UserTimezone";
    public static final String CLIENT_CHANNEL_HEADER = "X-QQQ-Client";
 
+   /*******************************************************************************
+    ** Credentials and the client channel are always set server side. Reserve all
+    ** invoker-owned headers so custom headers cannot forge identity or override
+    ** request metadata, even when an optional server-side value is absent.
+    *******************************************************************************/
+   private static final List<String> RESERVED_HEADERS = List.of("Cookie", "Authorization", "X-Api-Key", "Content-Type", "Accept",
+      CLIENT_CHANNEL_HEADER, INVOKED_BY_HEADER, TIMEZONE_HEADER, UiApiInProcessSessions.HEADER);
+
    private static final ThreadLocal<Integer> DEPTH = ThreadLocal.withInitial(() -> 0);
 
    private final Supplier<String>            baseUrlSupplier;
@@ -317,6 +325,14 @@ public class UiApiInvoker
       HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
          .timeout(request.getTimeout())
          .method(operation.method().name(), body);
+
+      for(Map.Entry<String, String> entry : request.getHeaders().entrySet())
+      {
+         if(entry.getValue() != null && RESERVED_HEADERS.stream().noneMatch(header -> header.equalsIgnoreCase(entry.getKey())))
+         {
+            builder.header(entry.getKey(), entry.getValue());
+         }
+      }
 
       if(contentType != null)
       {

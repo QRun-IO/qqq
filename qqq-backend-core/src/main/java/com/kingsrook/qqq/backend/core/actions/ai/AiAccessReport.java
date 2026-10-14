@@ -31,7 +31,8 @@ import java.util.Map;
 /*******************************************************************************
  ** What the AI tool kernel may do with a table (and optionally one record) for
  ** one user - built by {@link AiToolKernel#describeAccess}, e.g. for the record
- ** Developer screen.  Permission-scoped: for a table the user can't see (or
+ ** Developer screen. Field entries map the shared FieldAccessHelper decisions.
+ ** Permission-scoped: for a table the user can't see (or
  ** read), or a record the user can't read, it says "not available" and holds
  ** nothing else about the table or record.
  *******************************************************************************/

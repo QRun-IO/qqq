@@ -142,7 +142,12 @@ public class BackendQueryFilterUtils
          /////////////////////////////////////////////////////////////////////////////////////
          if(criterionMatches == null)
          {
-            criterionMatches = doesCriteriaMatch(criterion, criterion.getFieldName(), getValue(criterion, null, qRecord, joinsContext));
+            QTableMetaData table = tableForCriteria(criterion, qRecord, null);
+            String fieldName = criterion.getFieldName();
+            String localName = fieldName.substring(fieldName.lastIndexOf('.') + 1);
+            QFieldMetaData field = table == null ? null : table.getFields().get(localName);
+            criterionMatches = field == null ? doesCriteriaMatch(criterion, fieldName, getValue(criterion, null, qRecord, joinsContext))
+               : ValueUtils.withFieldConversionContext(table, field, () -> doesCriteriaMatchValue(criterion, field, getValue(criterion, field, qRecord, joinsContext)));
          }
 
          ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -221,8 +226,29 @@ public class BackendQueryFilterUtils
     *******************************************************************************/
    private static boolean doesCriteriaMatch(QFilterCriteria criterion, QFieldMetaData field, QRecord qRecord, JoinsContext joinsContext)
    {
-      Serializable value = getValue(criterion, field, qRecord, joinsContext);
-      return doesCriteriaMatchValue(criterion, field, value);
+      QTableMetaData table = tableForCriteria(criterion, qRecord, joinsContext);
+      return ValueUtils.withFieldConversionContext(table, field, () ->
+      {
+         Serializable value = getValue(criterion, field, qRecord, joinsContext);
+         return doesCriteriaMatchValue(criterion, field, value);
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Retain classification for table-backed records even without a query context.
+    *******************************************************************************/
+   private static QTableMetaData tableForCriteria(QFilterCriteria criterion, QRecord record, JoinsContext joinsContext)
+   {
+      if(joinsContext != null)
+      {
+         return joinsContext.getTable(joinsContext.resolveTableNameOrAliasToTableName(
+            joinsContext.getFieldAndTableNameOrAlias(criterion.getFieldName(), true).tableNameOrAlias()));
+      }
+      String fieldName = criterion.getFieldName();
+      String tableName = fieldName.contains(".") ? fieldName.substring(0, fieldName.indexOf('.')) : record.getTableName();
+      return QContext.getQInstance() == null || tableName == null ? null : QContext.getQInstance().getTable(tableName);
    }
 
 

@@ -65,7 +65,7 @@ public class RecordVersionCheck
          }
          Serializable current = old.getValue(versionField);
          QFieldMetaData field = table.getField(versionField);
-         Serializable requested = field == null ? expected.get(key) : ValueUtils.getValueAsFieldType(field.getType(), expected.get(key));
+         Serializable requested = field == null ? expected.get(key) : ValueUtils.getValueAsFieldType(table, field, expected.get(key));
          if(!Objects.equals(current, requested))
          {
             List<String> changed = record.getValues().keySet().stream()

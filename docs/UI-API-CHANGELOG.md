@@ -55,6 +55,19 @@ spec'd routes.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
+  `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
+  `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,
+  confirmations and destructive styling; rows expose nullable `actionNames` permissions.
+  Action input ENUM choices are included in section `possibleValues`. Responses include the
+  reloaded section and optional one-time secrets with `Cache-Control: no-store`; clients must
+  not store or log secrets. ROW actions can target only allowed rows loaded for the session user.
+  Secrets use shared core `OneTimeSecret`; `PreferenceSecretV1` exposes `label`, `value`,
+  `masked` and multiline `usageText` (replacing `help`). Sections publish `showInUserMenu`
+  (default false) so clients can add a label/icon menu entry opening the section.
+  Provider validation and storage share the trusted scope with the original session.
+  The example `access-tokens` section is owned by qbit-authentik.
+  Core also exposes the session-derived `getUserEmailAddress()` for preference providers.
 - Added per-user preferences (`docs/USER-PREFERENCES.md`): `GET /preferences`,
   `GET /preferences/{sectionName}` and `PATCH /preferences/{sectionName}`. The schemas
   `PreferencesResponseV1`, `PreferenceSectionV1`, `PreferenceListV1`, `PreferenceRowV1`

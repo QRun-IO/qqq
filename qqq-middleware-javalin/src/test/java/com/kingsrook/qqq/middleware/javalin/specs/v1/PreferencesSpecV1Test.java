@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.preferences.UserPreferencesKeyValueStoreMetaDataProvider;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -41,6 +42,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionRequest;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionResult;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionScope;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceChange;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceListMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceProviderInterface;
@@ -49,6 +54,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceR
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceSectionMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceValues;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferencesMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.implementations.TableBasedAuthenticationModule;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
@@ -63,6 +69,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -88,7 +95,7 @@ class PreferencesSpecV1Test extends SpecTestBase
    @Override
    protected List<AbstractEndpointSpec<?, ?, ?>> getAdditionalSpecs()
    {
-      return (List.of(new PreferenceSectionGetSpecV1(), new PreferenceSectionPatchSpecV1(), new ManageSessionSpecV1()));
+      return (List.of(new PreferenceSectionActionSpecV1(), new PreferenceSectionGetSpecV1(), new PreferenceSectionPatchSpecV1(), new ManageSessionSpecV1()));
    }
 
 
@@ -119,13 +126,18 @@ class PreferencesSpecV1Test extends SpecTestBase
       instance.getTable("user_preference").setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
       instance.setEnforcePermissionsInCoreActions(true);
       instance.addPossibleValueSource(new QPossibleValueSource().withName("themes").withEnumValues(List.of(new QPossibleValue<>("light", "Light"), new QPossibleValue<>("dark", "Dark"))));
+      instance.addPossibleValueSource(new QPossibleValueSource().withName("actionChoices").withEnumValues(List.of(new QPossibleValue<>("short", "Short-lived"))));
       UserPreferencesMetaData.of(instance)
-         .withSection(new UserPreferenceSectionMetaData().withName("display").withLabel("Display").withDescription("Display preferences").withIcon(new QIcon("settings"))
+         .withSection(new UserPreferenceSectionMetaData().withName("display").withShowInUserMenu(true).withLabel("Display").withDescription("Display preferences").withIcon(new QIcon("settings"))
             .withField(new QFieldMetaData("theme", QFieldType.STRING).withLabel("Theme").withDefaultValue("light").withPossibleValueSourceName("themes"))
             .withField(new QFieldMetaData("count", QFieldType.INTEGER).withLabel("Count").withDefaultValue(2).withIsRequired(true))
             .withField(new QFieldMetaData("title", QFieldType.STRING).withLabel("Title").withMaxLength(4)))
          .withSection(new UserPreferenceSectionMetaData().withName("secret").withLabel("Restricted").withPermissionName("preferences.restricted"))
          .withSection(new UserPreferenceSectionMetaData().withName("rows").withLabel("Rows").withProvider(new QCodeReference(RowsProvider.class))
+            .withAction(new UserPreferenceActionMetaData().withName("rotate").withLabel("Rotate").withIcon(new QIcon("refresh")).withScope(UserPreferenceActionScope.ROW).withListName("categories")
+               .withConfirmationText("Rotate this token?").withIsDestructive(true).withOrder(20))
+            .withAction(new UserPreferenceActionMetaData().withName("create").withLabel("Create").withScope(UserPreferenceActionScope.LIST).withListName("categories").withOrder(10)
+               .withInputField(new QFieldMetaData("duration", QFieldType.STRING).withLabel("Duration").withPossibleValueSourceName("actionChoices")))
             .withList(new UserPreferenceListMetaData().withName("categories").withLabel("Categories").withDescription("Category choices").withRowLabel("Category")
                .withField(new QFieldMetaData("theme", QFieldType.STRING).withLabel("Theme").withPossibleValueSourceName("themes"))));
       return (instance);
@@ -229,6 +241,8 @@ class PreferencesSpecV1Test extends SpecTestBase
       JSONObject all = ok(get(cookie, ""));
       assertEquals(2, all.getJSONArray("sections").length());
       JSONObject section = ok(get(cookie, "/display"));
+      assertTrue(section.getBoolean("showInUserMenu"));
+      assertFalse(ok(get(cookie, "/rows")).getBoolean("showInUserMenu"));
       assertEquals("settings", section.getJSONObject("icon").getString("name"));
       assertEquals("STRING", section.getJSONArray("fields").getJSONObject(0).getString("type"));
       assertEquals("light", section.getJSONObject("values").getString("theme"));
@@ -364,6 +378,88 @@ class PreferencesSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** POST uses only the chosen session and preserves raw body validation.
+    *******************************************************************************/
+   private HttpResponse<String> postAction(String cookie, String path, String body)
+   {
+      return (Unirest.post(getBaseUrlAndPath() + "/preferences" + path).header("Cookie", cookie)
+         .header("Content-Type", "application/json").body(body).asString());
+   }
+
+
+
+   /*******************************************************************************
+    ** HTTP actions expose metadata and one-time secrets, but never cross user boundaries.
+    *******************************************************************************/
+   @Test
+   void testActions()
+   {
+      String alice = login("alice");
+      String bob = login("bob");
+      JSONObject section = ok(get(alice, "/rows"));
+      assertEquals(1, section.getJSONObject("possibleValues").getJSONArray("actionChoices").length());
+      JSONObject create = section.getJSONArray("actions").getJSONObject(0);
+      assertEquals("create", create.getString("name"));
+      assertEquals("LIST", create.getString("scope"));
+      assertEquals("duration", create.getJSONArray("inputFields").getJSONObject(0).getString("name"));
+      JSONObject rotate = section.getJSONArray("actions").getJSONObject(1);
+      assertEquals("ROW", rotate.getString("scope"));
+      assertEquals("categories", rotate.getString("listName"));
+      assertEquals("refresh", rotate.getJSONObject("icon").getString("name"));
+      assertTrue(rotate.getBoolean("isDestructive"));
+      assertEquals("Rotate this token?", rotate.getString("confirmationText"));
+      var rows = section.getJSONArray("lists").getJSONObject(0).getJSONArray("rows");
+      assertEquals(0, rows.getJSONObject(0).getJSONArray("actionNames").length());
+      assertEquals("rotate", rows.getJSONObject(1).getJSONArray("actionNames").getString(0));
+      assertTrue(rows.getJSONObject(2).isNull("actionNames"));
+      String rowKey = rows.getJSONObject(1).getString("key");
+      String body = new JSONObject().put("rowKey", rowKey).toString();
+      HttpResponse<String> response = postAction(alice, "/rows/actions/rotate", body);
+      JSONObject result = ok(response);
+      assertEquals("no-store", response.getHeaders().getFirst("Cache-Control"));
+      assertEquals("Done", result.getString("message"));
+      assertEquals("rows", result.getJSONObject("section").getString("name"));
+      assertEquals(rowKey, result.getString("focusRowKey"));
+      assertEquals("fixture-only", result.getJSONArray("secrets").getJSONObject(0).getString("value"));
+      assertEquals("Token", result.getJSONArray("secrets").getJSONObject(0).getString("label"));
+      assertEquals("qqq_…7f3a", result.getJSONArray("secrets").getJSONObject(0).getString("masked"));
+      assertEquals("curl example\nCopy it now", result.getJSONArray("secrets").getJSONObject(0).getString("usageText"));
+      assertFalse(result.getJSONArray("secrets").getJSONObject(0).has("help"));
+      assertThat(get(alice, "/rows").getBody()).doesNotContain("fixture-only");
+      assertThat(get(alice, "").getBody()).doesNotContain("fixture-only");
+      assertEquals(400, postAction(bob, "/rows/actions/rotate", body).getStatus());
+      assertEquals(400, postAction(alice, "/rows/actions/rotate", "{\"rowKey\":\"security\"}").getStatus());
+      ok(postAction(alice, "/rows/actions/create", "{\"values\":{\"duration\":\"short\"}}"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Authentication, not-found and strict request failures apply to POST too.
+    *******************************************************************************/
+   @Test
+   void testActionErrors()
+   {
+      String alice = login("alice");
+      HttpResponse<String> unauthenticated = postAction("", "/rows/actions/create", "{}");
+      assertEquals(401, unauthenticated.getStatus());
+      assertEquals("no-store", unauthenticated.getHeaders().getFirst("Cache-Control"));
+      assertEquals(404, postAction(alice, "/secret/actions/create", "{}").getStatus());
+      assertEquals(404, postAction(alice, "/absent/actions/create", "{}").getStatus());
+      HttpResponse<String> missing = postAction(alice, "/rows/actions/absent", "{}");
+      assertEquals(404, missing.getStatus());
+      assertEquals("no-store", missing.getHeaders().getFirst("Cache-Control"));
+      assertThat(missing.getBody()).contains("Action not found");
+      for(String body : List.of("not json", "[]", "null", "{\"values\":[]}", "{\"rowKey\":\"x\"}", "{\"userId\":\"B\"}", "{\"values\":{\"duration\":\"invalid\"}}", "{\"values\":{\"userId\":\"B\"}}"))
+      {
+         assertEquals(400, postAction(alice, "/rows/actions/create", body).getStatus(), body);
+      }
+      assertEquals(400, postAction(alice, "/rows/actions/rotate", "{}").getStatus());
+   }
+
+
+
+   /*******************************************************************************
     ** Read-only list fixture for the HTTP response contract.
     *******************************************************************************/
    public static class RowsProvider implements UserPreferenceProviderInterface
@@ -376,7 +472,21 @@ class PreferencesSpecV1Test extends SpecTestBase
       {
          return (new UserPreferenceValues().withLists(Map.of("categories", List.of(new UserPreferenceRow()
             .withKey("security").withLabel("Security").withDescription("Required notices")
-            .withValues(Map.of("theme", "light")).withReadOnlyFieldNames(List.of("theme")).withReadOnlyReason("Fixed by policy")))));
+            .withValues(Map.of("theme", "light")).withReadOnlyFieldNames(List.of("theme")).withReadOnlyReason("Fixed by policy").withActionNames(Set.of()),
+            new UserPreferenceRow().withKey(context.getUserId()).withLabel("My token").withActionNames(Set.of("rotate")),
+            new UserPreferenceRow().withKey("all-" + context.getUserId()).withLabel("All actions")))));
+      }
+
+
+
+      /*******************************************************************************
+       ** Transient fixture secret: never placed in load output or backing records.
+       *******************************************************************************/
+      @Override
+      public UserPreferenceActionResult runAction(UserPreferenceRequestContext context, UserPreferenceActionRequest request)
+      {
+         return (new UserPreferenceActionResult().withMessage("Done").withFocusRowKey(request.getRowKey())
+            .withSecrets(List.of(new OneTimeSecret().withLabel("Token").withValue("fixture-only").withMasked("qqq_…7f3a").withUsageText("curl example\nCopy it now"))));
       }
 
 

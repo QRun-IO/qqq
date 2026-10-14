@@ -62,6 +62,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new PreferencesSpecV1());
       list.add(new PreferenceSectionGetSpecV1());
       list.add(new PreferenceSectionPatchSpecV1());
+      list.add(new PreferenceSectionActionSpecV1());
 
       list.add(new TableMetaDataSpecV1());
       list.add(new TableQuerySpecV1());

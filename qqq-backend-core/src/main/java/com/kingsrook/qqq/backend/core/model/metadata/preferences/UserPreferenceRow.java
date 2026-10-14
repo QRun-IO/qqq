@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 
 /*******************************************************************************
@@ -33,6 +34,7 @@ import java.util.Map;
  *******************************************************************************/
 public class UserPreferenceRow
 {
+   private Set<String> actionNames;
    private String key;
    private String label;
    private String description;
@@ -223,6 +225,37 @@ public class UserPreferenceRow
    public UserPreferenceRow withReadOnlyReason(String readOnlyReason)
    {
       this.readOnlyReason = readOnlyReason;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Null allows every ROW action for this list; an empty set allows none.
+    *******************************************************************************/
+   public Set<String> getActionNames()
+   {
+      return (actionNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set actionNames.
+    *******************************************************************************/
+   public void setActionNames(Set<String> actionNames)
+   {
+      this.actionNames = actionNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** With actionNames.
+    *******************************************************************************/
+   public UserPreferenceRow withActionNames(Set<String> actionNames)
+   {
+      this.actionNames = actionNames;
       return (this);
    }
 }

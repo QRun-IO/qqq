@@ -41,6 +41,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSourceType;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionRequest;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionResult;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionScope;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceChange;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceListMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceProviderInterface;
@@ -118,6 +122,59 @@ public class UserPreferencesAction
    {
       UserPreferenceSectionMetaData section = findSection(name);
       return (patch(section, change, new ArrayList<>(), load(section)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate action inputs and row ownership before entering trusted provider code.
+    ** Action results are transient: no logging or auditing of secret values occurs here.
+    *******************************************************************************/
+   public UserPreferenceActionResult runAction(String sectionName, String actionName, Map<String, ?> body) throws QException
+   {
+      UserPreferenceSectionMetaData section = findSection(sectionName);
+      UserPreferenceActionMetaData action = section.getActions().stream().filter(a -> a.getName().equals(actionName)).findFirst()
+         .orElseThrow(() -> new QNotFoundException("Action not found"));
+      List<String> errors = new ArrayList<>();
+      if(body == null)
+      {
+         throw (new QBadRequestException("Action request must be an object"));
+      }
+      for(String key : body.keySet())
+      {
+         if(!Set.of("rowKey", "values").contains(key))
+         {
+            errors.add("Unexpected property: " + key);
+         }
+      }
+      UserPreferenceActionRequest request = new UserPreferenceActionRequest().withActionName(actionName).withListName(action.getListName());
+      if(action.getScope() == UserPreferenceActionScope.ROW)
+      {
+         if(body.get("rowKey") instanceof String rowKey && !rowKey.isBlank())
+         {
+            UserPreferenceRow row = load(section).getValues().getLists().getOrDefault(action.getListName(), List.of()).stream()
+               .filter(r -> rowKey.equals(r.getKey())).findFirst().orElse(null);
+            if(row == null || (row.getActionNames() != null && !row.getActionNames().contains(actionName)))
+            {
+               errors.add("This action isn't available for this row.");
+            }
+            request.setRowKey(rowKey);
+         }
+         else
+         {
+            errors.add("Row: a text row key is required");
+         }
+      }
+      else if(body.containsKey("rowKey"))
+      {
+         errors.add("Row: this action does not accept a row key");
+      }
+      Map<String, Serializable> input = body.containsKey("values") ? parseValues(body.get("values"), action.getLabel(), errors) : Map.of();
+      validateValues(action.getInputFields(), input, request.getValues(), List.of(), null, "", errors);
+      throwErrors(errors);
+      UserPreferenceRequestContext context = new UserPreferenceRequestContext(section, QContext.getQSession());
+      UserPreferenceActionResult result = CorePermissionEnforcer.runTrusted(TRUST_REASON, () -> provider(section).runAction(context, request));
+      return (result.withSection(load(section)));
    }
 
 
@@ -263,10 +320,10 @@ public class UserPreferencesAction
       throwErrors(errors);
       UserPreferenceProviderInterface provider = provider(section);
       UserPreferenceRequestContext context = new UserPreferenceRequestContext(section, QContext.getQSession());
-      errors.addAll(provider.validate(context, coerced));
-      throwErrors(errors);
       CorePermissionEnforcer.runTrusted(TRUST_REASON, () ->
       {
+         errors.addAll(provider.validate(context, coerced));
+         throwErrors(errors);
          provider.store(context, coerced);
          return (null);
       });

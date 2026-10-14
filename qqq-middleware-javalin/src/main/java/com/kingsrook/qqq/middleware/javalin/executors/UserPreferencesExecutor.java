@@ -40,10 +40,16 @@ public class UserPreferencesExecutor extends AbstractMiddlewareExecutor<UserPref
    public void execute(UserPreferencesMiddlewareInput input, UserPreferencesOutputInterface output) throws QException
    {
       UserPreferencesAction action = new UserPreferencesAction();
+      if(input.getOperation() == UserPreferencesMiddlewareInput.Operation.ACTION)
+      {
+         output.setActionResult(action.runAction(input.getSectionName(), input.getActionName(), input.getActionRequest().getBody()));
+         return;
+      }
       output.setPreferenceResults(switch(input.getOperation())
       {
          case LIST -> action.listSections();
          case GET -> List.of(action.getSection(input.getSectionName()));
+         case ACTION -> throw new IllegalStateException("Action already handled");
          case PATCH -> List.of(action.patchSection(input.getSectionName(), input.getRequest().getBody()));
       });
    }

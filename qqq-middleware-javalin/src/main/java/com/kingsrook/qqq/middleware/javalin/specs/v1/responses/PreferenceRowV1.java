@@ -35,6 +35,7 @@ import com.kingsrook.qqq.openapi.model.Type;
  *******************************************************************************/
 public class PreferenceRowV1 implements ToSchema
 {
+   private List<String> actionNames;
    private String key;
    private String label;
    private String description;
@@ -45,12 +46,13 @@ public class PreferenceRowV1 implements ToSchema
 
 
    /*******************************************************************************
-    ** A fixed provider-owned row. Clients cannot add or remove rows.
+    ** A provider-owned row. Clients change row membership only through registered actions.
     *******************************************************************************/
    @Override
    public Schema toSchema()
    {
-      return (new Schema().withType(Type.OBJECT).withDescription("A fixed provider-owned row. Clients cannot add or remove rows.")
+      return (new Schema().withType(Type.OBJECT).withDescription("A provider-owned row. Clients change row membership only through registered actions.")
+         .withProperty("actionNames", new Schema().withType(Type.ARRAY).withNullable(true).withItems(new Schema().withType(Type.STRING)).withDescription("Null allows every ROW action of this list; empty allows none; otherwise only the named actions are allowed."))
          .withProperty("key", new Schema().withType(Type.STRING).withDescription("Stable provider row key to send when patching."))
          .withProperty("label", new Schema().withType(Type.STRING).withDescription("Human-readable row label."))
          .withProperty("description", new Schema().withType(Type.STRING).withDescription("Explanation of this row."))
@@ -68,7 +70,7 @@ public class PreferenceRowV1 implements ToSchema
    public static PreferenceRowV1 from(UserPreferenceRow row)
    {
       return (new PreferenceRowV1().withKey(row.getKey()).withLabel(row.getLabel()).withDescription(row.getDescription())
-         .withValues(row.getValues()).withReadOnlyFields(row.getReadOnlyFieldNames()).withReadOnlyReason(row.getReadOnlyReason()));
+         .withActionNames(row.getActionNames() == null ? null : row.getActionNames().stream().sorted().toList()).withValues(row.getValues()).withReadOnlyFields(row.getReadOnlyFieldNames()).withReadOnlyReason(row.getReadOnlyReason()));
    }
 
 
@@ -254,6 +256,37 @@ public class PreferenceRowV1 implements ToSchema
    public PreferenceRowV1 withReadOnlyReason(String readOnlyReason)
    {
       this.readOnlyReason = readOnlyReason;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get actionNames.
+    *******************************************************************************/
+   public List<String> getActionNames()
+   {
+      return (actionNames);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set actionNames.
+    *******************************************************************************/
+   public void setActionNames(List<String> actionNames)
+   {
+      this.actionNames = actionNames;
+   }
+
+
+
+   /*******************************************************************************
+    ** With actionNames.
+    *******************************************************************************/
+   public PreferenceRowV1 withActionNames(List<String> actionNames)
+   {
+      this.actionNames = actionNames;
       return (this);
    }
 }

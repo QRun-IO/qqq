@@ -21,14 +21,19 @@
 package com.kingsrook.qqq.middleware.javalin.specs.v1.utils;
 
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceActionRequestV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceActionResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceActionV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceListV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceRowV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceSecretV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceSectionPatchRequestV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceSectionV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferencesResponseV1;
@@ -73,6 +78,10 @@ public final class UserPreferencesSpecUtils
    public static Map<String, Schema> schemas()
    {
       return (Map.of(
+         "PreferenceActionV1", new PreferenceActionV1().toSchema(),
+         "PreferenceActionRequestV1", new PreferenceActionRequestV1().toSchema(),
+         "PreferenceActionResponseV1", new PreferenceActionResponseV1().toSchema(),
+         "PreferenceSecretV1", new PreferenceSecretV1().toSchema(),
          "PreferencesResponseV1", new PreferencesResponseV1().toSchema(),
          "PreferenceSectionV1", new PreferenceSectionV1().toSchema(),
          "PreferenceListV1", new PreferenceListV1().toSchema(),
@@ -122,5 +131,39 @@ public final class UserPreferencesSpecUtils
    {
       context.contentType(ContentType.APPLICATION_JSON);
       context.result(JsonUtils.toJsonCustomized(output, builder -> builder.serializationInclusion(JsonInclude.Include.ALWAYS)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Action and section names come only from the URL path.
+    *******************************************************************************/
+   public static List<Parameter> actionParameters()
+   {
+      List<Parameter> parameters = new ArrayList<>(sectionParameters());
+      parameters.add(new Parameter().withName("actionName").withIn(In.PATH).withRequired(true)
+         .withDescription("Registered action name from the visible section.").withSchema(new Schema().withType(Type.STRING)));
+      return (parameters);
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish the action body separately from PATCH.
+    *******************************************************************************/
+   public static RequestBody actionRequestBody()
+   {
+      return (new RequestBody().withRequired(true).withContent(Map.of(ContentType.APPLICATION_JSON.getMimeType(),
+         new Content().withSchema(new Schema().withRefToSchema("PreferenceActionRequestV1")))));
+   }
+
+
+
+   /*******************************************************************************
+    ** Preserve unknown properties for core rejection.
+    *******************************************************************************/
+   public static PreferenceActionRequestV1 readActionRequest(Context context) throws QBadRequestException
+   {
+      return (new PreferenceActionRequestV1().withBody(readRequest(context).getBody()));
    }
 }

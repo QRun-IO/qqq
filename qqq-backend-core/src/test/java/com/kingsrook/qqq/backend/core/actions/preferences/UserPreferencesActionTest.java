@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
@@ -152,6 +153,30 @@ class UserPreferencesActionTest extends BaseTest
       assertThat(audits).allMatch(r -> r.getValue("auditUserId").equals(users.get(0).getValue("id")));
       assertFalse(new QueryAction().execute((QueryInput) new QueryInput("auditDetail").withPermissionBypass("test audit inspection")).getRecords().isEmpty());
       assertEquals(0, QContext.getAuthorizedActionScopeDepth());
+   }
+
+
+
+   /*******************************************************************************
+    ** Provider validation can read protected tables with the original user session.
+    *******************************************************************************/
+   @Test
+   void testTrustedValidation() throws Exception
+   {
+      useLists();
+      QContext.getQInstance().setEnforcePermissionsInCoreActions(true);
+      QContext.getQInstance().getTable("user_preference").setPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+      var session = QContext.getQSession();
+      assertThrows(QPermissionDeniedException.class, () -> new QueryAction().execute(new QueryInput("user_preference")));
+      action.patchSection("display", Map.of("values", Map.of("title", "valid")));
+      assertEquals(1, FixedProvider.stores);
+      assertSame(session, QContext.getQSession());
+      assertEquals(0, QContext.getAuthorizedActionScopeDepth());
+      assertThrows(QBadRequestException.class, () -> action.patchSection("display", Map.of("values", Map.of("title", "bad"))));
+      assertEquals(1, FixedProvider.stores);
+      assertEquals(0, QContext.getAuthorizedActionScopeDepth());
+      assertSame(session, QContext.getQSession());
+      assertThrows(QPermissionDeniedException.class, () -> new QueryAction().execute(new QueryInput("user_preference")));
    }
 
 
@@ -435,8 +460,11 @@ class UserPreferencesActionTest extends BaseTest
        ** Domain errors are returned together.
        *******************************************************************************/
       @Override
-      public List<String> validate(UserPreferenceRequestContext context, UserPreferenceChange change)
+      public List<String> validate(UserPreferenceRequestContext context, UserPreferenceChange change) throws QException
       {
+         assertSame(QContext.getQSession(), context.getSession());
+         assertEquals(DEFAULT_USER_ID, context.getUserId());
+         new QueryAction().execute(new QueryInput("user_preference"));
          return ("bad".equals(change.getValues().get("title")) ? List.of("domain one", "domain two") : List.of());
       }
 

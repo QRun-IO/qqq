@@ -29,6 +29,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionScope;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceChange;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceListMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceProviderInterface;
@@ -352,6 +354,68 @@ class UserPreferencesValidationTest extends BaseTest
       {
          fails(i -> section(i).getFields().get(0).setType(type), "unsupported field type");
          fails(i -> section(i).withProvider(new QCodeReference(Provider.class)).withList(list().withField(new QFieldMetaData("bad", type).withLabel("Bad"))), "unsupported field type");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Valid action fixture; scope and target are supplied by each rule's test.
+    *******************************************************************************/
+   private static UserPreferenceActionMetaData action()
+   {
+      return (new UserPreferenceActionMetaData().withName("create").withLabel("Create").withScope(UserPreferenceActionScope.SECTION));
+   }
+
+
+
+   /*******************************************************************************
+    ** Action names and scope/list relationships must be consistent.
+    *******************************************************************************/
+   @Test
+   void testActionMetadata()
+   {
+      fails(i -> section(i).withAction(action().withName(null)), "name must match");
+      fails(i -> section(i).withAction(action().withName("bad.name")), "name must match");
+      fails(i -> section(i).withAction(action()).withAction(action()), "name must be unique");
+      fails(i -> section(i).withAction(action().withLabel(" ")), "label is required");
+      fails(i -> section(i).withAction(action().withScope(null)), "scope is required");
+      fails(i -> section(i).withAction(action().withListName("rows")), "SECTION scope must not have listName");
+      for(UserPreferenceActionScope scope : List.of(UserPreferenceActionScope.LIST, UserPreferenceActionScope.ROW))
+      {
+         fails(i -> section(i).withAction(action().withScope(scope)), "listName must name an existing list");
+         fails(i -> section(i).withAction(action().withScope(scope).withListName("absent")), "listName must name an existing list");
+         assertValidationSuccess(i ->
+         {
+            setup(i);
+            section(i).withProvider(new QCodeReference(Provider.class)).withList(list()).withAction(action().withScope(scope).withListName("rows"));
+         });
+      }
+      assertValidationSuccess(i ->
+      {
+         setup(i);
+         section(i).withAction(action().withInputField(new QFieldMetaData("name", QFieldType.STRING).withLabel("Name")));
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Every preference field rule also applies to action input fields.
+    *******************************************************************************/
+   @Test
+   void testActionInputFields()
+   {
+      fails(i -> section(i).withAction(action().withInputField(new QFieldMetaData().withLabel("Name").withType(QFieldType.STRING))), "name must match");
+      fails(i -> section(i).withAction(action().withInputField(new QFieldMetaData("bad.name", QFieldType.STRING).withLabel("Name"))), "name must match");
+      fails(i -> section(i).withAction(action().withInputField(new QFieldMetaData("name", QFieldType.STRING).withLabel(" "))), "label is required");
+      fails(i -> section(i).withAction(action().withInputField(new QFieldMetaData().withName("name").withLabel("Name"))), "unsupported field type");
+      fails(i -> section(i).withAction(action().withInputField(new QFieldMetaData("userId", QFieldType.STRING).withLabel("User"))), "userId is reserved");
+      fails(i -> section(i).withAction(action().withInputField(new QFieldMetaData("name", QFieldType.STRING).withLabel("Name").withPossibleValueSourceName("absent"))), "possible value source must exist");
+      fails(i -> section(i).withAction(action().withInputFields(List.of(new QFieldMetaData("name", QFieldType.STRING).withLabel("Name"), new QFieldMetaData("name", QFieldType.STRING).withLabel("Name")))), "name must be unique");
+      for(QFieldType type : List.of(QFieldType.LONG, QFieldType.BLOB, QFieldType.HTML, QFieldType.PASSWORD))
+      {
+         fails(i -> section(i).withAction(action().withInputField(new QFieldMetaData("name", type).withLabel("Name"))), "unsupported field type");
       }
    }
 

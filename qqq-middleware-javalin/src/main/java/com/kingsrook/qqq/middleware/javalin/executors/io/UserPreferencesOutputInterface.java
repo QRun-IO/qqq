@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
 import java.util.List;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceActionResult;
 import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceSectionResult;
 
 
@@ -34,4 +35,14 @@ public interface UserPreferencesOutputInterface extends AbstractMiddlewareOutput
     ** Set the core results for mapping into the response contract.
     *******************************************************************************/
    void setPreferenceResults(List<UserPreferenceSectionResult> results);
+
+
+
+   /*******************************************************************************
+    ** Action responses override this mapping; ordinary reads never contain secrets.
+    *******************************************************************************/
+   default void setActionResult(UserPreferenceActionResult result)
+   {
+      throw (new UnsupportedOperationException("An action response is required"));
+   }
 }

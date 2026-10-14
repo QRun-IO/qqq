@@ -34,6 +34,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
  *******************************************************************************/
 public class UserPreferenceSectionMetaData implements QMetaDataObject
 {
+   private List<UserPreferenceActionMetaData> actions = new ArrayList<>();
+   private boolean showInUserMenu = false;
    private String name;
    private String label;
    private String description;
@@ -374,6 +376,78 @@ public class UserPreferenceSectionMetaData implements QMetaDataObject
    public UserPreferenceSectionMetaData withProvider(QCodeReference provider)
    {
       this.provider = provider;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get actions.
+    *******************************************************************************/
+   public List<UserPreferenceActionMetaData> getActions()
+   {
+      return (actions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set actions.
+    *******************************************************************************/
+   public void setActions(List<UserPreferenceActionMetaData> actions)
+   {
+      this.actions = actions;
+   }
+
+
+
+   /*******************************************************************************
+    ** With actions.
+    *******************************************************************************/
+   public UserPreferenceSectionMetaData withActions(List<UserPreferenceActionMetaData> actions)
+   {
+      this.actions = actions;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Register an action for this section.
+    *******************************************************************************/
+   public UserPreferenceSectionMetaData withAction(UserPreferenceActionMetaData action)
+   {
+      actions.add(action);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get showInUserMenu.
+    *******************************************************************************/
+   public boolean getShowInUserMenu()
+   {
+      return (showInUserMenu);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set showInUserMenu.
+    *******************************************************************************/
+   public void setShowInUserMenu(boolean showInUserMenu)
+   {
+      this.showInUserMenu = showInUserMenu;
+   }
+
+
+
+   /*******************************************************************************
+    ** With showInUserMenu.
+    *******************************************************************************/
+   public UserPreferenceSectionMetaData withShowInUserMenu(boolean showInUserMenu)
+   {
+      this.showInUserMenu = showInUserMenu;
       return (this);
    }
 }

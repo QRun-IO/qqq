@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.preferences;
 
 
 import java.util.List;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 
 
@@ -51,4 +52,14 @@ public interface UserPreferenceProviderInterface
     ** Store only the supplied fields and rows using ordinary audited table actions.
     *******************************************************************************/
    void store(UserPreferenceRequestContext context, UserPreferenceChange change) throws QException;
+
+
+
+   /*******************************************************************************
+    ** Execute a validated action for the session user. Never log or audit secret values.
+    *******************************************************************************/
+   default UserPreferenceActionResult runAction(UserPreferenceRequestContext context, UserPreferenceActionRequest request) throws QException
+   {
+      throw (new QBadRequestException("This action isn't available."));
+   }
 }

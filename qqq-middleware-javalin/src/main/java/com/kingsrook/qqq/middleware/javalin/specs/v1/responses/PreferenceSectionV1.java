@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +48,8 @@ import com.kingsrook.qqq.openapi.model.Type;
  *******************************************************************************/
 public class PreferenceSectionV1 implements UserPreferencesOutputInterface, ToSchema
 {
+   private List<PreferenceActionV1> actions;
+   private boolean showInUserMenu = false;
    private String name;
    private String label;
    private Icon icon;
@@ -67,6 +70,7 @@ public class PreferenceSectionV1 implements UserPreferencesOutputInterface, ToSc
    public Schema toSchema()
    {
       return (new Schema().withType(Type.OBJECT).withDescription("One visible section with the signed-in user's current preferences.")
+         .withProperty("showInUserMenu", new Schema().withType(Type.BOOLEAN).withDescription("Add a user-menu entry using the section label and icon to open this section; defaults to false."))
          .withProperty("name", new Schema().withType(Type.STRING).withDescription("Stable section name used in URLs."))
          .withProperty("label", new Schema().withType(Type.STRING).withDescription("Human-readable section title."))
          .withProperty("description", new Schema().withType(Type.STRING).withDescription("Explanation for clients to display."))
@@ -75,8 +79,9 @@ public class PreferenceSectionV1 implements UserPreferencesOutputInterface, ToSc
          .withProperty("order", new Schema().withType(Type.INTEGER).withDescription("Display order, ascending then label; defaults to 100."))
          .withProperty("fields", new Schema().withType(Type.ARRAY).withDescription("Scalar field definitions with editability, type, defaults and validation.").withItems(new Schema().withRefToSchema("FieldMetaData")))
          .withProperty("values", new Schema().withType(Type.OBJECT).withDescription("Field name to typed value. Omitted fields retain their existing values; explicit null clears an optional field.").withAdditionalProperties(new Schema()))
+         .withProperty("actions", new Schema().withType(Type.ARRAY).withItems(new Schema().withRefToSchema("PreferenceActionV1")).withDescription("Registered section, list and row actions, ordered by order then label."))
          .withProperty("lists", new Schema().withType(Type.ARRAY).withDescription("Optional fixed-row preference lists.").withItems(new Schema().withRefToSchema("PreferenceListV1")))
-         .withProperty("possibleValues", new Schema().withType(Type.OBJECT).withDescription("Every ENUM possible-value source referenced by scalar or list fields, keyed by source name.").withAdditionalProperties(new Schema().withType(Type.ARRAY).withItems(new Schema().withRefToSchema("PossibleValueOption"))))
+         .withProperty("possibleValues", new Schema().withType(Type.OBJECT).withDescription("Every ENUM possible-value source referenced by scalar, list or action input fields, keyed by source name.").withAdditionalProperties(new Schema().withType(Type.ARRAY).withItems(new Schema().withRefToSchema("PossibleValueOption"))))
          );
    }
 
@@ -90,6 +95,7 @@ public class PreferenceSectionV1 implements UserPreferencesOutputInterface, ToSc
    {
       UserPreferenceSectionResult result = results.get(0);
       UserPreferenceSectionMetaData section = result.getSection();
+      showInUserMenu = section.getShowInUserMenu();
       name = section.getName();
       label = section.getLabel();
       icon = section.getIcon() == null ? null : new Icon(section.getIcon());
@@ -101,6 +107,9 @@ public class PreferenceSectionV1 implements UserPreferencesOutputInterface, ToSc
       lists = new ArrayList<>();
       possibleValues = new LinkedHashMap<>();
       addPossibleValues(section.getFields());
+      actions = section.getActions().stream().map(PreferenceActionV1::from)
+         .sorted(Comparator.comparingInt(PreferenceActionV1::getOrder).thenComparing(PreferenceActionV1::getLabel)).toList();
+      section.getActions().forEach(action -> addPossibleValues(action.getInputFields()));
       for(UserPreferenceListMetaData list : section.getLists())
       {
          lists.add(new PreferenceListV1().withName(list.getName()).withLabel(list.getLabel()).withDescription(list.getDescription())
@@ -434,6 +443,68 @@ public class PreferenceSectionV1 implements UserPreferencesOutputInterface, ToSc
    public PreferenceSectionV1 withPossibleValues(Map<String, List<PossibleValueOption>> possibleValues)
    {
       this.possibleValues = possibleValues;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get actions.
+    *******************************************************************************/
+   public List<PreferenceActionV1> getActions()
+   {
+      return (actions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set actions.
+    *******************************************************************************/
+   public void setActions(List<PreferenceActionV1> actions)
+   {
+      this.actions = actions;
+   }
+
+
+
+   /*******************************************************************************
+    ** With actions.
+    *******************************************************************************/
+   public PreferenceSectionV1 withActions(List<PreferenceActionV1> actions)
+   {
+      this.actions = actions;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get showInUserMenu.
+    *******************************************************************************/
+   public boolean getShowInUserMenu()
+   {
+      return (showInUserMenu);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set showInUserMenu.
+    *******************************************************************************/
+   public void setShowInUserMenu(boolean showInUserMenu)
+   {
+      this.showInUserMenu = showInUserMenu;
+   }
+
+
+
+   /*******************************************************************************
+    ** With showInUserMenu.
+    *******************************************************************************/
+   public PreferenceSectionV1 withShowInUserMenu(boolean showInUserMenu)
+   {
+      this.showInUserMenu = showInUserMenu;
       return (this);
    }
 }

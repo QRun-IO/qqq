@@ -1167,6 +1167,82 @@ components:
             $ref: "#/components/schemas/PossibleValueOption"
           type: "array"
       type: "object"
+    PreferenceActionRequestV1:
+      additionalProperties: false
+      description: "Only rowKey and values are accepted. Identity always comes from\
+        \ the authenticated session."
+      properties:
+        rowKey:
+          description: "Required for ROW actions: a key loaded for this user with\
+            \ the action allowed. Forbidden for SECTION and LIST actions."
+          type: "string"
+        values:
+          additionalProperties: {}
+          description: "Action input fields. Validated and coerced like PATCH fields;\
+            \ unknown fields are rejected."
+          type: "object"
+      type: "object"
+    PreferenceActionResponseV1:
+      description: "Action result and reloaded section. Secrets are shown once and\
+        \ must not be stored by clients. Response uses Cache-Control: no-store."
+      properties:
+        section:
+          $ref: "#/components/schemas/PreferenceSectionV1"
+        message:
+          description: "User-facing outcome message."
+          type: "string"
+        secrets:
+          description: "One-time secrets for immediate display; clients must not store\
+            \ them."
+          items:
+            $ref: "#/components/schemas/PreferenceSecretV1"
+          type: "array"
+        focusRowKey:
+          description: "Optional row key to focus after reloading the section."
+          type: "string"
+      type: "object"
+    PreferenceActionV1:
+      properties:
+        name:
+          description: "Stable action name used in URLs."
+          type: "string"
+        label:
+          description: "Human-readable action label."
+          type: "string"
+        icon:
+          $ref: "#/components/schemas/Icon"
+        description:
+          description: "Explanation for clients to display."
+          type: "string"
+        scope:
+          description: "Where to display this action. ROW actions require a loaded\
+            \ row key."
+          enum:
+          - "SECTION"
+          - "LIST"
+          - "ROW"
+          type: "string"
+        listName:
+          description: "List targeted by LIST or ROW actions; null for SECTION."
+          nullable: true
+          type: "string"
+        confirmationText:
+          description: "When set, clients must confirm with this text before running\
+            \ the action."
+          nullable: true
+          type: "string"
+        isDestructive:
+          description: "Whether clients should present this as a destructive action."
+          type: "boolean"
+        inputFields:
+          description: "Action inputs, using preference field validation and coercion."
+          items:
+            $ref: "#/components/schemas/FieldMetaData"
+          type: "array"
+        order:
+          description: "Display order, ascending then label; defaults to 100."
+          type: "integer"
+      type: "object"
     PreferenceListV1:
       description: "A list of fixed preference rows, rendered with the same typed\
         \ field editors as scalar preferences."
@@ -1195,8 +1271,16 @@ components:
           type: "array"
       type: "object"
     PreferenceRowV1:
-      description: "A fixed provider-owned row. Clients cannot add or remove rows."
+      description: "A provider-owned row. Clients change row membership only through\
+        \ registered actions."
       properties:
+        actionNames:
+          description: "Null allows every ROW action of this list; empty allows none;\
+            \ otherwise only the named actions are allowed."
+          items:
+            type: "string"
+          nullable: true
+          type: "array"
         key:
           description: "Stable provider row key to send when patching."
           type: "string"
@@ -1218,6 +1302,22 @@ components:
           type: "array"
         readOnlyReason:
           description: "Explain why the indicated fields are read-only."
+          type: "string"
+      type: "object"
+    PreferenceSecretV1:
+      properties:
+        label:
+          description: "Human-readable secret label."
+          type: "string"
+        value:
+          description: "Shown once. Clients must not store, log, cache, or send this\
+            \ secret to analytics."
+          type: "string"
+        masked:
+          description: "Masked representation, for example qqq_…7f3a."
+          type: "string"
+        usageText:
+          description: "Usage guidance such as a curl example; may contain newlines."
           type: "string"
       type: "object"
     PreferenceSectionPatchRequestV1:
@@ -1254,6 +1354,10 @@ components:
     PreferenceSectionV1:
       description: "One visible section with the signed-in user's current preferences."
       properties:
+        showInUserMenu:
+          description: "Add a user-menu entry using the section label and icon to\
+            \ open this section; defaults to false."
+          type: "boolean"
         name:
           description: "Stable section name used in URLs."
           type: "string"
@@ -1282,6 +1386,12 @@ components:
           description: "Field name to typed value. Omitted fields retain their existing\
             \ values; explicit null clears an optional field."
           type: "object"
+        actions:
+          description: "Registered section, list and row actions, ordered by order\
+            \ then label."
+          items:
+            $ref: "#/components/schemas/PreferenceActionV1"
+          type: "array"
         lists:
           description: "Optional fixed-row preference lists."
           items:
@@ -1292,8 +1402,8 @@ components:
             items:
               $ref: "#/components/schemas/PossibleValueOption"
             type: "array"
-          description: "Every ENUM possible-value source referenced by scalar or list\
-            \ fields, keyed by source name."
+          description: "Every ENUM possible-value source referenced by scalar, list\
+            \ or action input fields, keyed by source name."
           type: "object"
       type: "object"
     PreferencesResponseV1:
@@ -6145,6 +6255,46 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Partially update the signed-in user's preferences"
+      tags:
+      - "General"
+  /qqq/v1/preferences/{sectionName}/actions/{actionName}:
+    post:
+      description: "Runs a registered action for the authenticated session user. ROW\
+        \ actions target only rows loaded for that user and allowed by actionNames.\
+        \ Unknown actions or hidden sections return 404; invalid inputs return 400;\
+        \ unauthenticated requests return 401. Clients must confirm confirmationText\
+        \ before running. Secrets are shown once and must not be stored, logged, cached,\
+        \ or sent to analytics by clients. Responses use Cache-Control: no-store."
+      parameters:
+      - description: "Registered visible preference section name, from GET /preferences."
+        in: "path"
+        name: "sectionName"
+        required: true
+        schema:
+          type: "string"
+      - description: "Registered action name from the visible section."
+        in: "path"
+        name: "actionName"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreferenceActionRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreferenceActionResponseV1"
+          description: "Current preferences for the session user"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Run an action on the signed-in user's preferences"
       tags:
       - "General"
   /qqq/v1/metaData/table/{tableName}:

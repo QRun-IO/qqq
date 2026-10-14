@@ -21,7 +21,9 @@
 package com.kingsrook.qqq.backend.core.model.metadata.preferences;
 
 
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
+import org.apache.commons.validator.EmailValidator;
 
 
 /*******************************************************************************
@@ -75,5 +77,21 @@ public class UserPreferenceRequestContext
    public String getUserId()
    {
       return (session.getUser().getIdReference());
+   }
+
+
+
+   /*******************************************************************************
+    ** Prefer the OAuth frontend user email, then an email-shaped session identity.
+    ** Neither value comes from the preference request.
+    *******************************************************************************/
+   public String getUserEmailAddress()
+   {
+      if(session.getValuesForFrontend() != null && session.getValuesForFrontend().get("user") instanceof Map<?, ?> user
+         && user.get("email") instanceof String email && !email.isBlank())
+      {
+         return (email);
+      }
+      return (EmailValidator.getInstance().isValid(getUserId()) ? getUserId() : null);
    }
 }

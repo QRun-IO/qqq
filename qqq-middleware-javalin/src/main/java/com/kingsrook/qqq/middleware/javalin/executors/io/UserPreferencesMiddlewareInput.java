@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceActionRequestV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceSectionPatchRequestV1;
 
 
@@ -29,6 +30,8 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.PreferenceSection
  *******************************************************************************/
 public class UserPreferencesMiddlewareInput extends AbstractMiddlewareInput
 {
+   private String actionName;
+   private PreferenceActionRequestV1 actionRequest;
    private Operation operation;
    private String sectionName;
    private PreferenceSectionPatchRequestV1 request;
@@ -36,13 +39,14 @@ public class UserPreferencesMiddlewareInput extends AbstractMiddlewareInput
 
 
    /*******************************************************************************
-    ** The three session-scoped preference operations.
+    ** The session-scoped preference operations.
     *******************************************************************************/
    public enum Operation
    {
       LIST,
       GET,
-      PATCH
+      PATCH,
+      ACTION
    }
 
 
@@ -135,6 +139,68 @@ public class UserPreferencesMiddlewareInput extends AbstractMiddlewareInput
    public UserPreferencesMiddlewareInput withRequest(PreferenceSectionPatchRequestV1 request)
    {
       this.request = request;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get actionName.
+    *******************************************************************************/
+   public String getActionName()
+   {
+      return (actionName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set actionName.
+    *******************************************************************************/
+   public void setActionName(String actionName)
+   {
+      this.actionName = actionName;
+   }
+
+
+
+   /*******************************************************************************
+    ** With actionName.
+    *******************************************************************************/
+   public UserPreferencesMiddlewareInput withActionName(String actionName)
+   {
+      this.actionName = actionName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Get actionRequest.
+    *******************************************************************************/
+   public PreferenceActionRequestV1 getActionRequest()
+   {
+      return (actionRequest);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set actionRequest.
+    *******************************************************************************/
+   public void setActionRequest(PreferenceActionRequestV1 actionRequest)
+   {
+      this.actionRequest = actionRequest;
+   }
+
+
+
+   /*******************************************************************************
+    ** With actionRequest.
+    *******************************************************************************/
+   public UserPreferencesMiddlewareInput withActionRequest(PreferenceActionRequestV1 actionRequest)
+   {
+      this.actionRequest = actionRequest;
       return (this);
    }
 }

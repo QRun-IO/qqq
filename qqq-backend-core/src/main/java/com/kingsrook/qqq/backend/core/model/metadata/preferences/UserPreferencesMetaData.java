@@ -171,6 +171,22 @@ public class UserPreferencesMetaData implements QSupplementalInstanceMetaData
             validateNameAndLabel(list.getName(), list.getLabel(), listNames, listPath, validator);
             validateFields(list.getFields(), listPath, qInstance, validator);
          }
+         Set<String> actionNames = new HashSet<>();
+         for(UserPreferenceActionMetaData action : section.getActions())
+         {
+            String actionPath = path + "action [" + action.getName() + "]: ";
+            validateNameAndLabel(action.getName(), action.getLabel(), actionNames, actionPath, validator);
+            validator.assertCondition(action.getScope() != null, actionPath + "scope is required");
+            if(action.getScope() == UserPreferenceActionScope.SECTION)
+            {
+               validator.assertCondition(action.getListName() == null, actionPath + "SECTION scope must not have listName");
+            }
+            else if(action.getScope() != null)
+            {
+               validator.assertCondition(action.getListName() != null && listNames.contains(action.getListName()), actionPath + "listName must name an existing list for LIST or ROW scope");
+            }
+            validateFields(action.getInputFields(), actionPath, qInstance, validator);
+         }
          if(section.getProvider() == null)
          {
             validator.assertCondition(section.getLists().isEmpty(), path + "the key-value provider does not support lists");

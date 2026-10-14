@@ -42,7 +42,7 @@ jobs:
           ref: 2853b9b148282ae0e6d454adab6d0f534ba48280
           path: acceptance-tools
           persist-credentials: false
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'

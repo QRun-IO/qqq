@@ -83,6 +83,8 @@ public final class JobControlProcesses
          case RETRY_FAILED -> "jobsRetryFailed";
          case RESTART -> "jobsRestart";
          case RUN_AGAIN -> "jobsRunAgain";
+         case RETRY_FAILED_ROWS -> "jobsRetryFailedRows";
+         case DOWNLOAD_FAILED_ROWS -> "jobsDownloadFailedRows";
       });
    }
 
@@ -119,6 +121,7 @@ public final class JobControlProcesses
          case RETRY_FAILED -> EnumSet.of(JobStatus.FAILED, JobStatus.NEEDS_REVIEW, JobStatus.COMPLETED_WITH_ERRORS);
          case RESTART -> EnumSet.of(JobStatus.CANCELLED, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.FAILED, JobStatus.PAUSED, JobStatus.NEEDS_REVIEW);
          case RUN_AGAIN -> EnumSet.of(JobStatus.CANCELLED, JobStatus.COMPLETED, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.FAILED);
+         case RETRY_FAILED_ROWS, DOWNLOAD_FAILED_ROWS -> EnumSet.of(JobStatus.COMPLETED_WITH_ERRORS, JobStatus.FAILED, JobStatus.NEEDS_REVIEW, JobStatus.CANCELLED);
       });
    }
 
@@ -167,6 +170,8 @@ public final class JobControlProcesses
          case RETRY_FAILED -> "replay";
          case RESTART -> "restart_alt";
          case RUN_AGAIN -> "repeat";
+         case RETRY_FAILED_ROWS -> "redo";
+         case DOWNLOAD_FAILED_ROWS -> "download";
       });
    }
 
@@ -263,9 +268,15 @@ public final class JobControlProcesses
          {
             try
             {
+               if(action == JobAction.DOWNLOAD_FAILED_ROWS)
+               {
+                  DurableJobs.downloadFailedRows(record.getValueInteger("id")).forEach(output::addValue);
+                  done.incrementCountAndAddPrimaryKey(record.getValue("id"));
+                  continue;
+               }
                String result = DurableJobs.control(record.getValueInteger("id"), action);
                done.incrementCountAndAddPrimaryKey(record.getValue("id"));
-               if(action == JobAction.RUN_AGAIN || action == JobAction.CANCEL)
+               if(action == JobAction.RUN_AGAIN || action == JobAction.CANCEL || action == JobAction.RETRY_FAILED_ROWS)
                {
                   extra.add(new ProcessSummaryLine(Status.INFO, null, result + (action == JobAction.CANCEL ? " Finished chunks stay applied; cancelling does not undo them." : "")));
                }

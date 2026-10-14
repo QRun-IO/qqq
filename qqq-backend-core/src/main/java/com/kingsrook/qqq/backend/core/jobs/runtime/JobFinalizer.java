@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.FailedRows;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
@@ -175,6 +176,23 @@ public class JobFinalizer
    private JobStatus transition(QRecord job, EnumSet<JobStatus> from, JobStatus to, Map<String, Serializable> values, JobEventType eventType) throws QException
    {
       Integer jobId = job.getValueInteger("id");
+
+      //////////////////////////////////////////////////////////////////////
+      // a finished retry resolves its parent's rows that now succeeded   //
+      // (idempotent, so done before the status flips and is visible)     //
+      //////////////////////////////////////////////////////////////////////
+      if(to == JobStatus.COMPLETED || to == JobStatus.COMPLETED_WITH_ERRORS)
+      {
+         try
+         {
+            FailedRows.resolveAfterRetry(job);
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Could not resolve the parent job's retried rows", e, logPair("jobId", jobId));
+         }
+      }
+
       if(!store.setJobStatus(jobId, from, to, values))
       {
          QRecord current = store.getJob(jobId);

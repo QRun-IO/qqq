@@ -75,6 +75,18 @@ public class KillTestInstance
     *******************************************************************************/
    public static QInstance define(String host, int port, String database, String user, String password, String podId, int workerThreads) throws QException
    {
+      return (define(host, port, database, user, password, podId, workerThreads, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Define the instance; with a storage base path, also the bulk-load parts
+    ** (chunk-object storage, the slow-insert target table, audits, and the
+    ** recording alert sink and realtime bus).
+    *******************************************************************************/
+   public static QInstance define(String host, int port, String database, String user, String password, String podId, int workerThreads, String storageBasePath) throws QException
+   {
       PostgreSQLBackendMetaData backend = new PostgreSQLBackendMetaData()
          .withName(BACKEND)
          .withHostName(host)
@@ -108,12 +120,19 @@ public class KillTestInstance
       process.withSupplementalMetaData(new DurableProcessMetaData().withEligible(true).withIdempotency(JobIdempotency.NATURAL));
       instance.addProcess(process);
 
-      instance.withSupplementalMetaData(new DurableJobsMetaData()
+      DurableJobsMetaData settings = new DurableJobsMetaData()
          .withWorkerThreads(workerThreads)
          .withLeaseTtlSeconds(LEASE_TTL)
          .withReaperIntervalSeconds(REAPER_SECS)
          .withPollIntervalMillis(200)
-         .withPodId(podId));
+         .withPodId(podId);
+      instance.withSupplementalMetaData(settings);
+
+      if(storageBasePath != null)
+      {
+         BulkLoadKillTestParts.add(instance, BACKEND, storageBasePath);
+         settings.withStorageTableName(BulkLoadKillTestParts.TABLE_STORAGE);
+      }
       return (instance);
    }
 

@@ -50,6 +50,7 @@ public class LaunchRequest
    private String                    startAfterStep;
    private Integer                   parentJobId;
    private Long                      expectedRows;
+   private Map<String, Object>       rowSetSource;
 
 
 
@@ -373,6 +374,29 @@ public class LaunchRequest
    public LaunchRequest withExpectedRows(Long expectedRows)
    {
       this.expectedRows = expectedRows;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for rowSetSource: for "retry failed rows", the parent job and the
+    ** rows (row numbers or record keys) to run again.
+    *******************************************************************************/
+   public Map<String, Object> getRowSetSource()
+   {
+      return (this.rowSetSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for rowSetSource
+    *******************************************************************************/
+   public LaunchRequest withRowSetSource(Map<String, Object> rowSetSource)
+   {
+      this.rowSetSource = rowSetSource;
       return (this);
    }
 

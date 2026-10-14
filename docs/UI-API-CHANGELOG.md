@@ -88,6 +88,15 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
     `jobsStart`, `jobsPause`, `jobsResume`, `jobsCancel`, `jobsRetryFailed`, `jobsRestart` and
     `jobsRunAgain`, run with the process operations.
   - The core feature `durableJobs` is listed by `GET /version`.
+  - Added `POST /uploads` (multipart with one file, or the raw body plus a `fileName` query
+    parameter): streams the file into the uploads storage table and returns `UploadRefResponseV1
+    {ref, fileName, sizeBytes, contentType, expiresAt}`. The ref is opaque, bound to the caller, and
+    expires (default 7 days); pass it in `uploadRefs` when launching a job.
+  - Process metadata gains `durableJobEligible` and `durableJobAlways`, so clients can offer
+    "Run in background".
+  - A process run over `durableThresholdRows` (or `alwaysDurable`) no longer runs its execute step
+    inline: the step returns at once with the value `durableJobId` and a summary line, and the job
+    does the work.
 - Process init/step responses now optionally include `oneTimeSecrets` using the shared
   `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
   in its own response; a step that went async hands them, once, to the first status poll that

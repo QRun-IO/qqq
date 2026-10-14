@@ -35,9 +35,11 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobSemantics;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.processes.JobControlProcesses;
+import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
@@ -51,6 +53,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
+import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.assist.BulkLoadUploadSources;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.DEFAULT_MAX_ATTEMPTS;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.DEFAULT_PRIORITY;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.SECURITY_KEY_USER;
@@ -59,6 +62,7 @@ import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_CHUNK;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_EVENT;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_JOB;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_ROW_ERROR;
+import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_UPLOAD;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_WORKER;
 
 
@@ -104,6 +108,13 @@ public class DurableJobsMetaDataProvider
       instance.addTable(enrich(defineRowErrorTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineEventTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineWorkerTable(backendName), backendDetailEnricher));
+      instance.addTable(enrich(defineUploadTable(backendName), backendDetailEnricher));
+
+      ////////////////////////////////////////////////////////////////////////
+      // assisted bulk load (profile, suggestMapping, validate) reads files //
+      // by the same opaque upload refs that jobs take                      //
+      ////////////////////////////////////////////////////////////////////////
+      BulkLoadUploadSources.register(UploadRefs::open);
 
       instance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_JOB));
       instance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_CHUNK));
@@ -282,13 +293,13 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("semantics", QFieldType.STRING).withPossibleValueSourceName(JobSemantics.NAME).withMaxLength(20))
          .withField(readOnly("chunkSize", QFieldType.INTEGER))
          .withField(readOnly("maxParallelChunks", QFieldType.INTEGER))
-         .withField(readOnly("rowsTotal", QFieldType.INTEGER))
-         .withField(readOnly("rowsDone", QFieldType.INTEGER))
-         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK"))
-         .withField(readOnly("rowsFailed", QFieldType.INTEGER))
-         .withField(readOnly("chunksTotal", QFieldType.INTEGER))
-         .withField(readOnly("chunksDone", QFieldType.INTEGER))
-         .withField(readOnly("chunksFailed", QFieldType.INTEGER))
+         .withField(readOnly("rowsTotal", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsDone", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK").withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsFailed", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("chunksTotal", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("chunksDone", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("chunksFailed", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
          .withField(readOnly("summaryJson", QFieldType.TEXT).withLabel("Summary"))
          .withField(readOnly("outputStorageJson", QFieldType.TEXT).withLabel("Outputs"))
          .withField(readOnly("parentJobId", QFieldType.INTEGER).withLabel("Parent Job").withPossibleValueSourceName(TABLE_JOB))
@@ -338,9 +349,9 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("leaseToken", QFieldType.STRING).withMaxLength(100))
          .withField(readOnly("leaseExpiresAt", QFieldType.DATE_TIME))
          .withField(readOnly("heartbeatAt", QFieldType.DATE_TIME))
-         .withField(readOnly("rowsIn", QFieldType.INTEGER))
-         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK"))
-         .withField(readOnly("rowsFailed", QFieldType.INTEGER))
+         .withField(readOnly("rowsIn", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK").withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsFailed", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
          .withField(readOnly("summaryJson", QFieldType.TEXT).withLabel("Summary"))
          .withField(confidential(readOnly("checkpointJson", QFieldType.TEXT).withLabel("Checkpoint")))
          .withField(readOnly("errorMessage", QFieldType.TEXT))
@@ -391,7 +402,9 @@ public class DurableJobsMetaDataProvider
 
 
    /*******************************************************************************
-    ** jobs_event: the timeline of a job.
+    ** jobs_event: the timeline of a job. Type leads the fields: most events are
+    ** job-level, so a (usually empty) chunk column first would leave lists, such as
+    ** the job's Events child list, without a readable first column.
     *******************************************************************************/
    public QTableMetaData defineEventTable(String backendName)
    {
@@ -406,14 +419,14 @@ public class DurableJobsMetaDataProvider
          .withRecordSecurityLock(ownerLock(TABLE_JOB + ".userId", List.of(childJoinName(TABLE_EVENT))))
          .withField(readOnly("id", QFieldType.INTEGER))
          .withField(readOnly("jobId", QFieldType.INTEGER).withLabel("Job").withPossibleValueSourceName(TABLE_JOB))
-         .withField(readOnly("chunkId", QFieldType.INTEGER).withLabel("Chunk").withPossibleValueSourceName(TABLE_CHUNK))
          .withField(readOnly("type", QFieldType.STRING).withPossibleValueSourceName(JobEventType.NAME).withMaxLength(30))
+         .withField(readOnly("createDate", QFieldType.DATE_TIME))
+         .withField(readOnly("detail", QFieldType.TEXT))
+         .withField(readOnly("chunkId", QFieldType.INTEGER).withLabel("Chunk").withPossibleValueSourceName(TABLE_CHUNK))
          .withField(readOnly("actorUserId", QFieldType.STRING).withLabel("Actor").withMaxLength(250))
          .withField(readOnly("clientChannel", QFieldType.STRING).withMaxLength(250))
          .withField(readOnly("pod", QFieldType.STRING).withMaxLength(250))
-         .withField(readOnly("detail", QFieldType.TEXT))
-         .withField(readOnly("createDate", QFieldType.DATE_TIME))
-         .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "jobId", "chunkId", "type", "createDate")))
+         .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "jobId", "type", "createDate", "chunkId")))
          .withSection(new QFieldSection("details", "Details", new QIcon("text_snippet"), Tier.T2, List.of("actorUserId", "clientChannel", "pod", "detail"))));
    }
 
@@ -441,6 +454,40 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("draining", QFieldType.BOOLEAN))
          .withField(readOnly("version", QFieldType.STRING).withMaxLength(100))
          .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "podId", "threads", "draining", "version", "startedAt", "heartbeatAt"))));
+   }
+
+
+
+
+   /*******************************************************************************
+    ** jobs_upload: files uploaded through POST /uploads (the bytes live in the
+    ** uploads storage table; this row is the opaque ref, its owner and expiry).
+    *******************************************************************************/
+   public QTableMetaData defineUploadTable(String backendName)
+   {
+      return (new QTableMetaData()
+         .withName(TABLE_UPLOAD)
+         .withLabel("Job Upload")
+         .withIcon(new QIcon("upload_file"))
+         .withBackendName(backendName)
+         .withPrimaryKeyField("id")
+         .withRecordLabelFormat("%s")
+         .withRecordLabelFields("fileName")
+         .withUniqueKey(new UniqueKey("ref"))
+         .withRecordSecurityLock(ownerLock("userId", null))
+         .withField(readOnly("id", QFieldType.INTEGER))
+         .withField(readOnly("ref", QFieldType.STRING).withMaxLength(100).withLabel("Upload Ref"))
+         .withField(readOnly("userId", QFieldType.STRING).withLabel("Owner").withMaxLength(250))
+         .withField(readOnly("fileName", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("contentType", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("sizeBytes", QFieldType.LONG))
+         .withField(readOnly("storageTableName", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("storageReference", QFieldType.STRING).withMaxLength(1000))
+         .withField(readOnly("expiresAt", QFieldType.DATE_TIME))
+         .withField(readOnly("jobId", QFieldType.INTEGER).withLabel("Last Job").withPossibleValueSourceName(TABLE_JOB))
+         .withField(readOnly("createDate", QFieldType.DATE_TIME))
+         .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "fileName", "userId", "sizeBytes", "contentType", "expiresAt", "jobId")))
+         .withSection(new QFieldSection("storage", "Storage", new QIcon("folder"), Tier.T2, List.of("ref", "storageTableName", "storageReference", "createDate"))));
    }
 
 }

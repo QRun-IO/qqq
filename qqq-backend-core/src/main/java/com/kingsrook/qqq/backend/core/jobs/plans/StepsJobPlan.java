@@ -152,7 +152,7 @@ public class StepsJobPlan implements JobPlan
          context.check();
       });
 
-      try
+      try(JobChunkScope ignored = JobChunkScope.open(null))
       {
          context.check();
          RunProcessOutput output = new RunProcessAction().execute(input);

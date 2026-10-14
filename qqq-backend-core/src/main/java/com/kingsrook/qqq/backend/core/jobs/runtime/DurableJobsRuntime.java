@@ -41,6 +41,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.alerts.QAlerts;
@@ -288,10 +289,18 @@ public class DurableJobsRuntime
             return;
          }
 
+         ///////////////////////////////////////////////////////////////
+         // every record the chunk writes is audited with the job/chunk //
+         ///////////////////////////////////////////////////////////////
+         session.setValue(DMLAuditAction.AUDIT_CONTEXT_FIELD_NAME, "job:" + lease.jobId() + "/chunk:" + lease.seq());
+
          ChunkOutcome[] outcome = new ChunkOutcome[1];
          QContext.withTemporaryContext(new CapturedContext(instance, session), () -> outcome[0] = JobPlans.forJob(job).runChunk(context));
 
-         store.completeChunk(lease, outcome[0], null);
+         if(!context.isCompletedByPlan())
+         {
+            store.completeChunk(lease, outcome[0], null);
+         }
          if(outcome[0].outputsJson() != null)
          {
             store.updateJob(lease.jobId(), Map.of("outputStorageJson", outcome[0].outputsJson()));

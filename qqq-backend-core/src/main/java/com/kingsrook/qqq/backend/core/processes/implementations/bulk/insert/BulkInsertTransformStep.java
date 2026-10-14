@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.plans.JobChunkScope;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLine;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
@@ -391,6 +392,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
 
          if(CollectionUtils.nullSafeHasContents(record.getErrors()))
          {
+            JobChunkScope.reportRecordErrors(record, record.getBackendDetail("fileRows") == null ? null : BulkLoadRecordUtils.getFileRowNos(record), null);
             for(QErrorMessage error : record.getErrors())
             {
                if(error instanceof AbstractBulkLoadRollableValueError rollableValueError)
@@ -755,6 +757,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
 
          if(CollectionUtils.nullSafeHasContents(record.getErrors()))
          {
+            JobChunkScope.reportRecordErrors(record, record.getBackendDetail("fileRows") == null ? null : BulkLoadRecordUtils.getFileRowNos(record), null);
             for(QErrorMessage error : record.getErrors())
             {
                if(error instanceof AbstractBulkLoadRollableValueError rollableValueError)

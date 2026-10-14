@@ -869,6 +869,8 @@ class UpdateActionTest extends BaseTest
 
       Instant initialModifyDate = qRecord.getValueInstant("modifyDate");
       assertNotNull(initialModifyDate);
+      initialModifyDate = initialModifyDate.minusSeconds(60);
+      qRecord.setValue("modifyDate", initialModifyDate);
 
       // Allow the system clock to advance on platforms with coarse clock resolution.
       Thread.sleep(20);

@@ -31,8 +31,40 @@ import java.util.List;
  *******************************************************************************/
 public class EsbTablePublication implements Cloneable
 {
+   private boolean includeClassified;
    private String              destinationName;
    private List<EsbTableEvent> events;
+
+
+
+   /*******************************************************************************
+    ** Whether this destination is explicitly permitted to receive classified values.
+    *******************************************************************************/
+   public boolean getIncludeClassified()
+   {
+      return includeClassified;
+   }
+
+
+
+   /*******************************************************************************
+    ** Defaults to false.
+    *******************************************************************************/
+   public void setIncludeClassified(boolean includeClassified)
+   {
+      this.includeClassified = includeClassified;
+   }
+
+
+
+   /*******************************************************************************
+    ** Opt this publication into classified values.
+    *******************************************************************************/
+   public EsbTablePublication withIncludeClassified(boolean includeClassified)
+   {
+      setIncludeClassified(includeClassified);
+      return this;
+   }
 
 
 

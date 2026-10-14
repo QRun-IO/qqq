@@ -23,10 +23,12 @@ package com.kingsrook.qqq.esb.envelope;
 
 import java.io.Serializable;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeType;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -81,6 +83,16 @@ public class EsbEventFactory
     *******************************************************************************/
    public static EsbEvent forRecordChange(String instanceName, String tableName, RecordChangeType changeType, QRecord record, QRecord oldRecord)
    {
+      return forRecordChange(instanceName, tableName, changeType, record, oldRecord, false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit per-publication opt-in; default callers omit classified values.
+    *******************************************************************************/
+   public static EsbEvent forRecordChange(String instanceName, String tableName, RecordChangeType changeType, QRecord record, QRecord oldRecord, boolean includeClassified)
+   {
       LinkedHashMap<String, Serializable> data = new LinkedHashMap<>();
       LinkedHashMap<String, Serializable> recordValues;
       String                              typeSuffix;
@@ -114,8 +126,35 @@ public class EsbEventFactory
          default -> throw (new IllegalArgumentException("Unexpected record change type: " + changeType));
       }
 
+      QTableMetaData table = QContext.getQInstance() == null ? null : QContext.getQInstance().getTable(tableName);
+      String subject = getPrimaryKeyAsString(tableName, recordValues);
+      if(changeType == RecordChangeType.UPDATE)
+      {
+         ArrayList<String> changedFields = new ArrayList<>();
+         record.getValues().forEach((name, value) ->
+         {
+            if(oldRecord == null || !Objects.equals(value, oldRecord.getValue(name)))
+            {
+               changedFields.add(name);
+            }
+         });
+         data.put("changedFields", changedFields);
+      }
+      if(!includeClassified)
+      {
+         recordValues.keySet().removeIf(name -> ClassifiedValues.isClassified(table, name));
+         if(data.get(DATA_OLD_RECORD) instanceof Map<?, ?> oldValues)
+         {
+            oldValues.keySet().removeIf(name -> ClassifiedValues.isClassified(table, String.valueOf(name)));
+         }
+         if(table != null && ClassifiedValues.isClassified(table, table.getPrimaryKeyField()))
+         {
+            subject = null;
+         }
+      }
+
       return (newEvent(instanceName, "table/" + tableName, "qqq.table." + tableName + "." + typeSuffix, data)
-         .withSubject(getPrimaryKeyAsString(tableName, recordValues)));
+         .withSubject(subject));
    }
 
 

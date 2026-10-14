@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.frontend;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
@@ -30,6 +31,9 @@ import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobs;
 import com.kingsrook.qqq.backend.core.jobs.DurableProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
@@ -45,6 +49,8 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendProcessMetaData
 {
+   private Map<String, List<QHelpContent>> helpContents;
+
    private String  name;
    private String  label;
    private String  tableName;
@@ -73,6 +79,7 @@ public class QFrontendProcessMetaData
     *******************************************************************************/
    public QFrontendProcessMetaData(AbstractActionInput actionInput, QProcessMetaData processMetaData, boolean includeSteps)
    {
+      this.helpContents = HelpContentVisibility.filter(processMetaData.getHelpContent());
       this.name = processMetaData.getName();
       this.label = processMetaData.getLabel();
       this.tableName = processMetaData.getTableName();
@@ -90,6 +97,7 @@ public class QFrontendProcessMetaData
                case LINEAR -> processMetaData.getStepList().stream()
                   .filter(QFrontendStepMetaData.class::isInstance)
                   .map(QFrontendStepMetaData.class::cast)
+                  .map(QFrontendProcessMetaData::filteredStep)
                   .collect(Collectors.toList());
 
                case STATE_MACHINE -> processMetaData.getAllSteps().values().stream()
@@ -98,6 +106,7 @@ public class QFrontendProcessMetaData
                   .flatMap(step -> step.getSubSteps().stream())
                   .filter(QFrontendStepMetaData.class::isInstance)
                   .map(QFrontendStepMetaData.class::cast)
+                  .map(QFrontendProcessMetaData::filteredStep)
                   .collect(Collectors.toList());
             };
          }
@@ -271,4 +280,34 @@ public class QFrontendProcessMetaData
       return maxInputRecords;
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for helpContents
+    *******************************************************************************/
+   public Map<String, List<QHelpContent>> getHelpContents()
+   {
+      return (helpContents);
+   }
+
+
+   /*******************************************************************************
+    ** Copy step help and every field list before applying session targeting.
+    *******************************************************************************/
+   private static QFrontendStepMetaData filteredStep(QFrontendStepMetaData step)
+   {
+      QFrontendStepMetaData copy = step.clone();
+      copy.setHelpContents(HelpContentVisibility.filter(step.getHelpContents()));
+      for(List<QFieldMetaData> fields : List.of(CollectionUtils.nonNullList(copy.getFormFields()), CollectionUtils.nonNullList(copy.getViewFields()), CollectionUtils.nonNullList(copy.getRecordListFields())))
+      {
+         for(QFieldMetaData field : fields)
+         {
+            field.setHelpContents(HelpContentVisibility.filter(field.getHelpContents()));
+         }
+      }
+      List<QFieldMetaData> formFields = copy.getFormFields();
+      copy.setFormFields(null);
+      copy.setFormFields(formFields);
+      return (copy);
+   }
 }

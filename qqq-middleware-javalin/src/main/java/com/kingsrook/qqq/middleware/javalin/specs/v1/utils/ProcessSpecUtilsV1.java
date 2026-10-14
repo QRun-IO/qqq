@@ -234,6 +234,10 @@ public class ProcessSpecUtilsV1
    public static void handleOutput(Context context, ProcessInitOrStepOrStatusResponseV1 response)
    {
       JSONObject outputJsonObject = convertResponseToJSONObject(response);
+      if(outputJsonObject.has("oneTimeSecrets"))
+      {
+         context.header("Cache-Control", "no-store");
+      }
 
       String json = outputJsonObject.toString(3);
       context.result(json);

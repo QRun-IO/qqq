@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -123,15 +124,11 @@ public class DeleteAction
       {
          if(CorePermissionEnforcer.checkTablePermissions(deleteInput, TablePermissionSubType.DELETE))
          {
-            /////////////////////////////////////////////////////////////////////////
-            // a delete filter may not read joined tables or locked fields the   //
-            // user can't (a dry run returns the matched keys, so it's a read). //
-            /////////////////////////////////////////////////////////////////////////
-            if(deleteInput.getQueryFilter() != null)
-            {
-               CorePermissionEnforcer.checkReadCriteria(deleteInput, null, deleteInput.getQueryFilter(), null);
-            }
             CorePermissionEnforcer.checkAssociatedWrites(deleteInput);
+         }
+         if(CorePermissionEnforcer.shouldEnforceFieldAccess(deleteInput) && deleteInput.getQueryFilter() != null)
+         {
+            CorePermissionEnforcer.checkReadCriteria(deleteInput, null, deleteInput.getQueryFilter(), null);
          }
       }
 
@@ -192,7 +189,7 @@ public class DeleteAction
          for(int i = 0; i < primaryKeys.size(); i++)
          {
             Serializable primaryKey       = primaryKeys.get(i);
-            Serializable valueAsFieldType = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKey);
+            Serializable valueAsFieldType = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKey);
             if(!Objects.equals(primaryKey, valueAsFieldType))
             {
                primaryKeys.set(i, valueAsFieldType);
@@ -896,14 +893,14 @@ public class DeleteAction
       }
       for(Serializable primaryKeyValue : deleteInput.getPrimaryKeys())
       {
-         primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKeyValue);
+         primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKeyValue);
          QRecord record = new QRecord().withValue(primaryKeyField.getName(), primaryKeyValue);
          if(!oldRecordKeys.contains(AssociatedRecordUpdate.primaryKey(table, record)))
          {
             recordsWithErrors.add(record);
             record.addError(new NotFoundStatusMessage(primaryKeyField.getIsHidden() || primaryKeyField.getType().needsMasked()
                ? "No record was found to delete"
-               : "No record was found to delete for " + Objects.requireNonNullElse(primaryKeyField.getLabel(), primaryKeyField.getName()) + " = " + primaryKeyValue));
+               : "No record was found to delete for " + Objects.requireNonNullElse(primaryKeyField.getLabel(), primaryKeyField.getName()) + " = " + ClassifiedValues.diagnostic(table, primaryKeyField.getName(), primaryKeyValue)));
          }
       }
 

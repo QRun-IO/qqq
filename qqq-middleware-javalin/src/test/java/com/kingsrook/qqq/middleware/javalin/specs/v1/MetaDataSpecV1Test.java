@@ -943,4 +943,32 @@ class MetaDataSpecV1Test extends SpecTestBase
       }
    }
 
+
+
+   /*******************************************************************************
+    ** App, process and report help use the same public typed shape.
+    *******************************************************************************/
+   @Test
+   void typedHelpOnEveryContainer()
+   {
+      QHelpContent help = new QHelpContent().withContentAsMarkdown("**Body**").withSummary("Tooltip").withRole(QHelpRole.APP_SCREEN);
+      String app = serverQInstance.getApps().keySet().iterator().next();
+      String process = serverQInstance.getProcesses().keySet().iterator().next();
+      serverQInstance.getApp(app).withHelpContent("help", help);
+      serverQInstance.getProcess(process).withHelpContent("help", help);
+      serverQInstance.getReport("personsReport").withHelpContent("help", help);
+      var response = Unirest.get(getBaseUrlAndPath() + "/metaData").asString();
+      assertEquals(200, response.getStatus());
+      JSONObject json = JsonUtils.toJSONObject(response.getBody());
+      for(Map.Entry<String, String> entry : Map.of("apps", app, "processes", process, "reports", "personsReport").entrySet())
+      {
+         JSONObject content = json.getJSONObject(entry.getKey()).getJSONObject(entry.getValue()).getJSONObject("helpContents").getJSONArray("help").getJSONObject(0);
+         assertEquals("Tooltip", content.getString("summary"));
+         assertEquals("MARKDOWN", content.getString("format"));
+         assertEquals("APP_SCREEN", content.getJSONArray("roles").getString(0));
+         assertThat(content.getString("contentAsHtml")).contains("<strong>Body</strong>");
+         assertFalse(content.has("permissionName"));
+         assertFalse(content.has("clientChannel"));
+      }
+   }
 }

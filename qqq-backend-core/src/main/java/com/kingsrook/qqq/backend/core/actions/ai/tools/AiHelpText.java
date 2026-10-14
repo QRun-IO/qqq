@@ -21,10 +21,12 @@
 package com.kingsrook.qqq.backend.core.actions.ai.tools;
 
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
@@ -45,11 +47,11 @@ public class AiHelpText
    public static String plain(Collection<QHelpContent> helpContents)
    {
       StringBuilder rs = new StringBuilder();
-      for(QHelpContent helpContent : CollectionUtils.nonNullCollection(helpContents))
+      for(QHelpContent helpContent : CollectionUtils.nonNullCollection(HelpContentVisibility.filter(helpContents == null ? null : new ArrayList<>(helpContents))))
       {
-         if(helpContent != null && helpContent.getContent() != null)
+         if(helpContent != null)
          {
-            rs.append(helpContent.getContent()).append(' ');
+            rs.append(helpContent.getPlainText().isBlank() ? helpContent.getSummaryOrDerived() : helpContent.getPlainText()).append(' ');
          }
       }
       return (clean(rs.toString()));

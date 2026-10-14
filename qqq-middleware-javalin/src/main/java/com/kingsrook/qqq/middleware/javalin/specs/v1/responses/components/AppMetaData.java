@@ -157,4 +157,15 @@ public class AppMetaData implements ToSchema
       return (new LinkedHashMap<>(CollectionUtils.nonNullMap(this.wrapped.getSupplementalAppMetaData())));
    }
 
+
+
+   /*******************************************************************************
+    ** Help content by slot, filtered for the current session.
+    *******************************************************************************/
+   @OpenAPIDescription("Help entries by slot, filtered for the current session.")
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   public Map<String, List<HelpContentV1>> getHelpContents()
+   {
+      return (HelpContentV1.of(wrapped.getHelpContents()));
+   }
 }

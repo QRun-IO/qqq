@@ -44,6 +44,13 @@
          <artifactId>qqq-backend-module-rdbms</artifactId>
          <version>${revision}</version>
       </dependency>
+      <!-- test only: shared storage for the two-JVM durable jobs tests (production uses S3) -->
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-filesystem</artifactId>
+         <version>${revision}</version>
+         <scope>test</scope>
+      </dependency>
 
       <!-- 3rd party deps specifically for this module -->
       <dependency>

@@ -22,9 +22,12 @@ package com.kingsrook.qqq.backend.core.modules.backend;
 
 
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -35,6 +38,17 @@ import static org.junit.jupiter.api.Assertions.fail;
  *******************************************************************************/
 class QBackendModuleInterfaceTest extends BaseTest
 {
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testConsistentReadTransactionUnsupportedByDefault() throws QException
+   {
+      assertThat(new TestClass().openConsistentReadTransaction(new ConsistentReadInput("any"))).isEmpty();
+   }
+
+
+
    /*******************************************************************************
     **
     *******************************************************************************/

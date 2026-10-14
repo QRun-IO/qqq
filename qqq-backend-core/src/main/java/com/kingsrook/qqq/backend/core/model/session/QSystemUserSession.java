@@ -21,9 +21,6 @@
 package com.kingsrook.qqq.backend.core.model.session;
 
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -43,8 +40,6 @@ public class QSystemUserSession extends QSession
 {
    private static final QLogger LOG = QLogger.getLogger(QSystemUserSession.class);
 
-   private static List<String> allAccessKeyNames = null;
-
 
 
    /*******************************************************************************
@@ -53,14 +48,34 @@ public class QSystemUserSession extends QSession
     *******************************************************************************/
    public QSystemUserSession()
    {
+      this(QContext.getQInstance());
+   }
+
+
+
+   /*******************************************************************************
+    ** Create a system session before its instance has been installed in QContext.
+    ** Read the key types for each new session: instances can be replaced, and
+    ** their security metadata can change while an application is being built.
+    *******************************************************************************/
+   public QSystemUserSession(QInstance qInstance)
+   {
       super();
+      if(qInstance == null)
+      {
+         LOG.warn("QInstance was not supplied when creating a QSystemUserSession. This SystemUserSession will NOT have any allAccessKeys.");
+         return;
+      }
 
       ////////////////////////////////////////////////////////
       // always give system user all of the all-access keys //
       ////////////////////////////////////////////////////////
-      for(String allAccessKeyName : getAllAccessKeyNames())
+      for(QSecurityKeyType securityKeyType : qInstance.getSecurityKeyTypes().values())
       {
-         withSecurityKeyValue(allAccessKeyName, true);
+         if(StringUtils.hasContent(securityKeyType.getAllAccessKeyName()))
+         {
+            withSecurityKeyValue(securityKeyType.getAllAccessKeyName(), true);
+         }
       }
    }
 
@@ -73,52 +88,6 @@ public class QSystemUserSession extends QSession
    public boolean hasPermission(String permissionName)
    {
       return (true);
-   }
-
-
-
-   /*******************************************************************************
-    **
-    *******************************************************************************/
-   private List<String> getAllAccessKeyNames()
-   {
-      if(allAccessKeyNames == null)
-      {
-         QInstance qInstance = QContext.getQInstance();
-         if(qInstance == null)
-         {
-            LOG.warn("QInstance was not set in context when creating a QSystemUserSession and trying to prime allAccessKeyNames... This SystemUserSession will NOT have any allAccessKeys.");
-            return (Collections.emptyList());
-         }
-
-         ///////////////////////////////////////////////////////////////////////////////////////
-         // ideally only 1 thread would do this, but, it's cheap, so don't bother locking.    //
-         // and, if multiple get in, only the last one will assign to the field, so, s/b fine //
-         ///////////////////////////////////////////////////////////////////////////////////////
-         List<String> list = new ArrayList<>();
-         for(QSecurityKeyType securityKeyType : qInstance.getSecurityKeyTypes().values())
-         {
-            if(StringUtils.hasContent(securityKeyType.getAllAccessKeyName()))
-            {
-               list.add(securityKeyType.getAllAccessKeyName());
-            }
-         }
-
-         LOG.info("Initialized allAccessKeyNames for SystemUserSessions as: " + list);
-         allAccessKeyNames = list;
-      }
-
-      return (allAccessKeyNames);
-   }
-
-
-
-   /*******************************************************************************
-    ** Meant for use in tests - to explicitly null-out the allAccessKeyNames field.
-    *******************************************************************************/
-   static void unsetAllAccessKeyNames()
-   {
-      allAccessKeyNames = null;
    }
 
 }

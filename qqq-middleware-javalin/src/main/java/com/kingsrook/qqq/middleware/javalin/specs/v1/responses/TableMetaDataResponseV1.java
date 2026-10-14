@@ -67,7 +67,9 @@ public class TableMetaDataResponseV1 implements TableMetaDataOutputInterface, To
    @Override
    public Schema toSchema()
    {
-      return new SchemaBuilder().classToSchema(TableMetaData.class);
+      Schema schema = new SchemaBuilder().classToSchema(TableMetaData.class);
+      schema.getProperties().put("recordFeatures", new Schema().withRef("#/components/schemas/RecordFeaturesV1"));
+      return (schema);
    }
 
 

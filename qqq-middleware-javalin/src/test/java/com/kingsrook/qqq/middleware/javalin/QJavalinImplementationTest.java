@@ -27,6 +27,7 @@ import java.io.Serializable;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -116,6 +117,22 @@ class QJavalinImplementationTest extends QJavalinTestBase
 
    /*******************************************************************************
     ** test getting serverInfo
+    **
+    *******************************************************************************/
+   @Test
+   public void test_legacyRoutesAreMarkedDeprecated()
+   {
+      for(String path : List.of("/metaData", "/metaData/table/person", "/serverInfo", "/data/person/1"))
+      {
+         HttpResponse<String> response = Unirest.get(BASE_URL + path).asString();
+         assertEquals(QJavalinImplementation.LEGACY_DEPRECATION_HEADER_VALUE, response.getHeaders().getFirst("Deprecation"), path);
+         assertThat(response.getHeaders().getFirst("Link")).contains("/qqq/v1/openapi.html", "successor-version");
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @Test

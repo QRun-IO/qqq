@@ -31,7 +31,13 @@ public enum QAuthenticationType
    AUTH_0("auth0"),
    TABLE_BASED("tableBased"),
    FULLY_ANONYMOUS("fullyAnonymous"),
-   MOCK("mock");
+   MOCK("mock"),
+
+   //////////////////////////////////////////////////////////////////////////
+   // an application-provided module, named by the metadata's moduleClass   //
+   // (see QAuthenticationMetaData.withModuleCodeReference).                //
+   //////////////////////////////////////////////////////////////////////////
+   CUSTOM("custom");
 
    private final String name;
 

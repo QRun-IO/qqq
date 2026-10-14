@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.CurrentUser;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.FilterVariableExpression;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -602,7 +603,11 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   Serializable interpretedValue = value;
                   Exception    caughtException  = null;
 
-                  if(value instanceof AbstractFilterExpression<?>)
+                  if("${currentUser}".equals(value))
+                  {
+                     interpretedValue = new CurrentUser();
+                  }
+                  else if(value instanceof AbstractFilterExpression<?>)
                   {
                      ///////////////////////////////////////////////////////////////////////
                      // if a filter variable expression, evaluate the input values, which //
@@ -641,7 +646,7 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   // Note: questionable, using "" here, but that's what reality is passing a lot //
                   // for cases we want to treat as missing...                                    //
                   /////////////////////////////////////////////////////////////////////////////////
-                  if(interpretedValue == InputNotFound.instance || "".equals(interpretedValue))
+                  if(interpretedValue == InputNotFound.instance || "".equals(interpretedValue) || (interpretedValue instanceof Collection<?> collection && collection.isEmpty()))
                   {
                      CriteriaMissingInputValueBehavior missingInputValueBehavior = getMissingInputValueBehavior(useCase);
 
@@ -659,7 +664,17 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   }
                   else
                   {
-                     newValues.add(interpretedValue);
+                     if(interpretedValue instanceof Collection<?> collection)
+                     {
+                        for(Object element : collection)
+                        {
+                           newValues.add((Serializable) element);
+                        }
+                     }
+                     else
+                     {
+                        newValues.add(interpretedValue);
+                     }
                   }
                }
                catch(Exception e)

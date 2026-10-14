@@ -25,15 +25,10 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -53,6 +48,12 @@ import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3TableBack
 import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3Utils;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.apache.http.conn.ConnectTimeoutException;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -66,7 +67,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class S3ConnectTimeoutFixture
 {
    private static final String NAME = "connectTimeoutFixture";
-   private static AmazonS3 client;
+   private static S3Client client;
 
 
 
@@ -108,9 +109,10 @@ public class S3ConnectTimeoutFixture
             assertThrows(SocketTimeoutException.class, () -> probe.connect(address, 500));
          }
 
-         client = AmazonS3ClientBuilder.standard().withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration("http://127.0.0.1:" + listener.getLocalPort(), "us-east-1"))
-            .withPathStyleAccessEnabled(true).withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("test", "test")))
-            .withClientConfiguration(new ClientConfiguration().withConnectionTimeout(500).withSocketTimeout(5000).withMaxErrorRetry(0)).build();
+         client = S3Client.builder().endpointOverride(URI.create("http://127.0.0.1:" + listener.getLocalPort())).region(Region.US_EAST_1)
+            .forcePathStyle(true).credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test", "test")))
+            .httpClient(ApacheHttpClient.builder().connectionTimeout(Duration.ofMillis(500)).socketTimeout(Duration.ofMillis(5000)).build())
+            .overrideConfiguration(configuration -> configuration.retryStrategy(AwsRetryStrategy.doNotRetry())).build();
          QBackendModuleDispatcher.registerBackendModule(new TimeoutBackend());
          QInstance instance = SampleMetaDataProvider.defineTestInstance();
          instance.addBackend(new S3BackendMetaData().withName(NAME).withBucketName("owned-timeout-bucket").withBackendType(TimeoutBackend.class));
@@ -157,7 +159,7 @@ public class S3ConnectTimeoutFixture
          {
             if(client != null)
             {
-               client.shutdown();
+               client.close();
             }
             QContext.clear();
          }
@@ -189,7 +191,7 @@ public class S3ConnectTimeoutFixture
       public QStorageInterface getStorageInterface()
       {
          S3Utils utils = new S3Utils();
-         utils.setAmazonS3(client);
+         utils.setS3Client(client);
          S3StorageAction action = new S3StorageAction();
          action.setS3Utils(utils);
          return action;

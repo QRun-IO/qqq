@@ -21,10 +21,9 @@
 package com.kingsrook.qqq.backend.core.processes.implementations.savedreports;
 
 
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -68,6 +67,7 @@ import com.kingsrook.qqq.backend.core.model.savedreports.SavedReport;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValidationUtils;
+import org.apache.commons.io.output.CloseShieldOutputStream;
 import org.jsoup.nodes.Element;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -257,27 +257,57 @@ public class RenderSavedReportExecuteStep implements BackendStep
 
 
    /*******************************************************************************
-    ** Generate locally before touching archive storage. Resource cleanup also runs
-    ** after generation or publication failure, preserving the original exception.
+    ** Stream into storage; close before deleting a failed output, and preserve
+    ** the original exception if cleanup also fails.
     *******************************************************************************/
    private ReportOutput generateAndStoreReport(ReportInput reportInput, StorageInput storageInput) throws Exception
    {
-      Path temporaryFile = Files.createTempFile("qqq-saved-report-", "." + reportInput.getReportDestination().getReportFormat().getExtension());
-      try(AutoCloseable cleanup = () -> Files.deleteIfExists(temporaryFile))
+      ///////////////////////////////////////////////////////////////////////////
+      // stream into a staging object in the same storage table, and copy it  //
+      // over the final reference only when the render succeeded: a failure   //
+      // never touches an existing archive object (no local temp file).       //
+      ///////////////////////////////////////////////////////////////////////////
+      StorageInput staging = new StorageInput(storageInput.getTableName())
+         .withReference(storageInput.getReference() + ".partial-" + UUID.randomUUID())
+         .withContentType(storageInput.getContentType());
+      ReportOutput reportOutput;
+      try
       {
-         ReportOutput reportOutput;
-         try(OutputStream output = Files.newOutputStream(temporaryFile))
+         try(OutputStream output = new StorageAction().createOutputStream(staging))
          {
-            reportInput.getReportDestination().setReportOutputStream(output);
+            // The step owns closing storage, even when the report generator closes its destination.
+            reportInput.getReportDestination().setReportOutputStream(CloseShieldOutputStream.wrap(output));
             reportOutput = new GenerateReportAction().execute(reportInput);
          }
 
-         try(OutputStream output = new StorageAction().createOutputStream(storageInput))
+         try(InputStream input = new StorageAction().getInputStream(staging); OutputStream output = new StorageAction().createOutputStream(storageInput))
          {
-            Files.copy(temporaryFile, output);
+            input.transferTo(output);
          }
-         return reportOutput;
       }
+      catch(Exception e)
+      {
+         try
+         {
+            new StorageAction().deleteObject(staging);
+         }
+         catch(Exception cleanupException)
+         {
+            e.addSuppressed(cleanupException);
+            LOG.warn("Could not delete the staged report output", cleanupException, logPair("storageReference", staging.getReference()));
+         }
+         throw e;
+      }
+
+      try
+      {
+         new StorageAction().deleteObject(staging);
+      }
+      catch(Exception cleanupException)
+      {
+         LOG.warn("Could not delete the staged report output", cleanupException, logPair("storageReference", staging.getReference()));
+      }
+      return reportOutput;
    }
 
 

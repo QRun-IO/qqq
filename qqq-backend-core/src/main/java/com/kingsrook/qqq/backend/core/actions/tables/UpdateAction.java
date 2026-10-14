@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,19 +34,28 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
 import com.kingsrook.qqq.backend.core.actions.automation.AutomationStatus;
 import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationStatusUpdater;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateContingentPossibleValuesHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
@@ -55,6 +65,8 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -137,10 +149,32 @@ public class UpdateAction
     *******************************************************************************/
    UpdateOutput execute(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
    {
-      QContext.pushAction(updateInput);
-      try
+      CorePermissionEnforcer.checkRestoreWriteFlag(updateInput, updateInput.getFlags());
+
+      boolean enforce = false;
+      if(StringUtils.hasContent(updateInput.getTableName()) && updateInput.getTable() != null)
       {
-         return executeInternal(updateInput, failOnRecordErrors);
+         CorePermissionEnforcer.checkTablePermissions(updateInput, TablePermissionSubType.EDIT);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(updateInput);
+         if(enforce)
+         {
+            FieldAccessHelper.assertWritesAllowed(updateInput.getTable(), updateInput.getRecords());
+            if(CorePermissionEnforcer.shouldEnforce(updateInput))
+            {
+               CorePermissionEnforcer.checkAssociatedWrites(updateInput);
+            }
+         }
+      }
+
+      QContext.pushAction(updateInput);
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         UpdateOutput updateOutput = executeInternal(updateInput, failOnRecordErrors);
+         if(enforce)
+         {
+            FieldAccessHelper.applyToRecords(updateInput.getTableName(), null, updateOutput.getRecords(), "update");
+         }
+         return (updateOutput);
       }
       finally
       {
@@ -182,19 +216,31 @@ public class UpdateAction
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(updateInput, updateInterface);
-      List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
+      if(updateInput.getExpectedVersions() != null && !updateInput.getExpectedVersions().isEmpty() && oldRecordList.isEmpty())
+      {
+         oldRecordList = Optional.of(queryOldRecords(updateInput));
+      }
+      RecordVersionCheck.check(updateInput, oldRecordList.orElse(List.of()));
+      List<QRecord> listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
 
       ///////////////////////////////////////////////////////////////////////////////////////
       // allow caller to specify that we don't want to trigger automations. this isn't     //
       // isn't expected to be used much - by design, only for the process that is meant to //
       // heal automation status, so that it can force us into status=Pending-inserts       //
       ///////////////////////////////////////////////////////////////////////////////////////
-      if(!updateInput.getOmitTriggeringAutomations())
+      RestoreWriteFlag restoreWriteFlag    = RestoreWriteFlag.from(updateInput.getFlags());
+      boolean          suppressAutomations = restoreWriteFlag != null && restoreWriteFlag.getSuppressAutomations();
+      if(!updateInput.getOmitTriggeringAutomations() && !suppressAutomations)
       {
          setAutomationStatusField(updateInput, oldRecordList);
       }
 
-      performValidations(updateInput, oldRecordList, false);
+      performValidations(updateInput, oldRecordList, updateInput.getDryRun());
+      if(updateInput.getDryRun())
+      {
+         return (buildDryRunOutput(updateInput, table, oldRecordList));
+      }
+
       Map<QRecord, AssociatedRecordUpdate.Values> associationValues = AssociatedRecordUpdate.prepare(table, updateInput.getRecords(), updateInput.getTransaction());
       deleteOmittedAssociations(updateInput, associationValues);
 
@@ -245,6 +291,10 @@ public class UpdateAction
       {
          LOG.debug("Requested to omit DML audit");
       }
+      else if(restoreWriteFlag != null && !restoreWriteFlag.getPerRecordAudit())
+      {
+         RestoreWriteHelper.writeSummaryAudit(updateInput, "update", updateOutput.getRecords());
+      }
       else
       {
          DMLAuditInput dmlAuditInput = new DMLAuditInput()
@@ -265,13 +315,48 @@ public class UpdateAction
       {
          ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
       }
-      runPostUpdateCustomizers(updateInput, table, updateOutput, oldRecordList);
+      if(!skipsCustomizers(updateInput))
+      {
+         runPostUpdateCustomizers(updateInput, table, updateOutput, oldRecordList);
+      }
       if(failOnRecordErrors)
       {
          ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
       }
 
       return updateOutput;
+   }
+
+
+
+   /***************************************************************************
+    ** for a dry run: the would-be records after the update - each input record's
+    ** values overlaid on its old record (when old records could be fetched),
+    ** keeping the input record's errors and warnings.
+    ***************************************************************************/
+   private static UpdateOutput buildDryRunOutput(UpdateInput updateInput, QTableMetaData table, Optional<List<QRecord>> oldRecordList)
+   {
+      Map<Serializable, QRecord> oldRecordsByPrimaryKey = new HashMap<>();
+      for(QRecord oldRecord : oldRecordList.orElse(List.of()))
+      {
+         oldRecordsByPrimaryKey.put(ValueUtils.getValueAsString(oldRecord.getValue(table.getPrimaryKeyField())), oldRecord);
+      }
+
+      List<QRecord> outputRecords = new ArrayList<>();
+      for(QRecord inputRecord : CollectionUtils.nonNullList(updateInput.getRecords()))
+      {
+         QRecord oldRecord = oldRecordsByPrimaryKey.get(ValueUtils.getValueAsString(inputRecord.getValue(table.getPrimaryKeyField())));
+         QRecord wouldBe   = oldRecord == null ? new QRecord() : new QRecord(oldRecord);
+         wouldBe.setTableName(table.getName());
+         wouldBe.getValues().putAll(inputRecord.getValues());
+         wouldBe.setErrors(new ArrayList<>(CollectionUtils.nonNullList(inputRecord.getErrors())));
+         wouldBe.setWarnings(new ArrayList<>(CollectionUtils.nonNullList(inputRecord.getWarnings())));
+         outputRecords.add(wouldBe);
+      }
+
+      UpdateOutput updateOutput = new UpdateOutput();
+      updateOutput.setRecords(outputRecords);
+      return (updateOutput);
    }
 
 
@@ -367,6 +452,18 @@ public class UpdateAction
 
 
    /*******************************************************************************
+    ** In restore mode, pre- and post-update customizers (table-level and
+    ** instance-level) only run if the flag says so.
+    *******************************************************************************/
+   private static boolean skipsCustomizers(UpdateInput updateInput)
+   {
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(updateInput.getFlags());
+      return (restoreWriteFlag != null && !restoreWriteFlag.getRunCustomizers());
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public void performValidations(UpdateInput updateInput, Optional<List<QRecord>> oldRecordList, boolean isPreview) throws QException
@@ -382,7 +479,14 @@ public class UpdateAction
          behaviorsToOmit = Set.of(DynamicDefaultValueBehavior.MODIFY_DATE);
       }
 
-      ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.UPDATE, QContext.getQInstance(), table, updateInput.getRecords(), behaviorsToOmit);
+      if(RestoreWriteFlag.from(updateInput.getFlags()) != null)
+      {
+         RestoreWriteHelper.applyFieldBehaviorsKeepingDates(ValueBehaviorApplier.Action.UPDATE, table, updateInput.getRecords(), behaviorsToOmit);
+      }
+      else
+      {
+         ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.UPDATE, QContext.getQInstance(), table, updateInput.getRecords(), behaviorsToOmit);
+      }
       validatePrimaryKeysAreGiven(updateInput);
 
       if(oldRecordList.isPresent())
@@ -397,13 +501,21 @@ public class UpdateAction
       if(updateInput.getInputSource().shouldValidateRequiredFields())
       {
          validateRequiredFields(updateInput);
+         if(updateInput.getInputSource() != QInputSource.SYSTEM)
+         {
+            ValidateContingentPossibleValuesHelper.validate(table, updateInput.getRecords(), oldRecordList.orElse(List.of()), updateInput.getTransaction());
+         }
       }
 
       ///////////////////////////////////////////////////////////////////////////
       // after all validations, run the pre-update customizer, if there is one //
       ///////////////////////////////////////////////////////////////////////////
-      runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+      if(!skipsCustomizers(updateInput))
+      {
+         runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+      }
       UniqueKeyHelper.validateUpdateUniqueKeys(updateInput);
+      RecordReferenceSecurityHelper.validateWrites(table, updateInput.getRecords(), RecordChangeType.UPDATE, updateInput.getTransaction());
    }
 
 
@@ -530,15 +642,20 @@ public class UpdateAction
             }
          }
 
+         RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(updateInput.getFlags());
          RecordChangeListenerHelper.fire(qInstance, new RecordChangeEvent()
             .withTableName(updateInput.getTableName())
             .withType(RecordChangeType.UPDATE)
             .withRecords(Collections.unmodifiableList(successfulRecords))
             .withOldRecords(Collections.unmodifiableList(pairedOldRecords))
-            .withTransaction(updateInput.getTransaction()));
+            .withTransaction(updateInput.getTransaction()), restoreWriteFlag != null && !restoreWriteFlag.getPublishEvents());
       }
       catch(Exception e)
       {
+         if(e instanceof RecordChangeListenerHelper.RequiredListenerException required)
+         {
+            throw (required);
+         }
          LOG.warn("Error preparing record change event", e, logPair("tableName", updateInput.getTableName()));
       }
    }
@@ -601,12 +718,12 @@ public class UpdateAction
          lookedUpRecords.put(AssociatedRecordUpdate.primaryKey(table, record), record);
       }
 
-      ValidateRecordSecurityLockHelper.validateSecurityFields(table, records, ValidateRecordSecurityLockHelper.Action.UPDATE, updateInput.getTransaction());
       Map<Object, QRecord> authorizedOldRecords = ValidateRecordSecurityLockHelper.validateStoredWriteLocks(table, lookedUpRecords, ValidateRecordSecurityLockHelper.Action.UPDATE, updateInput.getTransaction());
+      validateSecurityFieldsAsUpdated(table, records, authorizedOldRecords, updateInput.getTransaction());
 
       for(QRecord record : records)
       {
-         Serializable value = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(table.getPrimaryKeyField()));
+         Serializable value = ValueUtils.getValueAsFieldType(table, primaryKeyField, record.getValue(table.getPrimaryKeyField()));
          if(value == null)
          {
             continue;
@@ -615,7 +732,7 @@ public class UpdateAction
          Object key = AssociatedRecordUpdate.primaryKey(table, record);
          if(!lookedUpRecords.containsKey(key))
          {
-            record.addError(new NotFoundStatusMessage("No record was found to update for " + primaryKeyField.getLabel() + " = " + value));
+            record.addError(new NotFoundStatusMessage("No record was found to update for " + primaryKeyField.getLabel() + " = " + ClassifiedValues.diagnostic(table, primaryKeyField.getName(), value)));
          }
          else if(authorizedOldRecords != null)
          {
@@ -624,6 +741,65 @@ public class UpdateAction
             {
                record.addError(new PermissionDeniedMessage("You do not have permission to update this record."));
             }
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Validate the write locks against each record as it will be after the
+    ** update: its stored values overlaid with the values being written. A
+    ** partial update that omits a lock field - or the foreign key a joined
+    ** lock walks through, e.g. editing only a line item's sku - keeps the
+    ** stored value, so it is validated with that value instead of as if the
+    ** field were blank (which denied every such update with "the referenced
+    ** ... was not found"). Fields the update does set, including nulls, are
+    ** validated as written. Only stored records that passed the stored write
+    ** locks are overlaid, so an error can only name a value the caller sent.
+    ** Errors land on the input records.
+    *******************************************************************************/
+   private static void validateSecurityFieldsAsUpdated(QTableMetaData table, List<QRecord> records, Map<Object, QRecord> storedRecords, QBackendTransaction transaction) throws QException
+   {
+      if(storedRecords == null)
+      {
+         ValidateRecordSecurityLockHelper.validateSecurityFields(table, records, ValidateRecordSecurityLockHelper.Action.UPDATE, transaction);
+         return;
+      }
+
+      List<QRecord>         toValidate       = new ArrayList<>();
+      Map<QRecord, QRecord> inputByEffective = new IdentityHashMap<>();
+      for(QRecord record : records)
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // a record whose stored values already failed the write locks is   //
+         // denied generically later; never validate (and so never echo) its //
+         // stored lock values here                                          //
+         ///////////////////////////////////////////////////////////////////////
+         QRecord stored = storedRecords.get(AssociatedRecordUpdate.primaryKey(table, record));
+         if(stored == null || CollectionUtils.nullSafeHasContents(stored.getErrors()))
+         {
+            toValidate.add(record);
+            continue;
+         }
+
+         QRecord effective = new QRecord(stored);
+         effective.setErrors(new ArrayList<>());
+         effective.setWarnings(new ArrayList<>());
+         for(Map.Entry<String, Serializable> entry : record.getValues().entrySet())
+         {
+            effective.setValue(entry.getKey(), entry.getValue());
+         }
+         toValidate.add(effective);
+         inputByEffective.put(effective, record);
+      }
+
+      ValidateRecordSecurityLockHelper.validateSecurityFields(table, toValidate, ValidateRecordSecurityLockHelper.Action.UPDATE, transaction);
+      for(Map.Entry<QRecord, QRecord> entry : inputByEffective.entrySet())
+      {
+         for(QErrorMessage error : CollectionUtils.nonNullList(entry.getKey().getErrors()))
+         {
+            entry.getValue().addError(error);
          }
       }
    }

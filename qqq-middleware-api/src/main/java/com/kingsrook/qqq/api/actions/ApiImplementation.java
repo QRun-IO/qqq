@@ -404,6 +404,7 @@ public class ApiImplementation
          // but, instead we're trying to just put the query joins in here FROM the query input...                              //
          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
          CountInput countInput = new CountInput();
+         countInput.setInputSource(QInputSource.USER);
          countInput.setTableName(tableName);
          countInput.setQueryJoins(queryInput.getQueryJoins());
          countInput.setFilter(filter);
@@ -1006,6 +1007,17 @@ public class ApiImplementation
       runProcessInput.setProcessName(processName);
       runProcessInput.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
       runProcessInput.setProcessUUID(processUUID);
+
+      ///////////////////////////////////////////////////////////////////
+      // request metadata (remote address, user agent) from the server //
+      ///////////////////////////////////////////////////////////////////
+      for(Map.Entry<String, String> entry : paramMap.entrySet())
+      {
+         if(entry.getKey().startsWith(ApiProcessUtils.REQUEST_VALUE_PREFIX) && entry.getValue() != null)
+         {
+            runProcessInput.addValue(entry.getKey(), entry.getValue());
+         }
+      }
       // todo i don't think runProcessInput.setAsyncJobCallback();
 
       if(PermissionsHelper.getEffectivePermissionRules(process, QContext.getQInstance()).getCustomPermissionChecker() == null)

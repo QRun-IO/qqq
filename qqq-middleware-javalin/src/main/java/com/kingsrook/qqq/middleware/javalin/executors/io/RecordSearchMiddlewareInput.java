@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin.executors.io;
 
 
 import java.util.List;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchSort;
 
 
 /*******************************************************************************
@@ -29,9 +30,11 @@ import java.util.List;
  *******************************************************************************/
 public class RecordSearchMiddlewareInput extends AbstractMiddlewareInput
 {
-   private String       searchTerm;
-   private List<String> tableNames;
-   private Integer      limitPerTable;
+   private String           searchTerm;
+   private List<String>     tableNames;
+   private Integer          limitPerTable;
+   private Integer          offset;
+   private RecordSearchSort sort;
 
 
 
@@ -126,4 +129,65 @@ public class RecordSearchMiddlewareInput extends AbstractMiddlewareInput
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for offset
+    *******************************************************************************/
+   public Integer getOffset()
+   {
+      return (this.offset);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for offset
+    *******************************************************************************/
+   public void setOffset(Integer offset)
+   {
+      this.offset = offset;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for offset
+    *******************************************************************************/
+   public RecordSearchMiddlewareInput withOffset(Integer offset)
+   {
+      this.offset = offset;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for sort
+    *******************************************************************************/
+   public RecordSearchSort getSort()
+   {
+      return (this.sort);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sort
+    *******************************************************************************/
+   public void setSort(RecordSearchSort sort)
+   {
+      this.sort = sort;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sort
+    *******************************************************************************/
+   public RecordSearchMiddlewareInput withSort(RecordSearchSort sort)
+   {
+      this.sort = sort;
+      return (this);
+   }
 }

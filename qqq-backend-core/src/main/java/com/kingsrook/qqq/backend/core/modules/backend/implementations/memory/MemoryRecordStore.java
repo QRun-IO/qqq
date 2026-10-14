@@ -23,10 +23,6 @@ package com.kingsrook.qqq.backend.core.modules.backend.implementations.memory;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,10 +35,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.DateTimeGroupBy;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
+import com.kingsrook.qqq.backend.core.actions.tables.StreamedAggregateEvaluator;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyLookup;
@@ -68,10 +67,12 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.ConditionalUpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
@@ -85,9 +86,11 @@ import com.kingsrook.qqq.backend.core.model.metadata.variants.BackendVariantsUti
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.utils.BackendQueryFilterUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonFieldUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
+import com.kingsrook.qqq.backend.core.utils.aggregates.AggregateAnalysis;
 import org.apache.commons.lang3.BooleanUtils;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -106,6 +109,18 @@ public class MemoryRecordStore
    //////////////////////////////////////////////////////////
    private Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> data;
    private Map<BackendIdentifier, Map<String, Integer>>                    nextSerials;
+
+   ///////////////////////////////////////////////////////////////////////////////////////////
+   // writes (insert/update/delete) share the read side of this lock; taking a snapshot     //
+   // (see takeSnapshot) takes the write side - so a snapshot never sees a write half-done, //
+   // or a write to one table but not another from the same instant                         //
+   ///////////////////////////////////////////////////////////////////////////////////////////
+   private final ReentrantReadWriteLock snapshotLock = new ReentrantReadWriteLock();
+
+   //////////////////////////////////////////////////////////////////////////
+   // when set (see callWithSnapshot), reads on this thread come from here //
+   //////////////////////////////////////////////////////////////////////////
+   private static final ThreadLocal<Snapshot> readSnapshot = new ThreadLocal<>();
 
    private static boolean collectStatistics = false;
 
@@ -135,6 +150,97 @@ public class MemoryRecordStore
    {
       data = Collections.synchronizedMap(new HashMap<>());
       nextSerials = Collections.synchronizedMap(new HashMap<>());
+   }
+
+
+
+   /*******************************************************************************
+    ** Opaque point-in-time copy of all the data in the store, as taken by
+    ** takeSnapshot - for use with callWithSnapshot.
+    *******************************************************************************/
+   public static final class Snapshot
+   {
+      private final Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> data;
+
+
+
+      /***************************************************************************
+       **
+       ***************************************************************************/
+      private Snapshot(Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> data)
+      {
+         this.data = data;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Copy all the data in the store, as of one instant (no insert/update/delete
+    ** is half-applied, or applied to only some tables, in the copy).
+    *******************************************************************************/
+   public Snapshot takeSnapshot()
+   {
+      snapshotLock.writeLock().lock();
+      try
+      {
+         Map<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> copy = new HashMap<>();
+         synchronized(data)
+         {
+            for(Map.Entry<BackendIdentifier, Map<String, Map<Serializable, QRecord>>> backendEntry : data.entrySet())
+            {
+               Map<String, Map<Serializable, QRecord>> tablesCopy = new HashMap<>();
+               copy.put(backendEntry.getKey(), tablesCopy);
+               synchronized(backendEntry.getValue())
+               {
+                  for(Map.Entry<String, Map<Serializable, QRecord>> tableEntry : backendEntry.getValue().entrySet())
+                  {
+                     Map<Serializable, QRecord> recordsCopy = new HashMap<>();
+                     tablesCopy.put(tableEntry.getKey(), recordsCopy);
+                     synchronized(tableEntry.getValue())
+                     {
+                        for(Map.Entry<Serializable, QRecord> recordEntry : tableEntry.getValue().entrySet())
+                        {
+                           recordsCopy.put(recordEntry.getKey(), new QRecord(recordEntry.getValue()));
+                        }
+                     }
+                  }
+               }
+            }
+         }
+         return (new Snapshot(copy));
+      }
+      finally
+      {
+         snapshotLock.writeLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Run a (read) action such that, on this thread, all reads (of any table) are
+    ** from the snapshot rather than the live data.
+    *******************************************************************************/
+   public static <T> T callWithSnapshot(Snapshot snapshot, Callable<T> callable) throws Exception
+   {
+      Snapshot previous = readSnapshot.get();
+      readSnapshot.set(snapshot);
+      try
+      {
+         return (callable.call());
+      }
+      finally
+      {
+         if(previous == null)
+         {
+            readSnapshot.remove();
+         }
+         else
+         {
+            readSnapshot.set(previous);
+         }
+      }
    }
 
 
@@ -181,7 +287,14 @@ public class MemoryRecordStore
     *******************************************************************************/
    private Map<Serializable, QRecord> getTableData(QTableMetaData table) throws QException
    {
-      BackendIdentifier                       backendIdentifier = getBackendIdentifier(table);
+      BackendIdentifier backendIdentifier = getBackendIdentifier(table);
+
+      Snapshot snapshot = readSnapshot.get();
+      if(snapshot != null)
+      {
+         return (snapshot.data.getOrDefault(backendIdentifier, Map.of()).getOrDefault(table.getName(), Map.of()));
+      }
+
       Map<String, Map<Serializable, QRecord>> dataForBackend = data.computeIfAbsent(backendIdentifier, k -> Collections.synchronizedMap(new HashMap<>()));
       return (dataForBackend.computeIfAbsent(table.getName(), k -> Collections.synchronizedMap(new HashMap<>())));
    }
@@ -215,7 +328,7 @@ public class MemoryRecordStore
    {
       QueryInput queryInput = input.newQueryInput();
       List<Serializable> keys = new ArrayList<>();
-      for(QRecord record : getTableData(queryInput.getTable()).values())
+      for(QRecord record : snapshot(getTableData(queryInput.getTable())))
       {
          if(BackendQueryFilterUtils.doesRecordMatch(queryInput.getFilter(), record))
          {
@@ -234,7 +347,7 @@ public class MemoryRecordStore
    {
       QueryInput query = input.newQueryInput();
       List<QRecord> result = new ArrayList<>();
-      for(QRecord record : getTableData(query.getTable()).values())
+      for(QRecord record : snapshot(getTableData(query.getTable())))
       {
          if(input.matches(record))
          {
@@ -255,7 +368,7 @@ public class MemoryRecordStore
    {
       QueryInput query = input.newQueryInput();
       List<QRecord> result = new ArrayList<>();
-      for(QRecord record : getTableData(query.getTable()).values())
+      for(QRecord record : snapshot(getTableData(query.getTable())))
       {
          if(input.matches(record))
          {
@@ -281,7 +394,7 @@ public class MemoryRecordStore
 
       incrementStatistic(input);
 
-      Collection<QRecord> tableData = getTableData(input.getTable()).values();
+      Collection<QRecord> tableData = snapshot(getTableData(input.getTable()));
       List<QRecord>       records   = new ArrayList<>();
 
       QQueryFilter filter       = clonedOrNewFilter(input.getFilter());
@@ -318,6 +431,11 @@ public class MemoryRecordStore
       {
          QRecord recordToReturn = new QRecord(storedRecord);
          recordToReturn.setTableName(input.getTableName());
+         JsonFieldUtils.project(recordToReturn, input.getTable(), "");
+         for(QueryJoin queryJoin : queryJoins)
+         {
+            JsonFieldUtils.project(recordToReturn, personalizedTables.get(queryJoin.getJoinTable()), queryJoin.getJoinTableOrItsAlias() + ".");
+         }
          if(BackendQueryFilterUtils.doesRecordMatch(filter, joinsContext, recordToReturn))
          {
             addVirtualFieldsToRecord(recordToReturn, input.getTable(), null, input.getFieldNamesToInclude(), joinsContext);
@@ -454,7 +572,7 @@ public class MemoryRecordStore
    {
       List<QRecord>  crossProduct = new ArrayList<>();
       QTableMetaData leftTable    = table;
-      for(QRecord record : getTableData(leftTable).values())
+      for(QRecord record : snapshot(getTableData(leftTable)))
       {
          QRecord productRecord = new QRecord().withTableName(table.getName());
          addRecordToProduct(productRecord, record, null);
@@ -464,7 +582,7 @@ public class MemoryRecordStore
       for(QueryJoin queryJoin : queryJoins)
       {
          QTableMetaData      nextTable        = joinsContext.getTable(queryJoin.getJoinTable());
-         Collection<QRecord> nextTableRecords = getTableData(nextTable).values();
+         Collection<QRecord> nextTableRecords = snapshot(getTableData(nextTable));
          QQueryFilter joinFilter = new QQueryFilter();
          joinFilter.setCriteria(queryJoin.getSecurityCriteria());
 
@@ -620,6 +738,24 @@ public class MemoryRecordStore
     *******************************************************************************/
    public List<QRecord> insert(InsertInput input, boolean returnInsertedRecords) throws QException
    {
+      snapshotLock.readLock().lock();
+      try
+      {
+         return (doInsert(input, returnInsertedRecords));
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private List<QRecord> doInsert(InsertInput input, boolean returnInsertedRecords) throws QException
+   {
       incrementStatistic(input);
 
       if(input.getRecords() == null)
@@ -656,7 +792,16 @@ public class MemoryRecordStore
 
             if(CollectionUtils.nullSafeHasContents(recordToInsert.getErrors()))
             {
-               outputRecords.add(recordToInsert);
+               if(table.getFields().values().stream().anyMatch(field -> field.getBackendStorage() instanceof JsonPathStorage))
+               {
+                  QRecord projected = new QRecord(recordToInsert);
+                  JsonFieldUtils.project(projected, table, "");
+                  outputRecords.add(projected);
+               }
+               else
+               {
+                  outputRecords.add(recordToInsert);
+               }
                continue;
             }
 
@@ -675,7 +820,16 @@ public class MemoryRecordStore
             if(key == null || existingKeys.contains(key))
             {
                recordToInsert.addError(new BadInputStatusMessage(key == null ? "A primary key is required" : "A record with this primary key already exists"));
-               outputRecords.add(recordToInsert);
+               if(table.getFields().values().stream().anyMatch(field -> field.getBackendStorage() instanceof JsonPathStorage))
+               {
+                  QRecord projected = new QRecord(recordToInsert);
+                  JsonFieldUtils.project(projected, table, "");
+                  outputRecords.add(projected);
+               }
+               else
+               {
+                  outputRecords.add(recordToInsert);
+               }
                continue;
             }
 
@@ -687,11 +841,35 @@ public class MemoryRecordStore
                nextSerial = recordToInsert.getValueInteger(primaryKeyField.getName()) + 1;
             }
 
+            QRecord logicalValues = new QRecord(recordToInsert);
+            for(QFieldMetaData field : table.getFields().values())
+            {
+               if(field.getBackendStorage() instanceof JsonPathStorage)
+               {
+                  recordToInsert.getValues().remove(field.getName());
+               }
+            }
+            for(QFieldMetaData field : table.getFields().values())
+            {
+               if(field.getBackendStorage() instanceof JsonPathStorage)
+               {
+                  JsonFieldUtils.write(recordToInsert, field, logicalValues.getValue(field.getName()));
+               }
+            }
             tableData.put(recordToInsert.getValue(primaryKeyField.getName()), recordToInsert);
             existingKeys.add(key);
             if(returnInsertedRecords)
             {
-               outputRecords.add(recordToInsert);
+               if(table.getFields().values().stream().anyMatch(field -> field.getBackendStorage() instanceof JsonPathStorage))
+               {
+                  QRecord projected = new QRecord(recordToInsert);
+                  JsonFieldUtils.project(projected, table, "");
+                  outputRecords.add(projected);
+               }
+               else
+               {
+                  outputRecords.add(recordToInsert);
+               }
             }
          }
 
@@ -784,11 +962,11 @@ public class MemoryRecordStore
          {
             try
             {
-               recordToInsert.setValue(field.getName(), ValueUtils.getValueAsFieldType(field.getType(), value));
+               recordToInsert.setValue(field.getName(), ValueUtils.getValueAsFieldType(table, field, value));
             }
             catch(Exception e)
             {
-               LOG.info("Error converting value to field's type", e, logPair("fieldName", field.getName()), logPair("value", value));
+               LOG.info("Error converting value to field's type", e, logPair("fieldName", field.getName()), logPair("value", ClassifiedValues.diagnostic(table, field.getName(), value)));
             }
          }
       }
@@ -801,6 +979,24 @@ public class MemoryRecordStore
     *******************************************************************************/
    public List<QRecord> update(UpdateInput input, boolean returnUpdatedRecords) throws QException
    {
+      snapshotLock.readLock().lock();
+      try
+      {
+         return (doUpdate(input, returnUpdatedRecords));
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private List<QRecord> doUpdate(UpdateInput input, boolean returnUpdatedRecords) throws QException
+   {
       if(input.getRecords() == null)
       {
          return (new ArrayList<>());
@@ -811,53 +1007,104 @@ public class MemoryRecordStore
 
       List<QRecord>  outputRecords   = new ArrayList<>();
       QFieldMetaData primaryKeyField = table.getField(table.getPrimaryKeyField());
-      for(QRecord record : input.getRecords())
+      synchronized(tableData)
       {
-         Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
-
-         if(CollectionUtils.nullSafeHasContents(record.getErrors()))
+         for(QRecord record : input.getRecords())
          {
-            outputRecords.add(record);
-            continue;
-         }
+            Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, record.getValue(primaryKeyField.getName()));
 
-         if(tableData.containsKey(primaryKeyValue))
-         {
-            QRecord recordToUpdate = tableData.get(primaryKeyValue);
-            for(Map.Entry<String, Serializable> valueEntry : record.getValues().entrySet())
-            {
-               if(!table.getFields().containsKey(valueEntry.getKey()))
-               {
-                  /////////////////////////////////////////////////////////////
-                  // don't update values in fields that aren't in the table  //
-                  // (or that the user doesn't have, due to personalization) //
-                  /////////////////////////////////////////////////////////////
-                  continue;
-               }
-
-               String fieldName = valueEntry.getKey();
-               try
-               {
-                  ///////////////////////////////////////////////
-                  // try to make field values match field type //
-                  ///////////////////////////////////////////////
-                  recordToUpdate.setValue(fieldName, ValueUtils.getValueAsFieldType(table.getField(fieldName).getType(), valueEntry.getValue()));
-               }
-               catch(Exception e)
-               {
-                  LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", valueEntry.getValue()));
-                  recordToUpdate.setValue(fieldName, valueEntry.getValue());
-               }
-            }
-
-            if(returnUpdatedRecords)
+            if(CollectionUtils.nullSafeHasContents(record.getErrors()))
             {
                outputRecords.add(record);
+               continue;
+            }
+
+            if(tableData.containsKey(primaryKeyValue))
+            {
+               ////////////////////////////////////////////////////////////////////
+               // copy on write: readers on other threads may be iterating the   //
+               // stored record (e.g., building a join), so never mutate it      //
+               ////////////////////////////////////////////////////////////////////
+               QRecord recordToUpdate = new QRecord(tableData.get(primaryKeyValue));
+               for(Map.Entry<String, Serializable> valueEntry : record.getValues().entrySet())
+               {
+                  if(!table.getFields().containsKey(valueEntry.getKey()))
+                  {
+                     /////////////////////////////////////////////////////////////
+                     // don't update values in fields that aren't in the table  //
+                     // (or that the user doesn't have, due to personalization) //
+                     /////////////////////////////////////////////////////////////
+                     continue;
+                  }
+
+                  String fieldName = valueEntry.getKey();
+                  try
+                  {
+                     ///////////////////////////////////////////////
+                     // try to make field values match field type //
+                     ///////////////////////////////////////////////
+                     JsonFieldUtils.write(recordToUpdate, table.getField(fieldName), ValueUtils.getValueAsFieldType(table, table.getField(fieldName), valueEntry.getValue()));
+                  }
+                  catch(Exception e)
+                  {
+                     LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", ClassifiedValues.diagnostic(table, fieldName, valueEntry.getValue())));
+                     recordToUpdate.setValue(fieldName, valueEntry.getValue());
+                  }
+               }
+
+               tableData.put(primaryKeyValue, recordToUpdate);
+
+               if(returnUpdatedRecords)
+               {
+                  outputRecords.add(record);
+               }
             }
          }
       }
-
       return (outputRecords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Atomic conditional update: under the table's lock, set the values on every
+    ** row that matches the filter; return how many rows changed.
+    *******************************************************************************/
+   public int conditionalUpdate(ConditionalUpdateInput input) throws QException
+   {
+      snapshotLock.readLock().lock();
+      try
+      {
+         QTableMetaData             table     = input.getTable();
+         Map<Serializable, QRecord> tableData = getTableData(table);
+         int                        count     = 0;
+         synchronized(tableData)
+         {
+            for(Map.Entry<Serializable, QRecord> stored : new ArrayList<>(tableData.entrySet()))
+            {
+               if(BackendQueryFilterUtils.doesRecordMatch(input.getFilter(), stored.getValue()))
+               {
+                  ////////////////////////////////////////////////
+                  // copy on write (see update): never mutate a //
+                  // stored record another thread may be reading //
+                  ////////////////////////////////////////////////
+                  QRecord record = new QRecord(stored.getValue());
+                  for(Map.Entry<String, Serializable> entry : input.getValues().entrySet())
+                  {
+                     QFieldMetaData field = table.getField(entry.getKey());
+                     record.setValue(field.getName(), ValueUtils.getValueAsFieldType(field.getType(), entry.getValue()));
+                  }
+                  tableData.put(stored.getKey(), record);
+                  count++;
+               }
+            }
+         }
+         return (count);
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
    }
 
 
@@ -866,6 +1113,24 @@ public class MemoryRecordStore
     **
     *******************************************************************************/
    public int delete(DeleteInput input) throws QException
+   {
+      snapshotLock.readLock().lock();
+      try
+      {
+         return (doDelete(input));
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private int doDelete(DeleteInput input) throws QException
    {
       if(input.getPrimaryKeys() == null)
       {
@@ -878,7 +1143,7 @@ public class MemoryRecordStore
       int                        rowsDeleted     = 0;
       for(Serializable primaryKeyValue : input.getPrimaryKeys())
       {
-         primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKeyValue);
+         primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKeyValue);
          if(tableData.containsKey(primaryKeyValue))
          {
             tableData.remove(primaryKeyValue);
@@ -978,6 +1243,11 @@ public class MemoryRecordStore
     *******************************************************************************/
    public AggregateOutput aggregate(AggregateInput aggregateInput) throws QException
    {
+      if(!AggregateAnalysis.requiredCapabilities(aggregateInput).isEmpty() || aggregateInput.getSamplePercent() != null)
+      {
+         return (new StreamedAggregateEvaluator().execute(aggregateInput, Integer.MAX_VALUE, true));
+      }
+
       //////////////////////
       // first do a query //
       //////////////////////
@@ -1145,50 +1415,8 @@ public class MemoryRecordStore
     *******************************************************************************/
    private Serializable applyFormatString(Serializable value, GroupBy groupBy) throws QException
    {
-      if(value == null)
-      {
-         return (null);
-      }
-
-      String formatString = groupBy.getFormatString();
-
-      try
-      {
-         if(formatString.startsWith("DATE_FORMAT"))
-         {
-            /////////////////////////////////////////////////////////////////////////////
-            // one known-use case we have here looks like this:                        //
-            // DATE_FORMAT(CONVERT_TZ(%s, 'UTC', 'UTC'), '%%Y-%%m-%%dT%%H')            //
-            // ... for now, let's just try to support the formatting bit at the end... //
-            // todo - support the CONVERT_TZ bit too!                                  //
-            /////////////////////////////////////////////////////////////////////////////
-            String            sqlDateTimeFormat = formatString.replaceFirst(".*'%%", "%%").replaceFirst("'.*", "");
-            DateTimeFormatter dateTimeFormatter = DateTimeGroupBy.sqlDateFormatToSelectedDateTimeFormatter(sqlDateTimeFormat);
-            if(dateTimeFormatter == null)
-            {
-               throw (new QException("Unsupported sql dateTime format string [" + sqlDateTimeFormat + "] for MemoryRecordStore"));
-            }
-
-            String        valueAsString  = ValueUtils.getValueAsString(value);
-            Instant       valueAsInstant = ValueUtils.getValueAsInstant(valueAsString);
-            ZonedDateTime zonedDateTime  = valueAsInstant.atZone(ZoneId.systemDefault());
-            return (dateTimeFormatter.format(zonedDateTime));
-         }
-         else
-         {
-            throw (new QException("Unsupported group-by format string [" + formatString + "] for MemoryRecordStore"));
-         }
-      }
-      catch(QException qe)
-      {
-         throw (qe);
-      }
-      catch(Exception e)
-      {
-         throw (new QException("Error applying format string [" + formatString + "] to group by value [" + value + "]", e));
-      }
+      return (AggregateAnalysis.applyFormatString(value, groupBy));
    }
-
 
 
    /*******************************************************************************
@@ -1317,6 +1545,7 @@ public class MemoryRecordStore
                .stream().boxed().map(d -> new BigDecimal(d)).findFirst().orElse(null);
             default -> throw (new IllegalArgumentException("Cannot perform " + operator + " aggregate on " + fieldType + " field."));
          };
+         default -> throw (new IllegalArgumentException("Unsupported legacy aggregate " + operator));
       };
 
       return ValueUtils.getValueAsFieldType(fieldType, aggregateValue);
@@ -1432,4 +1661,16 @@ public class MemoryRecordStore
    }
 
 
+
+   /*******************************************************************************
+    ** A table's records, copied under its lock: callers iterate the copy, so a
+    ** concurrent insert or delete on another thread cannot break the iteration.
+    *******************************************************************************/
+   private static List<QRecord> snapshot(Map<Serializable, QRecord> tableData)
+   {
+      synchronized(tableData)
+      {
+         return (new ArrayList<>(tableData.values()));
+      }
+   }
 }

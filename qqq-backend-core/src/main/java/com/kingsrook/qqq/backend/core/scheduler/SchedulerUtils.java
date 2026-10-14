@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.ScheduledJobs;
 import com.kingsrook.qqq.backend.core.logging.LogPair;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
@@ -81,6 +82,7 @@ public class SchedulerUtils
 
       try
       {
+         QContext.setQInstance(qInstance);
          QContext.init(qInstance, sessionSupplier.get());
 
          if(process.getVariantBackend() == null || VariantRunStrategy.PARALLEL.equals(process.getVariantRunStrategy()))
@@ -133,6 +135,16 @@ public class SchedulerUtils
       }
 
       Thread.currentThread().setName("ScheduledProcess>" + process.getName());
+
+      //////////////////////////////////////////////////////////////////////////////
+      // a process opted in to durable jobs runs as a job (not across variants): //
+      // the scheduler only launches it, and the job runtime does the work       //
+      //////////////////////////////////////////////////////////////////////////////
+      if(backendVariantData == null && ScheduledJobs.launchIfDurable(process, processInputValues) != null)
+      {
+         return;
+      }
+
       LOG.debug("Running Scheduled Process [" + process.getName() + "] with values [" + processInputValues + "]");
 
       RunProcessInput runProcessInput = new RunProcessInput();
@@ -159,6 +171,7 @@ public class SchedulerUtils
          runProcessInput.setCallback(QProcessCallbackFactory.forPrimaryKey(table.getPrimaryKeyField(), recordId));
       }
 
+      runProcessInput.withPermissionBypass("scheduled process");
       QContext.pushAction(runProcessInput);
 
       RunProcessAction runProcessAction = new RunProcessAction();
@@ -180,6 +193,7 @@ public class SchedulerUtils
          QueryInput queryInput = new QueryInput();
          queryInput.setTableName(backendMetaData.getBackendVariantsConfig().getOptionsTableName());
          queryInput.setFilter(backendMetaData.getBackendVariantsConfig().getOptionsFilter());
+         queryInput.withPermissionBypass("scheduler backend-variant lookup");
 
          QueryOutput queryOutput = new QueryAction().execute(queryInput);
          records = queryOutput.getRecords();

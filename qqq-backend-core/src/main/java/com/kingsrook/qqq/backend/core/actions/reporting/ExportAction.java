@@ -35,7 +35,11 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobStatus;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QReportingException;
@@ -97,6 +101,15 @@ public class ExportAction
     *******************************************************************************/
    public void preExecute(ExportInput exportInput) throws QException
    {
+      if(CorePermissionEnforcer.checkTablePermissions(exportInput, TablePermissionSubType.READ))
+      {
+         PermissionsHelper.checkJoinedTableReadPermissions(exportInput, getQueryJoins(exportInput), exportInput.getQueryFilter());
+      }
+      if(CorePermissionEnforcer.shouldEnforceFieldAccess(exportInput))
+      {
+         FieldAccessHelper.assertSelectedFieldsAllowed(exportInput.getTableName(), getQueryJoins(exportInput), exportInput.getFieldNames());
+         FieldAccessHelper.assertCriteriaAllowed(exportInput.getTableName(), getQueryJoins(exportInput), exportInput.getQueryFilter(), null, false);
+      }
       QTableMetaData table = TableMetaDataPersonalizerAction.execute(exportInput);
       exportInput.setTableMetaData(table);
 
@@ -206,7 +219,24 @@ public class ExportAction
     *******************************************************************************/
    public ExportOutput execute(ExportInput exportInput) throws QException
    {
-      QTableMetaData table = TableMetaDataPersonalizerAction.execute(exportInput);
+      ////////////////////////////////////////////////////////////////////////////
+      // when enforcing permissions: READ on the table, READ on joined tables,  //
+      // and no filter / field reference to fields denied by a security lock.   //
+      // The export's query (run below, in an async job) is told to enforce too //
+      // so the same rules apply to the records it streams.                     //
+      ////////////////////////////////////////////////////////////////////////////
+      boolean enforce = false;
+      if(exportInput.getTableName() != null && exportInput.getTable() != null)
+      {
+         enforce = CorePermissionEnforcer.checkTablePermissions(exportInput, TablePermissionSubType.READ);
+         if(CorePermissionEnforcer.shouldEnforceFieldAccess(exportInput))
+         {
+            FieldAccessHelper.assertSelectedFieldsAllowed(exportInput.getTableName(), getQueryJoins(exportInput), exportInput.getFieldNames());
+            FieldAccessHelper.assertCriteriaAllowed(exportInput.getTableName(), getQueryJoins(exportInput), exportInput.getQueryFilter(), null, false);
+         }
+      }
+
+      QTableMetaData table = TableMetaDataPersonalizerAction.execute(exportInput, CorePermissionEnforcer.shouldEnforceFieldAccess(exportInput));
       exportInput.setTableMetaData(table);
 
       if(!preExecuteRan)
@@ -228,6 +258,14 @@ public class ExportAction
       queryInput.setTableName(exportInput.getTableName());
       queryInput.setFilter(exportInput.getQueryFilter());
       queryInput.setInputSource(exportInput.getInputSource());
+      if(enforce)
+      {
+         queryInput.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+      }
+      else if(exportInput.getPermissionEnforcement() == PermissionEnforcement.SKIP)
+      {
+         queryInput.withPermissionBypass(exportInput.getPermissionBypassReason());
+      }
 
       queryInput.setQueryJoins(getQueryJoins(exportInput));
 
@@ -277,7 +315,7 @@ public class ExportAction
       // run the query action as an async job //
       //////////////////////////////////////////
       AsyncJobManager asyncJobManager = new AsyncJobManager();
-      String          queryJobUUID    = asyncJobManager.startJob("ReportAction>QueryAction", (status) -> (queryAction.execute(queryInput)));
+      String          queryJobUUID    = asyncJobManager.startJob("ReportAction>QueryAction", (status) -> (queryAction.execute(queryInput, "export")));
       LOG.info("Started query job [" + queryJobUUID + "] for report");
 
       AsyncJobState  queryJobState  = AsyncJobState.RUNNING;
@@ -439,6 +477,14 @@ public class ExportAction
          // skip heavy fields.  they aren't fetched, and we generally think we don't want them. //
          /////////////////////////////////////////////////////////////////////////////////////////
          if(field.getIsHeavy())
+         {
+            continue;
+         }
+
+         ///////////////////////////////////////////////////////////////////
+         // skip sensitive fields, unless the input explicitly wants them //
+         ///////////////////////////////////////////////////////////////////
+         if(field.getIsSensitive() && !exportInput.getIncludeSensitiveFields())
          {
             continue;
          }

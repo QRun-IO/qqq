@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-from next_acceptance import accepted_release, read_json, require
+from next_acceptance import read_json, require
 
 MAX_ARCHIVE_BYTES = 2 * 1024**3
 MAX_EXPANDED_BYTES = 4 * 1024**3
@@ -144,28 +144,19 @@ def coverage(sample, environment, report_only):
                  and staged['ready'] is True and staged['source_sha'] == source_sha(sample, environment)
                  and staged['archive_sha256'] == archive_sha and staged['receipt_sha256'] == receipt_sha)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
-        # Missing or invalid staging must leave ready=False so strict coverage fails below.
+        # Only a matching successful stage may forward the reviewed receipt pin.
         pass
     command = [sys.executable, '-B', str(sample / 'verify-feature-coverage.py'), '--stage', 'source']
-    candidate_version = environment.get('QQQ_ACCEPTED_NEXT_CANDIDATE', '')
-    try:
-        accepted_next = accepted_release(sample, candidate_version, before_publish=True)
-        if accepted_next:
-            require(not environment.get('CIRCLE_TAG'), 'Next RC11 candidate exception is not allowed in a tag pipeline')
-            if environment.get('CIRCLECI') or 'CIRCLE_BRANCH' in environment:
-                require(environment.get('CIRCLE_BRANCH') in ('release/4.1', 'release/4.1.0'),
-                        'Next RC11 candidate exception is only allowed on the 4.1 candidate branch')
-    except (OSError, ValueError, KeyError, TypeError):
-        print('Invalid candidate binding for the approved Next RC11 exception', file=sys.stderr)
-        return 1
-    if candidate_version:
-        command += ['--candidate-version', candidate_version]
     if ready:
         command += ['--next-receipt-sha256', receipt_sha]
+    elif any(environment.get(key) for key in ('QQQ_NEXT_CI_BUNDLE_URL', 'QQQ_NEXT_BUNDLE_URL',
+                                              'QQQ_NEXT_BUNDLE_SHA256', 'QQQ_NEXT_RECEIPT_SHA256')):
+        # Supplied but rejected staging must reach the verifier as invalid evidence, not absence.
+        command += ['--next-receipt-sha256', 'invalid-stage']
     if report_only:
         command += ['--report-only']
     status = subprocess.run(command, cwd=sample).returncode
-    return status if report_only or ready or accepted_next else 1
+    return status
 
 
 def main(argv=None, sample=None, environment=None):

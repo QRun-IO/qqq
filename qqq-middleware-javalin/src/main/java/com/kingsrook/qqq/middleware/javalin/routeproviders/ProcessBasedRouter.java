@@ -198,7 +198,7 @@ public class ProcessBasedRouter implements QJavalinRouteProviderInterface
          RunProcessInput input = new RunProcessInput();
          input.setProcessName(processName);
 
-         QContext.init(qInstance, new QSystemUserSession());
+         QContext.init(qInstance, new QSystemUserSession(qInstance));
 
          boolean isAuthenticated = false;
          if(routeAuthenticator == null)

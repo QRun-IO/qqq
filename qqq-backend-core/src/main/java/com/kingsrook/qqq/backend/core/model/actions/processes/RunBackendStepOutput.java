@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
@@ -35,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 
@@ -44,6 +46,8 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
  *******************************************************************************/
 public class RunBackendStepOutput extends AbstractActionOutput implements Serializable
 {
+   private transient List<OneTimeSecret> oneTimeSecrets = new ArrayList<>();
+
    private String processName;
 
    private ProcessState processState;
@@ -454,4 +458,32 @@ public class RunBackendStepOutput extends AbstractActionOutput implements Serial
    {
       processPayload.toProcessState(getProcessState());
    }
+
+
+   /*******************************************************************************
+    ** Secrets for the producing invocation only, excluded from state and serialization.
+    ** Async jobs cannot deliver these: status polling returns only stored state.
+    *******************************************************************************/
+   @JsonIgnore
+   public List<OneTimeSecret> getOneTimeSecrets()
+   {
+      if(oneTimeSecrets == null)
+      {
+         oneTimeSecrets = new ArrayList<>();
+      }
+      return (oneTimeSecrets);
+   }
+
+
+
+   /*******************************************************************************
+    ** Return a secret only in this invocation's synchronous HTTP response.
+    ** Never put the secret in values or records. Async status cannot recover it.
+    *******************************************************************************/
+   public RunBackendStepOutput addOneTimeSecret(OneTimeSecret secret)
+   {
+      getOneTimeSecrets().add(secret);
+      return (this);
+   }
+
 }

@@ -23,6 +23,8 @@ package com.kingsrook.qqq.backend.core.model.metadata.frontend;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 
 
@@ -71,4 +73,28 @@ public class QFrontendVirtualFieldMetaData extends QFrontendFieldMetaData
       return isQueryCriteria;
    }
 
+
+
+
+   /*******************************************************************************
+    ** Construct virtual field capabilities for a session.
+    *******************************************************************************/
+   public QFrontendVirtualFieldMetaData(QVirtualFieldMetaData fieldMetaData, FieldAccessTier tier)
+   {
+      super(fieldMetaData, tier);
+      this.isQueryCriteria = fieldMetaData.getIsQueryCriteria();
+      this.isQuerySelectable = fieldMetaData.getIsQuerySelectable();
+   }
+
+
+
+   /*******************************************************************************
+    ** Construct virtual field capabilities including enumeration policy.
+    *******************************************************************************/
+   public QFrontendVirtualFieldMetaData(QVirtualFieldMetaData fieldMetaData, FieldAccessDecision decision)
+   {
+      super(fieldMetaData, decision);
+      this.isQueryCriteria = fieldMetaData.getIsQueryCriteria();
+      this.isQuerySelectable = fieldMetaData.getIsQuerySelectable();
+   }
 }

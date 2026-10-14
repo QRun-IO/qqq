@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.s3.utils;
 
 
-import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -31,33 +30,35 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsV2Request;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.filesystem.base.model.metadata.AbstractFilesystemTableBackendDetails;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.local.actions.AbstractFilesystemAction;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 
 /*******************************************************************************
- ** Utility methods for working with AWS S3.
- **
- ** Note:  May need a constructor (or similar) in the future that takes the
- ** S3BackendMetaData - e.g., if we need some metaData to construct the AmazonS3
- ** (api client) object, such as region, or authentication.
+ ** Utility methods for working with AWS S3 (or any S3-compatible store), on an
+ ** AWS SDK v2 S3Client.  Actions set the client built by S3ClientFactory from
+ ** their backend's meta data.
  *******************************************************************************/
 public class S3Utils
 {
    private static final QLogger LOG = QLogger.getLogger(S3Utils.class);
 
-   private AmazonS3 amazonS3;
+   private S3Client s3Client;
 
 
 
@@ -78,6 +79,18 @@ public class S3Utils
     ** and also - (possibly) apply a file-name filter (based on the table's details).
     *******************************************************************************/
    public List<S3ObjectSummary> listObjectsInBucketMatchingGlob(String bucketName, String path, String glob, String requestedPath, AbstractFilesystemTableBackendDetails tableDetails) throws QException
+   {
+      return (listObjectsInBucketMatchingGlob(bucketName, path, glob, requestedPath, tableDetails, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** List the objects in an S3 bucket matching a glob, as above, failing with a
+    ** FilesystemException (instead of exhausting memory) if more than
+    ** maxListedObjects objects match.  A null maxListedObjects means no cap.
+    *******************************************************************************/
+   public List<S3ObjectSummary> listObjectsInBucketMatchingGlob(String bucketName, String path, String glob, String requestedPath, AbstractFilesystemTableBackendDetails tableDetails, Integer maxListedObjects) throws QException
    {
       //////////////////////////////////////////////////////////////////////////////////////////////////
       // s3 list requests find nothing if the path starts with a /, so strip away any leading slashes //
@@ -134,28 +147,28 @@ public class S3Utils
       String      pathMatcherArg = AbstractFilesystemAction.stripDuplicatedSlashes("glob:/" + path + "/" + glob);
       PathMatcher pathMatcher    = FileSystems.getDefault().getPathMatcher(pathMatcherArg);
 
-      ListObjectsV2Request listObjectsV2Request = new ListObjectsV2Request()
-         .withBucketName(bucketName)
-         .withPrefix(prefix);
-
-      ListObjectsV2Result   listObjectsV2Result = null;
-      List<S3ObjectSummary> rs                  = new ArrayList<>();
+      ListObjectsV2Response listObjectsV2Response = null;
+      List<S3ObjectSummary> rs                    = new ArrayList<>();
 
       do
       {
-         if(listObjectsV2Result != null)
+         ListObjectsV2Request.Builder listObjectsV2Request = ListObjectsV2Request.builder()
+            .bucket(bucketName)
+            .prefix(prefix);
+
+         if(listObjectsV2Response != null)
          {
-            listObjectsV2Request.setContinuationToken(listObjectsV2Result.getNextContinuationToken());
+            listObjectsV2Request.continuationToken(listObjectsV2Response.nextContinuationToken());
          }
          LOG.info("Listing bucket=" + bucketName + ", path=" + path + ", prefix=" + prefix + ", glob=" + glob);
-         listObjectsV2Result = getAmazonS3().listObjectsV2(listObjectsV2Request);
+         listObjectsV2Response = getS3Client().listObjectsV2(listObjectsV2Request.build());
 
          //////////////////////////////////
          // put files in the result list //
          //////////////////////////////////
-         for(S3ObjectSummary objectSummary : listObjectsV2Result.getObjectSummaries())
+         for(S3Object s3Object : listObjectsV2Response.contents())
          {
-            String key = objectSummary.getKey();
+            String key = s3Object.key();
 
             //////////////////////////////////////////////////////////////////////////////////////////////////////
             // it looks like keys in s3 can have duplicated /'s - so normalize those, to create a "sane" result //
@@ -182,10 +195,19 @@ public class S3Utils
                continue;
             }
 
-            rs.add(objectSummary);
+            //////////////////////////////////////////////////////////////////////////
+            // fail clearly, rather than run out of memory, on a too-large listing //
+            //////////////////////////////////////////////////////////////////////////
+            if(maxListedObjects != null && rs.size() >= maxListedObjects)
+            {
+               throw (new FilesystemException("Listing bucket [" + bucketName + "] with prefix [" + prefix + "] found more than " + maxListedObjects
+                  + " matching objects.  Narrow the table's path or glob, or raise the backend's maxListedObjects (zero or negative disables the cap)."));
+            }
+
+            rs.add(S3ObjectSummary.of(bucketName, s3Object));
          }
       }
-      while(listObjectsV2Result.isTruncated());
+      while(Boolean.TRUE.equals(listObjectsV2Response.isTruncated()));
 
       return rs;
    }
@@ -197,7 +219,7 @@ public class S3Utils
     *******************************************************************************/
    public InputStream getObjectAsInputStream(S3ObjectSummary s3ObjectSummary)
    {
-      return getAmazonS3().getObject(s3ObjectSummary.getBucketName(), s3ObjectSummary.getKey()).getObjectContent();
+      return (getS3Client().getObject(GetObjectRequest.builder().bucket(s3ObjectSummary.getBucketName()).key(s3ObjectSummary.getKey()).build()));
    }
 
 
@@ -207,10 +229,17 @@ public class S3Utils
     *******************************************************************************/
    public void writeFile(String bucket, String key, byte[] contents, String contentType)
    {
-      ObjectMetadata objectMetadata = new ObjectMetadata();
-      objectMetadata.setContentLength(contents.length);
-      objectMetadata.setContentType(contentType);
-      getAmazonS3().putObject(bucket, key, new ByteArrayInputStream(contents), objectMetadata);
+      PutObjectRequest.Builder putObjectRequest = PutObjectRequest.builder()
+         .bucket(bucket)
+         .key(key)
+         .contentLength((long) contents.length);
+
+      if(contentType != null)
+      {
+         putObjectRequest.contentType(contentType);
+      }
+
+      getS3Client().putObject(putObjectRequest.build(), RequestBody.fromBytes(contents));
    }
 
 
@@ -225,7 +254,7 @@ public class S3Utils
       //////////////////////////////////////////////////////////////////////////////////////////////
       try
       {
-         getAmazonS3().deleteObject(bucketName, key);
+         getS3Client().deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(key).build());
       }
       catch(Exception e)
       {
@@ -245,8 +274,13 @@ public class S3Utils
       //////////////////////////////////////////////////////////////////////////////////////////////
       try
       {
-         getAmazonS3().copyObject(bucketName, source, bucketName, destination);
-         getAmazonS3().deleteObject(bucketName, source);
+         getS3Client().copyObject(CopyObjectRequest.builder()
+            .sourceBucket(bucketName)
+            .sourceKey(source)
+            .destinationBucket(bucketName)
+            .destinationKey(destination)
+            .build());
+         getS3Client().deleteObject(DeleteObjectRequest.builder().bucket(bucketName).key(source).build());
       }
       catch(Exception e)
       {
@@ -257,27 +291,27 @@ public class S3Utils
 
 
    /*******************************************************************************
-    ** Setter for AmazonS3 client object.
+    ** Setter for the S3 client.
     *******************************************************************************/
-   public void setAmazonS3(AmazonS3 amazonS3)
+   public void setS3Client(S3Client s3Client)
    {
-      this.amazonS3 = amazonS3;
+      this.s3Client = s3Client;
    }
 
 
 
    /*******************************************************************************
-    ** Getter for AmazonS3 client object.
+    ** Getter for the S3 client.  If none was set, uses the shared client for a
+    ** default (us-east-1, default credential chain) AWS connection.
     *******************************************************************************/
-   public AmazonS3 getAmazonS3()
+   public S3Client getS3Client()
    {
-      if(amazonS3 == null)
+      if(s3Client == null)
       {
-         // TODO - get this (and other props?) from backend meta data
-         amazonS3 = AmazonS3ClientBuilder.standard().withRegion(Regions.US_EAST_1).build();
+         s3Client = S3ClientFactory.getClient(new S3BackendMetaData().withRegion("us-east-1"));
       }
 
-      return amazonS3;
+      return (s3Client);
    }
 
 }

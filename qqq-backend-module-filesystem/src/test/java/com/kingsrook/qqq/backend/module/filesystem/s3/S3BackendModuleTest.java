@@ -23,7 +23,6 @@ package com.kingsrook.qqq.backend.module.filesystem.s3;
 
 import java.util.List;
 import java.util.UUID;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -31,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.TestUtils;
 import com.kingsrook.qqq.backend.module.filesystem.exceptions.FilesystemException;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.AbstractS3Action;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;

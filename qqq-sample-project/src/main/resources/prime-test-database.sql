@@ -163,3 +163,139 @@ CREATE TABLE field_lab
    inclusive_clipped_value DECIMAL(10, 2),
    clipped_value DECIMAL(10, 2)
 );
+
+
+-- Related-record picker sample (docs/RELATED-RECORD-PICKER.md): customers, SKUs, tags, sales orders
+DROP TABLE IF EXISTS sales_order_tag;
+DROP TABLE IF EXISTS sales_order_line;
+DROP TABLE IF EXISTS sales_order;
+DROP TABLE IF EXISTS tag;
+DROP TABLE IF EXISTS sku;
+DROP TABLE IF EXISTS customer;
+CREATE TABLE customer
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT NOW(),
+   modify_date TIMESTAMP DEFAULT NOW(),
+   name VARCHAR(100) NOT NULL,
+   email VARCHAR(250),
+   phone VARCHAR(40),
+   region VARCHAR(40),
+   is_active BOOLEAN DEFAULT TRUE
+);
+CREATE TABLE sku
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT NOW(),
+   modify_date TIMESTAMP DEFAULT NOW(),
+   code VARCHAR(40) NOT NULL,
+   name VARCHAR(100) NOT NULL,
+   description VARCHAR(250),
+   price DECIMAL(12, 2),
+   region VARCHAR(40),
+   is_active BOOLEAN DEFAULT TRUE
+);
+CREATE TABLE tag
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT NOW(),
+   modify_date TIMESTAMP DEFAULT NOW(),
+   name VARCHAR(40) NOT NULL
+);
+CREATE TABLE sales_order
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT NOW(),
+   modify_date TIMESTAMP DEFAULT NOW(),
+   order_no VARCHAR(40) NOT NULL,
+   customer_id INTEGER,
+   region VARCHAR(40),
+   order_date DATE
+);
+CREATE TABLE sales_order_line
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT NOW(),
+   modify_date TIMESTAMP DEFAULT NOW(),
+   sales_order_id INTEGER NOT NULL,
+   sku_id INTEGER NOT NULL,
+   quantity INTEGER NOT NULL,
+   unit_price DECIMAL(12, 2)
+);
+CREATE TABLE sales_order_tag
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT NOW(),
+   modify_date TIMESTAMP DEFAULT NOW(),
+   sales_order_id INTEGER NOT NULL,
+   tag_id INTEGER NOT NULL
+);
+
+INSERT INTO customer (id, name, email, phone, region, is_active) VALUES (1, 'Acme Corp', 'orders@acme.example', '555-0100', 'West', TRUE);
+INSERT INTO customer (id, name, email, phone, region, is_active) VALUES (2, 'Bolt Brothers', 'buy@boltbros.example', '555-0101', 'East', TRUE);
+INSERT INTO customer (id, name, email, phone, region, is_active) VALUES (3, 'Cog & Co', 'hello@cogco.example', '555-0102', 'West', TRUE);
+INSERT INTO customer (id, name, email, phone, region, is_active) VALUES (4, 'Delta Supply', 'purchasing@delta.example', '555-0103', 'East', TRUE);
+INSERT INTO customer (id, name, email, phone, region, is_active) VALUES (5, 'Echo Industries', 'ap@echo.example', '555-0104', 'West', TRUE);
+INSERT INTO customer (id, name, email, phone, region, is_active) VALUES (6, 'Foxtrot Retail', 'store@foxtrot.example', '555-0105', 'East', FALSE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (1, 'WID-100', 'Widget', 'Standard widget', 9.50, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (2, 'WID-200', 'Widget Pro', 'Widget with the pro finish', 14.00, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (3, 'GAD-100', 'Gadget', 'Pocket gadget', 4.00, 'East', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (4, 'GAD-200', 'Gadget XL', 'Large gadget', 7.25, 'East', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (5, 'SPR-010', 'Sprocket', 'Steel sprocket', 2.10, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (6, 'SPR-020', 'Sprocket Twin', 'Paired sprockets', 3.80, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (7, 'BOL-005', 'Bolt M5', 'Box of 50', 5.00, 'East', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (8, 'BOL-008', 'Bolt M8', 'Box of 25', 6.40, 'East', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (9, 'NUT-005', 'Nut M5', 'Box of 100', 3.20, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (10, 'NUT-008', 'Nut M8', 'Box of 50', 3.90, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (11, 'GEA-030', 'Gear 30T', '30-tooth gear', 11.75, 'East', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (12, 'GEA-060', 'Gear 60T', '60-tooth gear', 18.20, 'East', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (13, 'BRK-001', 'Bracket', 'Angle bracket', 1.95, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (14, 'BRK-002', 'Bracket Heavy', 'Heavy angle bracket', 3.45, 'West', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (15, 'HIN-001', 'Hinge', 'Brass hinge', 4.60, 'East', TRUE);
+INSERT INTO sku (id, code, name, description, price, region, is_active) VALUES (16, 'OLD-001', 'Legacy Widget', 'Retired widget', 8.00, 'West', FALSE);
+INSERT INTO tag (id, name) VALUES (1, 'Rush');
+INSERT INTO tag (id, name) VALUES (2, 'Gift');
+INSERT INTO tag (id, name) VALUES (3, 'Wholesale');
+INSERT INTO tag (id, name) VALUES (4, 'Backorder');
+INSERT INTO tag (id, name) VALUES (5, 'VIP');
+INSERT INTO sales_order (id, order_no, customer_id, region, order_date) VALUES (1, 'SO-1001', 1, 'West', '2026-10-01');
+INSERT INTO sales_order (id, order_no, customer_id, region, order_date) VALUES (2, 'SO-1002', 2, 'East', '2026-10-05');
+INSERT INTO sales_order (id, order_no, customer_id, region, order_date) VALUES (3, 'SO-1003', NULL, 'West', '2026-10-12');
+INSERT INTO sales_order_line (id, sales_order_id, sku_id, quantity, unit_price) VALUES (1, 1, 1, 4, 9.50);
+INSERT INTO sales_order_line (id, sales_order_id, sku_id, quantity, unit_price) VALUES (2, 1, 5, 10, 2.10);
+INSERT INTO sales_order_line (id, sales_order_id, sku_id, quantity, unit_price) VALUES (3, 2, 3, 2, 4.00);
+INSERT INTO sales_order_tag (id, sales_order_id, tag_id) VALUES (1, 1, 1);
+INSERT INTO sales_order_tag (id, sales_order_id, tag_id) VALUES (2, 2, 3);
+ALTER TABLE customer ALTER COLUMN id RESTART WITH 100;
+ALTER TABLE sku ALTER COLUMN id RESTART WITH 100;
+ALTER TABLE tag ALTER COLUMN id RESTART WITH 100;
+ALTER TABLE sales_order ALTER COLUMN id RESTART WITH 100;
+ALTER TABLE sales_order_line ALTER COLUMN id RESTART WITH 100;
+ALTER TABLE sales_order_tag ALTER COLUMN id RESTART WITH 100;
+
+
+DROP TABLE IF EXISTS user_preference;
+CREATE TABLE user_preference
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT now(),
+   modify_date TIMESTAMP DEFAULT now(),
+   user_id VARCHAR(100) NOT NULL,
+   section_name VARCHAR(100) NOT NULL,
+   preference_name VARCHAR(100) NOT NULL,
+   preference_value MEDIUMTEXT
+);
+ALTER TABLE user_preference ADD UNIQUE u_user_preference (user_id, section_name, preference_name);
+
+DROP TABLE IF EXISTS place_address;
+DROP TABLE IF EXISTS state_city;
+DROP TABLE IF EXISTS country_state;
+DROP TABLE IF EXISTS country;
+CREATE TABLE country (id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80));
+CREATE TABLE country_state (id INTEGER AUTO_INCREMENT PRIMARY KEY, country_id INTEGER, name VARCHAR(80));
+CREATE TABLE state_city (id INTEGER AUTO_INCREMENT PRIMARY KEY, state_id INTEGER, name VARCHAR(80));
+CREATE TABLE place_address (id INTEGER AUTO_INCREMENT PRIMARY KEY, label VARCHAR(80), country_id INTEGER, state_id INTEGER, city_id INTEGER);
+INSERT INTO country (id, name) VALUES (1, 'USA'), (2, 'Canada');
+INSERT INTO country_state (id, country_id, name) VALUES (1, 1, 'Illinois'), (2, 1, 'Missouri'), (3, 2, 'Ontario'), (4, 2, 'Quebec');
+INSERT INTO state_city (id, state_id, name) VALUES (1, 1, 'Chester'), (2, 1, 'Springfield'), (3, 2, 'St. Louis'), (4, 2, 'Kansas City'), (5, 3, 'Toronto'), (6, 3, 'Ottawa'), (7, 4, 'Montreal'), (8, 4, 'Quebec City');
+INSERT INTO place_address (id, label, country_id, state_id, city_id) VALUES (1, 'USA address', 1, 1, 1), (2, 'Canada address', 2, 3, 5);

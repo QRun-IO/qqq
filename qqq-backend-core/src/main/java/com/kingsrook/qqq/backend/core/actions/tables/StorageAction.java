@@ -46,6 +46,16 @@ public class StorageAction
 {
 
    /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   public void deleteObject(StorageInput storageInput) throws QException
+   {
+      preAction(storageInput).getStorageInterface().deleteObject(storageInput);
+   }
+
+
+
+   /*******************************************************************************
     ** create an output stream in the storage backend - that can be written to,
     ** for the purpose of inserting or writing a file into storage.
     *******************************************************************************/

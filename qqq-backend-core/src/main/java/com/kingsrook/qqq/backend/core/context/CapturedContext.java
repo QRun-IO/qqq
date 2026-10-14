@@ -31,13 +31,26 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 /*******************************************************************************
  ** record containing the values managed by QContext.
  *******************************************************************************/
-public record CapturedContext(QInstance qInstance, QSession qSession, QBackendTransaction qBackendTransaction, Stack<AbstractActionInput> actionStack)
+public record CapturedContext(QInstance qInstance, QSession qSession, QBackendTransaction qBackendTransaction, Stack<AbstractActionInput> actionStack, int authorizedActionScopeDepth)
 {
+   /*******************************************************************************
+    ** Constructor without an authorized-action-scope depth (e.g., for code that
+    ** builds a context by hand) - such a context is never inside an authorized
+    ** action scope.
+    *******************************************************************************/
+   public CapturedContext(QInstance qInstance, QSession qSession, QBackendTransaction qBackendTransaction, Stack<AbstractActionInput> actionStack)
+   {
+      this(qInstance, qSession, qBackendTransaction, actionStack, 0);
+   }
+
+
+
+
    /*******************************************************************************
     ** Simpler constructor
     *******************************************************************************/
    public CapturedContext(QInstance qInstance, QSession qSession)
    {
-      this(qInstance, qSession, null, null);
+      this(qInstance, qSession, null, null, 0);
    }
 }

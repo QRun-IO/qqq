@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.Now;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.NowWithOffset;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.StartOfPeriod;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.ThisOrLastPeriod;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -727,6 +728,18 @@ public class RDBMSQueryActionTest extends RDBMSActionTest
          .hasRootCauseMessage("Unsupported unit: Hours");
       assertThatThrownBy(() -> testFunction.apply(filter -> filter.withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.LESS_THAN, ThisOrLastPeriod.last(ChronoUnit.MINUTES)))))
          .hasRootCauseMessage("Unsupported unit: Minutes");
+
+      /////////////////////////////////////////////////////////////////////////////////////
+      // StartOfPeriod: a half-open range of whole days, as a pair of >= and < criteria  //
+      /////////////////////////////////////////////////////////////////////////////////////
+      assertOneRecordWithFirstName("today", testFunction.apply(filter -> filter.withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 0)))));
+      assertOneRecordWithFirstName("yesterday", testFunction.apply(filter -> filter.withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, -1)))));
+      assertTwoRecordsWithFirstNames("yesterday", "today", testFunction.apply(filter -> filter
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, -1)))
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.LESS_THAN, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 1)))));
+      assertOneRecordWithFirstName("tomorrow", testFunction.apply(filter -> filter
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.GREATER_THAN_OR_EQUALS, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 1)))
+         .withCriteria(new QFilterCriteria("birthDate", QCriteriaOperator.LESS_THAN, StartOfPeriod.of(StartOfPeriod.Unit.DAYS, 2)))));
    }
 
 

@@ -23,6 +23,8 @@ package com.kingsrook.qqq.api.model.actions;
 
 import java.io.InputStream;
 import java.io.Serializable;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.eclipse.jetty.http.HttpStatus;
 
 
@@ -44,6 +46,11 @@ public class HttpApiResponse
    // set this field to false if you don't want it to do that (e.g., if your response is, say, a byte[]) //
    ////////////////////////////////////////////////////////////////////////////////////////////////////////
    private boolean needsFormattedAsJson = true;
+
+   ////////////////////////////////////////////////////////////////
+   // extra response headers (e.g. Retry-After, Content-Disposition) //
+   ////////////////////////////////////////////////////////////////
+   private Map<String, String> headers = new LinkedHashMap<>();
 
 
 
@@ -222,4 +229,47 @@ public class HttpApiResponse
    }
 
 
+   /*******************************************************************************
+    ** Getter for headers: extra response headers
+    *******************************************************************************/
+   public Map<String, String> getHeaders()
+   {
+      return (this.headers);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for headers
+    *******************************************************************************/
+   public void setHeaders(Map<String, String> headers)
+   {
+      this.headers = headers;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for headers
+    *******************************************************************************/
+   public HttpApiResponse withHeaders(Map<String, String> headers)
+   {
+      this.headers = headers;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add one response header.
+    *******************************************************************************/
+   public HttpApiResponse withHeader(String name, String value)
+   {
+      if(this.headers == null)
+      {
+         this.headers = new LinkedHashMap<>();
+      }
+      this.headers.put(name, value);
+      return (this);
+   }
 }

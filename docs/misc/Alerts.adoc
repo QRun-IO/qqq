@@ -1,0 +1,124 @@
+[#Alerts]
+== Alerts (producer SPI)
+include::../variables.adoc[]
+
+QQQ core has a small *producer* API for alerts ("manage by exception"): any qbit or application can report that a
+person should do something, resolve it when the condition clears, and beat a dead-man's switch.  Storing, routing and
+notifying is done by an alerts implementation (such as `qbit-alerts`).  With none installed, every call goes to
+`LoggingAlertSink`, which logs (rate-limited), so a producer behaves the same with or without the implementation and
+needs no dependency beyond `qqq-backend-core`.
+
+Everything lives in the package `com.kingsrook.qqq.backend.core.alerts`.
+
+=== Raising, resolving and beating
+
+[source,java]
+----
+QAlerts.raise(new AlertSignal("cdn.purge.dead")
+   .withDedupKey("provider:" + providerId)        // stable: repeats refresh one open alert
+   .withSeverity(AlertSeverity.ERROR)              // optional: defaults to the type's severity
+   .withTitle("3 CDN purges failed after retries") // external-safe: no personal data
+   .withSummary("Content corrects itself when the edge TTL expires.")
+   .withDetails(detailsText)                       // internal: in-app only, never sent out
+   .withRecordRefs(AlertRecordRef.of("cdn_purge_request", ids))
+   .withLink(AlertLink.toTable("cdn_purge_request", filter, "Failed purges"))
+   .withAttribute("provider", providerName));
+
+QAlerts.resolve("cdn.purge.dead", "provider:" + providerId, "A later purge succeeded");
+
+QAlerts.heartbeat("backups.job.nightly-db");
+----
+
+* *Idempotent* on `(alertTypeName, dedupKey)`.  The dedup key defaults to the type name (one alert per type).
+* *Bounded*: at most 100 record refs (beyond that `count` keeps the true total) and 20 attributes.
+* *Never throws and never blocks.*  Bad input, a sink that throws, or a sink that cannot load is logged and counted
+  (`QAlerts.getProducerFailureCount()`); nothing reaches the caller.
+* *Transaction-aware.*  `raise(signal, transaction)` and `resolve(resolution, transaction)` defer the call with
+  `QBackendTransaction.addAfterCommitCallback`, and it is dropped on rollback, so an alert never describes a write that
+  did not happen.  Without an explicit transaction, the one in `QContext` (if any) is used.  Heartbeats are never
+  deferred.
+* *Unknown types are kept.*  A type that no `QAlertTypeMetaData` declares is still passed to the sink (with a warning),
+  so a typo never loses a signal.
+
+`AlertSeverity` is `INFO`, `WARNING`, `ERROR`, `CRITICAL`; `AlertSeverity.fromLabel` maps other systems' labels.
+
+=== Notifying users
+
+An alert is a problem for someone to fix.  A *notification* is a message for people's bell (and, by their
+preference, email): a job that failed or finished, a share, a security notice, a release note.
+
+[source,java]
+----
+QAlerts.notify(new NotificationSignal("Your export failed")   // required, plain text
+   .withBody("**Orders export** stopped after 1,200 rows.")  // markdown
+   .withSeverity(NotificationSeverity.ERROR)                  // default INFO
+   .withCategory(NotificationCategory.JOB)                    // default SYSTEM
+   .withSourceKey("process:" + processUUID)                   // dedup: same key and audience updates one
+   .withLink(AlertLink.toUrl("/app/orders", "Orders"))
+   .withAudience(NotificationAudience.user(userId)));         // required
+----
+
+* `NotificationSeverity` is `INFO`, `SUCCESS`, `WARNING`, `ERROR`, `CRITICAL`.  `NotificationCategory` is `SYSTEM`,
+  `JOB`, `SECURITY`, `RELEASE`, `MARKETING`, `SHARE`, `ALERT` (users mute or choose email per category).
+* `NotificationAudience` is `allUsers()`, `roles(...)`, `permission(name)`, `users(...)` or `user(id)`; the
+  implementation resolves it to users when it sends.
+* Optional: `sourceName`, `sourceTableName` and `sourceRecordId` (the record it is about), `publishAt`, `expireAt`,
+  `sticky` (a banner until dismissed) and up to 20 attributes.
+* The guarantees are the same as `raise`: it never throws or blocks, it waits for the commit (`notify(signal,
+  transaction)` or the transaction in `QContext`) and is dropped on rollback, and a missing title or audience is
+  logged and counted.
+* `AlertSinkInterface.notify` is a default method that only debug-logs, so sinks written before it still work.
+  `LoggingAlertSink` logs notifications at INFO (WARN for `ERROR` and `CRITICAL`), rate-limited per category and source
+  key (or title).
+
+=== Declaring alert types
+
+Declare each kind of problem a module can report, so an implementation can list and tune every type every installed
+module produces:
+
+[source,java]
+----
+qInstance.add(new QAlertTypeMetaData()
+   .withName("cdn.purge.dead")                       // lowercase, dotted
+   .withLabel("CDN purge failed")
+   .withGroupName("cdn")
+   .withDefaultSeverity(AlertSeverity.ERROR)
+   .withDescription("A purge failed after its last retry.")
+   .withHowToFix("Open the failed purge and choose Retry purge.")
+   .withSubjectTableName("cdn_purge_request")       // optional: drives visibility
+   .withVisibilityPermission("cdn.view")            // optional extra gate
+   .withResolveMode(ResolveMode.PRODUCER)            // or MONITOR, QUIET_PERIOD (withQuietPeriod), MANUAL
+   .withDefaultMonitor(AlertDefaultMonitor.heartbeat("cdn.dispatcher", "cdn.dispatcher", 300, 60))
+   .withExternalDetailCeiling(DetailLevel.STANDARD));
+----
+
+Types are stored in the supplemental instance meta-data `AlertsInstanceMetaData` (`QAlertTypeMetaData.of(qInstance,
+name)` finds one).  The source qbit is set automatically when the type is produced by a qbit.  Validation checks that
+names are unique and match `^[a-z0-9]+(\.[a-z0-9-]+)+$`, that the subject table exists, that a visibility permission is
+not blank, that a `QUIET_PERIOD` type has a positive quiet period, and that a heartbeat default monitor has a positive
+`expectedEverySeconds`.
+
+=== Process failures and missed runs, by meta-data
+
+[source,java]
+----
+process.withSupplementalMetaData(new AlertProcessMetaData()
+   .withAlertOnFailure(AlertSeverity.ERROR)   // raise process.<name>.failed when a run fails
+   .withExpectedEvery(Duration.ofHours(24))); // declare process.<name>.missed, with a heartbeat monitor
+----
+
+Enrichment declares the types (the process name in lowercase-hyphen form, e.g. `process.nightly-export.failed`) and
+registers `AlertProcessLifecycleListener`: a failed run raises the failure alert (the exception message goes in the
+internal details only), and a completed run resolves it and beats `process.<name>`.
+
+=== Installing an implementation
+
+An implementation registers its sink, which must be fast and thread-safe (it is loaded once per instance and called on
+the producer's thread, after commit):
+
+[source,java]
+----
+AlertsInstanceMetaData.ofOrWithNew(qInstance).withSink(new QCodeReference(MyAlertSink.class));
+----
+
+See the Alerts qbit design (https://github.com/QRun-IO/qqq/pull/1090[#1090]).

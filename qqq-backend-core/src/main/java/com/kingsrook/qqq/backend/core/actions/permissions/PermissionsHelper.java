@@ -27,15 +27,18 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.ImplicitQueryJoinForSecurityLock;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -44,15 +47,19 @@ import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.DenyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithName;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermission;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.TableFeaturePermissionsMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -165,12 +172,87 @@ public class PermissionsHelper
 
 
    /*******************************************************************************
+    ** Feature permission check for the session in QContext (see the overload).
+    *******************************************************************************/
+   public static boolean hasTableFeaturePermission(QTableMetaData table, String suffix)
+   {
+      return (hasTableFeaturePermission(QContext.getQInstance(), QContext.getQSession(), table, suffix));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the given session may use a table feature permission (registered in
+    ** TableFeaturePermissionsMetaData) on the given table.  Feature grants require
+    ** table READ.  Standard implications retain the table's permission-level
+    ** mapping and custom permission checker behavior.  Runs in a temporary
+    ** context when the instance or session differ from QContext's.
+    *******************************************************************************/
+   public static boolean hasTableFeaturePermission(QInstance instance, QSession session, QTableMetaData table, String suffix)
+   {
+      if(instance == QContext.getQInstance() && session == QContext.getQSession())
+      {
+         return (hasTableFeaturePermissionInContext(table, suffix));
+      }
+
+      boolean[] result = new boolean[1];
+      QContext.withTemporaryContext(new CapturedContext(instance, session), () -> result[0] = hasTableFeaturePermissionInContext(table, suffix));
+      return (result[0]);
+   }
+
+
+
+   /*******************************************************************************
+    ** Implementation of hasTableFeaturePermission against QContext.
+    *******************************************************************************/
+   private static boolean hasTableFeaturePermissionInContext(QTableMetaData table, String suffix)
+   {
+      QInstance instance = QContext.getQInstance();
+      TableFeaturePermissionsMetaData metadata = TableFeaturePermissionsMetaData.of(instance);
+      if(metadata == null || table.getIsHidden())
+      {
+         return (false);
+      }
+      TableFeaturePermission feature = metadata.getPermissions().stream()
+         .filter(permission -> Objects.equals(permission.getSuffix(), suffix)).findFirst().orElse(null);
+      if(feature == null || (feature.getAppliesTo() != null && !feature.getAppliesTo().test(instance, table)))
+      {
+         return (false);
+      }
+      GetInput input = new GetInput(table.getName());
+      if(!hasTablePermission(input, table.getName(), TablePermissionSubType.READ))
+      {
+         return (false);
+      }
+      QPermissionRules rules = getEffectivePermissionRules(table, instance);
+      if(rules.getLevel() == PermissionLevel.NOT_PROTECTED
+         || QContext.getQSession().hasPermission(getEffectivePermissionBaseName(rules, table.getName()) + "." + suffix))
+      {
+         return (true);
+      }
+      TablePermissionSubType implication = feature.getImpliedBy() == null ? null : feature.getImpliedBy().impliedBy(instance, table);
+      return (implication != null && hasTablePermission(input, table.getName(), implication));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public static PermissionCheckResult getPermissionCheckResult(AbstractActionInput actionInput, MetaDataWithPermissionRules metaDataWithPermissionRules)
    {
       QPermissionRules rules              = getEffectivePermissionRules(metaDataWithPermissionRules, QContext.getQInstance());
       String           permissionBaseName = getEffectivePermissionBaseName(rules, metaDataWithPermissionRules.getName());
+
+      ////////////////////////////////////////////////////////////////////////////
+      // a client channel denied this object (e.g. the assistant's wall) - as if //
+      // the user had no permission; hidden.  Checked before anything that could //
+      // allow (NOT_PROTECTED, custom checkers).                                 //
+      ////////////////////////////////////////////////////////////////////////////
+      if(isDeniedForClientChannel(metaDataWithPermissionRules, rules) || isOutsideCredentialScope(metaDataWithPermissionRules, null))
+      {
+         return (PermissionCheckResult.DENY_HIDE);
+      }
 
       switch(rules.getLevel())
       {
@@ -402,6 +484,19 @@ public class PermissionsHelper
          QPermissionRules rules    = getEffectivePermissionRules(tableMetaData, instance);
          String           baseName = getEffectivePermissionBaseName(rules, tableMetaData.getName());
 
+         TableFeaturePermissionsMetaData features = TableFeaturePermissionsMetaData.of(instance);
+         if(features != null)
+         {
+            for(TableFeaturePermission feature : features.getPermissions())
+            {
+               if(feature.getAppliesTo() == null || feature.getAppliesTo().test(instance, tableMetaData))
+               {
+                  rs.add(new AvailablePermission().withName(baseName + "." + feature.getSuffix())
+                     .withObjectName(tableMetaData.getLabel()).withObjectType("Table").withPermissionType(feature.getLabel()));
+               }
+            }
+         }
+
          QBackendMetaData backend = instance.getBackend(tableMetaData.getBackendName());
          if(tableMetaData.isCapabilityEnabled(backend, Capability.TABLE_INSERT))
          {
@@ -566,7 +661,7 @@ public class PermissionsHelper
    /*******************************************************************************
     **
     *******************************************************************************/
-   static String getEffectivePermissionBaseName(QPermissionRules rules, String standardName)
+   public static String getEffectivePermissionBaseName(QPermissionRules rules, String standardName)
    {
       if(rules != null && StringUtils.hasContent(rules.getPermissionBaseName()))
       {
@@ -643,6 +738,18 @@ public class PermissionsHelper
    {
       QPermissionRules effectivePermissionRules = getEffectivePermissionRules(metaDataWithPermissionRules, QContext.getQInstance());
 
+      /////////////////////////////////////////////////////////////////////////////////
+      // client-channel deny rules come first: nothing (custom checkers, unprotected //
+      // objects, the user's permissions) overrides them                             //
+      /////////////////////////////////////////////////////////////////////////////////
+      if(isDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules)
+         || (isWriteSubType(permissionSubType) && isWriteDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules))
+         || isOutsideCredentialScope(metaDataWithPermissionRules, permissionSubType))
+      {
+         LOG.info("Client channel denied", logPair("clientChannel", QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel()), logPair("name", name), logPair("permissionSubType", permissionSubType));
+         throw (new QPermissionDeniedException("Permission denied."));
+      }
+
       ////////////////////////////////////////////////////////////////////
       // use the result of a custom permission checker, if there is one //
       ////////////////////////////////////////////////////////////////////
@@ -679,6 +786,100 @@ public class PermissionsHelper
    private static String getPermissionName(String permissionBaseName, PermissionSubType permissionSubType)
    {
       return permissionBaseName + "." + permissionSubType.getPermissionSuffix();
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session's credential scope (if any) excludes this object - or,
+    ** for a write sub-type (or any process) under a read-only scope, the action.
+    ** A scope only narrows: the user's own permissions are checked as well.
+    *******************************************************************************/
+   public static boolean isOutsideCredentialScope(MetaDataWithPermissionRules object, PermissionSubType permissionSubType)
+   {
+      QSession         session = QContext.getQSession();
+      QCredentialScope scope   = session == null ? null : session.getCredentialScope();
+      if(scope == null)
+      {
+         return (false);
+      }
+
+      String name = object.getName();
+      if(object instanceof QTableMetaData)
+      {
+         return (!QCredentialScope.allows(scope.getTables(), name) || (scope.getReadOnly() && isWriteSubType(permissionSubType)));
+      }
+      else if(object instanceof QProcessMetaData)
+      {
+         ///////////////////////////////////////////////////////////////////////////////
+         // processes can write; a read-only scope allows only explicitly listed ones //
+         ///////////////////////////////////////////////////////////////////////////////
+         if(scope.getReadOnly() && scope.getProcesses() == null)
+         {
+            return (true);
+         }
+         return (!QCredentialScope.allows(scope.getProcesses(), name));
+      }
+      else if(object instanceof QReportMetaData)
+      {
+         return (!QCredentialScope.allows(scope.getReports(), name));
+      }
+      else if(object instanceof QWidgetMetaDataInterface)
+      {
+         return (!QCredentialScope.allows(scope.getWidgets(), name));
+      }
+      else if(object instanceof QAppMetaData)
+      {
+         return (!QCredentialScope.allows(scope.getApps(), name));
+      }
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a permission sub-type is a write (insert, edit, delete, write).
+    *******************************************************************************/
+   private static boolean isWriteSubType(PermissionSubType permissionSubType)
+   {
+      return (permissionSubType == TablePermissionSubType.INSERT || permissionSubType == TablePermissionSubType.EDIT
+         || permissionSubType == TablePermissionSubType.DELETE || permissionSubType == PrivatePermissionSubType.WRITE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session's client channel (if any) may not write this object.
+    *******************************************************************************/
+   public static boolean isWriteDeniedForClientChannel(MetaDataWithPermissionRules metaDataWithPermissionRules, QPermissionRules effectiveRules)
+   {
+      QSession session = QContext.getQSession();
+      String   channel = session == null ? null : session.getClientChannelName();
+      if(channel == null)
+      {
+         return (false);
+      }
+
+      return (ClientChannelsMetaData.of(QContext.getQInstance()).isWriteDenied(channel, metaDataWithPermissionRules.getName(), effectiveRules));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session's client channel (if any) is denied this object -
+    ** by its rules' deniedClients, or the instance's ClientChannelsMetaData
+    ** (whose defaults apply when the instance registers none).
+    *******************************************************************************/
+   public static boolean isDeniedForClientChannel(MetaDataWithPermissionRules metaDataWithPermissionRules, QPermissionRules effectiveRules)
+   {
+      QSession session = QContext.getQSession();
+      String   channel = session == null ? null : session.getClientChannelName();
+      if(channel == null)
+      {
+         return (false);
+      }
+
+      return (ClientChannelsMetaData.of(QContext.getQInstance()).isDenied(channel, metaDataWithPermissionRules.getName(), effectiveRules));
    }
 
 

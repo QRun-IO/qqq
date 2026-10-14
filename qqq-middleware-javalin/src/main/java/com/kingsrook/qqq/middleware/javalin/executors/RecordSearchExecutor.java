@@ -52,9 +52,13 @@ public class RecordSearchExecutor extends AbstractMiddlewareExecutor<RecordSearc
             .withSearchTerm(input.getSearchTerm())
             .withTableNames(input.getTableNames())
             .withLimitPerTable(input.getLimitPerTable())
+            .withOffset(input.getOffset())
+            .withSort(input.getSort())
             .withInputSource(QInputSource.USER));
 
          output.setResults(searchOutput.getResults());
+         output.setTables(searchOutput.getTables());
+         output.setProviderStatus(searchOutput.getProviderStatus());
       }
       catch(QException e)
       {

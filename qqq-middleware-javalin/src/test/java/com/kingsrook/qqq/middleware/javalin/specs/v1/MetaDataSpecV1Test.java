@@ -24,6 +24,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -821,6 +822,98 @@ class MetaDataSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** The assistant entry is published (as an object, with available=true) only
+    ** when the instance has "assistant" supplemental meta-data - plus only the
+    ** string, number and boolean values of its getFrontendSettings() map, never
+    ** its other state.
+    *******************************************************************************/
+   @Test
+   void testAssistantIsPublishedOnlyWhenRegistered()
+   {
+      assertFalse(JsonUtils.toJSONObject(getMetaDataBody()).has("supplementalInstanceMetaData"));
+
+      serverQInstance.withSupplementalMetaData(new TestAssistantMetaData(null));
+      String     body         = getMetaDataBody();
+      JSONObject supplemental = JsonUtils.toJSONObject(body).getJSONObject("supplementalInstanceMetaData");
+      assertEquals(Set.of("assistant"), supplemental.keySet());
+      assertEquals(Set.of("available"), supplemental.getJSONObject("assistant").keySet());
+      assertTrue(supplemental.getJSONObject("assistant").getBoolean("available"));
+      assertThat(body).doesNotContain(TestAssistantMetaData.SECRET_VALUE);
+
+      Map<String, Object> settings = new LinkedHashMap<>();
+      settings.put("shortcut", "mod+j");
+      settings.put("maxTurnSeconds", 300);
+      settings.put("writes", false);
+      settings.put("nested", Map.of("apiKey", TestAssistantMetaData.SECRET_VALUE));
+      settings.put("list", List.of(TestAssistantMetaData.SECRET_VALUE));
+      serverQInstance.withSupplementalMetaData(new TestAssistantMetaData(settings));
+
+      body = getMetaDataBody();
+      JSONObject assistant = JsonUtils.toJSONObject(body).getJSONObject("supplementalInstanceMetaData").getJSONObject("assistant");
+      assertEquals(Set.of("available", "shortcut", "maxTurnSeconds", "writes"), assistant.keySet());
+      assertEquals("mod+j", assistant.getString("shortcut"));
+      assertEquals(300, assistant.getInt("maxTurnSeconds"));
+      assertFalse(assistant.getBoolean("writes"));
+      assertThat(body).doesNotContain(TestAssistantMetaData.SECRET_VALUE);
+      assertNoServerConfig(body);
+   }
+
+
+
+   /*******************************************************************************
+    ** Test stand-in for the assistant QBit's supplemental instance meta-data.
+    *******************************************************************************/
+   public static class TestAssistantMetaData implements QSupplementalInstanceMetaData
+   {
+      public static final String SECRET_VALUE = "assistant-provider-api-key-value";
+
+      private final Map<String, Object> frontendSettings;
+
+
+
+      /*******************************************************************************
+       ** Constructor
+       *******************************************************************************/
+      public TestAssistantMetaData(Map<String, Object> frontendSettings)
+      {
+         this.frontendSettings = frontendSettings;
+      }
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public String getName()
+      {
+         return (SupplementalInstanceMetaData.ASSISTANT_NAME);
+      }
+
+
+
+      /*******************************************************************************
+       ** Settings published to frontends (allow-listed by type).
+       *******************************************************************************/
+      public Map<String, Object> getFrontendSettings()
+      {
+         return (frontendSettings);
+      }
+
+
+
+      /*******************************************************************************
+       ** A value that must never be published.
+       *******************************************************************************/
+      public String getProviderApiKey()
+      {
+         return (SECRET_VALUE);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Some other module's supplemental meta-data - none of it is published.
     *******************************************************************************/
    public static class OtherModuleMetaData implements QSupplementalInstanceMetaData
@@ -850,4 +943,32 @@ class MetaDataSpecV1Test extends SpecTestBase
       }
    }
 
+
+
+   /*******************************************************************************
+    ** App, process and report help use the same public typed shape.
+    *******************************************************************************/
+   @Test
+   void typedHelpOnEveryContainer()
+   {
+      QHelpContent help = new QHelpContent().withContentAsMarkdown("**Body**").withSummary("Tooltip").withRole(QHelpRole.APP_SCREEN);
+      String app = serverQInstance.getApps().keySet().iterator().next();
+      String process = serverQInstance.getProcesses().keySet().iterator().next();
+      serverQInstance.getApp(app).withHelpContent("help", help);
+      serverQInstance.getProcess(process).withHelpContent("help", help);
+      serverQInstance.getReport("personsReport").withHelpContent("help", help);
+      var response = Unirest.get(getBaseUrlAndPath() + "/metaData").asString();
+      assertEquals(200, response.getStatus());
+      JSONObject json = JsonUtils.toJSONObject(response.getBody());
+      for(Map.Entry<String, String> entry : Map.of("apps", app, "processes", process, "reports", "personsReport").entrySet())
+      {
+         JSONObject content = json.getJSONObject(entry.getKey()).getJSONObject(entry.getValue()).getJSONObject("helpContents").getJSONArray("help").getJSONObject(0);
+         assertEquals("Tooltip", content.getString("summary"));
+         assertEquals("MARKDOWN", content.getString("format"));
+         assertEquals("APP_SCREEN", content.getJSONArray("roles").getString(0));
+         assertThat(content.getString("contentAsHtml")).contains("<strong>Body</strong>");
+         assertFalse(content.has("permissionName"));
+         assertFalse(content.has("clientChannel"));
+      }
+   }
 }

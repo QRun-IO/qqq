@@ -21,7 +21,6 @@
 package com.kingsrook.qqq.backend.module.filesystem.s3;
 
 
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
@@ -41,6 +40,7 @@ import com.kingsrook.qqq.backend.module.filesystem.s3.actions.S3InsertAction;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.S3QueryAction;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.S3StorageAction;
 import com.kingsrook.qqq.backend.module.filesystem.s3.actions.S3UpdateAction;
+import com.kingsrook.qqq.backend.module.filesystem.s3.model.S3ObjectSummary;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3TableBackendDetails;
 

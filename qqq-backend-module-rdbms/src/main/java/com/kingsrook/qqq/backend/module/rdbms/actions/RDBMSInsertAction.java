@@ -33,6 +33,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -84,10 +85,12 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
          for(List<QRecord> page : insertPages(insertInput, primaryKeyField))
          {
             boolean suppliedKeys = page.stream().filter(record -> CollectionUtils.nullSafeIsEmpty(record.getErrors()))
-               .anyMatch(record -> scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName())) != null);
-            boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(primaryKeyField, page.get(0).getValue(primaryKeyField.getName())));
+               .anyMatch(record -> scrubValue(table, primaryKeyField, primaryKeyField.getType(), record.getValue(primaryKeyField.getName())) != null);
+            boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(table, primaryKeyField, primaryKeyField.getType(), page.get(0).getValue(primaryKeyField.getName())));
             List<QFieldMetaData> insertableFields = table.getFields().values().stream()
                .filter(field -> suppliedKeys || !field.getName().equals(table.getPrimaryKeyField())).toList();
+            List<QFieldMetaData> logicalFields = insertableFields;
+            insertableFields = JsonStorageValues.columns(logicalFields);
             String columns = insertableFields.stream().map(field -> escapeIdentifier(getColumnName(field))).collect(Collectors.joining(", "));
             String backendTableName = escapeIdentifier(getTableName(table));
             sql = new StringBuilder("INSERT INTO ").append(backendTableName);
@@ -132,8 +135,16 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
                   {
                      sql.append(",");
                   }
-                  sql.append("?");
-                  params.add(scrubValue(field, record.getValue(field.getName())));
+                  if(field.getBackendStorage() instanceof JsonPathStorage storage)
+                  {
+                     sql.append(getActionStrategy().jsonObjectPlaceholder());
+                     params.add(JsonStorageValues.object(record, logicalFields, storage.getColumnName()));
+                  }
+                  else
+                  {
+                     sql.append("?");
+                     params.add(scrubValue(table, field, field.getType(), record.getValue(field.getName())));
+                  }
                }
                sql.append(")");
             }
@@ -251,7 +262,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             {
                continue;
             }
-            Serializable keyValue = scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName()));
+            Serializable keyValue = scrubValue(input.getTable(), primaryKeyField, primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
             if(isZeroPrimaryKey(primaryKeyField, keyValue))
             {
                //////////////////////////////////////////////////////////////////////////////////////////////////////

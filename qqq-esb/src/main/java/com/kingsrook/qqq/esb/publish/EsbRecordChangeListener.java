@@ -22,8 +22,10 @@ package com.kingsrook.qqq.esb.publish;
 
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerInterface;
@@ -84,8 +86,18 @@ public class EsbRecordChangeListener implements RecordChangeListenerInterface
          return;
       }
 
-      List<EsbEvent> esbEvents = makeEvents(event);
-      Runnable       publish   = () -> publish(destinationNames, esbEvents);
+      Map<String, List<EsbEvent>> eventsByDestination = new LinkedHashMap<>();
+      Map<Boolean, List<EsbEvent>> eventsByPolicy = new LinkedHashMap<>();
+      QTableMetaData table = QContext.getQInstance().getTable(event.getTableName());
+      for(String destination : destinationNames)
+      {
+         // Every matching registration for a destination must opt in.
+         boolean includeClassified = EsbTableMetaData.of(table).getPublications().stream()
+            .filter(p -> destination.equals(p.getDestinationName()) && CollectionUtils.nonNullList(p.getEvents()).contains(EsbTableEvent.valueOf(event.getType().name())))
+            .allMatch(EsbTablePublication::getIncludeClassified);
+         eventsByDestination.put(destination, eventsByPolicy.computeIfAbsent(includeClassified, include -> makeEvents(event, include)));
+      }
+      Runnable publish = () -> eventsByDestination.forEach((destination, events) -> publish(Set.of(destination), events));
 
       if(event.getTransaction() != null)
       {
@@ -136,7 +148,7 @@ public class EsbRecordChangeListener implements RecordChangeListenerInterface
     ** One event per written record, paired with its old record (index-aligned,
     ** for updates and deletes).
     *******************************************************************************/
-   private static List<EsbEvent> makeEvents(RecordChangeEvent event)
+   private static List<EsbEvent> makeEvents(RecordChangeEvent event, boolean includeClassified)
    {
       String        instanceName = EsbPublisher.getInstanceNameFromContext();
       List<QRecord> records      = CollectionUtils.nonNullList(event.getRecords());
@@ -146,7 +158,7 @@ public class EsbRecordChangeListener implements RecordChangeListenerInterface
       for(int i = 0; i < records.size(); i++)
       {
          QRecord oldRecord = (oldRecords != null && i < oldRecords.size()) ? oldRecords.get(i) : null;
-         esbEvents.add(EsbEventFactory.forRecordChange(instanceName, event.getTableName(), event.getType(), records.get(i), oldRecord));
+         esbEvents.add(EsbEventFactory.forRecordChange(instanceName, event.getTableName(), event.getType(), records.get(i), oldRecord, includeClassified));
       }
 
       return (esbEvents);

@@ -4,7 +4,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import xml.etree.ElementTree as ET
 
 FEATURE_IDS = ('core.widget.data_bag_viewer', 'core.widget.pivot_table_setup',
                'core.widget.filter_and_columns_setup', 'core.widget.row_builder',
@@ -35,59 +34,6 @@ def unique_object(pairs):
 
 def read_json(path):
     return json.loads(path.read_text(), object_pairs_hook=unique_object)
-
-
-
-# Owner-approved QQQ candidates paired with the unchanged Next RC11 artifact. Each binding fixes the approval
-# permalink and the source revisions the pinned orb turns into that candidate (before publish) or leaves behind
-# after its version-bump commit. Any other candidate, approval or revision rejects the exception.
-APPROVED_NEXT_CANDIDATES = {
-    '4.1.0-RC.1': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-5944789583',
-                   'before_publish': ('4.1.0-SNAPSHOT',), 'after_publish': ('4.1.0-SNAPSHOT', '4.1.0-RC.1')},
-    '4.1.0-RC.2': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6109806327',
-                   'before_publish': ('4.1.0-RC.1',), 'after_publish': ('4.1.0-RC.1', '4.1.0-RC.2')},
-    '4.1.0-RC.3': {'owner_approval': 'https://github.com/QRun-IO/qqq/issues/798#issuecomment-6115006801',
-                   'before_publish': ('4.1.0-RC.2',), 'after_publish': ('4.1.0-RC.2', '4.1.0-RC.3')},
-}
-
-
-def accepted_release(sample, candidate_version, before_publish=False):
-    """Read the explicit candidate exception without changing native evidence."""
-    if not candidate_version:
-        return None
-    policies = read_json(sample / 'release-deferrals.json').get('accepted_next_release')
-    require(isinstance(policies, list) and policies and all(isinstance(p, dict) for p in policies),
-            'candidate has no approved Next release exception')
-    versions = [p.get('qqq_version') for p in policies]
-    require(len(set(versions)) == len(versions) and set(versions) <= APPROVED_NEXT_CANDIDATES.keys(),
-            'Next exception lists a duplicate or unapproved QQQ candidate')
-    binding = APPROVED_NEXT_CANDIDATES.get(candidate_version)
-    require(binding is not None and candidate_version in versions,
-            'Next exception is only approved for QQQ ' + ', '.join(APPROVED_NEXT_CANDIDATES))
-    policy = policies[versions.index(candidate_version)]
-    require(policy['next_version'] == '1.0.0-RC.11'
-            and policy['next_sha'] == '2853b9b148282ae0e6d454adab6d0f534ba48280'
-            and policy['jar_sha256'] == '0c89bc0a104131010e5607e8a3669f8579048fab43170d05344dd47721188d99',
-            'Next exception must identify the accepted immutable public Next RC11')
-    require(policy['owner_approval'] == binding['owner_approval'],
-            'Next exception lacks the reviewed maintainer decision')
-    require(len(policy['features']) == len(FEATURE_IDS) and set(policy['features']) == set(FEATURE_IDS),
-            'Next exception must preserve the seven successor coverage contracts')
-    require(policy.get('rationale') and policy.get('target_release'), 'Next exception needs rationale and follow-up target')
-    ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
-    root_pom = ET.parse(sample.parent / 'pom.xml').getroot()
-    revision = root_pom.findtext('m:properties/m:revision', namespaces=ns)
-    allowed_revisions = binding['before_publish' if before_publish else 'after_publish']
-    require(revision in allowed_revisions, 'QQQ source revision cannot use the ' + candidate_version + ' exception')
-    sample_pom = ET.parse(sample / 'pom.xml').getroot()
-    require(sample_pom.findtext('m:properties/m:qqq.frontend.next.version', namespaces=ns) == policy['next_version'],
-            'sample Next pin differs from the accepted release')
-    bom = ET.parse(sample.parent / 'qqq-bom/pom.xml').getroot()
-    next_pins = [d.findtext('m:version', namespaces=ns)
-                 for d in bom.findall('m:dependencyManagement/m:dependencies/m:dependency', ns)
-                 if d.findtext('m:artifactId', namespaces=ns) == 'qqq-frontend-next']
-    require(next_pins == [policy['next_version']], 'BOM Next pin differs from the accepted release')
-    return policy
 
 
 def hashed_file(root, reference):

@@ -23,20 +23,28 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehaviorForFrontend;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIEnumSubSet;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 
@@ -201,7 +209,97 @@ public class FieldMetaData implements ToSchema
 
    }
 
-   // todo - PVS filter!!
+
+
+   /*******************************************************************************
+    ** Other input fields that control this field's possible values.
+    *******************************************************************************/
+   @OpenAPIDescription("Names of fields controlling this field's choices, including explicit and filter dependencies. Absent for non-contingent fields.")
+   @OpenAPIListItems(String.class)
+   public List<String> getPossibleValueSourceDependsOn()
+   {
+      if(wrappedFull == null)
+      {
+         return (wrappedFrontend.getPossibleValueSourceDependsOn());
+      }
+      return (ContingentPossibleValueHelper.isContingent(wrappedFull) ? new ArrayList<>(ContingentPossibleValueHelper.getDependencyFieldNames(wrappedFull)) : null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Enum values for the string wire representation.
+    *******************************************************************************/
+   public static class DependencyBehaviors implements OpenAPIEnumSubSet.EnumSubSet<PossibleValueDependencyBehavior>
+   {
+      /*******************************************************************************
+       ** All supported dependency behaviors.
+       *******************************************************************************/
+      public EnumSet<PossibleValueDependencyBehavior> getSubSet()
+      {
+         return (EnumSet.allOf(PossibleValueDependencyBehavior.class));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Behavior while any dependency is unset.
+    *******************************************************************************/
+   @OpenAPIDescription("DISABLE_UNTIL_SET disables a contingent field until its dependencies are set (default). SHOW_ALL_UNTIL_SET keeps it enabled and omits criteria with missing inputs in form searches. Absent for non-contingent fields.")
+   @OpenAPIEnumSubSet(DependencyBehaviors.class)
+   public String getPossibleValueSourceDependencyBehavior()
+   {
+      if(wrappedFull == null)
+      {
+         return (wrappedFrontend.getPossibleValueSourceDependencyBehavior());
+      }
+      return (ContingentPossibleValueHelper.isContingent(wrappedFull)
+         ? Objects.requireNonNullElse(wrappedFull.getPossibleValueSourceDependencyBehavior(), PossibleValueDependencyBehavior.DISABLE_UNTIL_SET).name() : null);
+   }
+
+
+
+
+   /***************************************************************************
+    ** The record picker declared by this field's possible value source, if any.
+    ***************************************************************************/
+   @OpenAPIDescription("When this field's possible value source declares a record picker (for sources over large tables), its configuration: thumbnail, preview, subtitle and detail fields, filter fields, search fields, sorts and page size.  Frontends offer a searchable, paged picker dialog.")
+   public QPossibleValuePicker getPicker()
+   {
+      QPossibleValueSource source = pickerSource();
+      return (source == null ? null : source.getPicker());
+   }
+
+
+
+   /***************************************************************************
+    ** The table behind this field's picker (for its field labels and types).
+    ***************************************************************************/
+   @OpenAPIDescription("When this field has a picker, the table its possible value source reads, whose metadata describes the picker's fields.")
+   public String getPickerTableName()
+   {
+      QPossibleValueSource source = pickerSource();
+      return (source == null ? null : source.getTableName());
+   }
+
+
+
+   /***************************************************************************
+    ** This field's possible value source, when it declares a picker.
+    ***************************************************************************/
+   private QPossibleValueSource pickerSource()
+   {
+      String name = getPossibleValueSourceName();
+      if(name == null || QContext.getQInstance() == null)
+      {
+         return (null);
+      }
+      QPossibleValueSource source = QContext.getQInstance().getPossibleValueSource(name);
+      return (source == null || source.getPicker() == null ? null : source);
+   }
+
+
 
    /***************************************************************************
     ** Inline possible values declared on a field, as in frontend metadata.
@@ -223,6 +321,40 @@ public class FieldMetaData implements ToSchema
       return (this.wrappedFull != null ? this.wrappedFull.getMaxLength() : this.wrappedFrontend.getMaxLength());
    }
 
+
+
+
+   /***************************************************************************
+    ** The smallest value a field accepts, when its value range rejects smaller
+    ** ones, so a form can say so before the user saves.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the smallest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMinValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMinValue() : this.wrappedFrontend.getMinValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** The largest value a field accepts, when its value range rejects larger
+    ** ones.
+    ***************************************************************************/
+   @OpenAPIDescription("For number fields, the largest value the field accepts (inclusive).  Absent when there is no such limit.")
+   public String getMaxValue()
+   {
+      return (rangeBound(this.wrappedFull != null ? new QFrontendFieldMetaData(this.wrappedFull).getMaxValue() : this.wrappedFrontend.getMaxValue()));
+   }
+
+
+
+   /***************************************************************************
+    ** a bound as plain digits (a string, so a long or decimal keeps its exact value).
+    ***************************************************************************/
+   private static String rangeBound(Number bound)
+   {
+      return (bound == null ? null : new java.math.BigDecimal(bound.toString()).toPlainString());
+   }
 
 
 
@@ -299,9 +431,10 @@ public class FieldMetaData implements ToSchema
     ** screens, per each entry's roles), as in the legacy table meta-data.
     ***************************************************************************/
    @OpenAPIDescription("Help Contents for this field.")
-   public List<QHelpContent> getHelpContents()
+   @OpenAPIListItems(value = HelpContentV1.class, useRef = true)
+   public List<HelpContentV1> getHelpContents()
    {
-      return (this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents());
+      return (HelpContentV1.of(this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents()));
    }
 
 
@@ -329,4 +462,39 @@ public class FieldMetaData implements ToSchema
       return (result.isEmpty() ? null : result);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Effective tier; HIDDEN fields are omitted from table metadata.
+    *******************************************************************************/
+   @OpenAPIDescription("Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN. Omitted means FULL. Restricted values are strings, regardless of field type.")
+   public FieldAccessTier getAccessTier()
+   {
+      return (wrappedFrontend == null || wrappedFrontend.getAccessTier() == null ? null : FieldAccessTier.valueOf(wrappedFrontend.getAccessTier()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Exact-match operators may also be disabled by the resolver.
+    *******************************************************************************/
+   @OpenAPIDescription("Allowed filter operators when restricted: EQUALS and IN for REVEALABLE when exact match is enabled, otherwise empty. Omitted means unrestricted.")
+   @OpenAPIListItems(String.class)
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   public List<String> getAllowedFilterOperators()
+   {
+      return (wrappedFrontend == null ? null : wrappedFrontend.getAllowedFilterOperators());
+   }
+
+
+
+   /*******************************************************************************
+    ** Sorting is available only for FULL fields.
+    *******************************************************************************/
+   @OpenAPIDescription("False for restricted fields; omitted means sortable.")
+   public Boolean getIsSortable()
+   {
+      return (wrappedFrontend == null ? null : wrappedFrontend.getIsSortable());
+   }
 }

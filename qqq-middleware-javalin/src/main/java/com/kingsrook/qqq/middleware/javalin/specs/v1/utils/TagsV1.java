@@ -34,7 +34,8 @@ public enum TagsV1 implements TagsInterface
    TABLES("Tables"),
    PROCESSES("Processes"),
    REPORTS("Reports"),
-   WIDGETS("Widgets");
+   WIDGETS("Widgets"),
+   BULK_LOAD("Bulk Load");
 
 
    private final String text;

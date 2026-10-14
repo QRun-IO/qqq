@@ -39,6 +39,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturePermissionsRegistrar;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeaturesResolver;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.JoinGraph;
 import com.kingsrook.qqq.backend.core.actions.permissions.BulkTableActionProcessPermissionChecker;
@@ -114,6 +116,9 @@ import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.Bulk
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.BulkInsertTransformStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMetaData;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeRuntimeService;
+import com.kingsrook.qqq.backend.core.realtime.RecordChangeListener;
 import com.kingsrook.qqq.backend.core.scheduler.QScheduleManager;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -137,6 +142,7 @@ public class QInstanceEnricher
 
    private boolean configRemoveIdFromNameWhenCreatingPossibleValueFieldLabels        = true;
    private boolean configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate = true;
+   private boolean configMakeSystemDateFieldsNonEditable                             = true;
 
    //////////////////////////////////////////////////////////////////////////////////////////////////
    // let an instance define mappings to be applied during name-to-label enrichments,              //
@@ -160,6 +166,17 @@ public class QInstanceEnricher
    public QInstanceEnricher(QInstance qInstance)
    {
       this.qInstance = qInstance;
+   }
+
+
+
+   /*******************************************************************************
+    ** The instance being enriched - for supplemental meta-data whose enrich
+    ** needs to add to the instance (e.g. AlertProcessMetaData declaring types).
+    *******************************************************************************/
+   public QInstance getQInstance()
+   {
+      return (this.qInstance);
    }
 
 
@@ -189,6 +206,17 @@ public class QInstanceEnricher
          }
          protectTableBasedAuthenticationTables();
          qInstance.getTables().values().forEach(this::enrichTable);
+         if((RecordFeaturesResolver.hasAnyMetaData(qInstance)
+            || qInstance.getSupplementalMetaData(RealtimeMetaData.NAME) != null)
+            && CollectionUtils.nonNullList(qInstance.getRuntimeServices()).stream().noneMatch(reference -> RealtimeRuntimeService.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRuntimeService(new QCodeReference(RealtimeRuntimeService.class));
+         }
+         if(RecordFeaturesResolver.hasAnyMetaData(qInstance)
+            && CollectionUtils.nonNullList(qInstance.getRecordChangeListeners()).stream().noneMatch(reference -> RecordChangeListener.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRecordChangeListener(new QCodeReference(RecordChangeListener.class));
+         }
          defineTableBulkProcesses(qInstance);
       }
 
@@ -219,6 +247,7 @@ public class QInstanceEnricher
 
       enrichJoins();
       enrichInstance();
+      RecordFeaturePermissionsRegistrar.register(qInstance);
 
       //////////////////////////////////////////////////////////////////////////////
       // if the instance DOES have 1 or more scheduler, but no schedulable types, //
@@ -416,7 +445,7 @@ public class QInstanceEnricher
    /*******************************************************************************
     **
     *******************************************************************************/
-   private void enrichTable(QTableMetaData table)
+   public void enrichTable(QTableMetaData table)
    {
       if(!StringUtils.hasContent(table.getLabel()))
       {
@@ -439,7 +468,15 @@ public class QInstanceEnricher
             }
 
             enrichField(field);
+            enrichSystemDateField(field);
          }
+      }
+
+      if(table.getRecordVersionField() == null && table.getFields() != null)
+      {
+         table.getFields().values().stream()
+            .filter(field -> DynamicDefaultValueBehavior.MODIFY_DATE.equals(field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class)))
+            .findFirst().ifPresent(field -> table.setRecordVersionField(field.getName()));
       }
 
       if(table.getVirtualFields() != null)
@@ -743,6 +780,29 @@ public class QInstanceEnricher
       }
 
       runPlugins(QFieldMetaData.class, field, qInstance);
+   }
+
+
+
+   /*******************************************************************************
+    ** A table field whose value QQQ maintains (the CREATE_DATE or MODIFY_DATE
+    ** dynamic default value behavior) is not editable by people: QQQ sets it on
+    ** insert (and MODIFY_DATE on every update), so frontends leave it off create
+    ** forms and show it read-only on edit. Off when
+    ** configMakeSystemDateFieldsNonEditable is false.
+    *******************************************************************************/
+   private void enrichSystemDateField(QFieldMetaData field)
+   {
+      if(!configMakeSystemDateFieldsNonEditable)
+      {
+         return;
+      }
+
+      DynamicDefaultValueBehavior behavior = field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class);
+      if(DynamicDefaultValueBehavior.CREATE_DATE.equals(behavior) || DynamicDefaultValueBehavior.MODIFY_DATE.equals(behavior))
+      {
+         field.setIsEditable(false);
+      }
    }
 
 
@@ -1964,6 +2024,37 @@ public class QInstanceEnricher
    public QInstanceEnricher withConfigAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate(boolean configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate)
    {
       this.configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate = configAddDynamicDefaultValuesToFieldsNamedCreateDateAndModifyDate;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public boolean getConfigMakeSystemDateFieldsNonEditable()
+   {
+      return (this.configMakeSystemDateFieldsNonEditable);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public void setConfigMakeSystemDateFieldsNonEditable(boolean configMakeSystemDateFieldsNonEditable)
+   {
+      this.configMakeSystemDateFieldsNonEditable = configMakeSystemDateFieldsNonEditable;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for configMakeSystemDateFieldsNonEditable
+    *******************************************************************************/
+   public QInstanceEnricher withConfigMakeSystemDateFieldsNonEditable(boolean configMakeSystemDateFieldsNonEditable)
+   {
+      this.configMakeSystemDateFieldsNonEditable = configMakeSystemDateFieldsNonEditable;
       return (this);
    }
 

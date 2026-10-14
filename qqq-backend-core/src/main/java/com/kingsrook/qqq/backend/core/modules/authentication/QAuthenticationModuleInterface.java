@@ -27,6 +27,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -45,6 +46,18 @@ public interface QAuthenticationModuleInterface
     **
     *******************************************************************************/
    QSession createSession(QInstance qInstance, Map<String, String> context) throws QAuthenticationException;
+
+
+   /*******************************************************************************
+    ** Create a session for the given (possibly scoped) authentication provider.
+    ** Callers that resolved a provider (e.g., per API) use this, so a module can
+    ** read its own provider's settings rather than the instance default.  The
+    ** default ignores the metadata, for modules that only know the instance one.
+    *******************************************************************************/
+   default QSession createSession(QInstance qInstance, QAuthenticationMetaData authenticationMetaData, Map<String, String> context) throws QAuthenticationException
+   {
+      return (createSession(qInstance, context));
+   }
 
 
    /*******************************************************************************

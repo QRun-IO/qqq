@@ -32,10 +32,15 @@ import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -78,6 +83,50 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
     *******************************************************************************/
    @Override
    public ReplaceOutput execute(ReplaceInput input) throws QException
+   {
+      CorePermissionEnforcer.checkRestoreWriteFlag(input, input.getFlags());
+
+      boolean enforce = false;
+      if(input.getTableName() != null && input.getTable() != null)
+      {
+         enforce = input.getPerformDeletes()
+            ? CorePermissionEnforcer.checkTablePermissions(input, TablePermissionSubType.INSERT, TablePermissionSubType.EDIT, TablePermissionSubType.DELETE)
+            : CorePermissionEnforcer.checkTablePermissions(input, TablePermissionSubType.INSERT, TablePermissionSubType.EDIT);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(input);
+         if(enforce)
+         {
+            FieldAccessHelper.assertWritesAllowed(input.getTable(), input.getRecords());
+            if(input.getFilter() != null)
+            {
+               CorePermissionEnforcer.checkReadCriteria(input, null, input.getFilter(), null);
+            }
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         ReplaceOutput output = executeInAuthorizedScope(input);
+         if(enforce)
+         {
+            if(output.getInsertOutput() != null)
+            {
+               FieldAccessHelper.applyToRecords(input.getTableName(), null, output.getInsertOutput().getRecords(), "insert");
+            }
+            if(output.getUpdateOutput() != null)
+            {
+               FieldAccessHelper.applyToRecords(input.getTableName(), null, output.getUpdateOutput().getRecords(), "update");
+            }
+         }
+         return (output);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The replace itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private ReplaceOutput executeInAuthorizedScope(ReplaceInput input) throws QException
    {
       ReplaceOutput output = new ReplaceOutput();
 
@@ -198,8 +247,14 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
             deleteInput.setQueryFilter(deleteFilter);
             deleteInput.withFlags(input.getFlags());
             deleteInput.setTransaction(transaction);
-            deleteInput.setOmitDmlAudit(input.getOmitDmlAudit());
+            RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(input.getFlags());
+            boolean          summarizeDeletes =  restoreWriteFlag != null && !restoreWriteFlag.getPerRecordAudit() && !input.getOmitDmlAudit();
+            deleteInput.setOmitDmlAudit(input.getOmitDmlAudit() || summarizeDeletes);
             DeleteOutput deleteOutput = new DeleteAction().execute(deleteInput);
+            if(summarizeDeletes)
+            {
+               RestoreWriteHelper.writeSummaryAudit(deleteInput, "delete", deleteOutput.getDeletedRecordCount());
+            }
             requireSuccessfulRecords(deleteOutput.getRecordsWithErrors(), "DELETE");
             output.setDeleteOutput(deleteOutput);
          }

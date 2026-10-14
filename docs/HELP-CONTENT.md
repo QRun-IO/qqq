@@ -152,7 +152,7 @@ Help app home with the coverage dashboard, in-context editing and preview.
 
 `GET /qqq/v1/help/coverage?missingOnly=true` lists every helpable object that has no help yet.
 You can narrow it with `kind=` (`app`, `table`, `section`, `field`, `process`, `step`,
-`processField`, `report`, `widget`, `possibleValueSource`) and `parentKey=` (for example
+`processField`, `report`, `widget`, `possibleValueSource`, `instance`) and `parentKey=` (for example
 `table:person`). It needs insert or edit permission on `helpContent`. The Help app home in
 `qbit-help` shows the same report with "Add help" links. In Next, add `?helpHelp` to any URL to
 see each slot's key in place.

@@ -646,7 +646,7 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   // Note: questionable, using "" here, but that's what reality is passing a lot //
                   // for cases we want to treat as missing...                                    //
                   /////////////////////////////////////////////////////////////////////////////////
-                  if(interpretedValue == InputNotFound.instance || "".equals(interpretedValue))
+                  if(interpretedValue == InputNotFound.instance || "".equals(interpretedValue) || (interpretedValue instanceof Collection<?> collection && collection.isEmpty()))
                   {
                      CriteriaMissingInputValueBehavior missingInputValueBehavior = getMissingInputValueBehavior(useCase);
 
@@ -664,7 +664,17 @@ public class QQueryFilter implements Serializable, Cloneable, QMetaDataObject
                   }
                   else
                   {
-                     newValues.add(interpretedValue);
+                     if(interpretedValue instanceof Collection<?> collection)
+                     {
+                        for(Object element : collection)
+                        {
+                           newValues.add((Serializable) element);
+                        }
+                     }
+                     else
+                     {
+                        newValues.add(interpretedValue);
+                     }
                   }
                }
                catch(Exception e)

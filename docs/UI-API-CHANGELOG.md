@@ -89,6 +89,17 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   is stored). Uploads are read through `BulkLoadUploadSources` by their opaque ref, as the session
   user. The `X-QQQ-AI-Route: hipaa` request header allows sample values of classified and unmapped
   columns; without it they are left out.
+- Added contingent field metadata: `possibleValueSourceDependsOn` lists explicit and
+  inferred input dependencies; `possibleValueSourceDependencyBehavior` defaults to
+  `DISABLE_UNTIL_SET`. Both properties are absent for non-contingent fields.
+- Added `SHOW_ALL_UNTIL_SET`: FORM searches omit missing-input criteria while
+  retaining criteria for supplied inputs. FILTER searches remain unrestricted by
+  missing inputs; use-case parsing is consistent and case-insensitive.
+- User-sourced table writes validate contingent choices in batches, including
+  partial updates and custom providers; fields can opt out with
+  `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
+  See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
+  frontend obligations, sample fixtures and the process-step validation limitation.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

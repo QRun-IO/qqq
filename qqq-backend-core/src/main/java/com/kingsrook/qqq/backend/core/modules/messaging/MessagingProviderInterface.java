@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.modules.messaging;
 
 
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
@@ -41,5 +42,16 @@ public interface MessagingProviderInterface
     **
     *******************************************************************************/
    SendMessageOutput sendMessage(SendMessageInput sendMessageInput) throws QException;
+
+
+
+   /*******************************************************************************
+    ** Optional supported features. Existing providers declare none by default.
+    ** Advisory input fields that are unsupported are silently ignored.
+    *******************************************************************************/
+   default Set<MessagingProviderCapability> getCapabilities()
+   {
+      return (Set.of());
+   }
 
 }

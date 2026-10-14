@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Optional rich core messaging input (templates, variables, idempotency, category, linked record, audit sender and locale), delivery statuses, provider capability discovery and required-feature guards. Qbits can send through `SendMessageAction` by provider name without importing another qbit. Existing EMAIL and SES sending is unchanged and now returns `SENT`. See `docs/MESSAGING.md`.
 - Per-user Preferences: validated supplemental sections, a provider SPI with fixed row lists, an audited key-value store, and typed `/qqq/v1/preferences` list, get and partial-update operations. See `docs/USER-PREFERENCES.md`.
 - Optional AI table/field `DataClassification` (`PUBLIC`, `CONFIDENTIAL`, `PII`, `PHI`) and null-safe `AiDataClassifications` lookup/aggregation helpers. Existing exposure defaults and frontend metadata are unchanged.
 - Core aggregate analysis extensions: variance/deviation, percentiles, correlation, null/blank counts, string lengths, date/numeric buckets, dialect capabilities, opt-in paged fallback with row limits, and main-table sampling. SQL pushdown supports H2/MySQL and PostgreSQL according to advertised capabilities; existing aggregate callers retain their defaults.

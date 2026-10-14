@@ -81,8 +81,9 @@ action menus, a long-help panel, and help search.
 **Owner decisions (2026-10-12): all recommendations accepted.**
 
 - Storage, application and enforcement stay in core: the existing `helpContent` table, extended.
-  The table keeps its name: it predates the snake_case standard, applications reference it, and
-  renaming it is a breaking change for every adopter.
+  The table keeps its name `helpContent`: a pre-standard exception to the lowercase snake_case
+  rule (approved 2026-10-13). It predates the standard, applications reference it, and renaming
+  it is a breaking change for every adopter.
 - A thin `qbit-help` holds only the authoring experience: the Help app, its coverage dashboard,
   in-context "Add help", preview, bulk edit and import/export. It reads core through the
   `/qqq/v1` API and core classes only.
@@ -104,7 +105,7 @@ action menus, a long-help panel, and help search.
    per-user frontend metadata is built.
 4. **Typed payloads.** A `HelpContent` schema (`content`, `summary`, `format`, `contentAsHtml`,
    `roles`) referenced from every help property, and help added to `AppMetaData`,
-   `ProcessMetaData(Light)` and `ReportMetaData`. Spec 1.3.0, changelog entry.
+   `ProcessMetaData(Light)` and `ReportMetaData`. Listed under the open UI API version (1.2.0 while QQQ 4.1.0-RC.6 is uncut; 1.3.0 after).
 5. **Search.** `GET /qqq/v1/help/search?q=` (`HelpSearchSpecV1`) returning ranked, permission-
    filtered results with links, shared with the assistant's `search_help` tool.
 6. **Coverage.** `GET /qqq/v1/help/coverage` (`HelpCoverageSpecV1`), for users who may insert

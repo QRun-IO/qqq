@@ -56,7 +56,8 @@ public class ProcessExecutorUtils
 
    /*******************************************************************************
     ** Whether a step finished synchronously or asynchronously, return its data
-    ** to the caller the same way.
+    ** to the caller the same way. One-time secrets are deliberately excluded here;
+    ** only the synchronous init/step executor attaches them to its response.
     *******************************************************************************/
    public static void serializeRunProcessResultForCaller(ProcessInitOrStepOrStatusOutputInterface processInitOrStepOutput, String processName, RunProcessOutput runProcessOutput)
    {

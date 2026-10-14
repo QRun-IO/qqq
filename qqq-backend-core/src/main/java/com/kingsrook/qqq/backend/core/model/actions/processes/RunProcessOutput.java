@@ -26,12 +26,15 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.utils.ObjectUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
@@ -42,6 +45,8 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
  *******************************************************************************/
 public class RunProcessOutput extends AbstractActionOutput implements Serializable
 {
+   private transient List<OneTimeSecret> oneTimeSecrets = new ArrayList<>();
+
    private ProcessState        processState;
    private String              processUUID;
    private Optional<Exception> exception = Optional.empty();
@@ -372,6 +377,22 @@ public class RunProcessOutput extends AbstractActionOutput implements Serializab
    public void setProcessMetaDataAdjustment(ProcessMetaDataAdjustment processMetaDataAdjustment)
    {
       this.processState.setProcessMetaDataAdjustment(processMetaDataAdjustment);
+   }
+
+
+
+   /*******************************************************************************
+    ** Secrets for the producing invocation only, excluded from state and serialization.
+    ** Async jobs cannot deliver these: status polling returns only stored state.
+    *******************************************************************************/
+   @JsonIgnore
+   public List<OneTimeSecret> getOneTimeSecrets()
+   {
+      if(oneTimeSecrets == null)
+      {
+         oneTimeSecrets = new ArrayList<>();
+      }
+      return (oneTimeSecrets);
    }
 
 }

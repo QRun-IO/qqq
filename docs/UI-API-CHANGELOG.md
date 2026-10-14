@@ -55,6 +55,12 @@ spec'd routes.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Added per-user preferences (`docs/USER-PREFERENCES.md`): `GET /preferences`,
+  `GET /preferences/{sectionName}` and `PATCH /preferences/{sectionName}`. The schemas
+  `PreferencesResponseV1`, `PreferenceSectionV1`, `PreferenceListV1`, `PreferenceRowV1`
+  and `PreferenceSectionPatchRequestV1` describe typed fields, fixed rows, inline ENUM
+  choices and partial updates scoped to the signed-in user. `preferences` is a core
+  feature and `/preferences` is reserved by core.
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.
 - Added the extension point: modules and qbits register endpoint specs

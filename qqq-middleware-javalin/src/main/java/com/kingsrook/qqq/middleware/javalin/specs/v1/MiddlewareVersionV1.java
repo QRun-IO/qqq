@@ -46,7 +46,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ***************************************************************************/
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
-      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions");
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "preferences");
 
    private static List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -59,6 +59,9 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new BackChannelLogoutSpecV1());
 
       list.add(new MetaDataSpecV1());
+      list.add(new PreferencesSpecV1());
+      list.add(new PreferenceSectionGetSpecV1());
+      list.add(new PreferenceSectionPatchSpecV1());
 
       list.add(new TableMetaDataSpecV1());
       list.add(new TableQuerySpecV1());

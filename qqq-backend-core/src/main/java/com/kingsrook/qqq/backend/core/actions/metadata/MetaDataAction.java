@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.MetaDataOutput;
@@ -51,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMe
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppChildMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
@@ -80,6 +82,7 @@ public class MetaDataAction
    public MetaDataOutput execute(MetaDataInput metaDataInput) throws QException
    {
       ActionHelper.validateSession(metaDataInput);
+      QInstanceHelpContentManager.reloadIfChanged(QContext.getQInstance());
 
       MetaDataOutput           metaDataOutput = new MetaDataOutput();
       metaDataOutput.setMetaDataGeneration(RuntimeMetaDataOverlay.getGeneration(QContext.getQInstance()));
@@ -269,7 +272,7 @@ public class MetaDataAction
       }
 
       metaDataOutput.setEnvironmentValues(Objects.requireNonNullElse(QContext.getQInstance().getEnvironmentValues(), Collections.emptyMap()));
-      metaDataOutput.setHelpContents(Objects.requireNonNullElse(QContext.getQInstance().getHelpContent(), Collections.emptyMap()));
+      metaDataOutput.setHelpContents(HelpContentVisibility.filter(Objects.requireNonNullElse(QContext.getQInstance().getHelpContent(), Collections.emptyMap())));
       metaDataOutput.setSupplementalInstanceMetaData(QContext.getQInstance().getSupplementalMetaData());
 
       //////////////////////////////////////////////////////////////////////
@@ -488,7 +491,7 @@ public class MetaDataAction
     * Check both the customizer and permissions to decide if an object should
     * be denied/hidden from the user
     ***************************************************************************/
-   private static boolean isObjectDenied(MetaDataInput metaDataInput, MetaDataActionCustomizerInterface customizer, MetaDataWithPermissionRules object)
+   public static boolean isObjectDenied(MetaDataInput metaDataInput, MetaDataActionCustomizerInterface customizer, MetaDataWithPermissionRules object)
    {
       if(object instanceof QTableMetaData table && !customizer.allowTable(metaDataInput, table))
       {
@@ -528,7 +531,7 @@ public class MetaDataAction
    /***************************************************************************
     **
     ***************************************************************************/
-   private MetaDataActionCustomizerInterface getMetaDataActionCustomizer()
+   public MetaDataActionCustomizerInterface getMetaDataActionCustomizer()
    {
       return metaDataActionCustomizerMemoization.getResult(QContext.getQInstance(), i ->
       {

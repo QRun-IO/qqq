@@ -40,6 +40,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.tables.StreamedAggregateEvaluator;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
@@ -66,6 +67,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.ConditionalUpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -960,11 +962,11 @@ public class MemoryRecordStore
          {
             try
             {
-               recordToInsert.setValue(field.getName(), ValueUtils.getValueAsFieldType(field.getType(), value));
+               recordToInsert.setValue(field.getName(), ValueUtils.getValueAsFieldType(table, field, value));
             }
             catch(Exception e)
             {
-               LOG.info("Error converting value to field's type", e, logPair("fieldName", field.getName()), logPair("value", value));
+               LOG.info("Error converting value to field's type", e, logPair("fieldName", field.getName()), logPair("value", ClassifiedValues.diagnostic(table, field.getName(), value)));
             }
          }
       }
@@ -1009,7 +1011,7 @@ public class MemoryRecordStore
       {
          for(QRecord record : input.getRecords())
          {
-            Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
+            Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, record.getValue(primaryKeyField.getName()));
 
             if(CollectionUtils.nullSafeHasContents(record.getErrors()))
             {
@@ -1037,11 +1039,11 @@ public class MemoryRecordStore
                      ///////////////////////////////////////////////
                      // try to make field values match field type //
                      ///////////////////////////////////////////////
-                     JsonFieldUtils.write(recordToUpdate, table.getField(fieldName), ValueUtils.getValueAsFieldType(table.getField(fieldName).getType(), valueEntry.getValue()));
+                     JsonFieldUtils.write(recordToUpdate, table.getField(fieldName), ValueUtils.getValueAsFieldType(table, table.getField(fieldName), valueEntry.getValue()));
                   }
                   catch(Exception e)
                   {
-                     LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", valueEntry.getValue()));
+                     LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", ClassifiedValues.diagnostic(table, fieldName, valueEntry.getValue())));
                      recordToUpdate.setValue(fieldName, valueEntry.getValue());
                   }
                }
@@ -1054,6 +1056,43 @@ public class MemoryRecordStore
          }
       }
       return (outputRecords);
+   }
+
+
+
+   /*******************************************************************************
+    ** Atomic conditional update: under the table's lock, set the values on every
+    ** row that matches the filter; return how many rows changed.
+    *******************************************************************************/
+   public int conditionalUpdate(ConditionalUpdateInput input) throws QException
+   {
+      snapshotLock.readLock().lock();
+      try
+      {
+         QTableMetaData             table     = input.getTable();
+         Map<Serializable, QRecord> tableData = getTableData(table);
+         int                        count     = 0;
+         synchronized(tableData)
+         {
+            for(QRecord record : tableData.values())
+            {
+               if(BackendQueryFilterUtils.doesRecordMatch(input.getFilter(), record))
+               {
+                  for(Map.Entry<String, Serializable> entry : input.getValues().entrySet())
+                  {
+                     QFieldMetaData field = table.getField(entry.getKey());
+                     record.setValue(field.getName(), ValueUtils.getValueAsFieldType(field.getType(), entry.getValue()));
+                  }
+                  count++;
+               }
+            }
+         }
+         return (count);
+      }
+      finally
+      {
+         snapshotLock.readLock().unlock();
+      }
    }
 
 
@@ -1092,7 +1131,7 @@ public class MemoryRecordStore
       int                        rowsDeleted     = 0;
       for(Serializable primaryKeyValue : input.getPrimaryKeys())
       {
-         primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKeyValue);
+         primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKeyValue);
          if(tableData.containsKey(primaryKeyValue))
          {
             tableData.remove(primaryKeyValue);

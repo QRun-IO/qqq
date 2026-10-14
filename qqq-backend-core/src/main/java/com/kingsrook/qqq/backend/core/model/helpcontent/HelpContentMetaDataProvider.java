@@ -26,6 +26,8 @@ import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAdornment;
@@ -43,6 +45,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
  *******************************************************************************/
 public class HelpContentMetaDataProvider
 {
+   private boolean targetingFields = true;
+
 
    /*******************************************************************************
     **
@@ -70,7 +74,7 @@ public class HelpContentMetaDataProvider
          .withUniqueKey(new UniqueKey("key", "role"))
          .withFieldsFromEntity(HelpContent.class)
          .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "key", "role")))
-         .withSection(new QFieldSection("content", new QIcon("dataset"), Tier.T2, List.of("format", "content")))
+         .withSection(new QFieldSection("content", new QIcon("dataset"), Tier.T2, targetingFields ? List.of("summary", "format", "content") : List.of("format", "content")))
          .withSection(new QFieldSection("dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")))
          .withCustomizer(TableCustomizers.POST_INSERT_RECORD, new QCodeReference(HelpContentPostInsertCustomizer.class))
          .withCustomizer(TableCustomizers.POST_UPDATE_RECORD, new QCodeReference(HelpContentPostUpdateCustomizer.class))
@@ -80,8 +84,23 @@ public class HelpContentMetaDataProvider
       table.getField("format").withFieldAdornment(AdornmentType.Size.SMALL.toAdornment());
       table.getField("key").withFieldAdornment(AdornmentType.Size.LARGE.toAdornment());
       table.getField("content").withFieldAdornment(AdornmentType.Size.LARGE.toAdornment());
-      table.getField("content").withFieldAdornment(new FieldAdornment(AdornmentType.CODE_EDITOR).withValue(AdornmentType.CodeEditorValues.languageMode("html")));
+      table.getField("content").withFieldAdornment(new FieldAdornment(AdornmentType.CODE_EDITOR).withValue(AdornmentType.CodeEditorValues.languageMode("markdown")));
       table.getField("content").withGridColumns(12);
+
+      if(targetingFields)
+      {
+         table.getSections().add(2, new QFieldSection("targeting", new QIcon("tune"), Tier.T2, List.of("permissionName", "clientChannel")));
+      }
+      else
+      {
+         table.getFields().keySet().removeAll(List.of("summary", "permissionName", "clientChannel"));
+      }
+
+      if(instance.getTable("audit") != null && instance.getTable("auditDetail") != null
+         && instance.getTable("auditTable") != null && instance.getTable("auditUser") != null)
+      {
+         table.withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD));
+      }
 
       if(backendDetailEnricher != null)
       {
@@ -91,4 +110,14 @@ public class HelpContentMetaDataProvider
       instance.addTable(table);
    }
 
+
+
+   /*******************************************************************************
+    ** Opt out until the existing physical helpContent table has the three new columns.
+    *******************************************************************************/
+   public HelpContentMetaDataProvider withTargetingFields(boolean targetingFields)
+   {
+      this.targetingFields = targetingFields;
+      return (this);
+   }
 }

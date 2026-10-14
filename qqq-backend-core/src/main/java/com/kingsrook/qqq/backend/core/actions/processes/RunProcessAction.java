@@ -43,6 +43,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobDiversion;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -97,6 +98,8 @@ public class RunProcessAction
    public static final String BASEPULL_LAST_RUNTIME_KEY = "basepullLastRuntimeKey";
    public static final String BASEPULL_TIMESTAMP_FIELD  = "basepullTimestampField";
    public static final String BASEPULL_CONFIGURATION    = "basepullConfiguration";
+
+   public static final String ONE_TIME_SECRETS_MASKED = "oneTimeSecretsMasked";
 
    public static final String PROCESS_TRACER_CODE_REFERENCE_FIELD = "processTracerCodeReference";
 
@@ -757,9 +760,34 @@ public class RunProcessAction
          runBackendStepInput.setBasepullLastRunTime((Instant) runProcessInput.getValues().get(BASEPULL_LAST_RUNTIME_KEY));
       }
 
+      ////////////////////////////////////////////////////////////////////////
+      // an eligible process over the durable-jobs threshold runs its       //
+      // execute step as a background job instead (DurableJobDiversion)    //
+      ////////////////////////////////////////////////////////////////////////
+      Optional<RunBackendStepOutput> diverted = DurableJobDiversion.maybeDivert(runBackendStepInput, process, backendStep);
+      if(diverted.isPresent())
+      {
+         storeState(stateKey, diverted.get().getProcessState());
+         return (diverted.get());
+      }
+
       traceStepStart(runBackendStepInput);
 
       RunBackendStepOutput runBackendStepOutput = new RunBackendStepAction().execute(runBackendStepInput);
+      if(!runBackendStepOutput.getOneTimeSecrets().isEmpty())
+      {
+         runProcessOutput.getOneTimeSecrets().addAll(runBackendStepOutput.getOneTimeSecrets());
+         ArrayList<String> masked = new ArrayList<>();
+         if(processState.getValues().get(ONE_TIME_SECRETS_MASKED) instanceof List<?> previousMasks)
+         {
+            for(Object previousMask : previousMasks)
+            {
+               masked.add((String) previousMask);
+            }
+         }
+         runBackendStepOutput.getOneTimeSecrets().forEach(secret -> masked.add(secret.getMasked()));
+         runBackendStepOutput.addValue(ONE_TIME_SECRETS_MASKED, masked);
+      }
       storeState(stateKey, runBackendStepOutput.getProcessState());
 
       traceStepFinish(runBackendStepInput, runBackendStepOutput);
@@ -768,6 +796,15 @@ public class RunProcessAction
       {
          runProcessOutput.setException(runBackendStepOutput.getException());
          throw (runBackendStepOutput.getException());
+      }
+
+      //////////////////////////////////////////////////////////////////////
+      // let an optional listener (e.g., a durable job) see the finished  //
+      // step - to checkpoint its values, or to stop the run by throwing. //
+      //////////////////////////////////////////////////////////////////////
+      if(runProcessInput.getBackendStepListener() != null)
+      {
+         runProcessInput.getBackendStepListener().afterBackendStep(backendStep.getName(), runBackendStepOutput.getProcessState());
       }
 
       return (runBackendStepOutput);

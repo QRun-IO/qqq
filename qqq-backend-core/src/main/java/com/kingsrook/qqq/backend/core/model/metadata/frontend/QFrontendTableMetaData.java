@@ -57,6 +57,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.menus.QMenu;
@@ -190,7 +191,13 @@ public class QFrontendTableMetaData
             }
          }
 
-         this.sections = tableMetaData.getSections();
+         this.sections = new ArrayList<>();
+         for(QFieldSection section : CollectionUtils.nonNullList(tableMetaData.getSections()))
+         {
+            QFieldSection copy = section.clone();
+            copy.setHelpContents(HelpContentVisibility.filter(section.getHelpContents()));
+            this.sections.add(copy);
+         }
          this.associations = new ArrayList<>();
          for(Association association : CollectionUtils.nonNullList(tableMetaData.getAssociations()))
          {
@@ -301,7 +308,7 @@ public class QFrontendTableMetaData
          variantTableLabel = QContext.getQInstance().getTable(backend.getBackendVariantsConfig().getOptionsTableName()).getLabel();
       }
 
-      this.helpContents = tableMetaData.getHelpContent();
+      this.helpContents = HelpContentVisibility.filter(tableMetaData.getHelpContent());
    }
 
 

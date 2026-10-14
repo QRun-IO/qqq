@@ -73,11 +73,38 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### Unreleased (after 1.2.0; no change to the document)
+- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 ### 1.3.0 (unreleased)
 - Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
   spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
   opts out temporarily. Applications must run the spec'd alerts, assistant and sql-workbench qbit
   releases.
+- The assistant wall denies `audit*` (reads and writes) by default again; `withAssistantAuditReads()`
+  is the host opt-in for reads. See the security record in UI-API-CLIENT-CHANNELS.md.
+- Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):
+  - Added `POST /processes/{processName}/jobs`: launch an eligible process as a durable background
+    job (`ProcessJobLaunchResponseV1 {jobId, status}`). Over the per-user queue cap it returns
+    429. From the `assistant` client channel the job is created `AWAITING_CONFIRMATION`.
+  - Jobs are the standard tables `jobs_job`, `jobs_chunk`, `jobs_row_error`, `jobs_event` and
+    `jobs_worker`, read with the table operations. Control actions are the record-action processes
+    `jobsStart`, `jobsPause`, `jobsResume`, `jobsCancel`, `jobsRetryFailed`, `jobsRestart` and
+    `jobsRunAgain`, run with the process operations.
+  - The core feature `durableJobs` is listed by `GET /version`.
+  - Added `POST /uploads` (multipart with one file, or the raw body plus a `fileName` query
+    parameter): streams the file into the uploads storage table and returns `UploadRefResponseV1
+    {ref, fileName, sizeBytes, contentType, expiresAt}`. The ref is opaque, bound to the caller, and
+    expires (default 7 days); pass it in `uploadRefs` when launching a job.
+  - Process metadata gains `durableJobEligible` and `durableJobAlways`, so clients can offer
+    "Run in background".
+  - A process run over `durableThresholdRows` (or `alwaysDurable`) no longer runs its execute step
+    inline: the step returns at once with the value `durableJobId` and a summary line, and the job
+    does the work.
+- Process init/step responses now optionally include `oneTimeSecrets` using the shared
+  `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
+  in its own response; a step that went async hands them, once, to the first status poll that
+  sees the job complete. Stored state exposes only `values.oneTimeSecretsMasked`.
+  See `docs/misc/ProcessBackendSteps.adoc`.
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
   `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,
@@ -97,7 +124,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   and `PreferenceSectionPatchRequestV1` describe typed fields, fixed rows, inline ENUM
   choices and partial updates scoped to the signed-in user. `preferences` is a core
   feature and `/preferences` is reserved by core.
-- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*` write-denied only: the assistant can read a record's history, but cannot write audits.
+- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall keeps `audit*` hidden by default; a host opts in to reads with `withAssistantAuditReads()`, and audits are never writable by the assistant (see UI-API-CLIENT-CHANNELS.md, security record).
 - Scoped credentials: `QSession.credentialScope` (`QCredentialScope`) narrows a session to the apps, tables, processes, reports, widgets and operations it lists, optionally read-only.
   - It is intersected with the user's live permissions.
   - The session's client channel is `token:<id>`; "token" is a new default channel.
@@ -105,6 +132,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ### 1.2.0 (QQQ 4.1.0-RC.6)
 1.1.0 was never released; its additions ship here.
+- In-app help (docs/HELP-CONTENT.md):
+  - Typed `HelpContentV1` entries and slot maps across all existing help properties; new `helpContents` maps on apps, processes and reports. Targeting fields remain server-only.
+  - Added secured `GET /help/search?q=&limit=` with ranked results, canonical keys, summaries, long help and application-relative links (default 20, maximum 50).
+  - Added `GET /help/coverage?kind=&missingOnly=&parentKey=` for users with INSERT or EDIT permission on `helpContent`; includes hidden targets and scoped totals before the missing-only filter.
+  - Per-session permission and client-channel targeting, safe Markdown rendering and cross-node reload. `GET /version` advertises the `help` feature.
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to `UiApiInvoker`.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and

@@ -53,7 +53,10 @@ checkers, the user's permissions.
 - `assistant_*`: its own configuration. That covers providers, models, prices, profiles, skills,
   policy, budgets, usage, tool-call logs and conversations.
 - `authentik_*`: identity, permissions and policies.
-- `audit*` is write-denied only: the assistant can read a record's history but never insert, edit or delete audits (`withDeniedWritePattern`).
+- `audit*`: core's audit trail is hidden from the assistant (no read, no write). A host that wants
+  a record-history tool opts in with `ClientChannelsMetaData.ofOrWithNew(qInstance)
+  .withAssistantAuditReads()`. The assistant can then read audits, subject to the user's own audit
+  permissions, but it still can never insert, edit or delete them (`withDeniedWritePattern`).
 - `*api_key*` and `*apikey*`.
 - `*credential*`, `*secret*` and `*password*`.
 - `*permission*` and the role tables: `role`, `roles`, `*_role`, `*_roles`, `*_role_*`, `user_role*`.
@@ -123,8 +126,8 @@ permission narrows the token too:
 
 ## Who owns the wall rules (#1157)
 - **Core keeps the generic rules** (`ASSISTANT_GENERIC_DENIED_PATTERNS`). These cover API keys,
-  credentials, secrets, passwords, permission and role tables, and user sessions, plus write-only
-  access to `audit*`.
+  credentials, secrets, passwords, permission and role tables, user sessions and `audit*`. The
+  `audit*` rule can be relaxed to read-only access by a host (`withAssistantAuditReads`).
 - **Each qbit owns its own rules.** Its producer registers them, for example
   `ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "<qbit>_*")`,
   `withDeniedObject(...)`, or `QPermissionRules.withDeniedClients(...)` on the table.
@@ -137,3 +140,21 @@ permission narrows the token too:
   if no rule denies the table to the assistant. Fix it by walling the table in its qbit, or by
   recording a deliberate review with `withReviewedObject("assistant", name)`. A review grants
   nothing.
+
+## Security record: the assistant and the audit trail (2026-10-14)
+This section answers the question of whether the assistant wall got looser.
+- **What changed and when.**
+  - The wall first shipped in #1141, and it denied `audit*` to the assistant completely.
+  - #1166 (#1155, the AI data gateway, merged with #1168) changed that rule to write-only. That
+    let the assistant read audits by default.
+  - #1186 (#1157) did not change any rule. It split the default patterns into generic and
+    transitional lists, both still fail-closed (`assistant_*`, `authentik_*`, `webhooks_*`,
+    `worm_audit_*` stay denied), and added the validator warning.
+- **Restored.** `audit*` is denied to the assistant again by default, for reads and writes. Reading
+  audits is now a host opt-in (`withAssistantAuditReads()`), and even then the assistant can't
+  write them. `worm_audit_*` stays denied whatever the opt-in.
+- **Who opts in.** qbit-assistant offers its `get_record_history` tool only when the host opts in
+  to audits. kof22 doesn't opt in.
+- **Tests.** `ClientChannelPermissionsTest` checks both cases:
+  - by default, every operation on `audit` and `auditDetail` is denied to the assistant;
+  - with the opt-in, reads are allowed, writes are denied, and `worm_audit_*` stays denied.

@@ -47,7 +47,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
       "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
-      "preferences");
+      "help", "preferences", "durableJobs");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -71,6 +71,8 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableQuerySpecV1());
       list.add(new TableCountSpecV1());
       list.add(new RecordSearchSpecV1());
+      list.add(new HelpSearchSpecV1());
+      list.add(new HelpCoverageSpecV1());
 
       ///////////////////////////////////////////////////////////////////////////
       // before TableGetSpecV1: GET /table/{t}/variants would otherwise match //
@@ -105,6 +107,8 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new ProcessStatusSpecV1());
       list.add(new ProcessRecordsSpecV1());
       list.add(new ProcessCancelSpecV1());
+      list.add(new ProcessJobLaunchSpecV1());
+      list.add(new UploadsSpecV1());
 
       list.add(new TableExportSpecV1());
 

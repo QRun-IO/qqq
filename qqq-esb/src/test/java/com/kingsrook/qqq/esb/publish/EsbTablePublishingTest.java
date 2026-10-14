@@ -31,6 +31,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
+import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -65,6 +67,7 @@ import jakarta.jms.DeliveryMode;
 import jakarta.jms.Message;
 import jakarta.jms.MessageConsumer;
 import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import org.apache.activemq.artemis.core.postoffice.RoutingStatus;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.server.ServerSession;
@@ -95,6 +98,40 @@ class EsbTablePublishingTest extends EsbTestBase
    private String  queueBrokerName;
    private String  topicBrokerName;
    private Session receivingSession;
+
+
+
+   /*******************************************************************************
+    ** Default outbound bytes omit classified values even when another destination opts in.
+    *******************************************************************************/
+   @Test
+   void testClassifiedEsbEventOutboundIsolation() throws Exception
+   {
+      setUpInstance(publication(QUEUE_DESTINATION, EsbTableEvent.INSERT, EsbTableEvent.UPDATE, EsbTableEvent.DELETE),
+         publication(TOPIC_DESTINATION, EsbTableEvent.INSERT, EsbTableEvent.UPDATE, EsbTableEvent.DELETE).withIncludeClassified(true));
+      QContext.getQInstance().getTable(TABLE_NAME_ORDER).getField("orderNo").withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PHI));
+      QContext.getQInstance().getTable(TABLE_NAME_ORDER).getField("status").withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PII));
+      MessageConsumer queue = openQueueConsumer();
+      MessageConsumer topic = openTopicConsumer();
+      String marker = "CANARY-PHI-" + canaryToken();
+      QRecord record = new InsertAction().execute(new InsertInput(TABLE_NAME_ORDER).withRecord(new QRecord().withValue("orderNo", marker).withValue("status", marker))).getRecords().get(0);
+      new UpdateAction().execute(new UpdateInput(TABLE_NAME_ORDER).withRecord(new QRecord().withValue("id", record.getValue("id")).withValue("status", marker + "updated")));
+      new DeleteAction().execute(new DeleteInput(TABLE_NAME_ORDER).withPrimaryKey(record.getValue("id")));
+      List<Message> safeMessages = receiveMessages(queue, 3);
+      for(Message message : safeMessages)
+      {
+         String payload = ((TextMessage) message).getText();
+         for(int i = 0; i <= marker.length() - 5; i++)
+         {
+            assertThat(payload).doesNotContain(marker.substring(i, i + 5));
+         }
+      }
+      assertThat(toEvents(safeMessages).get(1).getData().get("changedFields")).isEqualTo(List.of("status"));
+      for(Message message : receiveMessages(topic, 3))
+      {
+         assertThat(((TextMessage) message).getText()).contains(marker);
+      }
+   }
 
 
 
@@ -681,4 +718,18 @@ class EsbTablePublishingTest extends EsbTestBase
       }
    }
 
+
+   /*******************************************************************************
+    ** A random marker body made only of the letters g-v, so that no 5-character
+    ** window of it can coincide with hex ids, UUIDs or timestamps in a payload.
+    *******************************************************************************/
+   private static String canaryToken()
+   {
+      StringBuilder token = new StringBuilder();
+      for(char c : UUID.randomUUID().toString().replace("-", "").toCharArray())
+      {
+         token.append((char) ('g' + Character.digit(c, 16)));
+      }
+      return (token.toString());
+   }
 }

@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
@@ -106,8 +107,9 @@ class CredentialScopePermissionsTest extends BaseTest
       QSession         session = new QSession().withCredentialScope(scope);
       QSession         clone   = session.clone();
       assertNotSame(scope, clone.getCredentialScope());
-      clone.getCredentialScope().getTables().add("b");
+      clone.getCredentialScope().withTables(Set.of("a", "b"));
       assertFalse(scope.getTables().contains("b"));
+      assertThrows(UnsupportedOperationException.class, () -> scope.getTables().add("c"));
       assertEquals("token:t2", scope.getClientChannel());
       assertEquals("token", new QSession().withClientChannel("token:t2").getClientChannelName());
       assertTrue(QCredentialScope.allows(null, "anything"));

@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.model.session;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -108,6 +109,16 @@ public class QCredentialScope implements Serializable, Cloneable
    /*******************************************************************************
     **
     *******************************************************************************/
+   private static Set<String> view(Set<String> set)
+   {
+      return (set == null ? null : Collections.unmodifiableSet(set));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
    private static Set<String> copy(Set<String> set)
    {
       return (set == null ? null : new LinkedHashSet<>(set));
@@ -162,7 +173,7 @@ public class QCredentialScope implements Serializable, Cloneable
     *******************************************************************************/
    public Set<String> getApps()
    {
-      return (this.apps);
+      return (view(this.apps));
    }
 
 
@@ -183,7 +194,7 @@ public class QCredentialScope implements Serializable, Cloneable
     *******************************************************************************/
    public Set<String> getTables()
    {
-      return (this.tables);
+      return (view(this.tables));
    }
 
 
@@ -204,7 +215,7 @@ public class QCredentialScope implements Serializable, Cloneable
     *******************************************************************************/
    public Set<String> getProcesses()
    {
-      return (this.processes);
+      return (view(this.processes));
    }
 
 
@@ -225,7 +236,7 @@ public class QCredentialScope implements Serializable, Cloneable
     *******************************************************************************/
    public Set<String> getReports()
    {
-      return (this.reports);
+      return (view(this.reports));
    }
 
 
@@ -246,7 +257,7 @@ public class QCredentialScope implements Serializable, Cloneable
     *******************************************************************************/
    public Set<String> getWidgets()
    {
-      return (this.widgets);
+      return (view(this.widgets));
    }
 
 
@@ -267,7 +278,7 @@ public class QCredentialScope implements Serializable, Cloneable
     *******************************************************************************/
    public Set<String> getOperationIds()
    {
-      return (this.operationIds);
+      return (view(this.operationIds));
    }
 
 

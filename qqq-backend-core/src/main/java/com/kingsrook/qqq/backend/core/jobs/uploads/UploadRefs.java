@@ -169,6 +169,36 @@ public final class UploadRefs
 
 
    /*******************************************************************************
+    ** Give a ref to a file that is already in a storage table (e.g., the bulk
+    ** insert wizard's process upload), owned by the current user. No copy.
+    *******************************************************************************/
+   public static UploadRef register(String fileName, StorageInput existing) throws QException
+   {
+      DurableJobsMetaData settings = DurableJobs.settings();
+      String              userId   = DurableJobsSecurity.userId(QContext.getQSession());
+      if(!StringUtils.hasContent(userId))
+      {
+         throw (new QPermissionDeniedException("Uploading needs a signed-in user."));
+      }
+      Instant now       = Instant.now();
+      Instant expiresAt = now.plus(settings.getUploadExpiryDays(), ChronoUnit.DAYS);
+      String  ref       = newRef();
+      String  safeName  = sanitize(fileName);
+      SystemScope.call(() -> new InsertAction().execute(new InsertInput(TABLE_UPLOAD).withRecord(new QRecord()
+         .withValue("ref", ref)
+         .withValue("userId", userId)
+         .withValue("fileName", safeName)
+         .withValue("contentType", existing.getContentType())
+         .withValue("storageTableName", existing.getTableName())
+         .withValue("storageReference", existing.getReference())
+         .withValue("expiresAt", expiresAt)
+         .withValue("createDate", now))));
+      return (new UploadRef(ref, safeName, null, existing.getContentType(), expiresAt));
+   }
+
+
+
+   /*******************************************************************************
     ** The upload row for a ref the current user may use (owner, or jobs_admin),
     ** if it has not expired. Throws QNotFoundException otherwise (never says
     ** whose it was).

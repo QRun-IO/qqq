@@ -244,6 +244,58 @@ class ChunkedJobsTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Over durableThresholdRows, the normal process run does not execute inline:
+    ** its execute step launches a durable job and returns durableJobId and a
+    ** "running as a background job" summary line; the job does the work.
+    *******************************************************************************/
+   @Test
+   void testOverThresholdRunsAsJob() throws Exception
+   {
+      QInstance instance = defineInstance();
+      DurableJobsMetaData.of(instance).withDurableThresholdRows(5);
+      QContext.init(instance, newSession());
+      List<QRecord> items = new ArrayList<>();
+      for(int i = 1; i <= 8; i++)
+      {
+         items.add(new QRecord().withValue("code", "c" + i).withValue("name", "Item " + i).withValue("amount", i));
+      }
+      new InsertAction().execute(new InsertInput(TABLE_ITEM).withRecords(items));
+
+      com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput input = new com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput();
+      input.setProcessName(PROCESS_DOUBLE);
+      input.setFrontendStepBehavior(com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput.FrontendStepBehavior.SKIP);
+      input.addValue("recordsParam", "filterJSON");
+      input.addValue("filterJSON", com.kingsrook.qqq.backend.core.utils.JsonUtils.toJson(new QQueryFilter()));
+      var output = new com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction().execute(input);
+
+      Integer jobId = com.kingsrook.qqq.backend.core.utils.ValueUtils.getValueAsInteger(output.getValues().get(DurableJobDiversion.VALUE_DURABLE_JOB_ID));
+      assertThat(jobId).isNotNull();
+      assertThat(String.valueOf(output.getValues().get(StreamedETLWithFrontendProcess.FIELD_PROCESS_SUMMARY))).contains("background job");
+      assertThat(QueryAction.execute(TABLE_ITEM, new QQueryFilter()).stream().mapToInt(r -> r.getValueInteger("amount")).sum()).as("nothing ran inline").isEqualTo(36);
+
+      DurableJobStore store = new DurableJobStore(DurableJobsMetaData.of(instance));
+      assertThat(store.getJob(jobId).getValueString("sourceType")).isEqualTo(JobSourceType.TABLE_FILTER.name());
+      DurableJobsRuntime.start(instance);
+      awaitStatus(jobId, Duration.ofSeconds(20), JobStatus.COMPLETED);
+      assertThat(QueryAction.execute(TABLE_ITEM, new QQueryFilter()).stream().mapToInt(r -> r.getValueInteger("amount")).sum()).isEqualTo(72);
+
+      /////////////////////////////////////////////////////////
+      // under the threshold, it runs inline as it always has //
+      /////////////////////////////////////////////////////////
+      DurableJobsMetaData.of(instance).withDurableThresholdRows(1000);
+      var input2 = new com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput();
+      input2.setProcessName(PROCESS_DOUBLE);
+      input2.setFrontendStepBehavior(com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput.FrontendStepBehavior.SKIP);
+      input2.addValue("recordsParam", "filterJSON");
+      input2.addValue("filterJSON", com.kingsrook.qqq.backend.core.utils.JsonUtils.toJson(new QQueryFilter()));
+      var inline = new com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction().execute(input2);
+      assertThat(inline.getValues().get(DurableJobDiversion.VALUE_DURABLE_JOB_ID)).isNull();
+      assertThat(QueryAction.execute(TABLE_ITEM, new QQueryFilter()).stream().mapToInt(r -> r.getValueInteger("amount")).sum()).isEqualTo(144);
+   }
+
+
+
+   /*******************************************************************************
     ** Doubles each item's amount; rejects code "bad".
     *******************************************************************************/
    public static class DoubleTransform extends AbstractTransformStep

@@ -553,7 +553,11 @@ public final class DurableJobs
       {
          values.forEach((k, v) ->
          {
-            if(!(v instanceof QUploadedFile))
+            ///////////////////////////////////////////////////////////////////
+            // no uploaded bytes; no code references (the process's own field //
+            // defaults supply them again when the job runs)                  //
+            ///////////////////////////////////////////////////////////////////
+            if(!(v instanceof QUploadedFile) && !(v instanceof QCodeReference))
             {
                rs.put(k, v);
             }

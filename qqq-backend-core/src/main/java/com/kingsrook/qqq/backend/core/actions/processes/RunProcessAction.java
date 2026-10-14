@@ -41,6 +41,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobDiversion;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -745,6 +746,17 @@ public class RunProcessAction
       if(runProcessInput.getValues().containsKey(BASEPULL_LAST_RUNTIME_KEY))
       {
          runBackendStepInput.setBasepullLastRunTime((Instant) runProcessInput.getValues().get(BASEPULL_LAST_RUNTIME_KEY));
+      }
+
+      ////////////////////////////////////////////////////////////////////////
+      // an eligible process over the durable-jobs threshold runs its       //
+      // execute step as a background job instead (DurableJobDiversion)    //
+      ////////////////////////////////////////////////////////////////////////
+      Optional<RunBackendStepOutput> diverted = DurableJobDiversion.maybeDivert(runBackendStepInput, process, backendStep);
+      if(diverted.isPresent())
+      {
+         storeState(stateKey, diverted.get().getProcessState());
+         return (diverted.get());
       }
 
       traceStepStart(runBackendStepInput);

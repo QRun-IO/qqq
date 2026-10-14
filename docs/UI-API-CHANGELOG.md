@@ -61,6 +61,17 @@ spec'd routes.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Added contingent field metadata: `possibleValueSourceDependsOn` lists explicit and
+  inferred input dependencies; `possibleValueSourceDependencyBehavior` defaults to
+  `DISABLE_UNTIL_SET`. Both properties are absent for non-contingent fields.
+- Added `SHOW_ALL_UNTIL_SET`: FORM searches omit missing-input criteria while
+  retaining criteria for supplied inputs. FILTER searches remain unrestricted by
+  missing inputs; use-case parsing is consistent and case-insensitive.
+- User-sourced table writes validate contingent choices in batches, including
+  partial updates and custom providers; fields can opt out with
+  `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
+  See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
+  frontend obligations, sample fixtures and the process-step validation limitation.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

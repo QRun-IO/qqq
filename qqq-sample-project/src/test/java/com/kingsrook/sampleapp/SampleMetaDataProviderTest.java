@@ -27,8 +27,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -39,6 +42,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.mock.MockBackendStep;
 import com.kingsrook.qqq.backend.module.filesystem.local.actions.FilesystemQueryAction;
 import com.kingsrook.qqq.backend.module.filesystem.local.model.metadata.FilesystemTableBackendDetails;
+import com.kingsrook.sampleapp.metadata.ContingentPlaceMetaData;
 import com.kingsrook.sampleapp.metadata.SampleMetaDataProvider;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -168,4 +172,25 @@ public class SampleMetaDataProviderTest
       });
    }
 
+
+
+
+   /*******************************************************************************
+    ** The acceptance fixture is seeded and its process echoes the chosen city.
+    *******************************************************************************/
+   @Test
+   void contingentPlaceSample() throws Exception
+   {
+      Assertions.assertEquals(2, new QueryAction().execute(new QueryInput().withTableName("country")).getRecords().size());
+      Assertions.assertEquals(4, new QueryAction().execute(new QueryInput().withTableName("countryState")).getRecords().size());
+      Assertions.assertEquals(8, new QueryAction().execute(new QueryInput().withTableName("stateCity")).getRecords().size());
+      Assertions.assertEquals(2, new QueryAction().execute(new QueryInput().withTableName("addressBook")).getRecords().size());
+      assertTrue(ContingentPossibleValueHelper.getDependencyFieldNames(QContext.getQInstance().getTable("addressBook").getField("stateId")).contains("countryId"));
+      assertNotNull(QContext.getQInstance().getProcess("addressBookPickPlace"));
+      RunBackendStepInput input = new RunBackendStepInput();
+      input.addValue("cityId", 5);
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      new ContingentPlaceMetaData.EchoCityStep().run(input, output);
+      Assertions.assertEquals("Toronto", output.getValue("chosenCityName"));
+   }
 }

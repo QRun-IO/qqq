@@ -57,10 +57,31 @@ spec'd routes.
 |---|---|---|---|
 | esb | `/esb` | 1.0.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
 
+## Legacy unversioned routes (deprecated)
+
+The unversioned `QJavalinImplementation` routes (`/metaData`, `/data/...`, `/processes/...`,
+`/widget/...`, `/possibleValues/...`, `/download/...`, `/reports/...`, `/serverInfo`,
+`/manageSession`) are the Material Dashboard's API. They are **deprecated as of 2026-10-13**.
+Next UI makes no calls to them (see `UI-API-AUDIT.md`).
+
+- Every response from them carries `Deprecation: @1760313600` (RFC 9745) and
+  `Link: </qqq/v1/openapi.html>; rel="successor-version"`.
+- The first call to each route family is logged at INFO.
+- They stay served while the Material Dashboard uses them, because
+  `serveLegacyUnversionedMiddlewareAPI` defaults to true.
+- **Sunset:** they are removed together with the Material Dashboard. No date is set yet; it will be
+  announced here.
+
 ## Versions
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
+  `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
+  `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing
+  is stored). Uploads are read through `BulkLoadUploadSources` by their opaque ref, as the session
+  user. The `X-QQQ-AI-Route: hipaa` request header allows sample values of classified and unmapped
+  columns; without it they are left out.
 - Added contingent field metadata: `possibleValueSourceDependsOn` lists explicit and
   inferred input dependencies; `possibleValueSourceDependencyBehavior` defaults to
   `DISABLE_UNTIL_SET`. Both properties are absent for non-contingent fields.

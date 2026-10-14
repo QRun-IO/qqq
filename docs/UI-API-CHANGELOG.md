@@ -90,6 +90,10 @@ spec'd routes.
   - channel deny rules: `QPermissionRules.withDeniedClients`, plus denied objects and patterns, with a
     default wall that keeps the assistant away from its own configuration, identity, permissions,
     audits, API keys, credentials and secrets.
+- Scoped credentials: `QSession.credentialScope` (`QCredentialScope`) narrows a session to the apps, tables, processes, reports, widgets and operations it lists, optionally read-only.
+  - It is intersected with the user's live permissions.
+  - The session's client channel is `token:<id>`; "token" is a new default channel.
+  - Access tokens from qbit-authentik set it.
 - Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
 - Record collaboration (docs/COLLABORATION.md):
   - Table metadata gains `recordFeatures` (`RecordFeaturesV1`), and the metadata responses gain

@@ -76,3 +76,22 @@ assistant qbit registers its tables, and `assistant_*` is already covered.
   `assistant` label to restrict itself, but no channel grants access.
 - **Only code or admin metadata can change the rules.** Every surface that edits permissions,
   identity or this configuration is itself behind the wall.
+
+## Scoped credentials (access tokens)
+A session created from a scoped credential carries `QSession.credentialScope`, a
+`QCredentialScope`. One example is an Authentik access token minted by qbit-authentik: its
+authentication customizer reads the token's `qqq_token` claim and sets the scope. A scope has these
+fields; each set is null when unrestricted:
+- `credentialId`
+- `readOnly`
+- `apps`, `tables`, `processes`, `reports`, `widgets`
+- `operationIds`, as `METHOD /template`, e.g. `POST /table/{tableName}/query`
+
+Core enforces the scope. It only ever narrows the user's live permissions, so revoking a user
+permission narrows the token too:
+- `PermissionsHelper` denies objects outside the scope: they are hidden from metaData and refused.
+  `readOnly` denies table inserts, edits and deletes, and any process the scope doesn't list.
+- The UI API refuses operations outside `operationIds` (`AbstractEndpointSpec.getOperationId()`).
+- The session's client channel is `token:<credentialId>`. The `X-QQQ-Client` header is ignored, so
+  the request cannot relabel itself, and the channel is audited.
+- The assistant wall and field-access rules apply as usual.

@@ -67,6 +67,7 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public static final String CHANNEL_TUI                = "tui";
    public static final String CHANNEL_IOS                = "ios";
    public static final String CHANNEL_API                = "api";
+   public static final String CHANNEL_TOKEN              = "token";
 
    /***************************************************************************
     ** the assistant's default deny patterns (lower-cased glob over names)
@@ -104,7 +105,8 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
          .withChannel(CHANNEL_CLI, "A command-line client")
          .withChannel(CHANNEL_TUI, "A terminal UI client")
          .withChannel(CHANNEL_IOS, "A native iOS client")
-         .withChannel(CHANNEL_API, "Another program calling the UI API");
+         .withChannel(CHANNEL_API, "Another program calling the UI API")
+         .withChannel(CHANNEL_TOKEN, "A scoped access token (token:<id>), set by the server from the credential");
       for(String pattern : ASSISTANT_DEFAULT_DENIED_PATTERNS)
       {
          rs.withDeniedPattern(CHANNEL_ASSISTANT, pattern);

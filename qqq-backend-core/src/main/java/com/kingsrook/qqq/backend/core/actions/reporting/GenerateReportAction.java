@@ -36,6 +36,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncRecordPipeLoop;
@@ -43,6 +45,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.DataSourceQueryInputCustomizer;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportViewCustomizer;
@@ -115,6 +118,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class GenerateReportAction extends AbstractQActionFunction<ReportInput, ReportOutput>
 {
+   private boolean enforceFieldAccess;
+   private static final Pattern AGGREGATE_REFERENCE = Pattern.compile("\\$\\{(?:pivot|total|variancePivot|varianceTotal)\\.[^.}]+\\.([^}]+)}");
+
    private static final QLogger LOG = QLogger.getLogger(GenerateReportAction.class);
 
    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -146,6 +152,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
     *******************************************************************************/
    public ReportOutput execute(ReportInput reportInput) throws QException
    {
+      enforceFieldAccess = CorePermissionEnforcer.shouldEnforceFieldAccess(reportInput);
       if(CorePermissionEnforcer.shouldEnforce(reportInput))
       {
          ////////////////////////////////////////////////////////////////////////////
@@ -188,6 +195,10 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
 
       this.views = report.getViews();
       this.dataSources = report.getDataSources();
+      if(enforceFieldAccess)
+      {
+         assertReportFieldsAllowed();
+      }
 
       ReportFormat reportFormat = reportInput.getReportDestination().getReportFormat();
       if(reportFormat == null)
@@ -534,6 +545,10 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
                queryInput = queryInputCustomizer.run(reportInput, queryInput);
             }
 
+            if(enforceFieldAccess)
+            {
+               FieldAccessHelper.assertCriteriaAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFilter(), null);
+            }
             return (new QueryAction().execute(queryInput));
          }
          else if(dataSource.getStaticDataSupplier() != null)
@@ -565,6 +580,11 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
             finalTransformStepInput.setRecords(records);
             finalTransformStep.runOnePage(finalTransformStepInput, finalTransformStepOutput);
             records = finalTransformStepOutput.getRecords();
+         }
+
+         if(enforceFieldAccess && dataSource.getSourceTable() != null)
+         {
+            FieldAccessHelper.applyToRecords(dataSource.getSourceTable(), dataSource.getQueryJoins(), records, "report");
          }
 
          Integer total = countByDataSource.get(dataSource.getName());
@@ -841,6 +861,10 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
             //////////////////////////////////////////////////////
             FieldAndJoinTable fieldAndJoinTable = FieldAndJoinTable.get(table, fieldName);
             field = fieldAndJoinTable.field();
+            if(enforceFieldAccess && !FieldAccessHelper.getTier(fieldAndJoinTable.joinTable(), field.getName()).canGroupOrAggregate())
+            {
+               continue;
+            }
          }
          catch(Exception e)
          {
@@ -1236,4 +1260,55 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
    {
    }
 
+
+
+
+   /*******************************************************************************
+    ** Report grouping, sorting and pivots must not infer restricted values.
+    *******************************************************************************/
+   private void assertReportFieldsAllowed() throws QPermissionDeniedException
+   {
+      for(QReportView view : views)
+      {
+         QReportView sourceView = view;
+         if(view.getPivotTableSourceViewName() != null)
+         {
+            sourceView = views.stream().filter(candidate -> candidate.getName().equals(view.getPivotTableSourceViewName())).findFirst().orElse(view);
+         }
+         for(QReportDataSource source : dataSources)
+         {
+            if(source.getSourceTable() == null || (!Objects.equals(source.getName(), sourceView.getDataSourceName()) && !Objects.equals(source.getName(), view.getVarianceDataSourceName())))
+            {
+               continue;
+            }
+            Set<String> fields = new HashSet<>(CollectionUtils.nonNullList(view.getSummaryFields()));
+            for(QFilterOrderBy orderBy : CollectionUtils.nonNullList(view.getOrderByFields()))
+            {
+               fields.add(orderBy.getFieldName());
+            }
+            if(view.getPivotTableDefinition() != null)
+            {
+               CollectionUtils.nonNullList(view.getPivotTableDefinition().getRows()).forEach(group -> fields.add(group.getFieldName()));
+               CollectionUtils.nonNullList(view.getPivotTableDefinition().getColumns()).forEach(group -> fields.add(group.getFieldName()));
+               CollectionUtils.nonNullList(view.getPivotTableDefinition().getValues()).forEach(value -> fields.add(value.getFieldName()));
+            }
+            for(QReportField column : CollectionUtils.nonNullList(sourceView.getColumns()))
+            {
+               if(fields.remove(column.getName()))
+               {
+                  fields.add(Objects.requireNonNullElse(column.getSourceFieldName(), column.getName()));
+               }
+            }
+            for(QReportField column : CollectionUtils.nonNullList(view.getColumns()))
+            {
+               Matcher matcher = AGGREGATE_REFERENCE.matcher(Objects.toString(column.getFormula(), ""));
+               while(matcher.find())
+               {
+                  fields.add(matcher.group(1));
+               }
+            }
+            FieldAccessHelper.assertCriteriaAllowed(source.getSourceTable(), source.getQueryJoins(), null, fields);
+         }
+      }
+   }
 }

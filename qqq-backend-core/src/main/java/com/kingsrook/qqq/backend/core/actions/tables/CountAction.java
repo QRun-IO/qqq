@@ -28,6 +28,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.CurrentUserFilterHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocessor;
@@ -62,19 +63,26 @@ public class CountAction
     *******************************************************************************/
    public CountOutput execute(CountInput countInput) throws QException
    {
+      FieldAccessHelper.PendingExactMatch exactMatch = null;
       boolean enforce = false;
       if(countInput.getTableName() != null && countInput.getTable() != null)
       {
-         enforce = CorePermissionEnforcer.checkTablePermissions(countInput, TablePermissionSubType.READ);
+         CorePermissionEnforcer.checkTablePermissions(countInput, TablePermissionSubType.READ);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(countInput);
          if(enforce)
          {
-            CorePermissionEnforcer.checkReadCriteria(countInput, countInput.getQueryJoins(), countInput.getFilter(), null);
+            exactMatch = CorePermissionEnforcer.checkReadCriteria(countInput, countInput.getQueryJoins(), countInput.getFilter(), null);
          }
       }
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
       {
-         return (executeInAuthorizedScope(countInput, enforce));
+         CountOutput output = executeInAuthorizedScope(countInput, enforce);
+         if(exactMatch != null)
+         {
+            exactMatch.complete(output.getCount(), "count");
+         }
+         return (output);
       }
    }
 

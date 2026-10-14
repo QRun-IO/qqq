@@ -26,8 +26,10 @@ import java.util.Iterator;
 import java.util.Objects;
 import com.google.gson.reflect.TypeToken;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.UseTablePermissionCustomPermissionChecker;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -164,6 +166,10 @@ public class GetAuditsForRecordProcess implements MetaDataProducerInterface<QPro
          }
       }
 
+      if(CorePermissionEnforcer.shouldEnforceFieldAccess(runBackendStepInput))
+      {
+         FieldAccessHelper.applyToAuditDetails(tableName, auditRecords);
+      }
       runBackendStepOutput.addValue("audits", auditRecords);
    }
 

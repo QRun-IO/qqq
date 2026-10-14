@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessRecordsInput;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessRecordsOutputInterface;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.ProcessExecutorUtils;
 
 
 /*******************************************************************************
@@ -67,7 +68,7 @@ public class ProcessRecordsExecutor extends AbstractMiddlewareExecutor<ProcessRe
       else
       {
          List<QRecord> page = CollectionUtils.safelyGetPage(records, input.getSkip(), input.getLimit());
-         output.setRecords(page);
+         output.setRecords(ProcessExecutorUtils.recordsForCaller(input.getProcessName(), processState, page));
          output.setTotalRecords(records.size());
       }
    }

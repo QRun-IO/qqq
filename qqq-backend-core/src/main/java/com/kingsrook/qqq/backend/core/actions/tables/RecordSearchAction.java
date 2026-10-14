@@ -35,8 +35,11 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.query.CriteriaExpansionContext;
 import com.kingsrook.qqq.backend.core.actions.tables.query.SearchTermKind;
 import com.kingsrook.qqq.backend.core.actions.tables.query.VirtualFieldCriteriaExpanderInterface;
@@ -108,6 +111,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class RecordSearchAction
 {
+   private boolean enforceFieldAccess;
+
    private static final QLogger LOG = QLogger.getLogger(RecordSearchAction.class);
 
    public static final int DEFAULT_LIMIT_PER_TABLE    = 5;
@@ -173,6 +178,7 @@ public class RecordSearchAction
     *******************************************************************************/
    public RecordSearchOutput execute(RecordSearchInput input) throws QException
    {
+      enforceFieldAccess = CorePermissionEnforcer.shouldEnforceFieldAccess(input);
       String searchTerm = input.getSearchTerm() == null ? "" : input.getSearchTerm().trim();
       if(!StringUtils.hasContent(searchTerm))
       {
@@ -217,7 +223,7 @@ public class RecordSearchAction
          personalizedTables.put(table.getName(), TableMetaDataPersonalizerAction.execute(new TableMetaDataPersonalizerInput()
             .withTableName(table.getName())
             .withTableMetaData(table)
-            .withInputSource(input.getInputSource())));
+            .withInputSource(input.getInputSource()), enforceFieldAccess));
       }
 
       ///////////////////////////////////////////////////////////////////////////
@@ -492,7 +498,7 @@ public class RecordSearchAction
       }
 
       QFieldMetaData modifyDateField = parameters.sort() == RecordSearchSort.RECENT ? modifyDateField(table) : null;
-      if(modifyDateField != null)
+      if(modifyDateField != null && (!enforceFieldAccess || FieldAccessHelper.getTier(table, modifyDateField.getName()).canSort()))
       {
          filter.withOrderBy(new QFilterOrderBy(modifyDateField.getName(), false));
       }
@@ -528,6 +534,14 @@ public class RecordSearchAction
    {
       QueryInput queryInput = new QueryInput(table.getName());
       queryInput.setInputSource(input.getInputSource());
+      if(input.getPermissionEnforcement() == PermissionEnforcement.SKIP)
+      {
+         queryInput.withPermissionBypass(input.getPermissionBypassReason());
+      }
+      else
+      {
+         queryInput.setPermissionEnforcement(input.getPermissionEnforcement());
+      }
       queryInput.setFilter(filter);
       queryInput.setShouldGenerateDisplayValues(true);
       queryInput.setShouldTranslatePossibleValues(true);
@@ -546,9 +560,13 @@ public class RecordSearchAction
     ** its primary key instead (a blank label is left out of the JSON response,
     ** and clients require one).
     *******************************************************************************/
-   private static RecordSearchResult toResult(QTableMetaData table, QTableMetaData personalized, QRecord record, List<String> tokens, RecordSearchResult providerResult)
+   private RecordSearchResult toResult(QTableMetaData table, QTableMetaData personalized, QRecord record, List<String> tokens, RecordSearchResult providerResult)
    {
       String recordLabel = record.getRecordLabel() != null ? record.getRecordLabel() : QValueFormatter.formatRecordLabel(table, record);
+      if(enforceFieldAccess && CollectionUtils.nonNullList(table.getRecordLabelFields()).stream().anyMatch(name -> !FieldAccessHelper.getTier(table, name).canReadValue()))
+      {
+         recordLabel = null;
+      }
       if(!StringUtils.hasContent(recordLabel))
       {
          String primaryKeyDisplayValue = record.getDisplayValue(table.getPrimaryKeyField());
@@ -638,7 +656,7 @@ public class RecordSearchAction
     ** The field, if the session can see it in the (personalized) table: it
     ** exists, is not hidden, and is not a masked (e.g., password) field.
     *******************************************************************************/
-   private static QFieldMetaData visibleField(QTableMetaData personalized, String fieldName)
+   private QFieldMetaData visibleField(QTableMetaData personalized, String fieldName)
    {
       QFieldMetaData field = fieldName == null || personalized == null ? null : personalized.getFields().get(fieldName);
       if(field == null && personalized != null)
@@ -649,7 +667,7 @@ public class RecordSearchAction
             field = virtualField;
          }
       }
-      if(field == null || field.getIsHidden() || field.getType() == null || field.getType().needsMasked())
+      if(field == null || (enforceFieldAccess && !FieldAccessHelper.getTier(personalized, fieldName).canQuickSearch()) || field.getIsHidden() || field.getType() == null || field.getType().needsMasked())
       {
          return (null);
       }

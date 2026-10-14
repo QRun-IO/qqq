@@ -139,6 +139,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeConsumer;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeFunction;
+import com.kingsrook.qqq.middleware.javalin.executors.WidgetExecutor;
 import com.kingsrook.qqq.middleware.javalin.misc.DownloadFileSupplementalAction;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
@@ -1607,6 +1608,7 @@ public class QJavalinImplementation
          }
 
          RenderWidgetOutput output = new RenderWidgetAction().execute(input);
+         WidgetExecutor.applyFieldAccess(output.getWidgetData(), ValueUtils.getValueAsString(input.getWidgetMetaData().getDefaultValues().get("tableName")));
          QJavalinAccessLogger.logEndSuccessIfSlow(SLOW_LOG_THRESHOLD_MS, logPair("widgetName", widgetName), logPair("inputParams", input.getQueryParams()));
          context.result(JsonUtils.toJson(output.getWidgetData()));
       }
@@ -1998,6 +2000,7 @@ public class QJavalinImplementation
       String labels     = context.queryParam("labels");
 
       SearchPossibleValueSourceInput input = new SearchPossibleValueSourceInput();
+      input.setInputSource(QInputSource.USER);
       setupSession(context, input);
       input.setPossibleValueSourceName(possibleValueSourceName);
       input.setSearchTerm(searchTerm);

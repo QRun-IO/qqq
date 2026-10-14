@@ -32,10 +32,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -74,7 +77,20 @@ public class QPossibleValueTranslator
    ///////////////////////////////////////////////////////
    private Map<String, Map<Serializable, String>> possibleValueCache = new HashMap<>();
 
+   private boolean enforceFieldAccess = CorePermissionEnforcer.shouldEnforceFieldAccess(new AbstractActionInput());
+
    private int maxSizePerPvsCache = 50_000;
+
+
+
+   /*******************************************************************************
+    ** Carry the owning action's field gate through trusted lookup queries.
+    *******************************************************************************/
+   public QPossibleValueTranslator withFieldAccessEnforcement(boolean enforceFieldAccess)
+   {
+      this.enforceFieldAccess = enforceFieldAccess;
+      return (this);
+   }
 
 
 
@@ -329,6 +345,12 @@ public class QPossibleValueTranslator
       //////////////////////////////////////////////////////////////
       // look for cached value - if it's missing, call the primer //
       //////////////////////////////////////////////////////////////
+      QTableMetaData table = QContext.getQInstance().getTable(possibleValueSource.getTableName());
+      if(enforceFieldAccess && CollectionUtils.nonNullList(table.getRecordLabelFields()).stream().anyMatch(name -> !FieldAccessHelper.getTier(table, name).canReadValue()))
+      {
+         return (String.valueOf(value));
+      }
+
       Map<Serializable, String> cacheForPvs = possibleValueCache.computeIfAbsent(possibleValueSource.getName(), x -> new HashMap<>());
       if(!cacheForPvs.containsKey(value))
       {
@@ -540,6 +562,7 @@ public class QPossibleValueTranslator
     *******************************************************************************/
    private void primePvsCache(String tableName, List<QPossibleValueSource> possibleValueSources, Collection<Serializable> values)
    {
+      QTableMetaData table = QContext.getQInstance().getTable(tableName);
       String idField = null;
       for(QPossibleValueSource possibleValueSource : possibleValueSources)
       {
@@ -596,7 +619,6 @@ public class QPossibleValueTranslator
             {
                if(possibleValueSource.getType().equals(QPossibleValueSourceType.TABLE))
                {
-                  QTableMetaData table = QContext.getQInstance().getTable(possibleValueSource.getTableName());
                   for(String recordLabelField : CollectionUtils.nonNullList(table.getRecordLabelFields()))
                   {
                      QFieldMetaData field = table.getField(recordLabelField);
@@ -634,7 +656,7 @@ public class QPossibleValueTranslator
                Serializable pkeyValue = record.getValue(idField);
                for(QPossibleValueSource possibleValueSource : possibleValueSources)
                {
-                  QPossibleValue<?> possibleValue = new QPossibleValue<>(pkeyValue, record.getRecordLabel());
+                  QPossibleValue<?> possibleValue = new QPossibleValue<>(pkeyValue, enforceFieldAccess && CollectionUtils.nonNullList(table.getRecordLabelFields()).stream().anyMatch(name -> !FieldAccessHelper.getTier(table, name).canReadValue()) ? String.valueOf(pkeyValue) : record.getRecordLabel());
                   possibleValueCache.get(possibleValueSource.getName()).put(pkeyValue, formatPossibleValue(possibleValueSource, possibleValue));
                }
             }

@@ -26,6 +26,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 
 
 /*******************************************************************************
@@ -47,8 +49,12 @@ import java.util.regex.Pattern;
  **    hook, so the opt-in lives in these settings.)
  ** hiddenWidgetNames - widgets never rendered, even if allowed (an override deny).
  *******************************************************************************/
-public class AiToolKernelSettings
+public class AiToolKernelSettings implements QSupplementalInstanceMetaData
 {
+   public static final String NAME = "aiToolKernelSettings";
+
+
+
    public static final int DEFAULT_MAX_ROWS_TO_MODEL = 50;
    public static final int DEFAULT_MAX_CELL_CHARS    = 500;
 
@@ -59,6 +65,27 @@ public class AiToolKernelSettings
    private Set<String>   allowedWidgetNames      = new HashSet<>();
    private Set<String>   hiddenWidgetNames       = new HashSet<>();
 
+
+
+   /*******************************************************************************
+    ** Instance settings for assistant-channel requests outside a kernel call.
+    *******************************************************************************/
+   public static AiToolKernelSettings of(QInstance instance)
+   {
+      AiToolKernelSettings settings = instance == null ? null : QSupplementalInstanceMetaData.of(instance, NAME);
+      return (settings == null ? new AiToolKernelSettings() : settings);
+   }
+
+
+
+   /*******************************************************************************
+    ** Supplemental metadata name.
+    *******************************************************************************/
+   @Override
+   public String getName()
+   {
+      return (NAME);
+   }
 
 
    /*******************************************************************************

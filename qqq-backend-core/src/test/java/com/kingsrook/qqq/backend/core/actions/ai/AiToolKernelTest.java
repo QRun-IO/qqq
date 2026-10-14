@@ -28,10 +28,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessResolverMetaData;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -745,5 +749,33 @@ class AiToolKernelTest extends BaseTest
    private static AiToolApplicability applicability(AiAccessReport report, String toolName)
    {
       return (report.getTools().stream().filter(t -> t.getToolName().equals(toolName)).findFirst().orElseThrow());
+   }
+
+
+
+   /*******************************************************************************
+    ** Kernel entry uses the assistant wall and restores the caller's session.
+    *******************************************************************************/
+   @Test
+   void assistantChannelAndSharedResolver() throws Exception
+   {
+      QInstance instance = kernelInstanceWithData();
+      instance.getSupplementalMetaData().remove(ClientChannelsMetaData.NAME);
+      QSession caller = store1User().withClientChannel("next-ui");
+      QContext.init(instance, caller);
+      AiToolKernel assistant = new AiToolKernel(instance, AiKernelTestSupport.settings());
+      AiToolResult denied = assistant.execute(caller, call("get_record_history", "table", TABLE_CUSTOMER, "id", 1));
+      assertEquals(AiToolOutcome.DENIED, denied.getOutcome());
+      assertSame(caller, QContext.getQSession());
+      assertEquals("next-ui", caller.getClientChannelName());
+      FieldAccessResolverMetaData.ofOrWithNew(instance).withResolverInstance((table, field) ->
+      {
+         assertEquals("assistant", QContext.getQSession().getClientChannelName());
+         return ("name".equals(field.getName()) ? new FieldAccessDecision(FieldAccessTier.MASKED, null, "resolver") : FieldAccessDecision.FULL);
+      });
+      AiAccessReport report = assistant.describeAccess(caller, TABLE_CUSTOMER, null);
+      assertEquals(AiExposure.MASKED, report.getFields().stream().filter(field -> "name".equals(field.getFieldName())).findFirst().orElseThrow().getExposure());
+      assertSame(caller, QContext.getQSession());
+      assertEquals("next-ui", caller.getClientChannelName());
    }
 }

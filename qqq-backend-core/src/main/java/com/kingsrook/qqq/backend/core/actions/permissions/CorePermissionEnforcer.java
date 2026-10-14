@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessResolverMetaData;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -36,14 +38,21 @@ import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.ActionFlag;
+import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
+import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
@@ -172,6 +181,35 @@ public final class CorePermissionEnforcer
 
 
    /*******************************************************************************
+    ** Field policy opt-in does not opt an application into core table permissions.
+    *******************************************************************************/
+   public static boolean shouldEnforceFieldAccess(AbstractActionInput input)
+   {
+      if(shouldEnforce(input))
+      {
+         return (true);
+      }
+      if(input == null || input.getPermissionEnforcement() == PermissionEnforcement.SKIP || QContext.getAuthorizedActionScopeDepth() != 0)
+      {
+         return (false);
+      }
+      FieldAccessResolverMetaData metadata = FieldAccessResolverMetaData.of(QContext.getQInstance());
+      InputSource source = switch(input)
+      {
+         case AbstractTableActionInput tableInput -> tableInput.getInputSource();
+         case RecordSearchInput searchInput -> searchInput.getInputSource();
+         case SearchPossibleValueSourceInput valuesInput -> valuesInput.getInputSource();
+         case RunProcessInput processInput -> processInput.getInputSource();
+         case RunBackendStepInput stepInput -> stepInput.getInputSource();
+         case RenderWidgetInput widgetInput -> widgetInput.getInputSource();
+         default -> QInputSource.SYSTEM;
+      };
+      return (source == QInputSource.USER && metadata != null && metadata.getResolverInstance() != null);
+   }
+
+
+
+   /*******************************************************************************
     ** If enforcing for this input, check the table permission(s) - throwing
     ** QPermissionDeniedException if denied.  Returns whether enforcement applied
     ** (so the caller can also apply field security locks and the like).
@@ -197,10 +235,17 @@ public final class CorePermissionEnforcer
     ** table (explicit or implied by the filter), and that the filter / additional
     ** field names don't reference a field denied by a field security lock.
     *******************************************************************************/
-   public static void checkReadCriteria(AbstractTableActionInput input, List<QueryJoin> queryJoins, QQueryFilter filter, Collection<String> additionalFieldNames) throws QException
+   public static FieldAccessHelper.PendingExactMatch checkReadCriteria(AbstractTableActionInput input, List<QueryJoin> queryJoins, QQueryFilter filter, Collection<String> additionalFieldNames) throws QException
    {
-      PermissionsHelper.checkJoinedTableReadPermissions(input, queryJoins, filter);
-      FieldSecurityLockHelper.assertCriteriaAccessible(input.getTableName(), queryJoins, filter, additionalFieldNames);
+      if(shouldEnforce(input))
+      {
+         PermissionsHelper.checkJoinedTableReadPermissions(input, queryJoins, filter);
+      }
+      if(!shouldEnforceFieldAccess(input))
+      {
+         return (null);
+      }
+      return (FieldAccessHelper.assertCriteriaAllowed(input.getTableName(), queryJoins, filter, additionalFieldNames));
    }
 
 

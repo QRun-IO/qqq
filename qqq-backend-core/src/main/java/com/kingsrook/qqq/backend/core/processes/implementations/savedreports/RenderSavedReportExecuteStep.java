@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.processes.implementations.savedreports;
 
 
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.time.Instant;
@@ -261,25 +262,52 @@ public class RenderSavedReportExecuteStep implements BackendStep
     *******************************************************************************/
    private ReportOutput generateAndStoreReport(ReportInput reportInput, StorageInput storageInput) throws Exception
    {
-      try(OutputStream output = new StorageAction().createOutputStream(storageInput))
+      ///////////////////////////////////////////////////////////////////////////
+      // stream into a staging object in the same storage table, and copy it  //
+      // over the final reference only when the render succeeded: a failure   //
+      // never touches an existing archive object (no local temp file).       //
+      ///////////////////////////////////////////////////////////////////////////
+      StorageInput staging = new StorageInput(storageInput.getTableName())
+         .withReference(storageInput.getReference() + ".partial-" + UUID.randomUUID())
+         .withContentType(storageInput.getContentType());
+      ReportOutput reportOutput;
+      try
       {
-         // The step owns closing storage, even when the report generator closes its destination.
-         reportInput.getReportDestination().setReportOutputStream(CloseShieldOutputStream.wrap(output));
-         return new GenerateReportAction().execute(reportInput);
+         try(OutputStream output = new StorageAction().createOutputStream(staging))
+         {
+            // The step owns closing storage, even when the report generator closes its destination.
+            reportInput.getReportDestination().setReportOutputStream(CloseShieldOutputStream.wrap(output));
+            reportOutput = new GenerateReportAction().execute(reportInput);
+         }
+
+         try(InputStream input = new StorageAction().getInputStream(staging); OutputStream output = new StorageAction().createOutputStream(storageInput))
+         {
+            input.transferTo(output);
+         }
       }
       catch(Exception e)
       {
          try
          {
-            new StorageAction().deleteObject(storageInput);
+            new StorageAction().deleteObject(staging);
          }
          catch(Exception cleanupException)
          {
             e.addSuppressed(cleanupException);
-            LOG.warn("Could not delete failed report output", cleanupException, logPair("storageReference", storageInput.getReference()));
+            LOG.warn("Could not delete the staged report output", cleanupException, logPair("storageReference", staging.getReference()));
          }
          throw e;
       }
+
+      try
+      {
+         new StorageAction().deleteObject(staging);
+      }
+      catch(Exception cleanupException)
+      {
+         LOG.warn("Could not delete the staged report output", cleanupException, logPair("storageReference", staging.getReference()));
+      }
+      return reportOutput;
    }
 
 

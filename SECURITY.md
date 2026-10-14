@@ -4,7 +4,9 @@
 
 | Version | Supported          | Notes |
 | ------- | ------------------ | ----- |
+| 4.1.x   | :white_check_mark: | Release candidates (`4.1.0-RC.*`); fixes ship in the next candidate |
 | 4.0.x   | :white_check_mark: | Current stable |
+| 0.40.x  | :white_check_mark: | In use by a consumer; best-effort security fixes until 2027-03-31 (default end date, pending an owner decision) |
 | 0.36.x  | :white_check_mark: | Earlier supported series |
 | 0.35.x  | :white_check_mark: | Earlier supported series |
 | < 0.35  | :x:                | End of life |

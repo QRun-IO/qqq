@@ -97,6 +97,8 @@ public class DurableJobsRuntime
 
    private static final Map<QInstance, DurableJobsRuntime> RUNTIMES = new WeakHashMap<>();
 
+   private static final int DRAIN_ON_SHUTDOWN_SECONDS = 20;
+
    private final QInstance           instance;
    private final DurableJobsMetaData settings;
    private final DurableJobStore     store;
@@ -106,6 +108,7 @@ public class DurableJobsRuntime
    private final AtomicInteger busy     = new AtomicInteger(0);
 
    private ExecutorService          workers;
+   private Thread                   shutdownHook;
    private ScheduledExecutorService scheduler;
 
 
@@ -140,6 +143,13 @@ public class DurableJobsRuntime
          runtime = new DurableJobsRuntime(instance, settings);
          runtime.startThreads();
          RUNTIMES.put(instance, runtime);
+
+         ///////////////////////////////////////////////////////////////////////
+         // SIGTERM (a redeploy) drains: running chunks release their leases //
+         // at their next safe point, so another pod continues them at once.  //
+         ///////////////////////////////////////////////////////////////////////
+         runtime.shutdownHook = new Thread(() -> stop(instance, Duration.ofSeconds(DRAIN_ON_SHUTDOWN_SECONDS)), "qqq-jobs-drain-" + runtime.podId);
+         Runtime.getRuntime().addShutdownHook(runtime.shutdownHook);
       }
       return (runtime);
    }
@@ -162,6 +172,19 @@ public class DurableJobsRuntime
       if(runtime != null)
       {
          runtime.drainAndStop(drainTimeout);
+         try
+         {
+            if(runtime.shutdownHook != null && Thread.currentThread() != runtime.shutdownHook)
+            {
+               Runtime.getRuntime().removeShutdownHook(runtime.shutdownHook);
+            }
+         }
+         catch(IllegalStateException e)
+         {
+            /////////////////////////////////////////////
+            // the JVM is already shutting down - fine //
+            /////////////////////////////////////////////
+         }
       }
    }
 

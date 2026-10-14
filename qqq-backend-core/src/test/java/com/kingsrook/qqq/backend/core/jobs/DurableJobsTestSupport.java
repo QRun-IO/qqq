@@ -24,12 +24,22 @@ package com.kingsrook.qqq.backend.core.jobs;
 
 import java.io.Serializable;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
+import com.kingsrook.qqq.backend.core.alerts.AlertResolution;
+import com.kingsrook.qqq.backend.core.alerts.AlertSignal;
+import com.kingsrook.qqq.backend.core.alerts.AlertSinkInterface;
+import com.kingsrook.qqq.backend.core.alerts.NotificationSignal;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
@@ -41,6 +51,11 @@ import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleCustomizerInterface;
+import com.kingsrook.qqq.backend.core.modules.authentication.implementations.MockAuthenticationModule;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBusInterface;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.utils.SleepUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 
@@ -57,9 +72,15 @@ public class DurableJobsTestSupport
 
    public static final Map<String, AtomicInteger> STEP_RUNS = new ConcurrentHashMap<>();
    public static final Map<String, Serializable>  SEEN      = new ConcurrentHashMap<>();
+   public static final List<String> START_ORDER = new CopyOnWriteArrayList<>();
+   public static final List<AlertSignal> ALERTS = new CopyOnWriteArrayList<>();
+   public static final List<AlertResolution> RESOLUTIONS = new CopyOnWriteArrayList<>();
+   public static final List<NotificationSignal> NOTIFICATIONS = new CopyOnWriteArrayList<>();
+   public static final List<RealtimeMessage> MESSAGES = new CopyOnWriteArrayList<>();
 
    public static volatile long    stepSleepMillis = 0;
    public static volatile boolean failStep3       = false;
+   public static volatile CountDownLatch step1Gate;
 
 
 
@@ -70,8 +91,14 @@ public class DurableJobsTestSupport
    {
       STEP_RUNS.clear();
       SEEN.clear();
+      START_ORDER.clear();
+      ALERTS.clear();
+      RESOLUTIONS.clear();
+      NOTIFICATIONS.clear();
+      MESSAGES.clear();
       stepSleepMillis = 0;
       failStep3 = false;
+      step1Gate = null;
 
       QInstance instance = TestUtils.defineInstance();
       new DurableJobsMetaDataProvider().defineAll(instance, TestUtils.MEMORY_BACKEND_NAME, null);
@@ -177,7 +204,27 @@ public class DurableJobsTestSupport
       @Override
       public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException
       {
+         if(input.getValueString("seed") != null)
+         {
+            START_ORDER.add(input.getValueString("seed"));
+         }
          ran("step1");
+         CountDownLatch gate = step1Gate;
+         if(gate != null)
+         {
+            try
+            {
+               if(!gate.await(15, TimeUnit.SECONDS))
+               {
+                  throw (new QException("Timed out waiting for the test to release step 1"));
+               }
+            }
+            catch(InterruptedException e)
+            {
+               Thread.currentThread().interrupt();
+               throw (new QException("Interrupted waiting for the test's step 1 gate", e));
+            }
+         }
          SEEN.put("userId", QContext.getQSession().getUser().getIdReference());
          if(QContext.getQSession().getClientChannel() != null)
          {
@@ -224,6 +271,122 @@ public class DurableJobsTestSupport
             throw (new QException("step 3 was told to fail"));
          }
          SEEN.put("step3SawFromStep2", input.getValueString("fromStep2"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Capture only messages published by the configured realtime bus.
+    *******************************************************************************/
+   public static class CapturingBus implements RealtimeBusInterface
+   {
+      /*******************************************************************************
+       ** Record a published event without retaining application subscribers.
+       *******************************************************************************/
+      @Override
+      public void publish(RealtimeMessage message)
+      {
+         MESSAGES.add(message);
+      }
+
+
+
+      /*******************************************************************************
+       ** These tests capture publishes directly and need no live subscription.
+       *******************************************************************************/
+      @Override
+      public AutoCloseable subscribe(Consumer<RealtimeMessage> listener)
+      {
+         return (() ->
+         {
+         });
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Refuse an owner whose authentication has been revoked.
+    *******************************************************************************/
+   public static class RejectingCustomizer implements QAuthenticationModuleCustomizerInterface
+   {
+      /*******************************************************************************
+       ** Reject only the revoked owner when building a worker session.
+       *******************************************************************************/
+      @Override
+      public void customizeAutomatedSessionForUser(QInstance instance, QSession session, Serializable userId) throws QAuthenticationException
+      {
+         if("revoked".equals(userId))
+         {
+            throw (new QAuthenticationException("Owner access revoked"));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Model an authentication provider that cannot find a deleted user.
+    *******************************************************************************/
+   public static class MissingOwnerAuthentication extends MockAuthenticationModule
+   {
+      /*******************************************************************************
+       ** Return no automated session for the deleted owner.
+       *******************************************************************************/
+      @Override
+      public QSession createAutomatedSessionForUser(QInstance instance, Serializable userId) throws QAuthenticationException
+      {
+         return ("missing".equals(userId) ? null : super.createAutomatedSessionForUser(instance, userId));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Capture alerts and notifications safely across worker threads.
+    *******************************************************************************/
+   public static class CapturingSink implements AlertSinkInterface
+   {
+      /*******************************************************************************
+       ** Record each failure alert.
+       *******************************************************************************/
+      @Override
+      public void raise(AlertSignal signal)
+      {
+         ALERTS.add(signal);
+      }
+
+
+
+      /*******************************************************************************
+       ** Record each alert resolution.
+       *******************************************************************************/
+      @Override
+      public void resolve(AlertResolution resolution)
+      {
+         RESOLUTIONS.add(resolution);
+      }
+
+
+
+      /*******************************************************************************
+       ** Reaper heartbeats need no test side effects.
+       *******************************************************************************/
+      @Override
+      public void heartbeat(String key, Instant at)
+      {
+      }
+
+
+
+      /*******************************************************************************
+       ** Record each completion notification.
+       *******************************************************************************/
+      @Override
+      public void notify(NotificationSignal signal)
+      {
+         NOTIFICATIONS.add(signal);
       }
    }
 

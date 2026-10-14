@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
@@ -118,7 +119,7 @@ public class QFrontendFieldMetaData implements Serializable
       this.displayFormat = fieldMetaData.getDisplayFormat();
       this.adornments = fieldMetaData.getAdornments();
       this.defaultValue = fieldMetaData.getDefaultValue();
-      this.helpContents = fieldMetaData.getHelpContents();
+      this.helpContents = HelpContentVisibility.filter(fieldMetaData.getHelpContents());
       this.inlinePossibleValueSource = fieldMetaData.getInlinePossibleValueSource();
       this.maxLength = fieldMetaData.getMaxLength();
 

@@ -164,10 +164,39 @@ response.getStatus(); response.getJson(); response.getHeaders();
   its tool list from the spec instead of hand-written tool definitions.
 - The loopback target is `127.0.0.1:{port}` of the `QApplicationJavalinServer` that is running
   (`getPort()`); the invoker sends the user's timezone header when given, and a per-call timeout
-  (default 60 s). Streams (SSE) are not invocable in-process; the assistant only needs
-  request/response operations.
+  (default 60 s). Use `invokeForStream` for binary downloads or streaming responses.
 - Recursion guard: the invoker counts nested invocations on the calling thread and refuses more
   than 8 (`UiApiInvoker.MAX_DEPTH`).
+
+### In-process sessions, streams and multipart
+
+Components that authenticate a user by other means (for example an SFTP gateway accepting
+an SSH key) can mint a `QSession` with
+`QAuthenticationModuleInterface.createAutomatedSessionForUser`, then call
+`UiApiInProcessSessions.register(session, ttl)` and pass the returned token through
+`UiApiCredentials.ofInProcessSession(token)`. TTL must be positive and at most 24 hours.
+Tokens exist only in this JVM; use `revoke(token)` when the gateway session ends. Registration
+and resolution copy the session (`QSession.clone()`, which also carries a credential scope),
+to isolate request state.
+
+The invoker sends only `X-QQQ-In-Process-Session` when these credentials are supplied.
+Both session setup paths accept it **only from a loopback socket peer**, and an invalid,
+expired or revoked token returns 401 without falling back to other credentials.
+`UiApiCredentials.fromContext(ctx)` deliberately ignores this header.
+The forwarding headers (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`) are never trusted: only
+the socket peer counts. If a reverse proxy runs on the same host, every proxied request arrives
+from loopback, so the 256-bit token held in JVM memory is then the whole protection. The token is
+never written to logs, exception messages or the 401 response, and must not be logged by callers.
+
+`invokeForStream(request)` returns an `AutoCloseable UiApiStreamResponse` with status,
+headers (`getHeader(name)` is case-insensitive), `isSuccess()` and `getInputStream()`.
+Use try-with-resources; `readBodyAsString()` consumes an error body as UTF-8. It shares
+`invoke`'s operation, credential and depth checks; depth is released when the call returns.
+
+Add files with `request.withMultipartFile(fieldName, fileName, contentType, supplier)`;
+repeat the call for multiple files. Each supplier must return a fresh `InputStream` for
+an HTTP attempt, and the publisher closes it. Files are streamed with a random boundary;
+`withFormParam` values become text parts. JSON and multipart bodies are mutually exclusive.
 
 ### AI tool kernel data
 `UiApiAiDataGateway` (in `specs.invoke`) is the kernel's `AiDataGateway` over this invoker. Every

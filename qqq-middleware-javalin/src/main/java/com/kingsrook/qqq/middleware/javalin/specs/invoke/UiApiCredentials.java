@@ -37,9 +37,30 @@ import io.javalin.http.Context;
  ** @param sessionId     the sessionId cookie
  ** @param authorization the Authorization header
  ** @param apiKey        the x-api-key header
+ ** @param inProcessSessionToken JVM-local session token, never captured from a client
  *******************************************************************************/
-public record UiApiCredentials(String sessionUUID, String sessionId, String authorization, String apiKey)
+public record UiApiCredentials(String sessionUUID, String sessionId, String authorization, String apiKey, String inProcessSessionToken)
 {
+
+   /*******************************************************************************
+    ** Backwards-compatible credentials without an in-process session.
+    *******************************************************************************/
+   public UiApiCredentials(String sessionUUID, String sessionId, String authorization, String apiKey)
+   {
+      this(sessionUUID, sessionId, authorization, apiKey, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Credentials minted by a component in this JVM after authenticating a user.
+    *******************************************************************************/
+   public static UiApiCredentials ofInProcessSession(String token)
+   {
+      return (new UiApiCredentials(null, null, null, null, token));
+   }
+
+
 
    /*******************************************************************************
     ** The credentials of a request being handled.
@@ -66,7 +87,7 @@ public record UiApiCredentials(String sessionUUID, String sessionId, String auth
     *******************************************************************************/
    public boolean isPresent()
    {
-      return (StringUtils.hasContent(sessionUUID) || StringUtils.hasContent(sessionId) || StringUtils.hasContent(authorization) || StringUtils.hasContent(apiKey));
+      return (StringUtils.hasContent(sessionUUID) || StringUtils.hasContent(sessionId) || StringUtils.hasContent(authorization) || StringUtils.hasContent(apiKey) || StringUtils.hasContent(inProcessSessionToken));
    }
 
 

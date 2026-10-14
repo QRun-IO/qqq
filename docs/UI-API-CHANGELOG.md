@@ -81,6 +81,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   route for v1 clients. The adjuster runs in the caller's session (the legacy route runs it as the
   system user, unauthenticated), and the caller must be allowed to insert or edit records in the
   table. It answers 404 when the application registers no form adjusters.
+- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
+  `UiApiInvoker` (in-process invocation; no change to the document).
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing

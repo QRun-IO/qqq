@@ -32,7 +32,7 @@ import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
  ** A stand-alone "pod" for the kill-the-pod tests: a separate JVM that runs the
  ** durable jobs runtime against the test database until it is killed.
  **
- ** args: host port database user password podId
+ ** args: host port database user password podId [storageBasePath]
  *******************************************************************************/
 public class DurableJobsTestNode
 {
@@ -45,7 +45,7 @@ public class DurableJobsTestNode
       String podId = args[5];
       System.setProperty(KillTestInstance.POD_PROPERTY, podId);
 
-      QInstance instance = KillTestInstance.define(args[0], Integer.parseInt(args[1]), args[2], args[3], args[4], podId, 1);
+      QInstance instance = KillTestInstance.define(args[0], Integer.parseInt(args[1]), args[2], args[3], args[4], podId, 1, args.length > 6 ? args[6] : null);
       QContext.init(instance, new QSystemUserSession());
       DurableJobsRuntime.start(instance);
       System.out.println("READY " + podId);

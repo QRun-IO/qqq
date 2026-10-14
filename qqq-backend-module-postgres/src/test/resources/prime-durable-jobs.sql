@@ -166,3 +166,72 @@ CREATE TABLE jobs_storage
    reference VARCHAR(1000) PRIMARY KEY,
    contents  BYTEA
 );
+
+DROP TABLE IF EXISTS audit_detail CASCADE;
+DROP TABLE IF EXISTS audit CASCADE;
+DROP TABLE IF EXISTS audit_table CASCADE;
+DROP TABLE IF EXISTS audit_user CASCADE;
+DROP TABLE IF EXISTS kill_test_signal CASCADE;
+DROP TABLE IF EXISTS jobs_upload CASCADE;
+
+CREATE TABLE jobs_upload
+(
+   id                 SERIAL PRIMARY KEY,
+   ref                VARCHAR(100) NOT NULL UNIQUE,
+   user_id            VARCHAR(250),
+   file_name          VARCHAR(250),
+   content_type       VARCHAR(250),
+   size_bytes         BIGINT,
+   storage_table_name VARCHAR(250),
+   storage_reference  VARCHAR(1000),
+   expires_at         TIMESTAMPTZ,
+   job_id             INTEGER,
+   create_date        TIMESTAMPTZ
+);
+
+CREATE TABLE audit_table
+(
+   id          SERIAL PRIMARY KEY,
+   name        VARCHAR(100),
+   label       VARCHAR(100),
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ
+);
+
+CREATE TABLE audit_user
+(
+   id          SERIAL PRIMARY KEY,
+   name        VARCHAR(100),
+   create_date TIMESTAMPTZ,
+   modify_date TIMESTAMPTZ
+);
+
+CREATE TABLE audit
+(
+   id             BIGSERIAL PRIMARY KEY,
+   audit_table_id INTEGER,
+   audit_user_id  INTEGER,
+   record_id      INTEGER,
+   message        VARCHAR(250),
+   timestamp      TIMESTAMPTZ,
+   client_channel VARCHAR(100)
+);
+
+CREATE TABLE audit_detail
+(
+   id         BIGSERIAL PRIMARY KEY,
+   audit_id   BIGINT,
+   message    VARCHAR(250),
+   field_name VARCHAR(100),
+   old_value  VARCHAR(250),
+   new_value  VARCHAR(250)
+);
+
+CREATE TABLE kill_test_signal
+(
+   id          SERIAL PRIMARY KEY,
+   kind        VARCHAR(50),
+   channel     VARCHAR(250),
+   detail      TEXT,
+   create_date TIMESTAMPTZ DEFAULT now()
+);

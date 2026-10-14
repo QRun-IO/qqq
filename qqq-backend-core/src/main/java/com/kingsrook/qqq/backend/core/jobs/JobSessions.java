@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public final class JobSessions
 {
+   static final String SCOPE_USER_FULL_NAME = "__userFullName";
 
    /*******************************************************************************
     ** not instantiable
@@ -81,6 +82,10 @@ public final class JobSessions
             }
          });
       }
+      if(session != null && session.getUser() != null && session.getUser().getFullName() != null)
+      {
+         scope.put(SCOPE_USER_FULL_NAME, new ArrayList<>(List.of(session.getUser().getFullName())));
+      }
       return (scope);
    }
 
@@ -105,7 +110,17 @@ public final class JobSessions
          throw (new QPermissionDeniedException("Could not establish the session of the job's owner."));
       }
 
-      intersect(session, readScope(job.getValueString("credentialScopeJson")));
+      Map<String, List<Serializable>> scope = readScope(job.getValueString("credentialScopeJson"));
+      List<Serializable>              name  = scope.remove(SCOPE_USER_FULL_NAME);
+      if(session.getUser().getFullName() == null && name != null && !name.isEmpty())
+      {
+         //////////////////////////////////////////////////////////////////////
+         // audits name the user by full name: keep the launching user's if //
+         // the auth module's automated session does not set one            //
+         //////////////////////////////////////////////////////////////////////
+         session.getUser().setFullName(String.valueOf(name.get(0)));
+      }
+      intersect(session, scope);
       session.setClientChannel(job.getValueString("clientChannel"));
       DurableJobsSecurity.applyToSession(session);
       return (session);

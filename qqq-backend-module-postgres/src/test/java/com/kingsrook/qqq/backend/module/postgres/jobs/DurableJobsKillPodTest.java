@@ -74,6 +74,8 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
  *******************************************************************************/
 class DurableJobsKillPodTest extends BaseTest
 {
+   private static final int STEP_MILLIS = 3000;
+
    private final List<Process> pods = new ArrayList<>();
 
 
@@ -108,15 +110,19 @@ class DurableJobsKillPodTest extends BaseTest
    void testKillPodMidJob() throws Exception
    {
       DurableJobStore store = launcherContext();
-      Integer         jobId = DurableJobs.launch(new LaunchRequest(KillTestInstance.PROCESS_SIX_STEPS).withValue("stepMillis", 1500).withLabel("Kill test"));
+      Integer         jobId = DurableJobs.launch(new LaunchRequest(KillTestInstance.PROCESS_SIX_STEPS).withValue("stepMillis", STEP_MILLIS).withLabel("Kill test"));
 
+      ///////////////////////////////////////////////////////////////////////
+      // A claims the (only) chunk; B starts while A works (B stays idle) //
+      ///////////////////////////////////////////////////////////////////////
       Process podA = startPod("pod-A");
-      await("pod-A holds the chunk with 3 steps checkpointed", Duration.ofSeconds(60), () -> checkpointedStep(store, jobId, "pod-A") >= 3);
+      await("pod-A holds the chunk", Duration.ofSeconds(60), () -> holder(store, jobId).equals("pod-A"));
       Process podB = startPod("pod-B");
-      SleepUtils.sleep(2, TimeUnit.SECONDS); // B is up and idle (one chunk, and A holds it)
+      await("pod-A holds the chunk with 3 steps checkpointed", Duration.ofSeconds(60), () -> checkpointedStep(store, jobId, "pod-A") >= 3);
 
       int stepsDoneByA = checkpointedStep(store, jobId, "pod-A");
       podA.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+      assertThat(holder(store, jobId)).as("pod-A still held the chunk when it was killed").isEqualTo("pod-A");
       Instant killedAt = Instant.now();
 
       QRecord job = awaitJob(store, jobId, Duration.ofSeconds(90), JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.NEEDS_REVIEW);
@@ -169,12 +175,12 @@ class DurableJobsKillPodTest extends BaseTest
       assumeFalse(System.getProperty("os.name").toLowerCase().contains("win"), "SIGTERM is not available on Windows");
 
       DurableJobStore store = launcherContext();
-      Integer         jobId = DurableJobs.launch(new LaunchRequest(KillTestInstance.PROCESS_SIX_STEPS).withValue("stepMillis", 1500));
+      Integer         jobId = DurableJobs.launch(new LaunchRequest(KillTestInstance.PROCESS_SIX_STEPS).withValue("stepMillis", STEP_MILLIS));
 
       Process podA = startPod("pod-A");
-      await("pod-A holds the chunk with 2 steps checkpointed", Duration.ofSeconds(60), () -> checkpointedStep(store, jobId, "pod-A") >= 2);
+      await("pod-A holds the chunk", Duration.ofSeconds(60), () -> holder(store, jobId).equals("pod-A"));
       startPod("pod-B");
-      SleepUtils.sleep(2, TimeUnit.SECONDS);
+      await("pod-A holds the chunk with 2 steps checkpointed", Duration.ofSeconds(60), () -> checkpointedStep(store, jobId, "pod-A") >= 2);
 
       Instant stoppedAt = Instant.now();
       podA.destroy();
@@ -241,10 +247,33 @@ class DurableJobsKillPodTest extends BaseTest
       //////////////////////////////////////////////////////////////////////
       // keep draining the pod's output so it never blocks on a full pipe //
       //////////////////////////////////////////////////////////////////////
-      Thread drainer = new Thread(() -> reader.lines().forEach(l -> System.out.println("[" + podId + "] " + l)), "drain-" + podId);
+      Thread drainer = new Thread(() ->
+      {
+         try
+         {
+            reader.lines().forEach(l -> System.out.println("[" + podId + "] " + l));
+         }
+         catch(Exception e)
+         {
+            ///////////////////////////////////////////
+            // the pod was stopped; its output ended //
+            ///////////////////////////////////////////
+         }
+      }, "drain-" + podId);
       drainer.setDaemon(true);
       drainer.start();
       return (process);
+   }
+
+
+
+   /*******************************************************************************
+    ** The pod holding the job's chunk ("" when none).
+    *******************************************************************************/
+   private static String holder(DurableJobStore store, Integer jobId) throws Exception
+   {
+      QRecord chunk = store.getChunks(jobId).get(0);
+      return (ChunkStatus.RUNNING.name().equals(chunk.getValueString("status")) && chunk.getValueString("leaseOwner") != null ? chunk.getValueString("leaseOwner") : "");
    }
 
 

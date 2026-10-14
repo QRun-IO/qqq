@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -44,18 +45,22 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobAction;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSemantics;
+import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
+import com.kingsrook.qqq.backend.core.jobs.plans.ChunkedProcessPlan;
 import com.kingsrook.qqq.backend.core.jobs.plans.JobPlan;
 import com.kingsrook.qqq.backend.core.jobs.plans.JobPlans;
 import com.kingsrook.qqq.backend.core.jobs.plans.StepsJobPlan;
 import com.kingsrook.qqq.backend.core.jobs.runtime.JobFinalizer;
 import com.kingsrook.qqq.backend.core.jobs.runtime.JobSignals;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
+import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.QUploadedFile;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
@@ -252,7 +257,8 @@ public final class DurableJobs
       JobStatus status = autoStart ? JobStatus.QUEUED : JobStatus.AWAITING_CONFIRMATION;
 
       JobSemantics semantics = durable != null && durable.getSemantics() != null ? durable.getSemantics() : JobSemantics.CHUNKED;
-      JobIdempotency idempotency = durable != null && durable.getIdempotency() != null ? durable.getIdempotency() : JobIdempotency.NONE;
+      JobSourceType  sourceType  = JobPlans.sourceTypeFor(process, request);
+      JobIdempotency idempotency = durable != null && durable.getIdempotency() != null ? durable.getIdempotency() : defaultIdempotency(process, sourceType);
 
       Map<String, Object> source = new LinkedHashMap<>();
       if(request.getStartAfterStep() != null)
@@ -275,6 +281,10 @@ public final class DurableJobs
       {
          source.put("profileJson", request.getProfileJson());
       }
+      if(request.getRowSetSource() != null)
+      {
+         source.putAll(request.getRowSetSource());
+      }
 
       Instant now = store.now();
       QRecord job = new QRecord()
@@ -288,7 +298,7 @@ public final class DurableJobs
          .withValue("userId", userId)
          .withValue("clientChannel", session.getClientChannel())
          .withValue("credentialScopeJson", JsonUtils.toJson(JobSessions.captureScope(session)))
-         .withValue("sourceType", JobPlans.sourceTypeFor(process, request).name())
+         .withValue("sourceType", sourceType.name())
          .withValue("sourceJson", JsonUtils.toJson(source))
          .withValue("paramsJson", JsonUtils.toJson(paramValues(request.getValues())))
          .withValue("idempotency", idempotency.name())
@@ -331,7 +341,14 @@ public final class DurableJobs
                .withValue("modifyDate", now));
          }
          store.insertChunks(chunkRecords, null);
-         store.updateJob(jobId, Map.of("chunksTotal", chunkRecords.size()));
+         Map<String, Serializable> planned = new LinkedHashMap<>();
+         planned.put("chunksTotal", chunkRecords.size());
+         planned.put("rowsTotal", job.getValueInteger("rowsTotal"));
+         store.updateJob(jobId, planned);
+         for(String ref : request.getUploadRefs())
+         {
+            UploadRefs.extendForJob(ref, jobId);
+         }
       }
       catch(Exception e)
       {
@@ -342,6 +359,13 @@ public final class DurableJobs
       store.recordEvent(jobId, null, JobEventType.LAUNCHED, userId, session.getClientChannel(), null,
          "Launched " + process.getName() + " (" + chunks.size() + (chunks.size() == 1 ? " chunk" : " chunks") + ")" + (status == JobStatus.AWAITING_CONFIRMATION ? "; awaiting confirmation" : ""));
       JobSignals.status(jobId, userId, status);
+      if(chunks.isEmpty() && status == JobStatus.QUEUED)
+      {
+         //////////////////////////////////////////////////
+         // nothing to do (e.g., an empty file): finish //
+         //////////////////////////////////////////////////
+         new JobFinalizer(store).evaluate(jobId);
+      }
       LOG.info("Launched durable job", logPair("jobId", jobId), logPair("processName", process.getName()), logPair("userId", userId), logPair("status", status), logPair("chunks", chunks.size()));
       return (jobId);
    }
@@ -404,6 +428,55 @@ public final class DurableJobs
    public static void evaluate(Integer jobId) throws QException
    {
       new JobFinalizer(new DurableJobStore(settings())).evaluate(jobId);
+   }
+
+
+
+   /*******************************************************************************
+    ** The idempotency a job gets when its process does not say (spec 2.5):
+    ** SAME_TRANSACTION (exactly once) when a chunked job writes to a table on the
+    ** jobs tables' own transactional backend; NATURAL for bulk edit and delete
+    ** (re-applying a chunk is harmless); else NONE (a reclaimed chunk is
+    ** reviewed, never silently rerun).
+    *******************************************************************************/
+   static JobIdempotency defaultIdempotency(QProcessMetaData process, JobSourceType sourceType)
+   {
+      if(sourceType == JobSourceType.STEPS)
+      {
+         return (JobIdempotency.NONE);
+      }
+
+      String destination = String.valueOf(Objects.requireNonNullElse(ChunkedProcessPlan.inputDefault(process, StreamedETLWithFrontendProcess.FIELD_DESTINATION_TABLE), Objects.requireNonNullElse(process.getTableName(), "")));
+      QInstance instance = QContext.getQInstance();
+      if(instance.getTable(destination) != null && Objects.equals(instance.getTable(destination).getBackendName(), instance.getTable(TABLE_JOB).getBackendName()) && supportsTransactions(destination))
+      {
+         return (JobIdempotency.SAME_TRANSACTION);
+      }
+
+      String name = process.getName();
+      if(name.endsWith(".bulkEdit") || name.endsWith(".bulkDelete") || name.endsWith(".bulkEditWithFile"))
+      {
+         return (JobIdempotency.NATURAL);
+      }
+      return (JobIdempotency.NONE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a table's backend opens real transactions (the base class is a
+    ** no-op, e.g., the memory backend).
+    *******************************************************************************/
+   private static boolean supportsTransactions(String tableName)
+   {
+      try(QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(tableName)))
+      {
+         return (transaction != null && transaction.getClass() != QBackendTransaction.class);
+      }
+      catch(Exception e)
+      {
+         return (false);
+      }
    }
 
 

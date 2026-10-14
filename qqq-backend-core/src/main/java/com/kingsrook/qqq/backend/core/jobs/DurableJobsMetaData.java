@@ -60,6 +60,9 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    private Boolean scheduledRunsAsJobs = true;
    private Set<String> eligibleProcessNames = new HashSet<>();
    private String podId;
+   private String uploadsStorageTableName;
+   private Integer uploadExpiryDays = 7;
+   private Long maxUploadBytes = 1073741824L;
 
 
 
@@ -96,12 +99,22 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
 
 
    /*******************************************************************************
+    ** The storage table uploads go to.
+    *******************************************************************************/
+   public String getEffectiveUploadsStorageTableName()
+   {
+      return (uploadsStorageTableName != null ? uploadsStorageTableName : storageTableName);
+   }
+
+
+
+   /*******************************************************************************
     ** Startup validation (spec section 4).
     *******************************************************************************/
    @Override
    public void validate(QInstance qInstance, QInstanceValidator validator)
    {
-      for(String tableName : List.of(DurableJobsTables.TABLE_JOB, DurableJobsTables.TABLE_CHUNK, DurableJobsTables.TABLE_ROW_ERROR, DurableJobsTables.TABLE_EVENT, DurableJobsTables.TABLE_WORKER))
+      for(String tableName : List.of(DurableJobsTables.TABLE_JOB, DurableJobsTables.TABLE_CHUNK, DurableJobsTables.TABLE_ROW_ERROR, DurableJobsTables.TABLE_EVENT, DurableJobsTables.TABLE_WORKER, DurableJobsTables.TABLE_UPLOAD))
       {
          validator.assertCondition(qInstance.getTable(tableName) != null, "Durable jobs are enabled but table " + tableName + " is not defined (use DurableJobsMetaDataProvider.defineAll).");
       }
@@ -115,6 +128,10 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
       if(storageTableName != null)
       {
          validator.assertCondition(qInstance.getTable(storageTableName) != null, "Durable jobs storage table " + storageTableName + " is not defined.");
+      }
+      if(uploadsStorageTableName != null)
+      {
+         validator.assertCondition(qInstance.getTable(uploadsStorageTableName) != null, "Durable jobs uploads storage table " + uploadsStorageTableName + " is not defined.");
       }
 
       for(String processName : eligibleProcessNames)
@@ -473,6 +490,66 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    public DurableJobsMetaData withPodId(String podId)
    {
       this.podId = podId;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for uploadsStorageTableName: the storage table POST /uploads streams files into (defaults to storageTableName).
+    *******************************************************************************/
+   public String getUploadsStorageTableName()
+   {
+      return (this.uploadsStorageTableName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for uploadsStorageTableName
+    *******************************************************************************/
+   public DurableJobsMetaData withUploadsStorageTableName(String uploadsStorageTableName)
+   {
+      this.uploadsStorageTableName = uploadsStorageTableName;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for uploadExpiryDays: days an upload ref stays usable (a job that uses it extends it).
+    *******************************************************************************/
+   public Integer getUploadExpiryDays()
+   {
+      return (this.uploadExpiryDays);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for uploadExpiryDays
+    *******************************************************************************/
+   public DurableJobsMetaData withUploadExpiryDays(Integer uploadExpiryDays)
+   {
+      this.uploadExpiryDays = uploadExpiryDays;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for maxUploadBytes: the largest file POST /uploads accepts.
+    *******************************************************************************/
+   public Long getMaxUploadBytes()
+   {
+      return (this.maxUploadBytes);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maxUploadBytes
+    *******************************************************************************/
+   public DurableJobsMetaData withMaxUploadBytes(Long maxUploadBytes)
+   {
+      this.maxUploadBytes = maxUploadBytes;
       return (this);
    }
 

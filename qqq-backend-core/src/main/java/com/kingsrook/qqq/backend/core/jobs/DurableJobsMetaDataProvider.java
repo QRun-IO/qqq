@@ -59,6 +59,7 @@ import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_CHUNK;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_EVENT;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_JOB;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_ROW_ERROR;
+import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_UPLOAD;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_WORKER;
 
 
@@ -104,6 +105,7 @@ public class DurableJobsMetaDataProvider
       instance.addTable(enrich(defineRowErrorTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineEventTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineWorkerTable(backendName), backendDetailEnricher));
+      instance.addTable(enrich(defineUploadTable(backendName), backendDetailEnricher));
 
       instance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_JOB));
       instance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_CHUNK));
@@ -423,6 +425,40 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("draining", QFieldType.BOOLEAN))
          .withField(readOnly("version", QFieldType.STRING).withMaxLength(100))
          .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "podId", "threads", "draining", "version", "startedAt", "heartbeatAt"))));
+   }
+
+
+
+
+   /*******************************************************************************
+    ** jobs_upload: files uploaded through POST /uploads (the bytes live in the
+    ** uploads storage table; this row is the opaque ref, its owner and expiry).
+    *******************************************************************************/
+   public QTableMetaData defineUploadTable(String backendName)
+   {
+      return (new QTableMetaData()
+         .withName(TABLE_UPLOAD)
+         .withLabel("Job Upload")
+         .withIcon(new QIcon("upload_file"))
+         .withBackendName(backendName)
+         .withPrimaryKeyField("id")
+         .withRecordLabelFormat("%s")
+         .withRecordLabelFields("fileName")
+         .withUniqueKey(new UniqueKey("ref"))
+         .withRecordSecurityLock(ownerLock("userId", null))
+         .withField(readOnly("id", QFieldType.INTEGER))
+         .withField(readOnly("ref", QFieldType.STRING).withMaxLength(100).withLabel("Upload Ref"))
+         .withField(readOnly("userId", QFieldType.STRING).withLabel("Owner").withMaxLength(250))
+         .withField(readOnly("fileName", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("contentType", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("sizeBytes", QFieldType.LONG))
+         .withField(readOnly("storageTableName", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("storageReference", QFieldType.STRING).withMaxLength(1000))
+         .withField(readOnly("expiresAt", QFieldType.DATE_TIME))
+         .withField(readOnly("jobId", QFieldType.INTEGER).withLabel("Last Job").withPossibleValueSourceName(TABLE_JOB))
+         .withField(readOnly("createDate", QFieldType.DATE_TIME))
+         .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "fileName", "userId", "sizeBytes", "contentType", "expiresAt", "jobId")))
+         .withSection(new QFieldSection("storage", "Storage", new QIcon("folder"), Tier.T2, List.of("ref", "storageTableName", "storageReference", "createDate"))));
    }
 
 }

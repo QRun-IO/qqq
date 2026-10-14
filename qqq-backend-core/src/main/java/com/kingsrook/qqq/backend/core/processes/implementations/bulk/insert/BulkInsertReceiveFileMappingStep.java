@@ -74,7 +74,14 @@ public class BulkInsertReceiveFileMappingStep implements BackendStep
          {
             //////////////////////////////////////////////////////////////////////////////
             // if running headless, build bulkLoadProfile from the saved profile record //
+            // - or from a profile given as JSON (e.g., a durable job's own profile)   //
             //////////////////////////////////////////////////////////////////////////////
+            String bulkLoadProfileJson = runBackendStepInput.getValueString(BulkInsertStepUtils.FIELD_BULK_LOAD_PROFILE_JSON);
+            if(savedBulkLoadProfileRecord == null && StringUtils.hasContent(bulkLoadProfileJson))
+            {
+               savedBulkLoadProfileRecord = new SavedBulkLoadProfile().withMappingJson(bulkLoadProfileJson).toQRecord();
+            }
+
             if(savedBulkLoadProfileRecord == null)
             {
                throw (new QUserFacingException("Did not receive a Bulk Load Profile record as input.  Unable to perform headless bulk load"));

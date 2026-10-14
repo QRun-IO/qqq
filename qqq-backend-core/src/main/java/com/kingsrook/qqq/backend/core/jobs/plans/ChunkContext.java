@@ -22,9 +22,12 @@
 package com.kingsrook.qqq.backend.core.jobs.plans;
 
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.model.ChunkOutcome;
 import com.kingsrook.qqq.backend.core.jobs.model.JobLease;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
@@ -46,6 +49,8 @@ public class ChunkContext
    private final DurableJobStore store;
    private final BooleanSupplier draining;
    private final AtomicBoolean   leaseLost = new AtomicBoolean(false);
+
+   private boolean completedByPlan = false;
 
    private JobStatus cachedJobStatus;
    private long      cachedAt = 0;
@@ -125,6 +130,30 @@ public class ChunkContext
          cachedAt = now;
       }
       return (cachedJobStatus);
+   }
+
+
+
+   /*******************************************************************************
+    ** Mark the chunk DONE inside the plan's own transaction (SAME_TRANSACTION:
+    ** the chunk's writes and its DONE mark commit together, fenced by the lease).
+    ** Records the row errors in the same transaction first.
+    *******************************************************************************/
+   public void completeInTransaction(ChunkOutcome outcome, List<QRecord> rowErrors, QBackendTransaction transaction) throws QException
+   {
+      store.recordRowErrors(rowErrors, transaction);
+      store.completeChunk(lease, outcome, transaction);
+      completedByPlan = true;
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the plan already marked the chunk DONE (in its transaction).
+    *******************************************************************************/
+   public boolean isCompletedByPlan()
+   {
+      return (completedByPlan);
    }
 
 

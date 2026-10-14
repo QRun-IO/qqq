@@ -268,7 +268,10 @@ public class DurableJobsRuntime
          ChunkOutcome[] outcome = new ChunkOutcome[1];
          QContext.withTemporaryContext(new CapturedContext(instance, session), () -> outcome[0] = JobPlans.forJob(job).runChunk(context));
 
-         store.completeChunk(lease, outcome[0], null);
+         if(!context.isCompletedByPlan())
+         {
+            store.completeChunk(lease, outcome[0], null);
+         }
          if(outcome[0].outputsJson() != null)
          {
             store.updateJob(lease.jobId(), Map.of("outputStorageJson", outcome[0].outputsJson()));

@@ -76,6 +76,15 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):
+  - Added `POST /processes/{processName}/jobs`: launch an eligible process as a durable background
+    job (`ProcessJobLaunchResponseV1 {jobId, status}`). Over the per-user queue cap it returns
+    429. From the `assistant` client channel the job is created `AWAITING_CONFIRMATION`.
+  - Jobs are the standard tables `jobs_job`, `jobs_chunk`, `jobs_row_error`, `jobs_event` and
+    `jobs_worker`, read with the table operations. Control actions are the record-action processes
+    `jobsStart`, `jobsPause`, `jobsResume`, `jobsCancel`, `jobsRetryFailed`, `jobsRestart` and
+    `jobsRunAgain`, run with the process operations.
+  - The core feature `durableJobs` is listed by `GET /version`.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

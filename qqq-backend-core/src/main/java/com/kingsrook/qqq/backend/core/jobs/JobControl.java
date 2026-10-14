@@ -119,6 +119,10 @@ class JobControl
          }
          case RESTART ->
          {
+            if(status == JobStatus.COMPLETED)
+            {
+               throw (new QUserFacingException(label + " finished every chunk; there is nothing to restart. Use Run Again to run it from the start."));
+            }
             if(!(status.isTerminal() || status == JobStatus.PAUSED || status == JobStatus.NEEDS_REVIEW))
             {
                throw (new QUserFacingException(label + " is " + status.getPossibleValueLabel().toLowerCase() + "; pause or cancel it before restarting."));

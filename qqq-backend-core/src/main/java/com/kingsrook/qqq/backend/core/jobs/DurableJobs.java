@@ -35,6 +35,7 @@ import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
@@ -219,7 +220,7 @@ public final class DurableJobs
       }
       if(!isEligible(process))
       {
-         throw (new QUserFacingException("Process " + process.getName() + " cannot run as a background job."));
+         throw (new QBadRequestException("Process " + process.getName() + " cannot run as a background job."));
       }
 
       RunProcessInput permissionInput = new RunProcessInput();

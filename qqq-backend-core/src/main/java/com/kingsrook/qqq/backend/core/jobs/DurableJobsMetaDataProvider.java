@@ -134,6 +134,24 @@ public class DurableJobsMetaDataProvider
 
 
    /*******************************************************************************
+    ** A backend-detail enricher that maps every field to a snake_case column
+    ** (rowsDone -> rows_done), for databases whose schema uses snake_case. Pass it
+    ** as defineAll's enricher, or compose it with your own.
+    *******************************************************************************/
+   public static Consumer<QTableMetaData> snakeCaseColumnNames()
+   {
+      return (table -> table.getFields().values().forEach(field ->
+      {
+         if(field.getBackendName() == null)
+         {
+            field.setBackendName(field.getName().replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase());
+         }
+      }));
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    private static <T extends com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum<String>> void addEnumPvs(QInstance instance, String name, T[] values)

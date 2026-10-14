@@ -117,7 +117,7 @@ public final class JobControlProcesses
          case RESUME -> EnumSet.of(JobStatus.PAUSED, JobStatus.PAUSING);
          case CANCEL -> EnumSet.of(JobStatus.AWAITING_CONFIRMATION, JobStatus.QUEUED, JobStatus.PLANNING, JobStatus.RUNNING, JobStatus.PAUSING, JobStatus.PAUSED, JobStatus.NEEDS_REVIEW);
          case RETRY_FAILED -> EnumSet.of(JobStatus.FAILED, JobStatus.NEEDS_REVIEW, JobStatus.COMPLETED_WITH_ERRORS);
-         case RESTART -> EnumSet.of(JobStatus.CANCELLED, JobStatus.COMPLETED, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.FAILED, JobStatus.PAUSED, JobStatus.NEEDS_REVIEW);
+         case RESTART -> EnumSet.of(JobStatus.CANCELLED, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.FAILED, JobStatus.PAUSED, JobStatus.NEEDS_REVIEW);
          case RUN_AGAIN -> EnumSet.of(JobStatus.CANCELLED, JobStatus.COMPLETED, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.FAILED);
       });
    }
@@ -291,8 +291,17 @@ public final class JobControlProcesses
          {
             done.addSelfToListIfAnyCount(lines);
             failed.addSelfToListIfAnyCount(lines);
-            lines.addAll(extra);
          }
+
+         ////////////////////////////////////////////////////////////////////
+         // the Result screen shows only these lines: repeat the jobs the //
+         // Review skipped (wrong status), so the result accounts for all //
+         ////////////////////////////////////////////////////////////////////
+         if(getTransformStep() instanceof Transform transform && transform.skipped != null)
+         {
+            transform.skipped.addSelfToListIfAnyCount(lines);
+         }
+         lines.addAll(extra);
          return (lines);
       }
    }

@@ -228,7 +228,9 @@ public final class UploadRefs
       {
          values.put("expiresAt", extended);
       }
-      SystemScope.call(() -> new UpdateAction().execute(new UpdateInput(TABLE_UPLOAD).withRecord(new QRecord(values))));
+      QRecord update = new QRecord();
+      update.setValues(values);
+      SystemScope.call(() -> new UpdateAction().execute(new UpdateInput(TABLE_UPLOAD).withRecord(update)));
    }
 
 

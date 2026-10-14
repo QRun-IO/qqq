@@ -44,6 +44,7 @@ import com.kingsrook.qqq.backend.core.alerts.AlertsInstanceMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceEnricher;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -57,7 +58,6 @@ import com.kingsrook.qqq.backend.core.model.helpcontent.HelpContentMetaDataProvi
 import com.kingsrook.qqq.backend.core.model.helpcontent.HelpContentSource;
 import com.kingsrook.qqq.backend.core.model.helpcontent.HelpContentSyncContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -480,17 +480,10 @@ class HelpBundlesTest extends BaseTest
       assertTrue(systemSession);
       assertSame(session, QContext.getQSession());
       assertThat(rows()).hasSize(1);
-      instance.withSupplementalMetaData(new QSupplementalInstanceMetaData()
-      {
-         /*******************************************************************************
-          ** Simulate the optional kernel without importing it.
-          *******************************************************************************/
-         @Override
-         public String getName()
-         {
-            return ("durableJobs");
-         }
-      });
+      ////////////////////////////////////////////////////////////////////////
+      // with durable jobs configured, the startup sync still runs and ends //
+      ////////////////////////////////////////////////////////////////////////
+      instance.withSupplementalMetaData(new DurableJobsMetaData().withEligibleProcessName("helpBundleSync"));
       completed = new CountDownLatch(1);
       HelpBundles.syncOnStartup(instance);
       assertTrue(completed.await(10, TimeUnit.SECONDS));

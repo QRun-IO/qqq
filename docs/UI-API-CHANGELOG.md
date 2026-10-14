@@ -73,7 +73,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.3.0 (QQQ 4.1.0-RC.7, unreleased)
+### 1.3.0 (unreleased)
 - Added `POST /table/{tableName}/formAdjuster/{identifier}/{event}` (tag `Tables`, #1152): runs a
   table form's on-load or on-change adjuster and returns `FormAdjusterOutputV1`. It replaces the
   Material Dashboard module's unversioned `POST /material-dashboard-backend/form-adjuster/...`

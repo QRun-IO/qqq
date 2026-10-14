@@ -275,8 +275,8 @@ regardless of age. Deletes are batched (1,000 rows) so a large table never holds
 
 All three are standard QQQ tables in the application's main backend (`HealthMonitoringMetaData
 .backendName`), snake_case columns, `health_` prefix, published as ESB table events and searchable
-in Quick Search (definitions only). Permissions: `health.view` (read all three),
-`health.admin` (edit definitions, run now). Records carry no security key beyond the permission.
+in Quick Search (definitions only). Permissions use core's standard table permission base name `health`: `health.read` (read all three),
+`health.write` (edit definitions, run now). Records carry no security key beyond the permission.
 
 ### 5.1 `health_check` (definitions; the main nav table)
 
@@ -339,8 +339,8 @@ without it they go to `LoggingAlertSink`.
 ### 7.1 UI API extension `health` (`/qqq/v1/health/...`)
 
 Registered by core as a `MiddlewareSpecExtension` named `health`, semver `1.0.0`, with `/health`
-added to `ESTABLISHED_PREFIXES` (core-owned, like `/esb`). All require `health.view`; run-now
-requires `health.admin`.
+added to `ESTABLISHED_PREFIXES` (core-owned, like `/esb`). All require `health.read`; run-now
+requires `health.write`.
 
 | Method, path | Returns |
 |---|---|
@@ -502,3 +502,19 @@ The `core.jobs.*` checks register only when `DurableJobsMetaData` is present, so
 7. Retention: rows past retention are deleted in batches; the last transition per check is kept.
 8. Validation: duplicate names, bad names, timeout ≥ interval fail the instance.
 9. UI API contract: the `health` extension appears in `openapi.yaml` with `Health…V1` schemas.
+
+## 13. As built (P1)
+
+- **Permissions** are core's standard table permissions with base name `health`
+  (`health.read`, `health.write`), not new `view`/`admin` suffixes.
+- **Indexes and NOT NULL.** Core has no portable index declaration, so host migrations create
+  the unique keys and the `(health_check_id, started_at)` index. `on_demand_request_id` is
+  `NOT NULL DEFAULT ''`: scheduled runs store `""`, on-demand runs a UUID.
+- **Claim path.** A pre-check plus the insert run under an in-JVM lock, which gives the memory
+  backend database-like uniqueness. Across pods, the database unique key decides.
+- **Bounded execution.** A tick skips claims when every worker is busy. An on-demand run with no
+  free worker returns UNKNOWN "busy" instead of queueing.
+- **Runner pods alive** on the home counts distinct `runner_pod` values in results from the last
+  two minutes. There is no separate pod heartbeat table.
+- **Scheduler check.** `QScheduleManager` gains `isStarted()`, so the check does not look into
+  Quartz internals.

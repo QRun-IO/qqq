@@ -214,6 +214,16 @@ public class ExecutorSessionUtils
     *******************************************************************************/
    static void setClientChannelInSession(Context context, QInstance qInstance, QSession session) throws QBadRequestException
    {
+      //////////////////////////////////////////////////////////////////////////
+      // a scoped credential (e.g. an access token) is always token:<id> - a  //
+      // request cannot relabel it                                            //
+      //////////////////////////////////////////////////////////////////////////
+      if(session.getCredentialScope() != null)
+      {
+         session.setClientChannel(session.getCredentialScope().getClientChannel());
+         return;
+      }
+
       String header = context.header(CLIENT_CHANNEL_HEADER);
       if(!StringUtils.hasContent(header))
       {

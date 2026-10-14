@@ -63,6 +63,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAction;
 import com.kingsrook.qqq.backend.core.adapters.QInstanceAdapter;
@@ -1961,7 +1962,7 @@ public class QJavalinImplementation
             defaultQueryFilter = JsonUtils.toObject(possibleValueSourceFilterJSON, QQueryFilter.class);
 
             String                           useCaseParam = QJavalinUtils.getQueryParamOrFormParam(context, "useCase");
-            PossibleValueSearchFilterUseCase useCase      = ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCaseParam.toUpperCase()), PossibleValueSearchFilterUseCase.FORM);
+            PossibleValueSearchFilterUseCase useCase      = ContingentPossibleValueHelper.getSearchUseCase(null, useCaseParam);
 
             defaultQueryFilter.interpretValues(MapBuilder.of("input", otherValues), useCase);
          }
@@ -1983,13 +1984,19 @@ public class QJavalinImplementation
    {
       QQueryFilter              defaultQueryFilter = null;
       Map<String, Serializable> otherValues        = getOtherValueForPossibleValueRequest(context);
+      if(ContingentPossibleValueHelper.hasMissingExplicitDependency(field, otherValues, QJavalinUtils.getQueryParamOrFormParam(context, "useCase")))
+      {
+         context.result(JsonUtils.toJson(Map.of("options", List.of())));
+         return;
+      }
+
 
       if(field.getPossibleValueSourceFilter() != null)
       {
          defaultQueryFilter = field.getPossibleValueSourceFilter().clone();
 
          String                           useCaseParam = QJavalinUtils.getQueryParamOrFormParam(context, "useCase");
-         PossibleValueSearchFilterUseCase useCase      = ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCaseParam.toUpperCase()), PossibleValueSearchFilterUseCase.FORM);
+         PossibleValueSearchFilterUseCase useCase      = ContingentPossibleValueHelper.getSearchUseCase(field, useCaseParam);
 
          Map<String, Serializable> processValues = new HashMap<>();
          if(context.queryParamMap().containsKey("processUUID") && StringUtils.hasContent(context.queryParam("processUUID")))

@@ -1688,6 +1688,14 @@ public class QInstanceValidator
          }
       }
       validateFieldPossibleValueSourceAttributes(qInstance, field, prefix);
+      if(table.isPresent())
+      {
+         for(String dependency : CollectionUtils.nonNullList(field.getPossibleValueSourceDependsOn()))
+         {
+            assertCondition(table.get().getFields().containsKey(dependency), prefix + "has an unrecognized possibleValueSourceDependsOn field " + dependency);
+         }
+      }
+
 
       assertCondition(StringUtils.hasContent(field.getName()), prefix + "is missing a name");
       assertCondition(field.getType() != null, prefix + "is missing a type");

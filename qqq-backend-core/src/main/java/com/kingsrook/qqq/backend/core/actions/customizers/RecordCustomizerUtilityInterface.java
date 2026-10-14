@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
@@ -72,8 +73,8 @@ public interface RecordCustomizerUtilityInterface
          try
          {
             QFieldMetaData field         = table.getField(fieldName);
-            Serializable   newTypedValue = ValueUtils.getValueAsFieldType(field.getType(), newValue);
-            Serializable   oldTypedValue = ValueUtils.getValueAsFieldType(field.getType(), oldValue);
+            Serializable   newTypedValue = ValueUtils.getValueAsFieldType(table, field, newValue);
+            Serializable   oldTypedValue = ValueUtils.getValueAsFieldType(table, field, oldValue);
 
             if(!Objects.equals(oldTypedValue, newTypedValue))
             {
@@ -82,7 +83,7 @@ public interface RecordCustomizerUtilityInterface
          }
          catch(Exception e)
          {
-            LOG.info("Error getting a value as field's type", e, logPair("fieldName", fieldName), logPair("oldValue", oldValue), logPair("newValue", newValue));
+            LOG.info("Error getting a value as field's type", e, logPair("fieldName", fieldName), logPair("oldValue", ClassifiedValues.diagnostic(table, fieldName, oldValue)), logPair("newValue", ClassifiedValues.diagnostic(table, fieldName, newValue)));
          }
       }
 

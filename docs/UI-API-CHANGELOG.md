@@ -74,9 +74,16 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
+### Unreleased (after 1.2.0; no change to the document)
+- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 ### 1.3.0 (unreleased)
 - The assistant wall denies `audit*` (reads and writes) by default again; `withAssistantAuditReads()`
   is the host opt-in for reads. See the security record in UI-API-CLIENT-CHANNELS.md.
+- Process init/step responses now optionally include `oneTimeSecrets` using the shared
+  `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
+  in its own response; a step that went async hands them, once, to the first status poll that
+  sees the job complete. Stored state exposes only `values.oneTimeSecretsMasked`.
+  See `docs/misc/ProcessBackendSteps.adoc`.
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
   `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,

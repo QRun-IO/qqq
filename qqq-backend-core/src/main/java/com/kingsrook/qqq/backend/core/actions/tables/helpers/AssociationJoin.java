@@ -134,7 +134,7 @@ public class AssociationJoin
       for(JoinOn joinOn : joinOns)
       {
          String field = parent ? joinOn.getLeftField() : joinOn.getRightField();
-         values.add(ValueUtils.getValueAsFieldType(childTable.getField(joinOn.getRightField()).getType(), record.getValue(field)));
+         values.add(ValueUtils.getValueAsFieldType(childTable, childTable.getField(joinOn.getRightField()), record.getValue(field)));
       }
       return values;
    }

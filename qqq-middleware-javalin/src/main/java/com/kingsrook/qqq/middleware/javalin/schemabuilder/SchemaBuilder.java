@@ -120,7 +120,7 @@ public class SchemaBuilder
       SchemaFromBuilder schema = new SchemaFromBuilder();
       schema.setOriginalClass(c);
 
-      if(c.isEnum())
+      if(c.isEnum() || (c.equals(String.class) && element.isAnnotationPresent(OpenAPIEnumSubSet.class)))
       {
          schema.withType(Type.STRING);
 

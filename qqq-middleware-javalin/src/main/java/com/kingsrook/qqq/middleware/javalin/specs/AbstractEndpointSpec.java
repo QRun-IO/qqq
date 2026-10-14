@@ -32,9 +32,12 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
@@ -193,6 +196,7 @@ public abstract class AbstractEndpointSpec<
             QContext.setQInstance(qInstance);
          }
 
+         checkCredentialScopeOperation();
          abstractMiddlewareVersion.preExecute(context);
 
          INPUT    input    = buildInput(context);
@@ -210,6 +214,33 @@ public abstract class AbstractEndpointSpec<
       finally
       {
          QContext.clear();
+      }
+   }
+
+
+
+   /***************************************************************************
+    ** The operation id of this spec: `METHOD /path-template` (relative to the
+    ** version base path), as credential scopes and UiApiInvoker name operations.
+    ***************************************************************************/
+   public String getOperationId()
+   {
+      CompleteOperation operation = defineCompleteOperation();
+      return (operation.getHttpMethod().name() + " " + operation.getPath());
+   }
+
+
+
+   /***************************************************************************
+    ** Refuse an operation outside the session's credential scope (if any).
+    ***************************************************************************/
+   protected void checkCredentialScopeOperation() throws QPermissionDeniedException
+   {
+      QSession         session = QContext.getQSession();
+      QCredentialScope scope   = session == null ? null : session.getCredentialScope();
+      if(scope != null && !QCredentialScope.allows(scope.getOperationIds(), getOperationId()))
+      {
+         throw (new QPermissionDeniedException("Permission denied."));
       }
    }
 

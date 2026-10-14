@@ -59,6 +59,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -248,7 +249,7 @@ public class PermissionsHelper
       // the user had no permission; hidden.  Checked before anything that could //
       // allow (NOT_PROTECTED, custom checkers).                                 //
       ////////////////////////////////////////////////////////////////////////////
-      if(isDeniedForClientChannel(metaDataWithPermissionRules, rules))
+      if(isDeniedForClientChannel(metaDataWithPermissionRules, rules) || isOutsideCredentialScope(metaDataWithPermissionRules, null))
       {
          return (PermissionCheckResult.DENY_HIDE);
       }
@@ -741,9 +742,11 @@ public class PermissionsHelper
       // client-channel deny rules come first: nothing (custom checkers, unprotected //
       // objects, the user's permissions) overrides them                             //
       /////////////////////////////////////////////////////////////////////////////////
-      if(isDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules))
+      if(isDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules)
+         || (isWriteSubType(permissionSubType) && isWriteDeniedForClientChannel(metaDataWithPermissionRules, effectivePermissionRules))
+         || isOutsideCredentialScope(metaDataWithPermissionRules, permissionSubType))
       {
-         LOG.info("Client channel denied", logPair("clientChannel", QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel()), logPair("name", name));
+         LOG.info("Client channel denied", logPair("clientChannel", QContext.getQSession() == null ? null : QContext.getQSession().getClientChannel()), logPair("name", name), logPair("permissionSubType", permissionSubType));
          throw (new QPermissionDeniedException("Permission denied."));
       }
 
@@ -783,6 +786,81 @@ public class PermissionsHelper
    private static String getPermissionName(String permissionBaseName, PermissionSubType permissionSubType)
    {
       return permissionBaseName + "." + permissionSubType.getPermissionSuffix();
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session's credential scope (if any) excludes this object - or,
+    ** for a write sub-type (or any process) under a read-only scope, the action.
+    ** A scope only narrows: the user's own permissions are checked as well.
+    *******************************************************************************/
+   public static boolean isOutsideCredentialScope(MetaDataWithPermissionRules object, PermissionSubType permissionSubType)
+   {
+      QSession         session = QContext.getQSession();
+      QCredentialScope scope   = session == null ? null : session.getCredentialScope();
+      if(scope == null)
+      {
+         return (false);
+      }
+
+      String name = object.getName();
+      if(object instanceof QTableMetaData)
+      {
+         return (!QCredentialScope.allows(scope.getTables(), name) || (scope.getReadOnly() && isWriteSubType(permissionSubType)));
+      }
+      else if(object instanceof QProcessMetaData)
+      {
+         ///////////////////////////////////////////////////////////////////////////////
+         // processes can write; a read-only scope allows only explicitly listed ones //
+         ///////////////////////////////////////////////////////////////////////////////
+         if(scope.getReadOnly() && scope.getProcesses() == null)
+         {
+            return (true);
+         }
+         return (!QCredentialScope.allows(scope.getProcesses(), name));
+      }
+      else if(object instanceof QReportMetaData)
+      {
+         return (!QCredentialScope.allows(scope.getReports(), name));
+      }
+      else if(object instanceof QWidgetMetaDataInterface)
+      {
+         return (!QCredentialScope.allows(scope.getWidgets(), name));
+      }
+      else if(object instanceof QAppMetaData)
+      {
+         return (!QCredentialScope.allows(scope.getApps(), name));
+      }
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a permission sub-type is a write (insert, edit, delete, write).
+    *******************************************************************************/
+   private static boolean isWriteSubType(PermissionSubType permissionSubType)
+   {
+      return (permissionSubType == TablePermissionSubType.INSERT || permissionSubType == TablePermissionSubType.EDIT
+         || permissionSubType == TablePermissionSubType.DELETE || permissionSubType == PrivatePermissionSubType.WRITE);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the session's client channel (if any) may not write this object.
+    *******************************************************************************/
+   public static boolean isWriteDeniedForClientChannel(MetaDataWithPermissionRules metaDataWithPermissionRules, QPermissionRules effectiveRules)
+   {
+      QSession session = QContext.getQSession();
+      String   channel = session == null ? null : session.getClientChannelName();
+      if(channel == null)
+      {
+         return (false);
+      }
+
+      return (ClientChannelsMetaData.of(QContext.getQInstance()).isWriteDenied(channel, metaDataWithPermissionRules.getName(), effectiveRules));
    }
 
 

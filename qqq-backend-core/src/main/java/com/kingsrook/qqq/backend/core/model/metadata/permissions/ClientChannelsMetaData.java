@@ -67,6 +67,7 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public static final String CHANNEL_TUI                = "tui";
    public static final String CHANNEL_IOS                = "ios";
    public static final String CHANNEL_API                = "api";
+   public static final String CHANNEL_TOKEN              = "token";
 
    /***************************************************************************
     ** the assistant's default deny patterns (lower-cased glob over names)
@@ -74,7 +75,6 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public static final List<String> ASSISTANT_DEFAULT_DENIED_PATTERNS = List.of(
       "assistant_*",   // its own configuration: providers, models, prices, profiles, skills, policy, budgets, usage, tool-call logs, conversations
       "authentik_*",   // identity, permissions and policies
-      "audit*",        // audits: no tampering
       "*api_key*", "*apikey*",
       "*credential*",
       "*secret*",
@@ -84,11 +84,18 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
       "webhooks_*",    // webhook endpoints and their signing secrets
       "worm_audit_*"); // the WORM audit chain, checkpoints, sealed exports and purges
 
+   /***************************************************************************
+    ** the assistant's default write-deny patterns: readable (e.g. a record's
+    ** history), never insertable, editable or deletable - no tampering
+    ***************************************************************************/
+   public static final List<String> ASSISTANT_DEFAULT_WRITE_DENIED_PATTERNS = List.of("audit*");
+
    private static final Pattern CHANNEL_PATTERN = Pattern.compile("[a-z0-9][a-z0-9-]*");
 
    private Map<String, String>       channels       = new LinkedHashMap<>();
    private Map<String, Set<String>>  deniedObjects  = new LinkedHashMap<>();
    private Map<String, List<String>> deniedPatterns = new LinkedHashMap<>();
+   private Map<String, List<String>> deniedWritePatterns = new LinkedHashMap<>();
 
 
 
@@ -104,10 +111,15 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
          .withChannel(CHANNEL_CLI, "A command-line client")
          .withChannel(CHANNEL_TUI, "A terminal UI client")
          .withChannel(CHANNEL_IOS, "A native iOS client")
-         .withChannel(CHANNEL_API, "Another program calling the UI API");
+         .withChannel(CHANNEL_API, "Another program calling the UI API")
+         .withChannel(CHANNEL_TOKEN, "A scoped access token (token:<id>), set by the server from the credential");
       for(String pattern : ASSISTANT_DEFAULT_DENIED_PATTERNS)
       {
          rs.withDeniedPattern(CHANNEL_ASSISTANT, pattern);
+      }
+      for(String pattern : ASSISTANT_DEFAULT_WRITE_DENIED_PATTERNS)
+      {
+         rs.withDeniedWritePattern(CHANNEL_ASSISTANT, pattern);
       }
       return (rs);
    }
@@ -214,6 +226,65 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
          }
       }
       return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether writes (insert, edit, delete) to an object are denied to a channel
+    ** (it may still be read).  A fully denied object is write-denied too.
+    *******************************************************************************/
+   public boolean isWriteDenied(String channelName, String objectName, QPermissionRules effectiveRules)
+   {
+      if(channelName == null)
+      {
+         return (false);
+      }
+      if(isDenied(channelName, objectName, effectiveRules))
+      {
+         return (true);
+      }
+      if(objectName == null)
+      {
+         return (false);
+      }
+
+      String name = objectName.toLowerCase();
+      for(String pattern : deniedWritePatterns.getOrDefault(channelName.toLowerCase(), List.of()))
+      {
+         if(globMatches(pattern, name))
+         {
+            return (true);
+         }
+      }
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
+    ** Deny a channel writes (insert, edit, delete) to every object whose name
+    ** matches a `*` glob - reads stay allowed.
+    *******************************************************************************/
+   public ClientChannelsMetaData withDeniedWritePattern(String channelName, String pattern)
+   {
+      List<String> patterns = deniedWritePatterns.computeIfAbsent(channelName.toLowerCase(), k -> new ArrayList<>());
+      String       lower    = pattern.toLowerCase();
+      if(!patterns.contains(lower))
+      {
+         patterns.add(lower);
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for deniedWritePatterns (channel to name globs)
+    *******************************************************************************/
+   public Map<String, List<String>> getDeniedWritePatterns()
+   {
+      return (deniedWritePatterns);
    }
 
 

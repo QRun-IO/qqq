@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin.executors;
 
 
 import java.util.ArrayList;
+import java.util.List;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAction;
@@ -51,6 +52,12 @@ public class PossibleValuesExecutor extends AbstractMiddlewareExecutor<PossibleV
    {
       SearchPossibleValueSourceInput searchInput = new SearchPossibleValueSourceInput();
       checkPermissions(input, searchInput);
+      if(input.getMissingDependency())
+      {
+         output.setOptions(List.of());
+         return;
+      }
+
 
       searchInput.setPossibleValueSourceName(input.getPossibleValueSourceName());
       searchInput.setSearchTerm(input.getSearchTerm());

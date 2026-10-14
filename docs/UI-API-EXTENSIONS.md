@@ -169,6 +169,16 @@ response.getStatus(); response.getJson(); response.getHeaders();
 - Recursion guard: the invoker counts nested invocations on the calling thread and refuses more
   than 8 (`UiApiInvoker.MAX_DEPTH`).
 
+### AI tool kernel data
+`UiApiAiDataGateway` (in `specs.invoke`) is the kernel's `AiDataGateway` over this invoker. Every
+data read the model can cause becomes a spec'd operation, made with the user's credentials:
+- `POST /table/{t}/query` and `/count`
+- `GET /table/{t}/{pk}`
+- `POST /search`
+- `POST /widget/{name}`
+
+Set it per turn with `new AiToolKernelSettings().withDataGateway(new UiApiAiDataGateway(UiApiInvoker.forServer(server, "assistant"), UiApiCredentials.fromContext(ctx), turnId))`.
+
 ## 6. What a client sees
 The served `/qqq/v1/openapi.yaml` is core plus every registered extension, so a generated client
 for a given deployment covers everything that deployment's UI can call. The core document

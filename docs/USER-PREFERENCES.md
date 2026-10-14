@@ -1,7 +1,7 @@
 # User preferences (`/qqq/v1/preferences`)
 
 Status: implemented in core and the v1 UI API. Owner decisions (2026-10-12): all recommendations accepted.
-Applies from the QQQ 4.1.0 RC that ships it (UI API 1.2.0, additive).
+Applies from the QQQ 4.1.0 RC that ships it (UI API 1.3.0, additive).
 
 ## 0. Summary
 

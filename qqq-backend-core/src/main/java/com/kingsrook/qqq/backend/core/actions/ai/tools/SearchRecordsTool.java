@@ -144,7 +144,7 @@ public class SearchRecordsTool extends AbstractAiTool
             .withLimitPerTable(Math.min(RecordSearchAction.MAX_LIMIT_PER_TABLE, context.getMaxRowsToModel()));
          context.prepareInput(searchInput);
 
-         for(RecordSearchResult searchResult : new RecordSearchAction().execute(searchInput).getResults())
+         for(RecordSearchResult searchResult : context.getDataGateway().search(searchInput))
          {
             QTableMetaData personalized = searchableTables.get(searchResult.getTableName());
             if(personalized == null || results.size() >= context.getMaxRowsToModel())

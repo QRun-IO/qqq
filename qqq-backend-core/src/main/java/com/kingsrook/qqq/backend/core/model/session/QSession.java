@@ -69,6 +69,12 @@ public class QSession implements Serializable, Cloneable
    ////////////////////////////////////////////////////////////////////////////////
    private String clientChannel;
 
+   //////////////////////////////////////////////////////////////////////////////
+   // the scope of the credential (e.g. an access token) the session came from  //
+   // - null when unrestricted.  Only ever narrows the user's permissions.      //
+   //////////////////////////////////////////////////////////////////////////////
+   private QCredentialScope credentialScope;
+
    public static final String VALUE_KEY_USER_TIMEZONE                = "UserTimezone";
    public static final String VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES = "UserTimezoneOffsetMinutes";
 
@@ -119,6 +125,11 @@ public class QSession implements Serializable, Cloneable
       {
          clone.valuesForFrontend = new HashMap<>();
          clone.valuesForFrontend.putAll(valuesForFrontend);
+      }
+
+      if(credentialScope != null)
+      {
+         clone.credentialScope = credentialScope.clone();
       }
 
       return (clone);
@@ -278,7 +289,40 @@ public class QSession implements Serializable, Cloneable
       {
          return (null);
       }
-      return (clientChannel.strip().replaceFirst("/.*$", "").toLowerCase());
+      return (clientChannel.strip().replaceFirst("[/:].*$", "").toLowerCase());
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for credentialScope - the scope of the credential (e.g. access token)
+    ** the session came from; null when unrestricted.
+    *******************************************************************************/
+   public QCredentialScope getCredentialScope()
+   {
+      return (this.credentialScope);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for credentialScope
+    *******************************************************************************/
+   public void setCredentialScope(QCredentialScope credentialScope)
+   {
+      this.credentialScope = credentialScope;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for credentialScope - set by the authentication module's
+    ** customizer for scoped credentials; it can only narrow access.
+    *******************************************************************************/
+   public QSession withCredentialScope(QCredentialScope credentialScope)
+   {
+      this.credentialScope = credentialScope;
+      return (this);
    }
 
 

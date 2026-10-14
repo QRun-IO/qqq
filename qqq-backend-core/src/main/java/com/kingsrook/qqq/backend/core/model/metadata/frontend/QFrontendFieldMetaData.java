@@ -26,8 +26,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -39,6 +41,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -62,6 +65,8 @@ public class QFrontendFieldMetaData implements Serializable
    private boolean      isHidden;
    private Integer      gridColumns;
    private String       possibleValueSourceName;
+   private List<String> possibleValueSourceDependsOn;
+   private String       possibleValueSourceDependencyBehavior;
    private String       displayFormat;
    private Serializable defaultValue;
    private Integer      maxLength;
@@ -128,6 +133,11 @@ public class QFrontendFieldMetaData implements Serializable
          }
       }
       this.possibleValueSourceFilter = fieldMetaData.getPossibleValueSourceFilter();
+      if(ContingentPossibleValueHelper.isContingent(fieldMetaData))
+      {
+         this.possibleValueSourceDependsOn = new ArrayList<>(ContingentPossibleValueHelper.getDependencyFieldNames(fieldMetaData));
+         this.possibleValueSourceDependencyBehavior = Objects.requireNonNullElse(fieldMetaData.getPossibleValueSourceDependencyBehavior(), PossibleValueDependencyBehavior.DISABLE_UNTIL_SET).name();
+      }
 
       QInstance qInstance = QContext.getQInstance();
       if(qInstance != null && fieldMetaData.getPossibleValueSourceName() != null)
@@ -416,5 +426,25 @@ public class QFrontendFieldMetaData implements Serializable
    public String getPickerTableName()
    {
       return (this.pickerTableName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for possibleValueSourceDependsOn
+    *******************************************************************************/
+   public List<String> getPossibleValueSourceDependsOn()
+   {
+      return (this.possibleValueSourceDependsOn);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for possibleValueSourceDependencyBehavior
+    *******************************************************************************/
+   public String getPossibleValueSourceDependencyBehavior()
+   {
+      return (this.possibleValueSourceDependencyBehavior);
    }
 }

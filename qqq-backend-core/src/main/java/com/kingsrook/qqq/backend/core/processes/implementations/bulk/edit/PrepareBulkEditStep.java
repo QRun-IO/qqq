@@ -28,14 +28,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobCallback;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncRecordPipeLoop;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipe;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -80,7 +79,6 @@ public class PrepareBulkEditStep implements BackendStep
       for(String fieldName : table.getFields().keySet())
       {
          QFieldMetaData field  = table.getField(fieldName);
-         QQueryFilter   filter = field.getPossibleValueSourceFilter();
 
          /////////////////////////////////////////////////////////////
          // if the field is not editable, no need to worry about it //
@@ -90,30 +88,12 @@ public class PrepareBulkEditStep implements BackendStep
             continue;
          }
 
-         /////////////////////////////////////////////////////////////////////////////////////////////////////
-         // if there is a single filter, with a single criteria matching 'input.', parse the pvs field name //
-         /////////////////////////////////////////////////////////////////////////////////////////////////////
-         if(filter != null && filter.hasAnyCriteria() && filter.getCriteria().size() == 1)
+         for(String dependentFieldName : ContingentPossibleValueHelper.getDependencyFieldNames(field))
          {
-            List<Serializable> value = filter.getCriteria().get(0).getValues();
-            if(value.size() == 1 && value.toString().contains("input."))
+            QFieldMetaData dependentField = table.getFields().get(dependentFieldName);
+            if(dependentField != null && BooleanUtils.isTrue(dependentField.getIsEditable()))
             {
-               Pattern pattern = Pattern.compile("\\$\\{input\\.([a-zA-Z_][a-zA-Z0-9_]*)}");
-               Matcher matcher = pattern.matcher(value.toString());
-               if(matcher.find())
-               {
-                  String         dependentFieldName = matcher.group(1);
-                  QFieldMetaData dependentField     = table.getFields().get(dependentFieldName);
-
-                  //////////////////////////////////////////////////////////////
-                  // if the dependent field isn't editable, ignore it as well //
-                  //////////////////////////////////////////////////////////////
-                  if(dependentField == null || !BooleanUtils.isTrue(dependentField.getIsEditable()))
-                  {
-                     continue;
-                  }
-                  dependencyFieldToPVSFieldMap.add(dependentFieldName, fieldName);
-               }
+               dependencyFieldToPVSFieldMap.add(dependentFieldName, fieldName);
             }
          }
       }
@@ -188,7 +168,7 @@ public class PrepareBulkEditStep implements BackendStep
                ////////////////////////////////////////////////////////
                // if more than one distinct value, break out of loop //
                ////////////////////////////////////////////////////////
-               if(valuesMap.get(pvsFilterFieldName).size() > 1)
+               if(valuesMap.containsKey(pvsFilterFieldName) && valuesMap.get(pvsFilterFieldName).size() > 1)
                {
                   dependencyFieldToPVSFieldMap.get(pvsFilterFieldName).forEach(f -> nonDistinctPVSFields.add(table.getField(pvsFilterFieldName).getLabel(), table.getField(f).getLabel()));
                   break;

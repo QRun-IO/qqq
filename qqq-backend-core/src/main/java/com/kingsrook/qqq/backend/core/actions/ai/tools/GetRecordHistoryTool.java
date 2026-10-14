@@ -33,7 +33,6 @@ import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
 import com.kingsrook.qqq.backend.core.actions.ai.filter.AiFilterBuilder;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -386,6 +385,6 @@ public class GetRecordHistoryTool extends AbstractAiTool
       queryInput.setShouldGenerateDisplayValues(true);
       queryInput.setShouldTranslatePossibleValues(true);
       context.prepareInput(queryInput);
-      return (new QueryAction().execute(queryInput).getRecords());
+      return (context.getDataGateway().query(queryInput));
    }
 }

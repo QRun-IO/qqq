@@ -215,6 +215,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addBackend(new QBackendMetaData().withName(ENUMERATION_BACKEND_NAME).withBackendType(EnumerationBackendModule.class));
       qInstance.addBackend(defineFilesystemBackend());
       qInstance.addTable(defineTableCarrier());
+      ContingentPlaceMetaData.addTo(qInstance);
       qInstance.addTable(defineTablePerson());
       qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PERSON));
       qInstance.addPossibleValueSource(QPossibleValueSource.newForEnum(PetSpecies.NAME, PetSpecies.values()));

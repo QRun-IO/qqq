@@ -27,7 +27,6 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKind;
 import com.kingsrook.qqq.backend.core.actions.ai.filter.AiFilterBuilder;
 import com.kingsrook.qqq.backend.core.actions.ai.output.AiLinkBuilder;
-import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryHint;
 import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
@@ -111,7 +110,7 @@ public class CountRecordsTool extends AbstractAiTool
       countInput.setTimeoutSeconds(QueryRecordsTool.QUERY_TIMEOUT_SECONDS);
       countInput.withQueryHint(QueryHint.MAY_USE_READ_ONLY_BACKEND);
       context.prepareInput(countInput);
-      Integer count = new CountAction().execute(countInput).getCount();
+      Integer count = context.getDataGateway().count(countInput);
 
       Map<String, Object> render = new LinkedHashMap<>();
       render.put("type", "count");

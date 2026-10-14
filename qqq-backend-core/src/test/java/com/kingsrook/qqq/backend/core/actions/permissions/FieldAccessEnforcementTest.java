@@ -191,6 +191,11 @@ class FieldAccessEnforcementTest extends FieldAccessTestSupport
       QTableMetaData personalized = FieldAccessHelper.applyToTable(table);
       QFrontendTableMetaData frontend = new QFrontendTableMetaData(new TableMetaDataInput(), QContext.getQInstance().getBackend(table.getBackendName()), personalized, true, false);
       assertEquals(tier != FieldAccessTier.FULL, frontend.getHasRestrictedFields());
+      if(frontend.getSearchFields() != null)
+      {
+         assertEquals(tier == FieldAccessTier.FULL, frontend.getSearchFields().contains("email"));
+         assertTrue(frontend.getSearchFields().contains("firstName"));
+      }
       if(tier == FieldAccessTier.HIDDEN)
       {
          assertFalse(frontend.getFields().containsKey("email"));

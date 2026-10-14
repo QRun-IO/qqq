@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.model.metadata.S3BackendMetaData;
 import com.kingsrook.qqq.backend.module.filesystem.s3.utils.S3UploadOutputStream;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetUrlRequest;
 import software.amazon.awssdk.services.s3.model.ObjectCannedACL;
@@ -43,6 +44,26 @@ import software.amazon.awssdk.services.s3.model.PutObjectAclRequest;
  *******************************************************************************/
 public class S3StorageAction extends AbstractS3Action implements QStorageInterface
 {
+
+   /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   @Override
+   public void deleteObject(StorageInput storageInput) throws QException
+   {
+      try
+      {
+         S3BackendMetaData backend = (S3BackendMetaData) storageInput.getBackend();
+         preAction(backend);
+         getS3Utils().getS3Client().deleteObject(DeleteObjectRequest.builder().bucket(backend.getBucketName()).key(getFullPath(storageInput)).build());
+      }
+      catch(Exception e)
+      {
+         throw new QException("Exception deleting S3 storage object", e);
+      }
+   }
+
+
 
    /*******************************************************************************
     **

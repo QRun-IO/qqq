@@ -23,8 +23,6 @@ package com.kingsrook.qqq.backend.core.processes.implementations.savedreports;
 
 import java.io.OutputStream;
 import java.io.Serializable;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -68,6 +66,7 @@ import com.kingsrook.qqq.backend.core.model.savedreports.SavedReport;
 import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValidationUtils;
+import org.apache.commons.io.output.CloseShieldOutputStream;
 import org.jsoup.nodes.Element;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
@@ -257,26 +256,29 @@ public class RenderSavedReportExecuteStep implements BackendStep
 
 
    /*******************************************************************************
-    ** Generate locally before touching archive storage. Resource cleanup also runs
-    ** after generation or publication failure, preserving the original exception.
+    ** Stream into storage; close before deleting a failed output, and preserve
+    ** the original exception if cleanup also fails.
     *******************************************************************************/
    private ReportOutput generateAndStoreReport(ReportInput reportInput, StorageInput storageInput) throws Exception
    {
-      Path temporaryFile = Files.createTempFile("qqq-saved-report-", "." + reportInput.getReportDestination().getReportFormat().getExtension());
-      try(AutoCloseable cleanup = () -> Files.deleteIfExists(temporaryFile))
+      try(OutputStream output = new StorageAction().createOutputStream(storageInput))
       {
-         ReportOutput reportOutput;
-         try(OutputStream output = Files.newOutputStream(temporaryFile))
+         // The step owns closing storage, even when the report generator closes its destination.
+         reportInput.getReportDestination().setReportOutputStream(CloseShieldOutputStream.wrap(output));
+         return new GenerateReportAction().execute(reportInput);
+      }
+      catch(Exception e)
+      {
+         try
          {
-            reportInput.getReportDestination().setReportOutputStream(output);
-            reportOutput = new GenerateReportAction().execute(reportInput);
+            new StorageAction().deleteObject(storageInput);
          }
-
-         try(OutputStream output = new StorageAction().createOutputStream(storageInput))
+         catch(Exception cleanupException)
          {
-            Files.copy(temporaryFile, output);
+            e.addSuppressed(cleanupException);
+            LOG.warn("Could not delete failed report output", cleanupException, logPair("storageReference", storageInput.getReference()));
          }
-         return reportOutput;
+         throw e;
       }
    }
 

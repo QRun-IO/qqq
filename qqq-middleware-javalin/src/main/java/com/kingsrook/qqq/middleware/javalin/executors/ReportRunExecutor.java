@@ -39,6 +39,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportDestination;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -78,6 +79,7 @@ public class ReportRunExecutor extends AbstractMiddlewareExecutor<ReportRunInput
          }
 
          ReportInput reportInput = new ReportInput();
+         reportInput.setInputSource(QInputSource.USER);
          PermissionsHelper.checkReportPermissionThrowing(reportInput, reportName);
 
          if(!StringUtils.hasContent(input.getFormat()))

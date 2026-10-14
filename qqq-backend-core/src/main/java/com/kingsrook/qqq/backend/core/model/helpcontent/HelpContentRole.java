@@ -38,7 +38,9 @@ public enum HelpContentRole implements PossibleValueEnum<String>
    VIEW_SCREEN(QHelpRole.VIEW_SCREEN.name(), "View Screen Only"),
    EDIT_SCREEN(QHelpRole.EDIT_SCREEN.name(), "Edit Screen Only"),
    INSERT_SCREEN(QHelpRole.INSERT_SCREEN.name(), "Insert Screen Only"),
-   PROCESS_SCREEN(QHelpRole.PROCESS_SCREEN.name(), "Process Screens");
+   PROCESS_SCREEN(QHelpRole.PROCESS_SCREEN.name(), "Process Screens"),
+   APP_SCREEN(QHelpRole.APP_SCREEN.name(), "App Screens"),
+   TABLE_ACTION_MENU(QHelpRole.TABLE_ACTION_MENU.name(), "Table Action Menus");
 
 
    private final String id;

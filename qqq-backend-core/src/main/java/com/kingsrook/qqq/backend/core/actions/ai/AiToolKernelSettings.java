@@ -26,6 +26,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 
 
 /*******************************************************************************
@@ -47,8 +49,12 @@ import java.util.regex.Pattern;
  **    hook, so the opt-in lives in these settings.)
  ** hiddenWidgetNames - widgets never rendered, even if allowed (an override deny).
  *******************************************************************************/
-public class AiToolKernelSettings
+public class AiToolKernelSettings implements QSupplementalInstanceMetaData
 {
+   public static final String NAME = "aiToolKernelSettings";
+
+
+
    public static final int DEFAULT_MAX_ROWS_TO_MODEL = 50;
    public static final int DEFAULT_MAX_CELL_CHARS    = 500;
 
@@ -59,6 +65,33 @@ public class AiToolKernelSettings
    private Set<String>   allowedWidgetNames      = new HashSet<>();
    private Set<String>   hiddenWidgetNames       = new HashSet<>();
 
+   //////////////////////////////////////////////////////////////////////////
+   // how data tools read data - null: CoreAiDataGateway (core actions).   //
+   // The assistant sets the UI API gateway (reads through /qqq/v1).       //
+   //////////////////////////////////////////////////////////////////////////
+   private AiDataGateway dataGateway;
+
+
+
+   /*******************************************************************************
+    ** Instance settings for assistant-channel requests outside a kernel call.
+    *******************************************************************************/
+   public static AiToolKernelSettings of(QInstance instance)
+   {
+      AiToolKernelSettings settings = instance == null ? null : QSupplementalInstanceMetaData.of(instance, NAME);
+      return (settings == null ? new AiToolKernelSettings() : settings);
+   }
+
+
+
+   /*******************************************************************************
+    ** Supplemental metadata name.
+    *******************************************************************************/
+   @Override
+   public String getName()
+   {
+      return (NAME);
+   }
 
 
    /*******************************************************************************
@@ -297,6 +330,38 @@ public class AiToolKernelSettings
    public AiToolKernelSettings withAllowedWidgetNames(Set<String> allowedWidgetNames)
    {
       this.allowedWidgetNames = allowedWidgetNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for dataGateway (null means the core actions)
+    *******************************************************************************/
+   public AiDataGateway getDataGateway()
+   {
+      return (this.dataGateway);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dataGateway
+    *******************************************************************************/
+   public void setDataGateway(AiDataGateway dataGateway)
+   {
+      this.dataGateway = dataGateway;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dataGateway: how the data tools read data (e.g. the UI
+    ** API gateway, so every read is a /qqq/v1 operation as the user).
+    *******************************************************************************/
+   public AiToolKernelSettings withDataGateway(AiDataGateway dataGateway)
+   {
+      this.dataGateway = dataGateway;
       return (this);
    }
 }

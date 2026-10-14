@@ -63,6 +63,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.SearchPossibleValueSourceAction;
 import com.kingsrook.qqq.backend.core.adapters.QInstanceAdapter;
@@ -141,7 +142,10 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeConsumer;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeFunction;
+import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
+import com.kingsrook.qqq.middleware.javalin.executors.WidgetExecutor;
 import com.kingsrook.qqq.middleware.javalin.misc.DownloadFileSupplementalAction;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInProcessSessions;
 import io.javalin.Javalin;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
@@ -543,79 +547,88 @@ public class QJavalinImplementation
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(authMetaData);
 
+      String inProcessToken = context.header(UiApiInProcessSessions.HEADER);
       try
       {
          ///////////////////////////////////////////////
          // note:  duplicated in ExecutorSessionUtils //
          ///////////////////////////////////////////////
-         Map<String, String> authenticationContext = new HashMap<>();
-
-         String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
-         String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
-         String authorizationHeaderValue = context.header("Authorization");
-         String apiKeyHeaderValue        = context.header("x-api-key");
-         String codeQueryParamValue      = context.queryParam("code");
-         String stateQueryParamValue     = context.queryParam("state");
-
-         if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
+         QSession session;
+         if(inProcessToken != null)
          {
-            authenticationContext.put("code", codeQueryParamValue);
-            authenticationContext.put("state", stateQueryParamValue);
-         }
-         else if(StringUtils.hasContent(sessionIdCookieValue))
-         {
-            ///////////////////////////////////////////////////////
-            // sessionId - maybe used by table-based auth module //
-            ///////////////////////////////////////////////////////
-            authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
-         }
-         else if(StringUtils.hasContent(sessionUuidCookieValue))
-         {
-            ///////////////////////////////////////////////////////////////////////////
-            // session UUID - used by auth0 module and fully anonymous module       //
-            ///////////////////////////////////////////////////////////////////////////
-            authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
-            // Also pass as sessionUUID for fully anonymous module
-            authenticationContext.put("sessionUUID", sessionUuidCookieValue);
-         }
-         else if(apiKeyHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////
-            // next, look for an api key header:                           //
-            // this will be used to look up auth0 values via an auth table //
-            /////////////////////////////////////////////////////////////////
-            authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
-         }
-         else if(authorizationHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            // second, look for the authorization header:                                                  //
-            // either with a "Basic " prefix (for a username:password pair)                                //
-            // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            session = ExecutorSessionUtils.resolveInProcessSession(context.req().getRemoteAddr(), inProcessToken);
          }
          else
          {
-            try
+            Map<String, String> authenticationContext = new HashMap<>();
+
+            String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
+            String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
+            String authorizationHeaderValue = context.header("Authorization");
+            String apiKeyHeaderValue        = context.header("x-api-key");
+            String codeQueryParamValue      = context.queryParam("code");
+            String stateQueryParamValue     = context.queryParam("state");
+
+            if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
             {
-               String authorizationFormValue = context.formParam("Authorization");
-               if(StringUtils.hasContent(authorizationFormValue))
+               authenticationContext.put("code", codeQueryParamValue);
+               authenticationContext.put("state", stateQueryParamValue);
+            }
+            else if(StringUtils.hasContent(sessionIdCookieValue))
+            {
+               ///////////////////////////////////////////////////////
+               // sessionId - maybe used by table-based auth module //
+               ///////////////////////////////////////////////////////
+               authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
+            }
+            else if(StringUtils.hasContent(sessionUuidCookieValue))
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // session UUID - used by auth0 module and fully anonymous module       //
+               ///////////////////////////////////////////////////////////////////////////
+               authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
+               // Also pass as sessionUUID for fully anonymous module
+               authenticationContext.put("sessionUUID", sessionUuidCookieValue);
+            }
+            else if(apiKeyHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////
+               // next, look for an api key header:                           //
+               // this will be used to look up auth0 values via an auth table //
+               /////////////////////////////////////////////////////////////////
+               authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
+            }
+            else if(authorizationHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               // second, look for the authorization header:                                                  //
+               // either with a "Basic " prefix (for a username:password pair)                                //
+               // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            }
+            else
+            {
+               try
                {
-                  processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  String authorizationFormValue = context.formParam("Authorization");
+                  if(StringUtils.hasContent(authorizationFormValue))
+                  {
+                     processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  }
+               }
+               catch(Exception e)
+               {
+                  LOG.info("Exception looking for Authorization formParam", e);
                }
             }
-            catch(Exception e)
-            {
-               LOG.info("Exception looking for Authorization formParam", e);
-            }
-         }
 
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         QContext.init(qInstance, null);
-         QSession session = authenticationModule.createSession(qInstance, authMetaData, authenticationContext);
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            QContext.init(qInstance, null);
+            session = authenticationModule.createSession(qInstance, authMetaData, authenticationContext);
+         }
          QContext.init(qInstance, session, null, input);
 
          String tableVariant = QJavalinUtils.getFormParamOrQueryParam(context, "tableVariant");
@@ -626,9 +639,9 @@ public class QJavalinImplementation
          }
 
          /////////////////////////////////////////////////////////////////////////////////
-         // if we got a session id cookie in, then send it back with updated cookie age //
+         // refresh cookies only for sessions created by the authentication module    //
          /////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
          {
             setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getUuid());
          }
@@ -643,7 +656,7 @@ public class QJavalinImplementation
          ////////////////////////////////////////////////////////////////////////////////
          // if exception caught, clear out the cookie so the frontend will reauthorize //
          ////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
          {
             context.removeCookie(SESSION_ID_COOKIE_NAME);
          }
@@ -1637,6 +1650,7 @@ public class QJavalinImplementation
          }
 
          RenderWidgetOutput output = new RenderWidgetAction().execute(input);
+         WidgetExecutor.applyFieldAccess(output.getWidgetData(), ValueUtils.getValueAsString(input.getWidgetMetaData().getDefaultValues().get("tableName")));
          QJavalinAccessLogger.logEndSuccessIfSlow(SLOW_LOG_THRESHOLD_MS, logPair("widgetName", widgetName), logPair("inputParams", input.getQueryParams()));
          context.result(JsonUtils.toJson(output.getWidgetData()));
       }
@@ -1950,7 +1964,7 @@ public class QJavalinImplementation
             defaultQueryFilter = JsonUtils.toObject(possibleValueSourceFilterJSON, QQueryFilter.class);
 
             String                           useCaseParam = QJavalinUtils.getQueryParamOrFormParam(context, "useCase");
-            PossibleValueSearchFilterUseCase useCase      = ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCaseParam.toUpperCase()), PossibleValueSearchFilterUseCase.FORM);
+            PossibleValueSearchFilterUseCase useCase      = ContingentPossibleValueHelper.getSearchUseCase(null, useCaseParam);
 
             defaultQueryFilter.interpretValues(MapBuilder.of("input", otherValues), useCase);
          }
@@ -1972,13 +1986,19 @@ public class QJavalinImplementation
    {
       QQueryFilter              defaultQueryFilter = null;
       Map<String, Serializable> otherValues        = getOtherValueForPossibleValueRequest(context);
+      if(ContingentPossibleValueHelper.hasMissingExplicitDependency(field, otherValues, QJavalinUtils.getQueryParamOrFormParam(context, "useCase")))
+      {
+         context.result(JsonUtils.toJson(Map.of("options", List.of())));
+         return;
+      }
+
 
       if(field.getPossibleValueSourceFilter() != null)
       {
          defaultQueryFilter = field.getPossibleValueSourceFilter().clone();
 
          String                           useCaseParam = QJavalinUtils.getQueryParamOrFormParam(context, "useCase");
-         PossibleValueSearchFilterUseCase useCase      = ObjectUtils.tryElse(() -> PossibleValueSearchFilterUseCase.valueOf(useCaseParam.toUpperCase()), PossibleValueSearchFilterUseCase.FORM);
+         PossibleValueSearchFilterUseCase useCase      = ContingentPossibleValueHelper.getSearchUseCase(field, useCaseParam);
 
          Map<String, Serializable> processValues = new HashMap<>();
          if(context.queryParamMap().containsKey("processUUID") && StringUtils.hasContent(context.queryParam("processUUID")))
@@ -2028,6 +2048,7 @@ public class QJavalinImplementation
       String labels     = context.queryParam("labels");
 
       SearchPossibleValueSourceInput input = new SearchPossibleValueSourceInput();
+      input.setInputSource(QInputSource.USER);
       setupSession(context, input);
       input.setPossibleValueSourceName(possibleValueSourceName);
       input.setSearchTerm(searchTerm);

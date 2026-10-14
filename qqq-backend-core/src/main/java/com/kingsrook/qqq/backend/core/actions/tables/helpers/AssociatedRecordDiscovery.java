@@ -100,7 +100,7 @@ public class AssociatedRecordDiscovery
          {
             throw new QException("Association discovery returned a null primary key");
          }
-         Serializable typedKey = ValueUtils.getValueAsFieldType(childTable.getField(childTable.getPrimaryKeyField()).getType(), key);
+         Serializable typedKey = ValueUtils.getValueAsFieldType(childTable, childTable.getField(childTable.getPrimaryKeyField()), key);
          typedKeys.putIfAbsent(UniqueKeyLookup.equalityValue(typedKey), typedKey);
       }
       return new ArrayList<>(typedKeys.values());
@@ -213,7 +213,7 @@ public class AssociatedRecordDiscovery
    {
       try
       {
-         return UniqueKeyLookup.snapshot(ValueUtils.getValueAsFieldType(table.getFields().get(field).getType(), value));
+         return UniqueKeyLookup.snapshot(ValueUtils.getValueAsFieldType(table, table.getFields().get(field), value));
       }
       catch(RuntimeException e)
       {

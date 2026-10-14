@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin;
 
 
 import java.nio.charset.Charset;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +32,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
 import com.kingsrook.qqq.backend.core.logging.LogUtils;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -351,6 +353,13 @@ public class QApplicationJavalinServer
       }
 
       service.start(port);
+
+      ///////////////////////////////////////////////////////////////////
+      // durable jobs (when the instance enables them): this pod's     //
+      // workers and lease reaper start with the server, and drain on  //
+      // stop (and on SIGTERM, through the runtime's shutdown hook).   //
+      ///////////////////////////////////////////////////////////////////
+      DurableJobsRuntime.start(qInstance);
    }
 
 
@@ -536,6 +545,11 @@ public class QApplicationJavalinServer
          return;
       }
 
+      if(this.qInstance != null)
+      {
+         DurableJobsRuntime.stop(this.qInstance, Duration.ofSeconds(25));
+      }
+
       for(AbstractMiddlewareVersion version : middlewareVersionList)
       {
          for(var spec : version.getEndpointSpecs())
@@ -651,9 +665,10 @@ public class QApplicationJavalinServer
 
    /*******************************************************************************
     ** Whether routes under a UI API version without an endpoint spec fail startup
-    ** (true) or are only logged as warnings (false, the default).  When not set,
-    ** the system property qqq.uiApi.strictRoutes or the environment variable
-    ** QQQ_UI_API_STRICT_ROUTES decides.
+    ** (true, the default since UI API 1.3.0 / QRun-IO/qqq#1159) or are only
+    ** logged as warnings (false).  When not set, the system property
+    ** qqq.uiApi.strictRoutes or the environment variable QQQ_UI_API_STRICT_ROUTES
+    ** decides: only "false" turns strict mode off.
     *******************************************************************************/
    public boolean isStrictUiApiRoutes()
    {
@@ -662,7 +677,7 @@ public class QApplicationJavalinServer
          return (strictUiApiRoutes);
       }
       String value = System.getProperty("qqq.uiApi.strictRoutes", System.getenv("QQQ_UI_API_STRICT_ROUTES"));
-      return ("true".equalsIgnoreCase(value));
+      return (!"false".equalsIgnoreCase(value));
    }
 
 

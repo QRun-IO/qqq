@@ -26,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 
 
@@ -34,6 +36,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
  *******************************************************************************/
 public class SearchPossibleValueSourceInput extends AbstractActionInput implements Cloneable
 {
+   private InputSource inputSource = QInputSource.SYSTEM;
+
    private String                    possibleValueSourceName;
    private QQueryFilter              defaultQueryFilter;
    private String                    searchTerm;
@@ -518,5 +522,25 @@ public class SearchPossibleValueSourceInput extends AbstractActionInput implemen
    {
       this.afterId = afterId;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Source of the possible-value request.
+    *******************************************************************************/
+   public InputSource getInputSource()
+   {
+      return (inputSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set the source without changing table permission enforcement.
+    *******************************************************************************/
+   public void setInputSource(InputSource inputSource)
+   {
+      this.inputSource = inputSource;
    }
 }

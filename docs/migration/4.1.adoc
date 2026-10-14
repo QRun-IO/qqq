@@ -230,3 +230,34 @@ exhausting memory.
   `homeAppName`, behavior is unchanged.
 
 The full list of changes is in the link:../../CHANGELOG.md[changelog].
+
+== Help bundles and provenance
+
+Before enabling bundle synchronization on an existing `helpContent` table, add these nullable
+columns using your database migration tool:
+
+[cols="1,1",options="header"]
+|===
+|Column |Type
+|source |varchar(20)
+|bundleId |varchar(100)
+|bundleVersion |varchar(50)
+|lastSeededHash |varchar(64)
+|upstreamStatus |varchar(30)
+|upstreamSummary |varchar(500)
+|upstreamContent |text
+|modifiedBy |varchar(100)
+|===
+
+`source` uses `CORE`, `QBIT`, `HOST`, or `USER`; `upstreamStatus` uses `CURRENT`,
+`UPSTREAM_CHANGED`, or `RETIRED`. Keep existing user rows' bundle IDs and hashes null:
+sync leaves them untouched. Do not populate a baseline hash unless it describes the exact
+bundle text that originally supplied the row.
+
+Use `new HelpContentMetaDataProvider().withProvenanceFields(false)` until migration is complete.
+This disables provenance columns and bundle management processes. The older targeting opt-out
+is independent; bundle management requires both extensions. New tables created from metadata
+include the fields by default. Register host/qbit resources with `HelpBundles.register`, then
+call `HelpBundles.syncOnStartup(qInstance)` after `QInstanceHelpContentManager.loadHelpContent`.
+See `docs/HELP-CONTENT.md` section 5 for the bundle format, review behavior and coverage gate.
+No `/qqq/v1` schema regeneration is required for this change.

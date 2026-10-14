@@ -27,9 +27,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
+import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
@@ -701,6 +707,30 @@ class QJavalinProcessHandlerTest extends QJavalinTestBase
       assertEquals("hadNullKey", mapWithNullKey.getString(""));
       assertTrue(mapWithNullKey.has("one"));
       assertEquals("1", mapWithNullKey.getString("one"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Legacy step responses deliver the same secret array with cache prevention.
+    *******************************************************************************/
+   @Test
+   void testOneTimeSecretStep()
+   {
+      QJavalinImplementation.getQInstance().addProcess(new QProcessMetaData().withName("legacySecret")
+         .withStep(new QFrontendStepMetaData().withName("create"))
+         .withStep(new QBackendStepMetaData().withName("createToken").withCode(new QCodeReferenceLambda<BackendStep>((input, output) ->
+            output.addOneTimeSecret(new OneTimeSecret().withLabel("Token").withValue("legacy-token-secret")
+               .withMasked("****secret").withUsageText("Copy now"))))));
+      JSONObject init = new JSONObject(Unirest.get(BASE_URL + "/processes/legacySecret/init?_qStepTimeoutMillis=10000").asString().getBody());
+      HttpResponse<String> response = Unirest.post(BASE_URL + "/processes/legacySecret/" + init.getString("processUUID") + "/step/create")
+         .multiPartContent().field("_qStepTimeoutMillis", "10000").asString();
+      assertThat(response.getStatus()).isEqualTo(200);
+      assertThat(response.getHeaders().getFirst("Cache-Control")).isEqualTo("no-store");
+      JSONObject json = new JSONObject(response.getBody());
+      assertThat(json.getJSONArray("oneTimeSecrets").length()).isEqualTo(1);
+      assertThat(json.getJSONArray("oneTimeSecrets").getJSONObject(0).getString("value")).isEqualTo("legacy-token-secret");
+      assertThat(json.getJSONObject("values").toString()).doesNotContain("legacy-token-secret");
    }
 
 }

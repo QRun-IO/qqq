@@ -272,3 +272,30 @@ ALTER TABLE tag ALTER COLUMN id RESTART WITH 100;
 ALTER TABLE sales_order ALTER COLUMN id RESTART WITH 100;
 ALTER TABLE sales_order_line ALTER COLUMN id RESTART WITH 100;
 ALTER TABLE sales_order_tag ALTER COLUMN id RESTART WITH 100;
+
+
+DROP TABLE IF EXISTS user_preference;
+CREATE TABLE user_preference
+(
+   id INTEGER AUTO_INCREMENT PRIMARY KEY,
+   create_date TIMESTAMP DEFAULT now(),
+   modify_date TIMESTAMP DEFAULT now(),
+   user_id VARCHAR(100) NOT NULL,
+   section_name VARCHAR(100) NOT NULL,
+   preference_name VARCHAR(100) NOT NULL,
+   preference_value MEDIUMTEXT
+);
+ALTER TABLE user_preference ADD UNIQUE u_user_preference (user_id, section_name, preference_name);
+
+DROP TABLE IF EXISTS place_address;
+DROP TABLE IF EXISTS state_city;
+DROP TABLE IF EXISTS country_state;
+DROP TABLE IF EXISTS country;
+CREATE TABLE country (id INTEGER AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80));
+CREATE TABLE country_state (id INTEGER AUTO_INCREMENT PRIMARY KEY, country_id INTEGER, name VARCHAR(80));
+CREATE TABLE state_city (id INTEGER AUTO_INCREMENT PRIMARY KEY, state_id INTEGER, name VARCHAR(80));
+CREATE TABLE place_address (id INTEGER AUTO_INCREMENT PRIMARY KEY, label VARCHAR(80), country_id INTEGER, state_id INTEGER, city_id INTEGER);
+INSERT INTO country (id, name) VALUES (1, 'USA'), (2, 'Canada');
+INSERT INTO country_state (id, country_id, name) VALUES (1, 1, 'Illinois'), (2, 1, 'Missouri'), (3, 2, 'Ontario'), (4, 2, 'Quebec');
+INSERT INTO state_city (id, state_id, name) VALUES (1, 1, 'Chester'), (2, 1, 'Springfield'), (3, 2, 'St. Louis'), (4, 2, 'Kansas City'), (5, 3, 'Toronto'), (6, 3, 'Ottawa'), (7, 4, 'Montreal'), (8, 4, 'Quebec City');
+INSERT INTO place_address (id, label, country_id, state_id, city_id) VALUES (1, 'USA address', 1, 1, 1), (2, 'Canada address', 2, 3, 5);

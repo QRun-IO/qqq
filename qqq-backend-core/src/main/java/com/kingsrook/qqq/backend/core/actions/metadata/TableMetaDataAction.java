@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMeta
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.instances.QInstanceHelpContentManager;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -51,6 +52,7 @@ public class TableMetaDataAction
    public TableMetaDataOutput execute(TableMetaDataInput tableMetaDataInput) throws QException
    {
       ActionHelper.validateSession(tableMetaDataInput);
+      QInstanceHelpContentManager.reloadIfChanged(QContext.getQInstance());
       TableMetaDataOutput tableMetaDataOutput = new TableMetaDataOutput();
 
       QTableMetaData table = QContext.getQInstance().getTable(tableMetaDataInput.getTableName());

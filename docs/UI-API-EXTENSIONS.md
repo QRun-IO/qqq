@@ -73,7 +73,7 @@ the UI API. Register them outside `/qqq/v1`, e.g. `/qqq/hooks/{qbit}/...`, throu
   `/qqq/v2`.
 - Reserved by core (never available to extensions): `/metaData`, `/table`, `/processes`,
   `/possibleValues`, `/widget`, `/reports`, `/download`, `/manageSession`, `/logout`, `/oidc`,
-  `/search`, `/version`, `/openapi.*`.
+  `/search`, `/help`, `/version`, `/preferences`, `/openapi.*`.
 
 ### QInstance validation (fails the instance)
 For each extension:
@@ -85,7 +85,7 @@ For each extension:
    its path starts with the prefix;
 5. no two specs (core or extension) define the same method + path.
 
-## 2. Raw routes under `/qqq/v1`: warning, strict mode opt-in
+## 2. Raw routes under `/qqq/v1`: strict by default
 
 Raw Javalin handlers are registered in code by route providers, so `QInstanceValidator` cannot see
 them. The check therefore runs where the routes exist: when `QApplicationJavalinServer` has built
@@ -93,16 +93,17 @@ the Javalin service, `UiApiRouteAuditor` lists every HTTP endpoint (Javalin's in
 under each middleware version's base path and compares it with the spec'd operations plus the
 documentation routes (`/qqq/v1/`, `/openapi.yaml|json|html`).
 
-- **Default: one WARN per unspec'd route at startup**, naming method, path and a pointer to this
-  document.
-- **Strict mode** (`QApplicationJavalinServer.withStrictUiApiRoutes(true)`, or system property /
-  env `qqq.uiApi.strictRoutes` / `QQQ_UI_API_STRICT_ROUTES=true`) fails startup instead.
+- **Default (strict): startup fails** when any route under a version's base path has no spec,
+  naming each method and path and pointing to this document.
+- **Opt out, temporarily** (`QApplicationJavalinServer.withStrictUiApiRoutes(false)`, or system
+  property / env `qqq.uiApi.strictRoutes` / `QQQ_UI_API_STRICT_ROUTES=false`): one WARN per
+  unspec'd route instead. Use it only while a qbit or module moves its routes onto specs.
 
-Why warn rather than fail by default: the alerts, assistant and sql-workbench qbits, and kof22,
-ship raw routes today. Failing would break every deployment that upgrades core before those qbits
-release their spec'd versions. Once the qbits move (phase 4) the default flips to strict in the
-next minor release (tracked in `UI-API-CHANGELOG.md`), and Next's CI runs its server tests in
-strict mode from now on.
+Strict became the default in UI API 1.3.0 (QRun-IO/qqq#1159), once the alerts, assistant and
+sql-workbench qbits moved their routes onto extension specs. Before that the default was to warn,
+so that upgrading core could not break a deployment whose qbits still served raw routes. An
+application on an older alerts, assistant or sql-workbench qbit release must upgrade it, or opt
+out, when it upgrades core.
 
 ## 3. Versioning
 - The URL major (`v1`) only changes for breaking changes (`/qqq/v2`).
@@ -164,10 +165,49 @@ response.getStatus(); response.getJson(); response.getHeaders();
   its tool list from the spec instead of hand-written tool definitions.
 - The loopback target is `127.0.0.1:{port}` of the `QApplicationJavalinServer` that is running
   (`getPort()`); the invoker sends the user's timezone header when given, and a per-call timeout
-  (default 60 s). Streams (SSE) are not invocable in-process; the assistant only needs
-  request/response operations.
+  (default 60 s). Use `invokeForStream` for binary downloads or streaming responses.
 - Recursion guard: the invoker counts nested invocations on the calling thread and refuses more
   than 8 (`UiApiInvoker.MAX_DEPTH`).
+
+### In-process sessions, streams and multipart
+
+Components that authenticate a user by other means (for example an SFTP gateway accepting
+an SSH key) can mint a `QSession` with
+`QAuthenticationModuleInterface.createAutomatedSessionForUser`, then call
+`UiApiInProcessSessions.register(session, ttl)` and pass the returned token through
+`UiApiCredentials.ofInProcessSession(token)`. TTL must be positive and at most 24 hours.
+Tokens exist only in this JVM; use `revoke(token)` when the gateway session ends. Registration
+and resolution copy the session (`QSession.clone()`, which also carries a credential scope),
+to isolate request state.
+
+The invoker sends only `X-QQQ-In-Process-Session` when these credentials are supplied.
+Both session setup paths accept it **only from a loopback socket peer**, and an invalid,
+expired or revoked token returns 401 without falling back to other credentials.
+`UiApiCredentials.fromContext(ctx)` deliberately ignores this header.
+The forwarding headers (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`) are never trusted: only
+the socket peer counts. If a reverse proxy runs on the same host, every proxied request arrives
+from loopback, so the 256-bit token held in JVM memory is then the whole protection. The token is
+never written to logs, exception messages or the 401 response, and must not be logged by callers.
+
+`invokeForStream(request)` returns an `AutoCloseable UiApiStreamResponse` with status,
+headers (`getHeader(name)` is case-insensitive), `isSuccess()` and `getInputStream()`.
+Use try-with-resources; `readBodyAsString()` consumes an error body as UTF-8. It shares
+`invoke`'s operation, credential and depth checks; depth is released when the call returns.
+
+Add files with `request.withMultipartFile(fieldName, fileName, contentType, supplier)`;
+repeat the call for multiple files. Each supplier must return a fresh `InputStream` for
+an HTTP attempt, and the publisher closes it. Files are streamed with a random boundary;
+`withFormParam` values become text parts. JSON and multipart bodies are mutually exclusive.
+
+### AI tool kernel data
+`UiApiAiDataGateway` (in `specs.invoke`) is the kernel's `AiDataGateway` over this invoker. Every
+data read the model can cause becomes a spec'd operation, made with the user's credentials:
+- `POST /table/{t}/query` and `/count`
+- `GET /table/{t}/{pk}`
+- `POST /search`
+- `POST /widget/{name}`
+
+Set it per turn with `new AiToolKernelSettings().withDataGateway(new UiApiAiDataGateway(UiApiInvoker.forServer(server, "assistant"), UiApiCredentials.fromContext(ctx), turnId))`.
 
 ## 6. What a client sees
 The served `/qqq/v1/openapi.yaml` is core plus every registered extension, so a generated client

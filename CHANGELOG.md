@@ -8,8 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Classpath help bundles with CORE/QBIT/HOST precedence, audited three-way synchronization, user-edit provenance, upstream review actions and background startup sync. Live metadata references render at the server boundary, and `HelpBundleAssertions` gates coverage without JUnit. Core ships `help/qqq-core.yaml`. See `docs/HELP-CONTENT.md` section 5.
+- Data-driven in-app help now supports summaries, permission/client-channel targeting, process/report/possible-value-source slots, author coverage, ranked search, and typed `/qqq/v1` help payloads. The AI `search_help` tool shares candidate collection and retains its exposure restrictions.
+- Help edits on other nodes are detected using count/max-modifyDate, at most once per 30 seconds per instance (`QInstanceHelpContentManager.setReloadIntervalMillis`). Explicit reloads preserve code-declared help, including declarations overridden by a data row. Help tables enable field audit when the audit, auditDetail, auditTable, and auditUser tables are already registered.
+- Optional rich core messaging input (templates, variables, idempotency, category, linked record, audit sender and locale), delivery statuses, provider capability discovery and required-feature guards. Qbits can send through `SendMessageAction` by provider name without importing another qbit. Existing EMAIL and SES sending is unchanged and now returns `SENT`. See `docs/MESSAGING.md`.
+- Per-user Preferences: validated supplemental sections, a provider SPI with fixed row lists, an audited key-value store, and typed `/qqq/v1/preferences` list, get and partial-update operations. See `docs/USER-PREFERENCES.md`.
 - Optional AI table/field `DataClassification` (`PUBLIC`, `CONFIDENTIAL`, `PII`, `PHI`) and null-safe `AiDataClassifications` lookup/aggregation helpers. Existing exposure defaults and frontend metadata are unchanged.
 - Core aggregate analysis extensions: variance/deviation, percentiles, correlation, null/blank counts, string lengths, date/numeric buckets, dialect capabilities, opt-in paged fallback with row limits, and main-table sampling. SQL pushdown supports H2/MySQL and PostgreSQL according to advertised capabilities; existing aggregate callers retain their defaults.
+
+### Migration
+- Help provenance adds nullable `source` (varchar 20), `bundleId` (varchar 100), `bundleVersion` (varchar 50), `lastSeededHash` (varchar 64), `upstreamStatus` (varchar 30), `upstreamSummary` (varchar 500), `upstreamContent` (text), and `modifiedBy` (varchar 100). Existing installations may use `withProvenanceFields(false)` until migrated. This is separate from targeting opt-out. No `/qqq/v1` payload schema changed.
+- Existing physical `helpContent` tables need nullable `summary` (varchar 500), `permissionName` (varchar 250), and `clientChannel` (varchar 100) columns. Until migrated, use `new HelpContentMetaDataProvider().withTargetingFields(false)`; this omits all three fields and the targeting section. Summary values over 500 characters are rejected. Channel targeting uses the session channel name (for example `web`, without `/detail`).
+- Markdown help escapes raw HTML and sanitizes unsafe links. Explicit HTML help remains unchanged for clients to sanitize. The content editor now uses Markdown mode.
 
 ### Changed
 - Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.

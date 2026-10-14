@@ -39,14 +39,15 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.2.0";
+   public static final String SEMANTIC_VERSION = "1.3.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
     ***************************************************************************/
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
-      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime");
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
+      "help", "preferences", "durableJobs");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -61,11 +62,17 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new BackChannelLogoutSpecV1());
 
       list.add(new MetaDataSpecV1());
+      list.add(new PreferencesSpecV1());
+      list.add(new PreferenceSectionGetSpecV1());
+      list.add(new PreferenceSectionPatchSpecV1());
+      list.add(new PreferenceSectionActionSpecV1());
 
       list.add(new TableMetaDataSpecV1());
       list.add(new TableQuerySpecV1());
       list.add(new TableCountSpecV1());
       list.add(new RecordSearchSpecV1());
+      list.add(new HelpSearchSpecV1());
+      list.add(new HelpCoverageSpecV1());
 
       ///////////////////////////////////////////////////////////////////////////
       // before TableGetSpecV1: GET /table/{t}/variants would otherwise match //
@@ -100,12 +107,18 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new ProcessStatusSpecV1());
       list.add(new ProcessRecordsSpecV1());
       list.add(new ProcessCancelSpecV1());
+      list.add(new ProcessJobLaunchSpecV1());
+      list.add(new UploadsSpecV1());
 
       list.add(new TableExportSpecV1());
 
       list.add(new RecordFieldDownloadSpecV1());
       list.add(new GeneralDownloadSpecV1());
       list.add(new ReportRunSpecV1());
+
+      list.add(new BulkLoadUploadProfileSpecV1());
+      list.add(new BulkLoadSuggestMappingSpecV1());
+      list.add(new BulkLoadValidateSpecV1());
    }
 
    /***************************************************************************

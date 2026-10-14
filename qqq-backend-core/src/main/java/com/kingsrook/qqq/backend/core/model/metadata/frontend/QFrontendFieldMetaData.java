@@ -26,8 +26,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessDecision;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
+import com.kingsrook.qqq.backend.core.actions.values.ContingentPossibleValueHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -38,7 +42,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueRangeBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -52,6 +58,10 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendFieldMetaData implements Serializable
 {
+   private String accessTier;
+   private List<String> allowedFilterOperators;
+   private Boolean isSortable;
+
    private String       name;
    private String       label;
    private QFieldType   type;
@@ -62,6 +72,8 @@ public class QFrontendFieldMetaData implements Serializable
    private boolean      isHidden;
    private Integer      gridColumns;
    private String       possibleValueSourceName;
+   private List<String> possibleValueSourceDependsOn;
+   private String       possibleValueSourceDependencyBehavior;
    private String       displayFormat;
    private Serializable defaultValue;
    private Integer      maxLength;
@@ -107,7 +119,7 @@ public class QFrontendFieldMetaData implements Serializable
       this.displayFormat = fieldMetaData.getDisplayFormat();
       this.adornments = fieldMetaData.getAdornments();
       this.defaultValue = fieldMetaData.getDefaultValue();
-      this.helpContents = fieldMetaData.getHelpContents();
+      this.helpContents = HelpContentVisibility.filter(fieldMetaData.getHelpContents());
       this.inlinePossibleValueSource = fieldMetaData.getInlinePossibleValueSource();
       this.maxLength = fieldMetaData.getMaxLength();
 
@@ -128,6 +140,11 @@ public class QFrontendFieldMetaData implements Serializable
          }
       }
       this.possibleValueSourceFilter = fieldMetaData.getPossibleValueSourceFilter();
+      if(ContingentPossibleValueHelper.isContingent(fieldMetaData))
+      {
+         this.possibleValueSourceDependsOn = new ArrayList<>(ContingentPossibleValueHelper.getDependencyFieldNames(fieldMetaData));
+         this.possibleValueSourceDependencyBehavior = Objects.requireNonNullElse(fieldMetaData.getPossibleValueSourceDependencyBehavior(), PossibleValueDependencyBehavior.DISABLE_UNTIL_SET).name();
+      }
 
       QInstance qInstance = QContext.getQInstance();
       if(qInstance != null && fieldMetaData.getPossibleValueSourceName() != null)
@@ -416,5 +433,84 @@ public class QFrontendFieldMetaData implements Serializable
    public String getPickerTableName()
    {
       return (this.pickerTableName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Construct session-specific field capabilities.
+    *******************************************************************************/
+   public QFrontendFieldMetaData(QFieldMetaData fieldMetaData, FieldAccessTier tier)
+   {
+      this(fieldMetaData, new FieldAccessDecision(tier, null, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Construct session-specific capabilities including exact-match restrictions.
+    *******************************************************************************/
+   public QFrontendFieldMetaData(QFieldMetaData fieldMetaData, FieldAccessDecision decision)
+   {
+      this(fieldMetaData);
+      FieldAccessTier tier = decision.tier();
+      if(tier != FieldAccessTier.FULL)
+      {
+         accessTier = tier.name();
+         allowedFilterOperators = tier == FieldAccessTier.REVEALABLE && decision.exactMatchAllowed() ? List.of("EQUALS", "IN") : List.of();
+         isSortable = false;
+         isEditable = false;
+         defaultValue = null;
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for accessTier
+    *******************************************************************************/
+   public String getAccessTier()
+   {
+      return (accessTier);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowedFilterOperators
+    *******************************************************************************/
+   public List<String> getAllowedFilterOperators()
+   {
+      return (allowedFilterOperators);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for isSortable
+    *******************************************************************************/
+   public Boolean getIsSortable()
+   {
+      return (isSortable);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for possibleValueSourceDependsOn
+    *******************************************************************************/
+   public List<String> getPossibleValueSourceDependsOn()
+   {
+      return (this.possibleValueSourceDependsOn);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for possibleValueSourceDependencyBehavior
+    *******************************************************************************/
+   public String getPossibleValueSourceDependencyBehavior()
+   {
+      return (this.possibleValueSourceDependencyBehavior);
    }
 }

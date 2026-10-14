@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.QuickSightChartRenderer;
+import com.kingsrook.qqq.backend.core.actions.preferences.UserPreferencesKeyValueStoreMetaDataProvider;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
@@ -57,13 +58,17 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QuickSightChartMe
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferenceSectionMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.preferences.UserPreferencesMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QComponentType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendComponentMetaData;
@@ -210,6 +215,7 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
       qInstance.addBackend(new QBackendMetaData().withName(ENUMERATION_BACKEND_NAME).withBackendType(EnumerationBackendModule.class));
       qInstance.addBackend(defineFilesystemBackend());
       qInstance.addTable(defineTableCarrier());
+      ContingentPlaceMetaData.addTo(qInstance);
       qInstance.addTable(defineTablePerson());
       qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(TABLE_NAME_PERSON));
       qInstance.addPossibleValueSource(QPossibleValueSource.newForEnum(PetSpecies.NAME, PetSpecies.values()));
@@ -235,6 +241,23 @@ public class SampleMetaDataProvider extends AbstractQQQApplication
 
       qInstance.addTable(setTableBackendNamesForRdbms(new UserSessionMetaDataProducer(RDBMS_BACKEND_NAME).produce(qInstance)));
       qInstance.addTable(setTableBackendNamesForRdbms(new RedirectStateMetaDataProducer(RDBMS_BACKEND_NAME).produce(qInstance)));
+
+      new UserPreferencesKeyValueStoreMetaDataProvider().defineAll(qInstance, RDBMS_BACKEND_NAME, null);
+      setTableBackendNamesForRdbms(qInstance.getTable(UserPreferencesMetaData.DEFAULT_TABLE_NAME));
+      qInstance.getTable(UserPreferencesMetaData.DEFAULT_TABLE_NAME).getField("value").setBackendName("preference_value");
+      qInstance.addPossibleValueSource(new QPossibleValueSource().withName("sample_date_format")
+         .withEnumValues(List.of(new QPossibleValue<>("ISO", "2026-10-13"), new QPossibleValue<>("US", "10/13/2026"), new QPossibleValue<>("EU", "13/10/2026"))));
+      qInstance.addPossibleValueSource(new QPossibleValueSource().withName("sample_week_start")
+         .withEnumValues(List.of(new QPossibleValue<>("SUNDAY", "Sunday"), new QPossibleValue<>("MONDAY", "Monday"))));
+      UserPreferencesMetaData.ofOrWithNew(qInstance).withSection(new UserPreferenceSectionMetaData()
+         .withName("regional").withLabel("Regional settings").withIcon(new QIcon("public"))
+         .withDescription("How dates and times appear to you.").withOrder(10)
+         .withField(new QFieldMetaData("timeZone", QFieldType.STRING).withLabel("Time zone").withMaxLength(64)
+            .withHelpContent(new QHelpContent("An IANA time zone such as America/Chicago")).withDefaultValue("America/Chicago"))
+         .withField(new QFieldMetaData("dateFormat", QFieldType.STRING).withLabel("Date format")
+            .withPossibleValueSourceName("sample_date_format").withDefaultValue("ISO"))
+         .withField(new QFieldMetaData("weekStartsOn", QFieldType.STRING).withLabel("Week starts on")
+            .withPossibleValueSourceName("sample_week_start").withDefaultValue("SUNDAY")));
 
       MetaDataProducerHelper.processAllMetaDataProducersInPackage(qInstance, SampleMetaDataProvider.class.getPackageName());
 

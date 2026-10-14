@@ -53,7 +53,10 @@ checkers, the user's permissions.
 - `assistant_*`: its own configuration. That covers providers, models, prices, profiles, skills,
   policy, budgets, usage, tool-call logs and conversations.
 - `authentik_*`: identity, permissions and policies.
-- `audit*`: audits, so the assistant cannot tamper with them.
+- `audit*`: core's audit trail is hidden from the assistant (no read, no write). A host that wants
+  a record-history tool opts in with `ClientChannelsMetaData.ofOrWithNew(qInstance)
+  .withAssistantAuditReads()`. The assistant can then read audits, subject to the user's own audit
+  permissions, but it still can never insert, edit or delete them (`withDeniedWritePattern`).
 - `*api_key*` and `*apikey*`.
 - `*credential*`, `*secret*` and `*password*`.
 - `*permission*` and the role tables: `role`, `roles`, `*_role`, `*_roles`, `*_role_*`, `user_role*`.
@@ -76,3 +79,82 @@ assistant qbit registers its tables, and `assistant_*` is already covered.
   `assistant` label to restrict itself, but no channel grants access.
 - **Only code or admin metadata can change the rules.** Every surface that edits permissions,
   identity or this configuration is itself behind the wall.
+
+## Field access per channel
+
+`FieldAccessHelper.getDecision(table, field)` combines the field security lock, the
+instance's `FieldAccessResolverMetaData` resolver, and the session channel's policy,
+using the most restrictive tier. Register a `FieldAccessChannelPolicyInterface`
+instance or `QCodeReference` with
+`ClientChannelsMetaData.ofOrWithNew(instance).withFieldAccessPolicy(channelName, policy)`;
+`getFieldAccessPolicy(channelName)` retrieves it. The channel name comes from
+`QSession.getClientChannelName()` (details after `/` do not affect policy).
+
+The `assistant` channel defaults to `AiExposureChannelPolicy`, even without instance
+configuration: NONE maps to HIDDEN, METADATA_ONLY and MASKED to MASKED, and VALUES
+to FULL. Other channels have no default field ceiling. The policy uses the active
+kernel's constructor settings during kernel calls; outside the kernel it uses
+`AiToolKernelSettings` supplemental instance metadata, or default settings if absent.
+The kernel sets `assistant` on a cloned session and restores the caller's context.
+Its compatibility exposure API maps shared tiers back to AI exposure. It retains the
+channel policy's METADATA_ONLY reason so descriptions can name those fields while
+value outputs omit them. All masking uses `FieldValueMasker`.
+
+Registering a resolver opts outermost USER inputs into field access enforcement even
+when core table enforcement is disabled. It does not enable table, join, or record
+permission checks. SKIP and authorized scopes retain their bypass behavior; without
+a resolver, field enforcement continues to follow core permission enforcement.
+
+## Scoped credentials (access tokens)
+A session created from a scoped credential carries `QSession.credentialScope`, a
+`QCredentialScope`. One example is an Authentik access token minted by qbit-authentik: its
+authentication customizer reads the token's `qqq_token` claim and sets the scope. A scope has these
+fields; each set is null when unrestricted:
+- `credentialId`
+- `readOnly`
+- `apps`, `tables`, `processes`, `reports`, `widgets`
+- `operationIds`, as `METHOD /template`, e.g. `POST /table/{tableName}/query`
+
+Core enforces the scope. It only ever narrows the user's live permissions, so revoking a user
+permission narrows the token too:
+- `PermissionsHelper` denies objects outside the scope: they are hidden from metaData and refused.
+  `readOnly` denies table inserts, edits and deletes, and any process the scope doesn't list.
+- The UI API refuses operations outside `operationIds` (`AbstractEndpointSpec.getOperationId()`).
+- The session's client channel is `token:<credentialId>`. The `X-QQQ-Client` header is ignored, so
+  the request cannot relabel itself, and the channel is audited.
+- The assistant wall and field-access rules apply as usual.
+
+## Who owns the wall rules (#1157)
+- **Core keeps the generic rules** (`ASSISTANT_GENERIC_DENIED_PATTERNS`). These cover API keys,
+  credentials, secrets, passwords, permission and role tables, user sessions and `audit*`. The
+  `audit*` rule can be relaxed to read-only access by a host (`withAssistantAuditReads`).
+- **Each qbit owns its own rules.** Its producer registers them, for example
+  `ClientChannelsMetaData.ofOrWithNew(qInstance).withDeniedPattern("assistant", "<qbit>_*")`,
+  `withDeniedObject(...)`, or `QPermissionRules.withDeniedClients(...)` on the table.
+- **The qbit prefixes still in core are transitional** (`ASSISTANT_TRANSITIONAL_QBIT_DENIED_PATTERNS`:
+  `assistant_*`, `authentik_*`, `webhooks_*`, `worm_audit_*`). They stay until each qbit registers
+  its own rule, so the wall never opens for an application still on an older qbit. They are removed
+  at 4.1.0 GA.
+- **The validator warns about uncovered sensitive tables.** For every table whose name looks
+  sensitive (`*_policy`, `*_config`, `*_settings`, `*_secret*`, `*_token`, `*_key`, ...), it warns
+  if no rule denies the table to the assistant. Fix it by walling the table in its qbit, or by
+  recording a deliberate review with `withReviewedObject("assistant", name)`. A review grants
+  nothing.
+
+## Security record: the assistant and the audit trail (2026-10-14)
+This section answers the question of whether the assistant wall got looser.
+- **What changed and when.**
+  - The wall first shipped in #1141, and it denied `audit*` to the assistant completely.
+  - #1166 (#1155, the AI data gateway, merged with #1168) changed that rule to write-only. That
+    let the assistant read audits by default.
+  - #1186 (#1157) did not change any rule. It split the default patterns into generic and
+    transitional lists, both still fail-closed (`assistant_*`, `authentik_*`, `webhooks_*`,
+    `worm_audit_*` stay denied), and added the validator warning.
+- **Restored.** `audit*` is denied to the assistant again by default, for reads and writes. Reading
+  audits is now a host opt-in (`withAssistantAuditReads()`), and even then the assistant can't
+  write them. `worm_audit_*` stays denied whatever the opt-in.
+- **Who opts in.** qbit-assistant offers its `get_record_history` tool only when the host opts in
+  to audits. kof22 doesn't opt in.
+- **Tests.** `ClientChannelPermissionsTest` checks both cases:
+  - by default, every operation on `audit` and `auditDetail` is denied to the assistant;
+  - with the opt-in, reads are allowed, writes are denied, and `worm_audit_*` stays denied.

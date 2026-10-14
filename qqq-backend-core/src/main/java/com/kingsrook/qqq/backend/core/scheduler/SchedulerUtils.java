@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.ScheduledJobs;
 import com.kingsrook.qqq.backend.core.logging.LogPair;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
@@ -134,6 +135,16 @@ public class SchedulerUtils
       }
 
       Thread.currentThread().setName("ScheduledProcess>" + process.getName());
+
+      //////////////////////////////////////////////////////////////////////////////
+      // a process opted in to durable jobs runs as a job (not across variants): //
+      // the scheduler only launches it, and the job runtime does the work       //
+      //////////////////////////////////////////////////////////////////////////////
+      if(backendVariantData == null && ScheduledJobs.launchIfDurable(process, processInputValues) != null)
+      {
+         return;
+      }
+
       LOG.debug("Running Scheduled Process [" + process.getName() + "] with values [" + processInputValues + "]");
 
       RunProcessInput runProcessInput = new RunProcessInput();

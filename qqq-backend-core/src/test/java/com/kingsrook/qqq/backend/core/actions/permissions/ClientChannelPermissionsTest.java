@@ -74,7 +74,7 @@ class ClientChannelPermissionsTest extends BaseTest
    private static final List<String> WALLED_TABLES = List.of(
       "assistant_provider", "assistant_model", "assistant_price", "assistant_profile", "assistant_skill", "assistant_policy",
       "assistant_budget", "assistant_usage", "assistant_tool_call_log", "assistant_conversation",
-      "authentik_user", "authentik_group_permission", "audit", "auditDetail", "apiKey", "api_key", "user_credential",
+      "authentik_user", "authentik_group_permission", "apiKey", "api_key", "user_credential",
       "webhooks_endpoint", "worm_audit_chain", "worm_audit_checkpoint", "oauth_client_secret", "userSession", "user_role");
 
    private static final List<String> WALLED_PROCESSES = List.of("assistant_rotateProviderKey", "authentik_syncUsers");
@@ -97,6 +97,13 @@ class ClientChannelPermissionsTest extends BaseTest
       for(String name : WALLED_PROCESSES)
       {
          qInstance.addProcess(new QProcessMetaData().withName(name).withStep(new QBackendStepMetaData().withName("run").withCode(new QCodeReference(NoopStep.class))));
+      }
+      for(String name : List.of("audit", "auditDetail"))
+      {
+         if(qInstance.getTable(name) == null)
+         {
+            qInstance.addTable(simpleTable(name));
+         }
       }
       qInstance.addTable(simpleTable("ordinaryTable").withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.NOT_PROTECTED).withDeniedClients(Set.of("cli"))));
       return (qInstance);
@@ -167,6 +174,17 @@ class ClientChannelPermissionsTest extends BaseTest
       }
       assertTrue(PermissionsHelper.hasTablePermission(input, TestUtils.TABLE_NAME_PERSON_MEMORY, TablePermissionSubType.READ));
 
+      //////////////////////////////////////////////////////////////////////////
+      // audits: hidden from the assistant by default (no read, no write)     //
+      //////////////////////////////////////////////////////////////////////////
+      for(String table : List.of("audit", "auditDetail"))
+      {
+         for(TablePermissionSubType subType : TablePermissionSubType.values())
+         {
+            assertFalse(PermissionsHelper.hasTablePermission(input, table, subType), "assistant may not " + subType + " " + table + " by default");
+         }
+      }
+
       ///////////////////////////////////////////////////////////////
       // metadata omits the walled objects for the assistant only  //
       ///////////////////////////////////////////////////////////////
@@ -187,6 +205,38 @@ class ClientChannelPermissionsTest extends BaseTest
          }
          assertThat(new MetaDataAction().execute(new MetaDataInput()).getTables()).containsKeys(WALLED_TABLES.toArray(String[]::new));
       }
+   }
+
+
+
+   /***************************************************************************
+    ** a host that opts in (withAssistantAuditReads) lets the assistant read
+    ** audits - still never write them; other channels are unaffected.
+    ***************************************************************************/
+   @Test
+   void testAssistantAuditReadsAreOptIn() throws QException
+   {
+      QInstance qInstance = defineInstance();
+      ClientChannelsMetaData.ofOrWithNew(qInstance).withAssistantAuditReads();
+      new QInstanceValidator().validate(qInstance);
+
+      asAdminVia(qInstance, "assistant/turn-1");
+      QueryInput input = new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      for(String table : List.of("audit", "auditDetail"))
+      {
+         assertTrue(PermissionsHelper.hasTablePermission(input, table, TablePermissionSubType.READ), "assistant reads " + table + " when opted in");
+         for(TablePermissionSubType write : List.of(TablePermissionSubType.INSERT, TablePermissionSubType.EDIT, TablePermissionSubType.DELETE))
+         {
+            assertFalse(PermissionsHelper.hasTablePermission(input, table, write), "assistant may not " + write + " " + table);
+         }
+      }
+      assertFalse(PermissionsHelper.hasTablePermission(input, "worm_audit_chain", TablePermissionSubType.READ), "opt-in does not open worm_audit_*");
+
+      ///////////////////////////////////////////////////////////////
+      // the shared defaults (instances that register nothing) are //
+      // untouched by an opt-in on another instance                //
+      ///////////////////////////////////////////////////////////////
+      assertTrue(ClientChannelsMetaData.of(null).isDenied("assistant", "audit", null));
    }
 
 
@@ -269,5 +319,34 @@ class ClientChannelPermissionsTest extends BaseTest
       QInstance plain = TestUtils.defineInstance();
       new AuditsMetaDataProvider().defineAll(plain, TestUtils.MEMORY_BACKEND_NAME, null);
       assertThat(plain.getTable("audit").getFields()).doesNotContainKey(AuditsMetaDataProvider.FIELD_CLIENT_CHANNEL);
+   }
+
+
+
+   /***************************************************************************
+    ** sensitive-looking tables must be walled by their qbit (or reviewed)
+    ***************************************************************************/
+   @Test
+   void testUnwalledSensitiveTablesAreReported()
+   {
+      QInstance qInstance = defineInstance();
+      qInstance.addTable(simpleTable("acme_policy"));
+      qInstance.addTable(simpleTable("acme_config"));
+      qInstance.addTable(simpleTable("acme_order"));
+      qInstance.addTable(simpleTable("assistant_policy_rule"));
+
+      assertThat(ClientChannelsMetaData.findUnwalledSensitiveTables(qInstance)).contains("acme_policy", "acme_config").doesNotContain("acme_order", "assistant_policy_rule");
+
+      ClientChannelsMetaData.ofOrWithNew(qInstance)
+         .withDeniedObject("assistant", "acme_policy")
+         .withReviewedObject("assistant", "acme_config");
+      assertThat(ClientChannelsMetaData.findUnwalledSensitiveTables(qInstance)).doesNotContain("acme_policy", "acme_config");
+
+      /////////////////////////////////////////////////////////////////////////////
+      // the transitional qbit patterns and the generic ones are both applied    //
+      /////////////////////////////////////////////////////////////////////////////
+      assertThat(ClientChannelsMetaData.ASSISTANT_DEFAULT_DENIED_PATTERNS)
+         .containsAll(ClientChannelsMetaData.ASSISTANT_TRANSITIONAL_QBIT_DENIED_PATTERNS)
+         .containsAll(ClientChannelsMetaData.ASSISTANT_GENERIC_DENIED_PATTERNS);
    }
 }

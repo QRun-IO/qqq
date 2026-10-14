@@ -40,11 +40,14 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 
 
@@ -828,6 +831,27 @@ public class ValueUtils
       else
       {
          throw new QValueException("Unsupported type [" + type.getSimpleName() + "] in getValueAsType.");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Convert with field context, removing classified values and nested parse causes from errors.
+    *******************************************************************************/
+   public static Serializable getValueAsFieldType(QTableMetaData table, QFieldMetaData field, Object value)
+   {
+      try
+      {
+         return getValueAsFieldType(field.getType(), value);
+      }
+      catch(RuntimeException e)
+      {
+         if(ClassifiedValues.isClassified(table, field.getName()))
+         {
+            throw new QValueException("Value [***] could not be converted for " + field.getLabel());
+         }
+         throw e;
       }
    }
 

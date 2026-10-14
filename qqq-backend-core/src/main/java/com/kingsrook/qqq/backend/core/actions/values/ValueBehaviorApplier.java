@@ -26,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
+import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QSubQuery;
@@ -98,7 +100,18 @@ public class ValueBehaviorApplier
 
             if(applyBehavior)
             {
-               fieldBehavior.apply(action, recordList, instance, table, field);
+               try
+               {
+                  fieldBehavior.apply(action, recordList, instance, table, field);
+               }
+               catch(QValueException e)
+               {
+                  if(ClassifiedValues.isClassified(table, field.getName()))
+                  {
+                     throw new QValueException("Invalid value [***] for " + field.getLabel());
+                  }
+                  throw e;
+               }
             }
          }
       }

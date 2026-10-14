@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -601,7 +602,7 @@ public class ValidateRecordSecurityLockHelper
             else
             {
                QFieldMetaData field = table.getField(recordSecurityLock.getFieldName());
-               String valueDescription = "with a value of " + recordSecurityValue;
+               String valueDescription = "with a value of " + ClassifiedValues.diagnostic(table, field.getName(), recordSecurityValue);
                if(recordSecurityValue == null || "".equals(recordSecurityValue))
                {
                   valueDescription = "with an empty value";

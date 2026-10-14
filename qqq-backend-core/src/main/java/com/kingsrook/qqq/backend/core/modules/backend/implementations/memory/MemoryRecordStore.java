@@ -40,6 +40,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.tables.StreamedAggregateEvaluator;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
@@ -960,11 +961,11 @@ public class MemoryRecordStore
          {
             try
             {
-               recordToInsert.setValue(field.getName(), ValueUtils.getValueAsFieldType(field.getType(), value));
+               recordToInsert.setValue(field.getName(), ValueUtils.getValueAsFieldType(table, field, value));
             }
             catch(Exception e)
             {
-               LOG.info("Error converting value to field's type", e, logPair("fieldName", field.getName()), logPair("value", value));
+               LOG.info("Error converting value to field's type", e, logPair("fieldName", field.getName()), logPair("value", ClassifiedValues.diagnostic(table, field.getName(), value)));
             }
          }
       }
@@ -1037,11 +1038,11 @@ public class MemoryRecordStore
                      ///////////////////////////////////////////////
                      // try to make field values match field type //
                      ///////////////////////////////////////////////
-                     JsonFieldUtils.write(recordToUpdate, table.getField(fieldName), ValueUtils.getValueAsFieldType(table.getField(fieldName).getType(), valueEntry.getValue()));
+                     JsonFieldUtils.write(recordToUpdate, table.getField(fieldName), ValueUtils.getValueAsFieldType(table, table.getField(fieldName), valueEntry.getValue()));
                   }
                   catch(Exception e)
                   {
-                     LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", valueEntry.getValue()));
+                     LOG.info("Error converting value to field's type", e, logPair("fieldName", fieldName), logPair("value", ClassifiedValues.diagnostic(table, fieldName, valueEntry.getValue())));
                      recordToUpdate.setValue(fieldName, valueEntry.getValue());
                   }
                }

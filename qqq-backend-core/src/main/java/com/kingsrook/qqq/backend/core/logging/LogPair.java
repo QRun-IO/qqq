@@ -24,6 +24,8 @@ package com.kingsrook.qqq.backend.core.logging;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
+import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeSupplier;
 
 
@@ -93,13 +95,17 @@ public class LogPair
             valueString = "LogValueError";
          }
       }
+      else if(value instanceof QRecord record)
+      {
+         valueString = QLogger.redact(ClassifiedValues.recordForLog(record));
+      }
       else if(value instanceof Number n)
       {
          valueString = String.valueOf(n);
       }
       else
       {
-         valueString = '"' + String.valueOf(value).replace("\"", "\\\"") + '"';
+         valueString = '"' + QLogger.redact(String.valueOf(value)).replace("\"", "\\\"") + '"';
       }
       return valueString;
    }

@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDiscovery;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
@@ -188,7 +189,7 @@ public class DeleteAction
          for(int i = 0; i < primaryKeys.size(); i++)
          {
             Serializable primaryKey       = primaryKeys.get(i);
-            Serializable valueAsFieldType = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKey);
+            Serializable valueAsFieldType = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKey);
             if(!Objects.equals(primaryKey, valueAsFieldType))
             {
                primaryKeys.set(i, valueAsFieldType);
@@ -892,14 +893,14 @@ public class DeleteAction
       }
       for(Serializable primaryKeyValue : deleteInput.getPrimaryKeys())
       {
-         primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKeyValue);
+         primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKeyValue);
          QRecord record = new QRecord().withValue(primaryKeyField.getName(), primaryKeyValue);
          if(!oldRecordKeys.contains(AssociatedRecordUpdate.primaryKey(table, record)))
          {
             recordsWithErrors.add(record);
             record.addError(new NotFoundStatusMessage(primaryKeyField.getIsHidden() || primaryKeyField.getType().needsMasked()
                ? "No record was found to delete"
-               : "No record was found to delete for " + Objects.requireNonNullElse(primaryKeyField.getLabel(), primaryKeyField.getName()) + " = " + primaryKeyValue));
+               : "No record was found to delete for " + Objects.requireNonNullElse(primaryKeyField.getLabel(), primaryKeyField.getName()) + " = " + ClassifiedValues.diagnostic(table, primaryKeyField.getName(), primaryKeyValue)));
          }
       }
 

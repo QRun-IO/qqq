@@ -1883,6 +1883,13 @@ components:
             \ step).  If there are no more steps in the process, this field will not\
             \ be included.  "
           type: "string"
+        oneTimeSecrets:
+          description: "Secrets shown once in synchronous init/step responses only.\
+            \ Never returned by status. Clients must not cache; response uses Cache-Control:\
+            \ no-store."
+          items:
+            $ref: "#/components/schemas/PreferenceSecretV1"
+          type: "array"
         processMetaDataAdjustment:
           description: "Changes to be made to the process's metaData."
           properties:
@@ -2000,6 +2007,13 @@ components:
               \ step).  If there are no more steps in the process, this field will\
               \ not be included.  "
             type: "string"
+          oneTimeSecrets:
+            description: "Secrets shown once in synchronous init/step responses only.\
+              \ Never returned by status. Clients must not cache; response uses Cache-Control:\
+              \ no-store."
+            items:
+              $ref: "#/components/schemas/PreferenceSecretV1"
+            type: "array"
           processMetaDataAdjustment:
             description: "Changes to be made to the process's metaData."
             properties:

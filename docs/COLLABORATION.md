@@ -341,12 +341,16 @@ assistant.
   directly, then calls `POST .../attachments/{id}/complete`, which HEADs the object and finalizes
   the row. The CLI uses the same flow.
 - **Download and preview.** `GET .../attachments/{id}/download` always goes through the app
-  server: it checks the parent, then redirects to a 5-minute presigned GET with
-  `Content-Disposition: attachment`. The URL is never stored.
+  server: it checks the parent, then returns `200 {url}`, a 5-minute presigned GET with
+  `Content-Disposition: attachment`. The URL is never stored. It is returned as a body rather than
+  a 302 redirect because the spec framework can't describe a redirect's `Location` header, so
+  clients follow the `url` themselves.
   `GET .../attachments/{id}/preview` does the same with `inline`, for the types the media preview
-  supports (images, PDF, video, audio, text). Thumbnails for images are generated on upload with
-  the object-storage media thumbnail helper and stored at `thumbnailKey`. Next reuses its media
-  preview components. Other types show a file card.
+  supports (images, PDF, video, audio, text). As built, images are previewed with the
+  `FILE_PREVIEW` adornment over a presigned URL, the same pattern as qbit-object-storage.
+  Object storage has no thumbnail generator, so `thumbnailKey` is reserved and unused, and no
+  thumbnail files are stored. Next reuses its media preview and lightbox components. Other types
+  show a file card.
 - **Delete** is a record action, "Delete attachments", with a standard Review/Result. It deletes
   through object storage, soft where the bucket allows. The panel's delete icon runs the same
   process for one record.
@@ -772,7 +776,7 @@ return 404 on failure.
 | `GET/POST /recents` | list, record a view |
 | `GET/POST /records/{t}/{pk}/attachments` | list, upload (multipart) |
 | `POST /records/{t}/{pk}/attachments/upload-url`, `POST /attachments/{id}/complete` | direct upload |
-| `GET /attachments/{id}/download`, `GET /attachments/{id}/preview`, `GET /attachments/{id}/thumbnail` | 302 to presigned URL |
+| `GET /attachments/{id}/download`, `GET /attachments/{id}/preview` | `200 {url}`: a 5-minute presigned URL (see §6.1) |
 | `PATCH/DELETE /attachments/{id}` | rename or describe; delete one |
 | `GET /tags?table&q` | vocabulary for a table (approved, plus mine pending) |
 | `POST /tags` | create (FREE) or suggest (APPROVED_ONLY) |
@@ -968,3 +972,31 @@ qbit-collaboration release" once phases (a) to (c) are merged and green against 
   for accurate "can they read it" checks. The new permissions appear in its policy editor through
   the core catalog.
 - **qbit-quick-search.** It indexes the virtual and custom search fields.
+
+
+## 16. As-built notes (2026-10-14)
+
+Where the build differs from the text above, this section wins:
+
+- **Presence replication** uses the internal realtime channel `instance:presence`. Clients never
+  receive it; they see only the resulting `presence.changed` events on `record:` and `table:`
+  channels. The pagehide beacon cannot send DELETE, so a closed tab's presence simply expires
+  after 45 s.
+- **Custom fields on other backends.** EAV-fallback fields are read-only and filterable for now.
+  Writes and projection are a follow-up. MULTI_SELECT is stored as a JSON array, without native
+  array operators.
+- **Tags as a grid column.** The `collaborationTags` virtual field is filterable and searchable,
+  but not selectable as a column yet: the runtime overlay has no post-query hook for contributed
+  virtual fields.
+- **Contingent fields.** `parentCommentId` (by `threadId`), feature settings' `scopeName` (by
+  `scopeType`) and a comment's `fieldName` (by `tableName`) use `${input.x}` filters and CUSTOM
+  providers' `otherValues`. They switch to core `dependsOn` when it ships.
+- **Follow for other qbits.** Followers are exposed through core `RecordFollowersProviderInterface`
+  (qqq#1164). qbit-alerts uses it instead of its own record watches, and alerts' record panel
+  links to collaboration's follow endpoint.
+- **Bucket upload cap.** Collaboration enforces its per-table `maxBytes`. Object storage enforces
+  the bucket cap at put time until its `api` package exposes `StorageBucket.maxUploadBytes()`
+  (qbit-object-storage#13).
+- **Secured data (qqq#1172).** Timeline audit values are masked by core when read as the viewer.
+  Cached favorite and recent labels are stored only when `FieldAccessHelper.isRecordLabelFullAccess`
+  is true.

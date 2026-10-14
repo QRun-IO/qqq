@@ -172,6 +172,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          BackendStepPostRunInput  postRunInput  = new BackendStepPostRunInput(runBackendStepInput);
          transformStep.postRun(postRunInput, postRunOutput);
          loadStep.postRun(postRunInput, postRunOutput);
+         runBackendStepOutput.getOneTimeSecrets().addAll(postRunOutput.getOneTimeSecrets());
 
          //////////////////////////////////////////////////////////////////////
          // propagate data from inner-step state to process-level step state //
@@ -278,6 +279,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          // pass the records through the transform function //
          /////////////////////////////////////////////////////
          transformStep.runOnePage(streamedBackendStepInput, streamedBackendStepOutput);
+         runBackendStepOutput.getOneTimeSecrets().addAll(streamedBackendStepOutput.getOneTimeSecrets());
          List<AuditInput> auditInputListFromTransform = streamedBackendStepOutput.getAuditInputList();
 
          //////////////////////////////////////////////////////////////////////
@@ -296,6 +298,7 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
          streamedBackendStepOutput = new StreamedBackendStepOutput(runBackendStepOutput);
 
          loadStep.runOnePage(streamedBackendStepInput, streamedBackendStepOutput);
+         runBackendStepOutput.getOneTimeSecrets().addAll(streamedBackendStepOutput.getOneTimeSecrets());
          List<AuditInput> auditInputListFromLoad = streamedBackendStepOutput.getAuditInputList();
 
          //////////////////////////////////////////////////////////////////////

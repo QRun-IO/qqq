@@ -51,7 +51,7 @@ public class HealthCheckSync
     *******************************************************************************/
    List<HealthCheckMetaData> sync(QInstance qInstance, List<HealthCheckMetaData> definitions) throws QException
    {
-      synchronized(HealthStore.MEMORY_LOCK)
+      synchronized(HealthStore.lockFor(qInstance))
       {
          Set<String> names = new HashSet<>();
          for(HealthCheckMetaData definition : definitions)
@@ -66,7 +66,7 @@ public class HealthCheckSync
             {
                try
                {
-                  HealthStore.insert(HealthMetaDataProvider.CHECK_TABLE, identity.withValue("currentStatus", HealthStatus.UNKNOWN.name())
+                  HealthStore.insert(HealthMetaDataProvider.CHECK_TABLE, new QRecord(identity).withValue("currentStatus", HealthStatus.UNKNOWN.name())
                      .withValue("consecutiveFailures", 0).withValue("consecutiveSuccesses", 0).withValue("flapping", false));
                }
                catch(QException e)

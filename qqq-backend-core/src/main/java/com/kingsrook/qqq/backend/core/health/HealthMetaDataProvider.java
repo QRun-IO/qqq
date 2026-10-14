@@ -97,8 +97,8 @@ public class HealthMetaDataProvider
       checks.getField("kind").withPossibleValueSourceName(HealthCheckKind.NAME);
       checks.getField("currentStatus").withPossibleValueSourceName(HealthStatus.NAME);
       checks.getField("currentMessage").withMaxLength(500);
-      checks.getField("recentTransitionsJson").withMaxLength(65536);
-      checks.getField("severity").withInlinePossibleValueSource(new QPossibleValueSource().withName("healthSeverity").withType(QPossibleValueSourceType.ENUM)
+      checks.getField("recentTransitionsJson").withMaxLength(65536).withIsHidden(true);
+      checks.getField("severity").withInlinePossibleValueSource(new QPossibleValueSource().withName("healthSeverity").withType(QPossibleValueSourceType.ENUM).withIdType(QFieldType.STRING)
          .withEnumValues(List.of(new QPossibleValue<>("INFO", "Info"), new QPossibleValue<>("WARNING", "Warning"),
             new QPossibleValue<>("ERROR", "Error"), new QPossibleValue<>("CRITICAL", "Critical"))));
       for(String editable : List.of("enabled", "intervalSeconds", "timeoutMs", "failureThreshold", "recoveryThreshold"))
@@ -106,8 +106,8 @@ public class HealthMetaDataProvider
          checks.getField(editable).setIsEditable(true);
       }
       checks.withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "name", "label", "component", "category", "kind", "severity", "registered")))
-         .withSection(new QFieldSection("schedule", new QIcon("schedule"), Tier.T1, List.of("enabled", "intervalSeconds", "timeoutMs", "failureThreshold", "recoveryThreshold", "nextDueAt")))
-         .withSection(new QFieldSection("currentState", new QIcon("monitor_heart"), Tier.T1, List.of("currentStatus", "currentMessage", "currentSince", "lastRunAt", "lastLatencyMs", "consecutiveFailures", "consecutiveSuccesses", "flapping")))
+         .withSection(new QFieldSection("schedule", new QIcon("schedule"), Tier.T2, List.of("enabled", "intervalSeconds", "timeoutMs", "failureThreshold", "recoveryThreshold", "nextDueAt")))
+         .withSection(new QFieldSection("currentState", new QIcon("monitor_heart"), Tier.T2, List.of("currentStatus", "currentMessage", "currentSince", "lastRunAt", "lastLatencyMs", "consecutiveFailures", "consecutiveSuccesses", "flapping")))
          .withAssociation(new Association().withName("results").withAssociatedTableName(RESULT_TABLE).withJoinName(RESULT_JOIN))
          .withSection(new QFieldSection("recentResults", new QIcon("history"), Tier.T2).withWidgetName(RESULT_JOIN))
          .withSection(new QFieldSection("latency", new QIcon("show_chart"), Tier.T2).withWidgetName(HealthLatencyWidget.NAME));

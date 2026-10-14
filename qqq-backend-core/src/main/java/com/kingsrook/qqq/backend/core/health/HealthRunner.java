@@ -77,6 +77,7 @@ public class HealthRunner implements AutoCloseable
    private final ExecutorService pool;
    private final Semaphore capacity;
    private final Map<String, HealthCheckOutcome> lastOutcomes = new ConcurrentHashMap<>();
+   private final Map<String, Instant> lastOutcomeTimes = new ConcurrentHashMap<>();
    private volatile Map<String, HealthCheckMetaData> definitions = Map.of();
    private Random random = new Random();
    private ScheduledExecutorService scheduler;
@@ -130,6 +131,27 @@ public class HealthRunner implements AutoCloseable
    public HealthCheckOutcome getLastOutcome(String name)
    {
       return (lastOutcomes.get(name));
+   }
+
+
+
+   /*******************************************************************************
+    ** Completion time used by readiness to reject stale cached results.
+    *******************************************************************************/
+   public Instant getLastOutcomeAt(String name)
+   {
+      return (lastOutcomeTimes.get(name));
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish the result before its completion timestamp.
+    *******************************************************************************/
+   private void cacheOutcome(String name, HealthCheckOutcome outcome)
+   {
+      lastOutcomes.put(name, outcome);
+      lastOutcomeTimes.put(name, clock.instant());
    }
 
 
@@ -342,7 +364,7 @@ public class HealthRunner implements AutoCloseable
          long slot = Math.floorDiv(now.getEpochSecond(), interval);
          String requestId = onDemand ? UUID.randomUUID().toString() : "";
          QRecord result;
-         synchronized(HealthStore.MEMORY_LOCK)
+         synchronized(HealthStore.lockFor(qInstance))
          {
             if(!onDemand && !HealthStore.query(HealthMetaDataProvider.RESULT_TABLE, new QQueryFilter()
                .withCriteria(new QFilterCriteria("healthCheckId", QCriteriaOperator.EQUALS, check.getValue("id")))
@@ -464,8 +486,8 @@ public class HealthRunner implements AutoCloseable
          LOG.debug("Health check threw an exception", redactedException, logPair("check", execution.definition().getName()));
       }
       outcome = sanitize(outcome, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - execution.started()));
-      lastOutcomes.put(execution.definition().getName(), outcome);
-      synchronized(HealthStore.MEMORY_LOCK)
+      cacheOutcome(execution.definition().getName(), outcome);
+      synchronized(HealthStore.lockFor(qInstance))
       {
          QRecord result = HealthStore.find(HealthMetaDataProvider.RESULT_TABLE, "id", execution.result().getValue("id"));
          if(result == null || !HealthResultStatus.RUNNING.name().equals(result.getValueString("status")))
@@ -533,7 +555,7 @@ public class HealthRunner implements AutoCloseable
     *******************************************************************************/
    private void closeAbandoned(Instant now) throws QException
    {
-      synchronized(HealthStore.MEMORY_LOCK)
+      synchronized(HealthStore.lockFor(qInstance))
       {
          for(QRecord result : HealthStore.query(HealthMetaDataProvider.RESULT_TABLE, new QQueryFilter()
             .withCriteria(new QFilterCriteria("status", QCriteriaOperator.EQUALS, "RUNNING"))
@@ -653,12 +675,12 @@ public class HealthRunner implements AutoCloseable
             future = submitProbe(definition, new HealthCheckInput().withQInstance(qInstance)
                .withDeadline(clock.instant().plusMillis(definition.getTimeoutMs())).withAttempt(1));
             HealthCheckOutcome outcome = future.get(definition.getTimeoutMs(), TimeUnit.MILLISECONDS);
-            lastOutcomes.put(definition.getName(), sanitize(outcome == null ? HealthCheckOutcome.unknown("Check returned no outcome") : outcome, 0));
+            cacheOutcome(definition.getName(), sanitize(outcome == null ? HealthCheckOutcome.unknown("Check returned no outcome") : outcome, 0));
          }
          catch(TimeoutException e)
          {
             future.cancel(true);
-            lastOutcomes.put(definition.getName(), HealthCheckOutcome.down("timed out after " + definition.getTimeoutMs() + "ms"));
+            cacheOutcome(definition.getName(), HealthCheckOutcome.down("timed out after " + definition.getTimeoutMs() + "ms"));
          }
          catch(InterruptedException e)
          {
@@ -671,7 +693,7 @@ public class HealthRunner implements AutoCloseable
          }
          catch(Exception e)
          {
-            lastOutcomes.put(definition.getName(), HealthCheckOutcome.down(HealthRedactor.redactThrowable(e instanceof ExecutionException ? e.getCause() : e)));
+            cacheOutcome(definition.getName(), HealthCheckOutcome.down(HealthRedactor.redactThrowable(e instanceof ExecutionException ? e.getCause() : e)));
          }
          finally
          {

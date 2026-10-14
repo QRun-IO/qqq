@@ -34,6 +34,9 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule;
 
 
 /*******************************************************************************
@@ -42,6 +45,18 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 final class HealthStore
 {
    static final Object MEMORY_LOCK = new Object();
+
+
+
+   /*******************************************************************************
+    ** Only memory needs a shared monitor to emulate database uniqueness. A fresh
+    ** monitor for other backends never serializes separate operations or pods.
+    *******************************************************************************/
+   static Object lockFor(QInstance qInstance) throws QException
+   {
+      String backend = qInstance.getTable(HealthMetaDataProvider.RESULT_TABLE).getBackendName();
+      return (new QBackendModuleDispatcher().getQBackendModule(qInstance.getBackend(backend)) instanceof MemoryBackendModule ? MEMORY_LOCK : new Object());
+   }
 
 
 
@@ -55,11 +70,11 @@ final class HealthStore
 
 
    /*******************************************************************************
-    ** Read records using the caller's session.
+    ** Read records using the caller's session, including internal transition state.
     *******************************************************************************/
    static List<QRecord> query(String table, QQueryFilter filter) throws QException
    {
-      return (new QueryAction().execute(new QueryInput().withTableName(table).withFilter(filter)).getRecords());
+      return (new QueryAction().execute(new QueryInput().withTableName(table).withFilter(filter).withShouldOmitHiddenFields(false)).getRecords());
    }
 
 

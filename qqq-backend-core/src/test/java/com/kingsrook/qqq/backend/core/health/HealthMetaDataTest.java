@@ -86,7 +86,7 @@ class HealthMetaDataTest extends BaseTest
    {
       QInstance instance = install();
       new QInstanceEnricher(instance).enrich();
-      new QInstanceValidator().validate(instance);
+      new QInstanceValidator().revalidate(instance);
       assertThat(instance.getApp("systemHealth").getChildren()).hasSize(1);
       assertThat(instance.getProcess(HealthRunCheckNowProcess.NAME).getTableName()).isEqualTo(HealthMetaDataProvider.CHECK_TABLE);
       assertThat(instance.getTable(HealthMetaDataProvider.RESULT_TABLE).getUniqueKeys()).hasSize(1);

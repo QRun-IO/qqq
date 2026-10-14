@@ -39,6 +39,7 @@ public class UiApiRequest
    private Map<String, String> pathParams  = new LinkedHashMap<>();
    private Map<String, String> queryParams = new LinkedHashMap<>();
    private Map<String, String> formParams;
+   private Map<String, String> headers     = new LinkedHashMap<>();
    private Object              jsonBody;
    private UiApiCredentials    credentials;
    private String              clientDetail;
@@ -103,6 +104,36 @@ public class UiApiRequest
       }
       this.formParams.put(name, value == null ? null : String.valueOf(value));
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a custom header; a null value removes it. Reserved headers are ignored
+    ** by the invoker: credentials and the client channel are always set server
+    ** side, and custom headers must not override identity or request metadata.
+    *******************************************************************************/
+   public UiApiRequest withHeader(String name, String value)
+   {
+      if(value == null)
+      {
+         this.headers.remove(name);
+      }
+      else
+      {
+         this.headers.put(name, value);
+      }
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for headers
+    *******************************************************************************/
+   public Map<String, String> getHeaders()
+   {
+      return (this.headers);
    }
 
 

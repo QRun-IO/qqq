@@ -27,12 +27,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RuntimeMetaDa
 
 
 /*******************************************************************************
- ** Generation and feature overrides; field contributions are a later phase.
+ ** Runtime table fields, virtual fields, presentation and feature overrides.
  *******************************************************************************/
 public interface RuntimeMetaDataProviderInterface
 {
    /*******************************************************************************
-    ** Generation and feature overrides; field contributions are a later phase.
+    ** Runtime table fields, virtual fields, presentation and feature overrides.
     *******************************************************************************/
    RuntimeMetaDataContribution getContribution(QInstance instance) throws QException;
 

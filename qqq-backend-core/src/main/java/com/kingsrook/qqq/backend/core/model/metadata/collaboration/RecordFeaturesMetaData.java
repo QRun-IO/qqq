@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeatureOverrideProviderInterface;
 import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFeatureSummaryProviderInterface;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordFollowersProviderInterface;
 import com.kingsrook.qqq.backend.core.actions.collaboration.RuntimeMetaDataProviderInterface;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -50,6 +51,7 @@ public class RecordFeaturesMetaData implements QSupplementalInstanceMetaData
    private RecordOwnership ownership;
    private QCodeReference overrideProvider;
    private List<QCodeReference> runtimeProviders = new ArrayList<>();
+   private QCodeReference followersProvider;
    private List<QCodeReference> summaryProviders = new ArrayList<>();
    public static final String NAME = "recordFeatures";
 
@@ -176,6 +178,10 @@ public class RecordFeaturesMetaData implements QSupplementalInstanceMetaData
     *******************************************************************************/
    public void validate(QInstance instance, QInstanceValidator validator)
    {
+      if(followersProvider != null)
+      {
+         validator.validateSimpleCodeReference(NAME + " followers provider", followersProvider, RecordFollowersProviderInterface.class);
+      }
       if(overrideProvider != null)
       {
          validator.validateSimpleCodeReference(NAME + " override provider", overrideProvider, RecordFeatureOverrideProviderInterface.class);
@@ -203,6 +209,7 @@ public class RecordFeaturesMetaData implements QSupplementalInstanceMetaData
       copy.permissionModes.putAll(permissionModes);
       copy.featureLocks.putAll(featureLocks);
       copy.ownership = ownership == null ? null : new RecordOwnership().withOwnerFieldName(ownership.getOwnerFieldName()).withAssigneeFieldName(ownership.getAssigneeFieldName());
+      copy.followersProvider = followersProvider;
       copy.overrideProvider = overrideProvider;
       copy.runtimeProviders = new ArrayList<>(runtimeProviders);
       copy.summaryProviders = new ArrayList<>(summaryProviders);
@@ -454,6 +461,37 @@ public class RecordFeaturesMetaData implements QSupplementalInstanceMetaData
    public RecordFeaturesMetaData withSummaryProviders(List<QCodeReference> summaryProviders)
    {
       setSummaryProviders(summaryProviders);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for followersProvider
+    *******************************************************************************/
+   public QCodeReference getFollowersProvider()
+   {
+      return (this.followersProvider);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for followersProvider
+    *******************************************************************************/
+   public void setFollowersProvider(QCodeReference followersProvider)
+   {
+      this.followersProvider = followersProvider;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for followersProvider. Only instance-level registration is used.
+    *******************************************************************************/
+   public RecordFeaturesMetaData withFollowersProvider(QCodeReference followersProvider)
+   {
+      setFollowersProvider(followersProvider);
       return (this);
    }
 

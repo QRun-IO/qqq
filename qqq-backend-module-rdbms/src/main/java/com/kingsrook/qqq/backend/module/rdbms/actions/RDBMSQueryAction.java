@@ -375,9 +375,8 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
          JoinsContext.FieldAndTableNameOrAlias otherFieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(orderBy.getFieldName());
 
          QFieldMetaData field  = otherFieldAndTableNameOrAlias.field();
-         String         column = getColumnName(field);
 
-         String qualifiedColumn = escapeIdentifier(otherFieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(column);
+         String qualifiedColumn = fieldExpression(otherFieldAndTableNameOrAlias.tableNameOrAlias(), field);
          String columnNo        = String.valueOf(selection.qualifiedColumns.indexOf(qualifiedColumn) + 1);
          clauses.add(columnNo + " " + ascOrDesc);
 
@@ -450,7 +449,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
       // if a field is heavy, and heavy fields aren't being selected, then replace that field name with a LENGTH function //
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       List<String> qualifiedColumns = new ArrayList<>(fieldList.stream()
-         .map(field -> Pair.of(field, escapeIdentifier(tableName) + "." + escapeIdentifier(getColumnName(field))))
+         .map(field -> Pair.of(field, fieldExpression(tableName, field)))
          .map(pair -> wrapHeavyFieldsWithLengthFunctionIfNeeded(pair, queryInput.getShouldFetchHeavyFields()))
          .toList());
 
@@ -509,7 +508,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
             // map to columns, wrapping heavy fields as needed //
             /////////////////////////////////////////////////////
             List<String> qualifiedJoinColumns = joinFieldList.stream()
-               .map(field -> Pair.of(field, escapeIdentifier(tableNameOrAlias) + "." + escapeIdentifier(getColumnName(field))))
+               .map(field -> Pair.of(field, fieldExpression(tableNameOrAlias, field)))
                .map(pair -> wrapHeavyFieldsWithLengthFunctionIfNeeded(pair, queryInput.getShouldFetchHeavyFields()))
                .toList();
 
@@ -568,7 +567,7 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
             requireFieldFunctionAdapterNotNull(fieldFunctionAdapter, fieldFunction);
 
             QFieldMetaData sourceField       = table.getField(fieldFunction.getFieldName());
-            String         columnName        = escapeIdentifier(tableNameOrAlias) + "." + escapeIdentifier(getColumnName(sourceField));
+            String         columnName        = fieldExpression(tableNameOrAlias, sourceField);
             String         wrappedColumnName = fieldFunctionAdapter.wrapColumnName(columnName, fieldFunction, makeFieldNameToColumnReferenceFunction(tableNameOrAlias, table));
 
             CollectionUtils.addAllIfNotNull(params, fieldFunctionAdapter.getParams(fieldFunction));

@@ -59,6 +59,7 @@ checkers, the user's permissions.
 - `*permission*` and the role tables: `role`, `roles`, `*_role`, `*_roles`, `*_role_*`, `user_role*`.
 - `*user_session*` and `*usersession*`.
 - `webhooks_*`: webhook endpoints and their signing secrets.
+- `worm_audit_*`: the WORM audit chain, checkpoints, sealed exports and purges (qbit-worm-audit).
 
 Modules add their own rules with `withDeniedObject` or `withDeniedPattern`. For example, the
 assistant qbit registers its tables, and `assistant_*` is already covered.

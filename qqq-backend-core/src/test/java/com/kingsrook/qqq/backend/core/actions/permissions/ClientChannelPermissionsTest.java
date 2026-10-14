@@ -75,7 +75,7 @@ class ClientChannelPermissionsTest extends BaseTest
       "assistant_provider", "assistant_model", "assistant_price", "assistant_profile", "assistant_skill", "assistant_policy",
       "assistant_budget", "assistant_usage", "assistant_tool_call_log", "assistant_conversation",
       "authentik_user", "authentik_group_permission", "apiKey", "api_key", "user_credential",
-      "webhooks_endpoint", "oauth_client_secret", "userSession", "user_role");
+      "webhooks_endpoint", "worm_audit_chain", "worm_audit_checkpoint", "oauth_client_secret", "userSession", "user_role");
 
    private static final List<String> WALLED_PROCESSES = List.of("assistant_rotateProviderKey", "authentik_syncUsers");
 

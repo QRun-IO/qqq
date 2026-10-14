@@ -40,6 +40,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -152,6 +154,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 import static com.kingsrook.qqq.middleware.javalin.QJavalinAccessLogger.logPairIfSlow;
+import static io.javalin.apibuilder.ApiBuilder.before;
 import static io.javalin.apibuilder.ApiBuilder.delete;
 import static io.javalin.apibuilder.ApiBuilder.get;
 import static io.javalin.apibuilder.ApiBuilder.patch;
@@ -164,9 +167,36 @@ import static io.javalin.apibuilder.ApiBuilder.put;
  ** QQQ Javalin implementation.  Given a QInstance, defines all routes needed
  ** to respond to http requests and route down into the qqq backend.
  **
+ ** DEPRECATED ROUTES: the unversioned routes defined by getRoutes() (/metaData,
+ ** /data/..., /processes/..., /widget/..., /possibleValues/..., /download/...,
+ ** /reports/..., /serverInfo, /manageSession) are the legacy API of the
+ ** Material Dashboard.  The UI API is the versioned /qqq/v1 (docs/UI-API-*.md);
+ ** Next UI makes no calls to these routes.  They stay served (the default of
+ ** QApplicationJavalinServer.serveLegacyUnversionedMiddlewareAPI) while the
+ ** Material Dashboard uses them, and every response carries a Deprecation
+ ** header and a Link to the successor.  Sunset: they will be removed together
+ ** with the Material Dashboard; no date is set yet (docs/UI-API-CHANGELOG.md).
  *******************************************************************************/
 public class QJavalinImplementation
 {
+   /***************************************************************************
+    ** The value of the Deprecation header (RFC 9745) on legacy responses: the
+    ** date the routes were deprecated (2026-10-13), as @epoch-seconds.
+    ***************************************************************************/
+   public static final String LEGACY_DEPRECATION_HEADER_VALUE = "@1760313600";
+
+   /***************************************************************************
+    ** The Link header on legacy responses, naming the successor API.
+    ***************************************************************************/
+   public static final String LEGACY_SUCCESSOR_LINK = "</qqq/v1/openapi.html>; rel=\"successor-version\"";
+
+   /***************************************************************************
+    ** Path roots of the legacy routes (each also with /* below it).
+    ***************************************************************************/
+   private static final List<String> LEGACY_ROUTE_ROOTS = List.of("/manageSession", "/metaData", "/data", "/possibleValues", "/widget", "/serverInfo", "/processes", "/download", "/reports");
+
+   private static final Set<String> loggedLegacyRoots = ConcurrentHashMap.newKeySet();
+
    public static final  int                 SESSION_COOKIE_AGE            = 60 * 60 * 24;
    public static final  String              SESSION_ID_COOKIE_NAME        = "sessionId";
    public static final  String              SESSION_UUID_COOKIE_NAME      = "sessionUUID";
@@ -2174,12 +2204,41 @@ public class QJavalinImplementation
 
 
    /*******************************************************************************
-    **
+    ** Add the Deprecation and Link headers to a legacy response, and log the
+    ** first use of each legacy route family (so operators can see who still
+    ** calls them).
+    *******************************************************************************/
+   static void markLegacyDeprecated(Context context)
+   {
+      context.header("Deprecation", LEGACY_DEPRECATION_HEADER_VALUE);
+      context.header("Link", LEGACY_SUCCESSOR_LINK);
+
+      String path = context.path();
+      String root = path.replaceFirst("^(/[^/]*).*$", "$1");
+      if(loggedLegacyRoots.add(root))
+      {
+         LOG.info("Deprecated unversioned QQQ route called; the UI API is /qqq/v1 (docs/UI-API-CHANGELOG.md)", logPair("route", root), logPair("path", path));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The legacy (deprecated) unversioned routes - see the class comment.
     *******************************************************************************/
    public EndpointGroup getRoutes()
    {
       return (() ->
       {
+         ////////////////////////////////////////////////////////////////////////
+         // mark every legacy response deprecated, pointing at the UI API (v1) //
+         ////////////////////////////////////////////////////////////////////////
+         for(String root : LEGACY_ROUTE_ROOTS)
+         {
+            before(root, QJavalinImplementation::markLegacyDeprecated);
+            before(root + "/*", QJavalinImplementation::markLegacyDeprecated);
+         }
+
          post("/manageSession", QJavalinImplementation::manageSession);
 
          /////////////////////

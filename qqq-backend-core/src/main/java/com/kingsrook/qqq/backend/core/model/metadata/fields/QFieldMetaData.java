@@ -62,6 +62,7 @@ public class QFieldMetaData implements Cloneable, QMetaDataObject
    private String     name;
    private String     label;
    private String     backendName;
+   private FieldBackendStorage backendStorage;
    private QFieldType type;
    private boolean    isRequired = false;
    private boolean    isEditable = true;
@@ -123,6 +124,10 @@ public class QFieldMetaData implements Cloneable, QMetaDataObject
          if(adornments != null)
          {
             clone.setAdornments(new ArrayList<>(adornments));
+         }
+         if(backendStorage != null)
+         {
+            clone.backendStorage = backendStorage.clone();
          }
          return (clone);
       }
@@ -1167,4 +1172,35 @@ public class QFieldMetaData implements Cloneable, QMetaDataObject
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for backendStorage
+    *******************************************************************************/
+   public FieldBackendStorage getBackendStorage()
+   {
+      return (backendStorage);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for backendStorage
+    *******************************************************************************/
+   public void setBackendStorage(FieldBackendStorage backendStorage)
+   {
+      this.backendStorage = backendStorage;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for backendStorage
+    *******************************************************************************/
+   public QFieldMetaData withBackendStorage(FieldBackendStorage backendStorage)
+   {
+      setBackendStorage(backendStorage);
+      return (this);
+   }
 }

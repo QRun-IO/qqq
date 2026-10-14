@@ -80,7 +80,8 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
       "*password*",
       "*permission*", "role", "roles", "*_role", "*_roles", "*_role_*", "user_role*", "userrole*",
       "*user_session*", "*usersession*",
-      "webhooks_*");   // webhook endpoints and their signing secrets
+      "webhooks_*",    // webhook endpoints and their signing secrets
+      "worm_audit_*"); // the WORM audit chain, checkpoints, sealed exports and purges
 
    /***************************************************************************
     ** the assistant's default write-deny patterns: readable (e.g. a record's

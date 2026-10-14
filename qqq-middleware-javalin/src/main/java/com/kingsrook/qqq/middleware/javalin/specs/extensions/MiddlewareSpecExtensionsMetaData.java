@@ -53,6 +53,7 @@ public class MiddlewareSpecExtensionsMetaData implements QSupplementalInstanceMe
     ***************************************************************************/
    public static final Map<String, String> ESTABLISHED_PREFIXES = Map.of(
       "/esb", "esb",
+      "/health", "health",
       "/alerts", "alerts",
       "/assistant", "assistant",
       "/sql-workbench", "sql-workbench");

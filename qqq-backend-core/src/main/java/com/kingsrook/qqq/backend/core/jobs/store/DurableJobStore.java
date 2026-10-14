@@ -212,6 +212,63 @@ public class DurableJobStore
 
 
    /*******************************************************************************
+    ** Compare-and-set a job's status and record its timeline event in one
+    ** transaction, so a reader that sees the new status also sees the event
+    ** (status first and event after left a window where a finished job had no
+    ** COMPLETED event yet). Returns false, writing nothing, when the job was not
+    ** in one of the from-statuses.
+    *******************************************************************************/
+   public boolean setJobStatusWithEvent(Integer jobId, Collection<JobStatus> from, JobStatus to, Map<String, Serializable> extraValues, JobEventType eventType, String detail) throws QException
+   {
+      Map<String, Serializable> values = new LinkedHashMap<>();
+      if(extraValues != null)
+      {
+         values.putAll(extraValues);
+      }
+      values.put("status", to.name());
+      values.put("modifyDate", now());
+
+      return (SystemScope.call(() ->
+      {
+         QBackendTransaction transaction = QBackendTransaction.openFor(new InsertInput(TABLE_JOB));
+         try
+         {
+            boolean changed = cas(TABLE_JOB, values, new QQueryFilter()
+               .withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, jobId))
+               .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, from.stream().map(Enum::name).toList())), transaction) == 1;
+            if(changed && eventType != null)
+            {
+               new InsertAction().execute(new InsertInput(TABLE_EVENT).withTransaction(transaction).withRecord(new QRecord()
+                  .withValue("jobId", jobId)
+                  .withValue("type", eventType.name())
+                  .withValue("detail", StringUtils.safeTruncate(detail, 4000))
+                  .withValue("createDate", Instant.now())));
+            }
+            transaction.commit();
+            return (changed);
+         }
+         catch(Exception e)
+         {
+            try
+            {
+               transaction.rollback();
+            }
+            catch(Exception rollbackException)
+            {
+               e.addSuppressed(rollbackException);
+            }
+            throw (e instanceof QException qe ? qe : new QException("Could not change the status of job " + jobId, e));
+         }
+         finally
+         {
+            transaction.close();
+         }
+      }));
+   }
+
+
+
+   /*******************************************************************************
     ** Set values on a job without a status condition (counters, reasons).
     *******************************************************************************/
    public void updateJob(Integer jobId, Map<String, Serializable> values) throws QException

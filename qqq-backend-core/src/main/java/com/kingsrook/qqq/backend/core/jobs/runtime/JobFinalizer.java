@@ -231,17 +231,19 @@ public class JobFinalizer
          }
       }
 
-      if(!store.setJobStatus(jobId, from, to, values))
+      ////////////////////////////////////////////////////////////////////////
+      // the status and its event commit together: whoever sees the job in //
+      // its new status also finds the event (e.g., COMPLETED)              //
+      ////////////////////////////////////////////////////////////////////////
+      QRecord expected = new QRecord(job);
+      values.forEach(expected::setValue);
+      if(!store.setJobStatusWithEvent(jobId, from, to, values, eventType, describe(expected, to)))
       {
          QRecord current = store.getJob(jobId);
          return (current == null ? null : JobStatus.valueOf(current.getValueString("status")));
       }
 
       QRecord updated = store.getJob(jobId);
-      if(eventType != null)
-      {
-         store.recordEvent(jobId, null, eventType, null, null, null, describe(updated, to));
-      }
       LOG.info("Durable job status changed", logPair("jobId", jobId), logPair("status", to));
 
       if(to.isTerminal() || to == JobStatus.NEEDS_REVIEW)

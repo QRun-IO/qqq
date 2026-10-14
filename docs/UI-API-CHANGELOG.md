@@ -86,6 +86,12 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - `baseline.yaml` is now the RC.7 document (1.3.0).
 
 ### 1.3.0 (QQQ 4.1.0-RC.7)
+- Added the core extension `health` 1.0.0 (central health monitoring, `docs/specs/HEALTH.md`):
+  `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
+  `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds
+  `HealthMonitoringMetaData`; `/health` joins `ESTABLISHED_PREFIXES`. The core document is unchanged.
+
+### 1.3.0 (unreleased)
 - Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 - Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
   spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)

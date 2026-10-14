@@ -41,6 +41,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.health.HealthRedactor;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerHelper;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
@@ -75,6 +76,7 @@ class SampleHealthAcceptanceTest
 {
    private final AtomicReference<Javalin> service = new AtomicReference<>();
    private final BlockingQueue<List<Boolean>> completedRequests = new LinkedBlockingQueue<>();
+   private final Set<Thread> activeWorkers = ConcurrentHashMap.newKeySet();
    private final Set<Thread> workers = ConcurrentHashMap.newKeySet();
    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
    private QInstance instance;
@@ -112,7 +114,7 @@ class SampleHealthAcceptanceTest
          {
             server.stop();
          }
-         assertWorkersStopped();
+         assertWorkersIdle();
       }
       finally
       {
@@ -195,13 +197,14 @@ class SampleHealthAcceptanceTest
          assertEquals(7, dependency.getLong("durationMs"));
          assertEquals("owned-health-service", dependency.getJSONObject("details").getString("fixture"));
          assertEquals(3, dependency.getJSONObject("details").getInt("count"));
+         assertFalse(dependency.has("message"));
       }
    }
 
 
 
    /*******************************************************************************
-    ** Throwing checks become UNKNOWN; an explicit DOWN still dominates them.
+    ** Throwing checks become DOWN and expose no exception details.
     *******************************************************************************/
    @Test
    void testThrowingIndicatorAndDownAggregationReleaseWorkers() throws Exception
@@ -211,13 +214,12 @@ class SampleHealthAcceptanceTest
          throw new QException("owned failure");
       })));
       start();
-      JSONObject thrown = healthResponse("/health", 200, "UNKNOWN").getJSONObject("checks").getJSONObject("throws");
-      assertEquals("Indicator execution failed", thrown.getJSONObject("details").getString("error"));
-      assertEquals("Exception", thrown.getJSONObject("details").getString("exceptionType"));
+      JSONObject thrown = healthResponse("/health", 503, "DOWN").getJSONObject("checks").getJSONObject("throws");
+      assertFalse(thrown.has("details"));
       health.setIndicators(List.of(health.getIndicators().get(0),
          indicator("down", () -> new HealthCheckResult().withStatus(HealthStatus.DOWN))));
       JSONObject checks = healthResponse("/health", 503, "DOWN").getJSONObject("checks");
-      assertEquals("UNKNOWN", checks.getJSONObject("throws").getString("status"));
+      assertEquals("DOWN", checks.getJSONObject("throws").getString("status"));
       assertEquals("DOWN", checks.getJSONObject("down").getString("status"));
    }
 
@@ -275,14 +277,14 @@ class SampleHealthAcceptanceTest
          assertEquals("UP", new JSONObject(response.body()).getString("status"));
          assertRequestContextCleared();
       }
-      assertWorkersStopped();
+      assertWorkersIdle();
       assertEquals(2, workers.size());
    }
 
 
 
    /*******************************************************************************
-    ** Repeated timeouts interrupt cooperative checks and leave no live workers.
+    ** Repeated timeouts interrupt cooperative checks and release their worker slots.
     *******************************************************************************/
    @Test
    void testTimeoutCancelsIndicatorAndCleansUpRequest() throws Exception
@@ -304,13 +306,11 @@ class SampleHealthAcceptanceTest
       start();
       for(Integer attempt = 0; attempt < 3; attempt++)
       {
-         JSONObject check = healthResponse("/health", 200, "UNKNOWN").getJSONObject("checks").getJSONObject("blocked");
-         assertEquals(200, check.getLong("durationMs"));
-         assertEquals("Health check timed out", check.getJSONObject("details").getString("error"));
-         assertEquals(200, check.getJSONObject("details").getInt("timeoutMs"));
+         JSONObject check = healthResponse("/health", 503, "DOWN").getJSONObject("checks").getJSONObject("blocked");
+         assertFalse(check.has("details"));
       }
       assertTrue(interrupted.await(2, TimeUnit.SECONDS));
-      assertEquals(3, workers.size());
+      assertTrue(workers.size() >= 1 && workers.size() <= 3);
    }
 
 
@@ -335,11 +335,8 @@ class SampleHealthAcceptanceTest
             start();
             for(Integer attempt = 0; attempt < 3; attempt++)
             {
-               JSONObject check = healthResponse("/health", 200, "UP").getJSONObject("checks").getJSONObject("database");
-               assertEquals("healthOwnedDatabase", check.getJSONObject("details").getString("backendName"));
-               assertEquals("h2", check.getJSONObject("details").getString("vendor"));
-               assertEquals(1, check.getJSONObject("details").getInt("queryResult"));
-               assertTrue(check.getLong("durationMs") >= 0);
+               JSONObject checks = healthResponse("/ready", 200, "UP").getJSONObject("checks");
+               assertEquals("UP", checks.getString("core.database"));
             }
             try(var result = statement.executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.SESSIONS"))
             {
@@ -353,9 +350,9 @@ class SampleHealthAcceptanceTest
             }
          }
          database.stop();
-         JSONObject down = healthResponse("/health", 503, "DOWN").getJSONObject("checks").getJSONObject("database");
-         assertFalse(down.getJSONObject("details").getString("error").isBlank());
-         assertTrue(down.getJSONObject("details").getString("exceptionType").contains("Exception"));
+         JSONObject down = healthResponse("/ready", 503, "DOWN");
+         assertEquals("DOWN", down.getJSONObject("checks").getString("core.database"));
+         assertFalse(down.toString().contains("details"));
       }
       finally
       {
@@ -383,8 +380,7 @@ class SampleHealthAcceptanceTest
       JSONObject exceeded = healthResponse("/health", 200, "DEGRADED").getJSONObject("checks").getJSONObject("memory");
       assertEquals("Memory usage exceeds threshold", exceeded.getJSONObject("details").getString("warning"));
       memory.setThresholdPercent(null);
-      JSONObject invalid = healthResponse("/health", 200, "UNKNOWN").getJSONObject("checks").getJSONObject("memory");
-      assertEquals("Indicator execution failed", invalid.getJSONObject("details").getString("error"));
+      healthResponse("/health", 503, "DOWN");
    }
 
 
@@ -399,7 +395,7 @@ class SampleHealthAcceptanceTest
       health.setIndicators(List.of(tracked(disk)));
       start();
       JSONObject details = healthResponse("/health", 200, "UP").getJSONObject("checks").getJSONObject("diskSpace").getJSONObject("details");
-      assertEquals(diskDirectory.toString(), details.getString("path"));
+      assertEquals(HealthRedactor.redact(diskDirectory.toString()), details.getString("path"));
       Long freeBytes = details.getLong("freeBytes");
       assertTrue(freeBytes > 0);
       assertEquals(details.getLong("totalBytes"), freeBytes + details.getLong("usedBytes"));
@@ -427,14 +423,11 @@ class SampleHealthAcceptanceTest
       DatabaseHealthIndicator database = new DatabaseHealthIndicator();
       health.setIndicators(List.of(tracked(database)));
       start();
-      JSONObject absent = healthResponse("/health", 200, "UNKNOWN").getJSONObject("checks").getJSONObject("database");
-      assertEquals("No backend name configured", absent.getJSONObject("details").getString("error"));
+      healthResponse("/ready", 200, "UNKNOWN");
       database.setBackendName("missing-health-backend");
-      JSONObject missing = healthResponse("/health", 503, "DOWN").getJSONObject("checks").getJSONObject("database");
-      assertEquals("Backend not found", missing.getJSONObject("details").getString("error"));
+      healthResponse("/ready", 503, "DOWN");
       database.setBackendName(SampleMetaDataProvider.MEMORY_BACKEND_NAME);
-      JSONObject wrongType = healthResponse("/health", 200, "UNKNOWN").getJSONObject("checks").getJSONObject("database");
-      assertEquals("Backend is not an RDBMS backend", wrongType.getJSONObject("details").getString("error"));
+      healthResponse("/ready", 200, "UNKNOWN");
    }
 
 
@@ -488,7 +481,7 @@ class SampleHealthAcceptanceTest
    {
       HttpResponse<String> response = client.send(request(path), HttpResponse.BodyHandlers.ofString());
       assertRequestContextCleared();
-      assertWorkersStopped();
+      assertWorkersIdle();
       return response;
    }
 
@@ -520,15 +513,17 @@ class SampleHealthAcceptanceTest
 
 
    /*******************************************************************************
-    ** Thread identities belong only to this fixture, avoiding global thread counts.
+    ** Checks release bounded shared worker slots; idle daemon threads may be reused.
     *******************************************************************************/
-   private void assertWorkersStopped() throws InterruptedException
+   private void assertWorkersIdle() throws InterruptedException
    {
-      for(Thread worker : workers)
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+      while(!activeWorkers.isEmpty() && System.nanoTime() < deadline)
       {
-         worker.join(2000);
-         assertFalse(worker.isAlive(), "health worker survived request completion: " + worker.getName());
+         Thread.sleep(10);
       }
+      assertTrue(activeWorkers.isEmpty(), "health probe survived its request");
+      assertTrue(workers.size() <= 10, "probe pool must remain bounded");
    }
 
 
@@ -568,6 +563,7 @@ class SampleHealthAcceptanceTest
          public HealthCheckResult check(QInstance qInstance) throws QException
          {
             workers.add(Thread.currentThread());
+            activeWorkers.add(Thread.currentThread());
             try
             {
                return probe.check();
@@ -576,6 +572,10 @@ class SampleHealthAcceptanceTest
             {
                Thread.currentThread().interrupt();
                throw new QException("owned indicator interrupted", e);
+            }
+            finally
+            {
+               activeWorkers.remove(Thread.currentThread());
             }
          }
       };

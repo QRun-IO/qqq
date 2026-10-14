@@ -404,6 +404,9 @@ status, cached for 2 seconds. The flag in `AsyncJobStatus` is not used.
 
   A user who lost access fails the job with a permission error. The job never runs with elevated
   access.
+  - *As built:* each claim builds the owner's current automated session (current permissions),
+    intersects its keys with the captured ones, and sets the channel. Checking for a revoked token
+    on a token-scoped launch is not built yet: core has no token-revocation lookup to call.
 - **Audit.** Every record a chunk writes is audited under that user and channel (`audit.clientChannel`).
   The chunk also sets an audit detail of `job:<id>/chunk:<seq>`.
   - The job record screen links to "Changes made by this job": a saved filter on audit, by user,

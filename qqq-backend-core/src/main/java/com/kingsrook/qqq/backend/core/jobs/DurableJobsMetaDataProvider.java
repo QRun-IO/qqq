@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.jobs.processes.JobControlProcesses;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
@@ -284,13 +285,13 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("semantics", QFieldType.STRING).withPossibleValueSourceName(JobSemantics.NAME).withMaxLength(20))
          .withField(readOnly("chunkSize", QFieldType.INTEGER))
          .withField(readOnly("maxParallelChunks", QFieldType.INTEGER))
-         .withField(readOnly("rowsTotal", QFieldType.INTEGER))
-         .withField(readOnly("rowsDone", QFieldType.INTEGER))
-         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK"))
-         .withField(readOnly("rowsFailed", QFieldType.INTEGER))
-         .withField(readOnly("chunksTotal", QFieldType.INTEGER))
-         .withField(readOnly("chunksDone", QFieldType.INTEGER))
-         .withField(readOnly("chunksFailed", QFieldType.INTEGER))
+         .withField(readOnly("rowsTotal", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsDone", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK").withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsFailed", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("chunksTotal", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("chunksDone", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("chunksFailed", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
          .withField(readOnly("summaryJson", QFieldType.TEXT).withLabel("Summary"))
          .withField(readOnly("outputStorageJson", QFieldType.TEXT).withLabel("Outputs"))
          .withField(readOnly("parentJobId", QFieldType.INTEGER).withLabel("Parent Job").withPossibleValueSourceName(TABLE_JOB))
@@ -340,9 +341,9 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("leaseToken", QFieldType.STRING).withMaxLength(100))
          .withField(readOnly("leaseExpiresAt", QFieldType.DATE_TIME))
          .withField(readOnly("heartbeatAt", QFieldType.DATE_TIME))
-         .withField(readOnly("rowsIn", QFieldType.INTEGER))
-         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK"))
-         .withField(readOnly("rowsFailed", QFieldType.INTEGER))
+         .withField(readOnly("rowsIn", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK").withDisplayFormat(DisplayFormat.COMMAS))
+         .withField(readOnly("rowsFailed", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
          .withField(readOnly("summaryJson", QFieldType.TEXT).withLabel("Summary"))
          .withField(confidential(readOnly("checkpointJson", QFieldType.TEXT).withLabel("Checkpoint")))
          .withField(readOnly("errorMessage", QFieldType.TEXT))

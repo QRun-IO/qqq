@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
@@ -51,6 +52,7 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.backend.SequenceResyncResult;
 import com.kingsrook.qqq.backend.module.rdbms.actions.AbstractRDBMSAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSAggregateAction;
+import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSConditionalUpdateAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSConsistentReadTransaction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSCountAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSDeleteAction;
@@ -360,4 +362,15 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       return (String.join(".", parts));
    }
 
+
+
+
+   /*******************************************************************************
+    ** Atomic conditional updates (CONDITIONAL_UPDATE), plus the database clock.
+    *******************************************************************************/
+   @Override
+   public ConditionalUpdateInterface getConditionalUpdateInterface()
+   {
+      return (new RDBMSConditionalUpdateAction());
+   }
 }

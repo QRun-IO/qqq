@@ -786,6 +786,15 @@ public class RunProcessAction
          throw (runBackendStepOutput.getException());
       }
 
+      //////////////////////////////////////////////////////////////////////
+      // let an optional listener (e.g., a durable job) see the finished  //
+      // step - to checkpoint its values, or to stop the run by throwing. //
+      //////////////////////////////////////////////////////////////////////
+      if(runProcessInput.getBackendStepListener() != null)
+      {
+         runProcessInput.getBackendStepListener().afterBackendStep(backendStep.getName(), runBackendStepOutput.getProcessState());
+      }
+
       return (runBackendStepOutput);
    }
 

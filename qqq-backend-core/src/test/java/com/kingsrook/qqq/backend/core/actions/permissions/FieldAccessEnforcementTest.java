@@ -30,6 +30,7 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessEvent;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessEventType;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessOutcome;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessResolverMetaData;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessTier;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldMaskStyle;
@@ -68,12 +69,14 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.CurrentUser;
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.search.RecordSearchOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
@@ -107,6 +110,69 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class FieldAccessEnforcementTest extends FieldAccessTestSupport
 {
+
+
+
+   /*******************************************************************************
+    ** JSON-backed custom fields obey the same value and criteria policy.
+    *******************************************************************************/
+   @Test
+   void maskedCustomField() throws Exception
+   {
+      table.addField(new QFieldMetaData("customSecret", QFieldType.STRING).withBackendName("ignored")
+         .withBackendStorage(new JsonPathStorage().withColumnName("qqq_custom_fields").withKey("customSecret")));
+      new UpdateAction().execute(new UpdateInput(TABLE).withRecord(new QRecord().withValue("id", 1).withValue("customSecret", NOTES)));
+      assertEquals(NOTES, new GetAction().executeForRecord(new GetInput(TABLE).withPrimaryKey(1)).getValue("customSecret"));
+      MapResolver.tiers.put(TABLE + ".customSecret", FieldAccessTier.MASKED);
+      QContext.removeObject(FieldAccessHelper.CACHE_KEY);
+      QRecord record = new QueryAction().execute(new QueryInput(TABLE).withFilter(new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)))
+         .withShouldGenerateDisplayValues(true)).getRecords().get(0);
+      assertValue(FieldAccessTier.MASKED, record, "customSecret", NOTES);
+      assertFalse(record.getValues().containsKey("qqq_custom_fields"));
+      assertValue(FieldAccessTier.MASKED, new GetAction().executeForRecord(new GetInput(TABLE).withPrimaryKey(1).withShouldGenerateDisplayValues(true)), "customSecret", NOTES);
+      QQueryFilter filter = new QQueryFilter(new QFilterCriteria("customSecret", QCriteriaOperator.EQUALS, NOTES));
+      assertThrows(QPermissionDeniedException.class, () -> new QueryAction().execute(new QueryInput(TABLE).withFilter(filter)));
+      assertThrows(QPermissionDeniedException.class, () -> new CountAction().execute(new CountInput(TABLE).withFilter(filter)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Expansion precedes policy checks and count completion reports the outcome.
+    *******************************************************************************/
+   @Test
+   void currentUserCriteriaEnforcedAfterExpansion() throws Exception
+   {
+      for(Serializable expression : List.of(new CurrentUser(), "${currentUser}"))
+      {
+         QQueryFilter filter = new QQueryFilter().withSubFilter(new QQueryFilter(new QFilterCriteria("email", QCriteriaOperator.EQUALS, expression)));
+         QContext.setQSession(newSession(EMAIL));
+         restrict(FieldAccessTier.MASKED);
+         assertThrows(QPermissionDeniedException.class, () -> new QueryAction().execute(new QueryInput(TABLE).withFilter(filter)));
+         assertThrows(QPermissionDeniedException.class, () -> new CountAction().execute(new CountInput(TABLE).withFilter(filter)));
+
+         restrict(FieldAccessTier.REVEALABLE);
+         for(String user : List.of(EMAIL, "no-match"))
+         {
+            QContext.setQSession(newSession(user));
+            resolver.events.clear();
+            resolver.fingerprintValues.clear();
+            int expected = EMAIL.equals(user) ? 2 : 0;
+            assertEquals(expected, new CountAction().execute(new CountInput(TABLE).withFilter(filter)).getCount());
+            assertEquals(List.of(user), resolver.fingerprintValues);
+            assertEquals(1, resolver.events.size());
+            FieldAccessEvent event = resolver.events.get(0);
+            assertEquals(FieldAccessEventType.EXACT_MATCH_FILTER, event.getType());
+            assertEquals(expected == 0 ? FieldAccessOutcome.NO_MATCH : FieldAccessOutcome.MATCH, event.getOutcome());
+            assertEquals(expected, event.getRecordCount());
+            assertEquals("count", event.getActionName());
+            resolver.fingerprintValues.clear();
+            assertEquals(expected, new QueryAction().execute(new QueryInput(TABLE).withFilter(filter)).getRecords().size());
+            assertEquals(List.of(user), resolver.fingerprintValues);
+         }
+         assertEquals(expression, filter.getSubFilters().get(0).getCriteria().get(0).getValues().get(0));
+      }
+   }
 
 
 

@@ -124,6 +124,7 @@ abstract class FieldAccessTestSupport extends BaseTest
    {
       static final Map<String, FieldAccessTier> tiers = new HashMap<>();
       final List<FieldAccessEvent> events = new ArrayList<>();
+      final List<Serializable> fingerprintValues = new ArrayList<>();
       final Set<String> reveals = new HashSet<>();
       int calls;
       boolean throwOnAccess;
@@ -161,6 +162,7 @@ abstract class FieldAccessTestSupport extends BaseTest
        *******************************************************************************/
       public String fingerprintSearchValue(Serializable value)
       {
+         fingerprintValues.add(value);
          return ("opaque-fingerprint");
       }
 

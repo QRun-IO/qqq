@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessResolverMetaData;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.CurrentUserFilterHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
@@ -43,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.ActionFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.InputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrCountInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -233,7 +235,8 @@ public final class CorePermissionEnforcer
    /*******************************************************************************
     ** For read-style actions that are being enforced: check READ on every joined
     ** table (explicit or implied by the filter), and that the filter / additional
-    ** field names don't reference a field denied by a field security lock.
+    ** field names satisfy field access policy. Resolve session expressions before
+    ** checking policy and fingerprinting exact matches, preserving reusable filters.
     *******************************************************************************/
    public static FieldAccessHelper.PendingExactMatch checkReadCriteria(AbstractTableActionInput input, List<QueryJoin> queryJoins, QQueryFilter filter, Collection<String> additionalFieldNames) throws QException
    {
@@ -244,6 +247,10 @@ public final class CorePermissionEnforcer
       if(!shouldEnforceFieldAccess(input))
       {
          return (null);
+      }
+      if(input instanceof QueryOrCountInputInterface queryOrCountInput)
+      {
+         filter = CurrentUserFilterHelper.resolve(queryOrCountInput, filter);
       }
       return (FieldAccessHelper.assertCriteriaAllowed(input.getTableName(), queryJoins, filter, additionalFieldNames));
    }

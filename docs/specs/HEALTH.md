@@ -518,3 +518,14 @@ The `core.jobs.*` checks register only when `DurableJobsMetaData` is present, so
   two minutes. There is no separate pod heartbeat table.
 - **Scheduler check.** `QScheduleManager` gains `isStarted()`, so the check does not look into
   Quartz internals.
+- **`/health` and legacy indicators.** Legacy `HealthIndicator`s keep `durationMs` and their
+  details (now redacted) on `/health`, because deploy checks read `buildInfo.details.commitShaShort`
+  there. Registry checks and everything on `/ready` are status-only. Behavior changes for existing
+  apps: the `database` indicator moves from `/health` to `/ready`, and a throwing or timed-out
+  indicator is DOWN (503) instead of UNKNOWN (200). Apps whose readiness probe uses `/health`
+  should switch it to `/ready` when they upgrade (kof22: part of the adoption PR).
+- **Registry names are lowercase** (`diskSpace` registers as `core.diskspace`); `/health` keeps
+  the legacy display keys.
+- **`/qqq/v1/health`** is wired by `QApplicationJavalinServer` when `HealthMonitoringMetaData` is
+  present. The runner starts as the `healthRuntime` runtime service, and is guarded against a
+  second start in the same JVM.

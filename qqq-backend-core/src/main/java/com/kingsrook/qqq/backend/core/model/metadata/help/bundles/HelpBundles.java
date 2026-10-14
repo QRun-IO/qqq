@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobDiversion;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -251,17 +252,17 @@ public class HelpBundles implements QSupplementalInstanceMetaData
          {
             return;
          }
+         //////////////////////////////////////////////////////////////////////////
+         // the sync is short, system-scoped work: it runs in the background as  //
+         // the system user, always inline (never diverted to a durable job,     //
+         // which is for user-launched work and needs a user to own it), so it   //
+         // completes the same way whether or not durable jobs are configured    //
+         //////////////////////////////////////////////////////////////////////////
          QContext.withTemporaryContext(new CapturedContext(instance, new QSystemUserSession(instance)), () ->
-         {
-            if(instance.getSupplementalMetaData("durableJobs") != null)
-            {
-               // STAND-IN(core=QRun-IO/qqq#1178, removeBy=4.1.0-RC.9)
-               // Submit helpBundleSync to the durable kernel API when it lands.
-               LOG.info("Durable help sync currently uses the async process runner");
-            }
             new AsyncJobManager().startJob("helpBundleSync", callback -> new RunProcessAction().execute(new RunProcessInput()
-               .withProcessName("helpBundleSync").withFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP)));
-         });
+               .withProcessName("helpBundleSync")
+               .withValue(DurableJobDiversion.VALUE_RUN_INLINE, true)
+               .withFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP))));
       }
       catch(Exception | LinkageError e)
       {

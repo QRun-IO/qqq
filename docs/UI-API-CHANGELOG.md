@@ -61,6 +61,7 @@ spec'd routes.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to `UiApiInvoker`.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

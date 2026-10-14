@@ -93,6 +93,11 @@ public class QApplicationJavalinServerWithApiAwareMiddlewareTest
       javalinServer.setPort(PORT);
       javalinServer.setServeFrontendMaterialDashboard(false);
       javalinServer.setServeLegacyUnversionedMiddlewareAPI(false);
+      ///////////////////////////////////////////////////////////////////////
+      // this test deliberately adds a raw route under /qqq/v1 (to prove     //
+      // providers are not clobbered), so it opts out of strict UI API routes //
+      ///////////////////////////////////////////////////////////////////////
+      javalinServer.withStrictUiApiRoutes(false);
 
       List<AbstractMiddlewareVersion> middlewareVersionList = new ArrayList<>();
       middlewareVersionList.add(new MiddlewareVersionV1());

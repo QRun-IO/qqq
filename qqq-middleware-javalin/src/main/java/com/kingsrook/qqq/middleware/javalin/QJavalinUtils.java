@@ -27,6 +27,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
+import com.kingsrook.qqq.backend.core.exceptions.QTooManyRequestsException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -207,6 +208,11 @@ public class QJavalinUtils
          if(userFacingException instanceof QNotFoundException)
          {
             statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.NOT_FOUND); // 404
+            respondWithError(context, statusCode, userFacingException.getMessage());
+         }
+         else if(userFacingException instanceof QTooManyRequestsException)
+         {
+            statusCode = Objects.requireNonNullElse(statusCode, HttpStatus.Code.TOO_MANY_REQUESTS); // 429
             respondWithError(context, statusCode, userFacingException.getMessage());
          }
          else if(userFacingException instanceof QBadRequestException)

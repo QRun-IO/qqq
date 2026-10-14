@@ -286,8 +286,20 @@ The kernel picks a **plan** for the process, generically:
   `alwaysDurable`, the normal process step returns its existing `jobUUID` async response, now bound to
   a durable job. The current Next async-status screen keeps working unchanged:
   `/status/{jobUUID}` reads `jobs_job` and adds `jobId` so the client can link to the job.
+  - *As built:* the execute step does not hand back an async `jobUUID`. It returns at once with
+    `durableJobId` (plus process summary lines), and Next shows "Running as a background job" with
+    an Open job link (qqq-frontend-next#126). The process screen never waits on a long job, and
+    `durableRunInline=true` opts out.
 - **Scheduled.** A scheduled process that is eligible creates a job (`DurableJobsMetaData.scheduledRunsAsJobs`,
   default true for `alwaysDurable` processes).
+  - *As built (`ScheduledJobs`):* only processes that opted in run as jobs when scheduled: they are
+    `alwaysDurable`, explicitly `eligible`, or listed in `eligibleProcessNames`. A process that is
+    eligible only by its kind (any streamed ETL) still runs inline, so enabling durable jobs never
+    silently changes an app's existing schedules.
+  - The job's owner is the scheduler's user. When the scheduler runs as the system user, the owner
+    is `DurableJobsMetaData.scheduledJobsUserId`. With no owner, the run stays inline and a warning
+    is logged once. A failed launch (for example, over the queue cap) skips that tick.
+  - Scheduled jobs use the `scheduler` channel. Backend-variant runs stay inline.
 
 ### 2.5 Idempotency and exactly-once (R2)
 - **SAME_TRANSACTION** is chosen automatically when the jobs store and the destination table share a
@@ -303,6 +315,14 @@ The kernel picks a **plan** for the process, generically:
 - **Dedupe for inserts across backends.** Bulk insert gets a `jobs_dedupe_key = jobId:rowNumber` when
   the destination has a unique key or a declared `jobRowKeyField`. Otherwise it uses `UniqueKeyHelper`
   on the table's unique keys. Rows that are already present on a rerun are counted as "already loaded".
+  - *As built:* bulk insert into a table with a unique key defaults to `NATURAL`. Bulk insert
+    already skips rows whose unique key exists (`UniqueKeyHelper`), so a rerun chunk counts those
+    rows as loaded. Without a unique key, and without a shared transactional backend, it stays
+    `NONE`, so a reclaimed chunk goes to `NEEDS_REVIEW`. `DurableTableMetaData.jobRowKeyField`
+    declares a STRING dedupe column for file-sourced bulk insert (including ROW_SET retries),
+    keyed as `jobId:fileRow` using the record's first file row. A unique key on exactly that
+    field is required. Rerun rows count as "already loaded" without row errors, and the
+    declaration defaults bulk insert to `NATURAL` when there is no shared transaction.
 
 ### 2.6 Leases, heartbeats and reclaim (R2)
 - **Claiming.** `JobWorker` claims chunks through the store's **atomic** conditional update (a new
@@ -345,7 +365,9 @@ runs them through the standard `/processes` API with no extra endpoints. The ker
 | Restart | Resets every chunk that is not `DONE` and reruns them, in the same job. |
 | Run again | A new job with the same params, from the start. |
 
-Pause and cancel come from a cooperative check in the `ChunkRunner` between pages. It reads the job
+Pause and cancel come from a cooperative check in the `ChunkRunner` between pages (as built: the
+streamed ETL execute step calls `JobChunkScope.checkBetweenPages()` before each page of a CHUNKED
+job; STEPS jobs check between steps). It reads the job
 status, cached for 2 seconds. The flag in `AsyncJobStatus` is not used.
 
 ### 2.8 Concurrency, priority and backpressure (R2)
@@ -385,6 +407,9 @@ status, cached for 2 seconds. The flag in `AsyncJobStatus` is not used.
 
   A user who lost access fails the job with a permission error. The job never runs with elevated
   access.
+  - *As built:* each claim builds the owner's current automated session (current permissions),
+    intersects its keys with the captured ones, and sets the channel. Checking for a revoked token
+    on a token-scoped launch is not built yet: core has no token-revocation lookup to call.
 - **Audit.** Every record a chunk writes is audited under that user and channel (`audit.clientChannel`).
   The chunk also sets an audit detail of `job:<id>/chunk:<seq>`.
   - The job record screen links to "Changes made by this job": a saved filter on audit, by user,
@@ -404,9 +429,9 @@ status, cached for 2 seconds. The flag in `AsyncJobStatus` is not used.
   - This adds typed event schemas to the UI API (a minor bump and a changelog entry). Polling the
     record is the fallback.
 - **Alert types**, declared with `QAlertTypeMetaData`:
-  - `jobs.job_failed`: raised on `FAILED` or `NEEDS_REVIEW`, deduped by job id, and resolved when a
+  - `jobs.job-failed`: raised on `FAILED` or `NEEDS_REVIEW`, deduped by job id, and resolved when a
     retry completes;
-  - `jobs.job_stalled`: `RUNNING` with no progress for `stallMinutes` (default 15), or `QUEUED` past
+  - `jobs.job-stalled`: `RUNNING` with no progress for `stallMinutes` (default 15), or `QUEUED` past
     `queueStallMinutes`;
   - `jobs.reaper` heartbeat: no pod is reaping.
 - **Notifications.** `QAlerts.notify` goes to the owner on `COMPLETED`, `COMPLETED_WITH_ERRORS` and
@@ -441,6 +466,107 @@ from typed widgets (F1, G5), and the jobs tables already render with the standar
   - When a process response has `jobId`, show "Running as a background job" with a link to the job.
   - Offer "Run in background" when the process metadata says `durable.eligible`.
   - This is generic, and names no qbit (F20).
+
+### 2.13 Side effects outside the job's database (addendum, 2026-10-14)
+Exactly-once (section 2.5) covers writes to the database that holds `jobs_*`. A job also causes effects
+elsewhere: email, calls to Authentik or EasyPost, S3 objects, rows in another database. Those can't
+join the chunk's transaction. A crash between "the effect happened" and "we recorded it" would
+otherwise mean a lost effect or a duplicate. These rules close that gap. The patterns are Spring
+Batch's job repository with restartable chunks, the transactional outbox with an idempotent receiver,
+and DBOS/Temporal-style step records. They are implemented in core, with no new dependencies.
+
+**1. Steps declare their effect type.** `DurableProcessMetaData.withEffect(JobEffectDeclaration)`
+names each effect: its name, the step that emits it, its target, and its type.
+
+| Type | Meaning | How it is made safe |
+|---|---|---|
+| `LOCAL_TX` | A write to the same database as `jobs_*` | It is written in the chunk's transaction, so it is exactly once (section 2.5). It never goes through the outbox. |
+| `IDEMPOTENT_EXTERNAL` | The target honors an idempotency key, or the write is naturally idempotent (deterministic S3 key, upsert on a natural key) | Outbox. A delivery whose outcome is unknown is safely resent with the same key. |
+| `NON_IDEMPOTENT_EXTERNAL` | The target can't dedupe (most email, many HTTP APIs) | Outbox. A delivery whose outcome is unknown is **never** resent blindly: it is reconciled, or queued for review. |
+
+An undeclared effect name, or a `LOCAL_TX` effect sent to the outbox, is an error.
+
+**2. Transactional outbox.** Chunk code never calls an external system. It calls
+`JobEffects.emit(effectName, rowKey, payload)`, which buffers the effect in the chunk's scope. A
+`jobs_effect` row is written in the same transaction that commits the chunk's progress (its `DONE`
+mark, fenced by the lease). The row holds the job, chunk, effect name and type, target, row key,
+idempotency key, payload (small JSON, or `payloadRef` to a stored object), status, attempts, lease and
+`lease_version`.
+- **Without SAME_TRANSACTION** the rows are written just before the chunk completes. The insert skips
+  keys that already exist, so a rerun chunk never doubles them.
+- **The dispatcher** (`EffectDispatcher`, on every pod) delivers due effects with leases, retries
+  with backoff, and fencing.
+- **Outside a job**, `emit` delivers at once through the target, with a fresh key, and fails on any
+  outcome other than SENT.
+
+**3. Deterministic idempotency key: `jobId:chunkSeq:rowKey:effectName`.** `EffectKeys` derives the
+forms each kind of target needs:
+- the provider's `Idempotency-Key` header (`HttpEffectTarget`);
+- a deterministic S3 object name, so a repeated PUT overwrites the same object
+  (`StorageEffectTarget`);
+- an upsert on a natural key in another database (`TableUpsertEffectTarget`);
+- a fixed `Message-ID` for email (`EffectKeys.messageId`), so a resend is recognizable and
+  deduplicated by the receiving system.
+
+**4. Effect status.** Each effect moves `PENDING` → `SENDING` (leased) → `SENT`, `FAILED` or `UNKNOWN`.
+
+| Outcome | Next status |
+|---|---|
+| The target says delivered | `SENT`, with the provider's reference |
+| A definite rejection | `FAILED`, after retries if the rejection was retryable |
+| A timeout or error after the request may have been sent | `UNKNOWN` (an `IDEMPOTENT_EXTERNAL` effect is just retried with the same key) |
+| The lease expired in `SENDING` (the pod died) | Same as a timeout: `UNKNOWN` for non-idempotent effects, `PENDING` for idempotent ones |
+
+- **Reconcile.** For an `UNKNOWN` effect, the dispatcher calls the target's `reconcile` hook, which
+  looks the effect up by its key or natural id:
+  - found: `SENT`;
+  - definitely not there: `PENDING`, which is safe to send;
+  - still unknown: retried up to `effectReconcileAttempts` times.
+- **Review queue.** An effect that is still unresolved after that gets `needs_review`.
+  - It shows in the job record's Effects list, and raises the `jobs.effect-unresolved` alert.
+  - The job ends `NEEDS_REVIEW`, never with a blind resend.
+  - An operator resolves it with the record actions **Mark Effect Sent**, **Resend Effect** or **Skip
+    Effect**, each audited.
+- **Job finish.** A job is not finished while it has effects that are pending, in flight or unknown.
+  - A `FAILED` effect makes it `COMPLETED_WITH_ERRORS`.
+  - An effect that needs review makes it `NEEDS_REVIEW`.
+
+**4a. Job-level effects (completion hook).** Some effects belong to the job, not to a chunk:
+delivering its outputs, for example (output delivery, QRun-IO/qqq#1200, effect "deliver").
+- **Registration:** a `JobCompletionEffects` provider is registered in
+  `DurableJobsMetaData.completionEffectProviders`.
+- **When it is asked:** when the job's chunks and their effects are done, and the job would end
+  COMPLETED or COMPLETED_WITH_ERRORS. The provider gets the job record, including
+  `outputStorageJson`, and that status.
+- **What it returns:** `JobLevelEffect`s, which are written with `JobEffects.emitForJob` under key
+  `jobId:-1:rowKey:effectName`.
+- **Waiting:** the job waits for these effects like any other, so a crash never loses a delivery,
+  and a FAILED delivery makes the job COMPLETED_WITH_ERRORS.
+- **Repeat asks:** the provider may be asked more than once and returns the same keys, which are
+  skipped once written.
+- **Provider failures:** a provider that throws holds the job, and it is asked again. A provider
+  that keeps failing leaves the job running, so stall detection raises `jobs.job-stalled`.
+
+**5. Leasing on Postgres.** Where the backend supports it (`QueryLockMode.FOR_UPDATE_SKIP_LOCKED`,
+Postgres), chunks and effects are claimed with `SELECT … FOR UPDATE SKIP LOCKED` inside a short
+transaction. Competing pods then skip each other's rows instead of racing. The claim still bumps
+`lease_version`, and every later write (heartbeat, checkpoint, `DONE`, `SENT`) is fenced on that
+version and the lease token. The conditional-update path (CONDITIONAL_UPDATE) remains the portable
+fallback for other backends.
+
+**6. Fault-injection tests** (Postgres, two JVMs, real kill -9). They use stub targets that record
+every call: an email stub with Message-ID, an S3 stub that keeps a PUT log and an object map, an
+HTTP stub that honors `Idempotency-Key`, and an upsert into a second database. Each kills the
+process at one point:
+- **(a)** after the external call, before the effect is marked SENT;
+- **(b)** after the chunk commits, before dispatch;
+- **(c)** in the middle of a dispatch.
+
+They assert:
+- no duplicate S3 objects and no duplicate upserted rows;
+- at most one email per Message-ID in the stub;
+- every `UNKNOWN` effect either reconciled to SENT or queued for review;
+- every effect delivered exactly once from the stub's point of view, where the target can dedupe.
 
 ---
 
@@ -643,6 +769,17 @@ The same path:
 - **Mapping loop.** A scripted model provider drives attach, suggest, dry-run (finds 3 errors), fix,
   dry-run (0 errors), save, share (READ_ONLY to user B), and run. User B then sees the profile in the
   bulk-insert wizard.
+- **Side effects** (section 2.13; `DurableJobsEffectsFaultTest` on Postgres with real kill -9, and
+  `JobEffectsTest` on memory):
+  - It covers the three kill points: (a) after the external call, (b) between commit and dispatch,
+    and (c) mid-dispatch.
+  - It asserts:
+    - at most one email per Message-ID;
+    - one S3 object per key and one upserted row per natural key;
+    - one partner resource per Idempotency-Key;
+    - every customer visited exactly once;
+    - no effect left unknown.
+  - A chunk locked by another transaction is skipped by the FOR UPDATE SKIP LOCKED claim.
 - **Universal.** A qbit process with no durability metadata, enabled by name in `DurableJobsMetaData`,
   runs as a STEPS job.
 - **Reportable.**

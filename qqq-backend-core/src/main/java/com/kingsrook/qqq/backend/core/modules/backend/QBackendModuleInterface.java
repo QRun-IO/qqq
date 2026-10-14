@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.GetInterface;
@@ -38,6 +39,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.health.HealthCheck;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
@@ -169,6 +171,28 @@ public interface QBackendModuleInterface
       throwNotImplemented("Aggregate");
       return null;
    }
+
+
+   /*******************************************************************************
+    ** The CONDITIONAL_UPDATE capability (atomic compare-and-set update), or null
+    ** when the backend does not support it (the default).
+    *******************************************************************************/
+   default ConditionalUpdateInterface getConditionalUpdateInterface()
+   {
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether queries against this backend can take the given row locks
+    ** (QueryInput.lockMode). False by default.
+    *******************************************************************************/
+   default boolean supportsQueryLockMode(QBackendMetaData backendMetaData, QueryLockMode lockMode)
+   {
+      return (false);
+   }
+
 
 
    /*******************************************************************************

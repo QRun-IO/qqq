@@ -58,6 +58,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    private Integer assistantAutoStartMaxRows = 0;
    private Integer assistantMaxActiveJobs = 2;
    private Boolean scheduledRunsAsJobs = true;
+   private String scheduledJobsUserId;
    private Set<String> eligibleProcessNames = new HashSet<>();
    private String podId;
    private String uploadsStorageTableName;
@@ -450,6 +451,30 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    public DurableJobsMetaData withScheduledRunsAsJobs(Boolean scheduledRunsAsJobs)
    {
       this.scheduledRunsAsJobs = scheduledRunsAsJobs;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for scheduledJobsUserId: the user that owns jobs launched by the
+    ** scheduler when the scheduler runs as the system user. The app's
+    ** authentication module must be able to create an automated session for it.
+    ** Without it, such scheduled runs stay inline (as before durable jobs).
+    *******************************************************************************/
+   public String getScheduledJobsUserId()
+   {
+      return (this.scheduledJobsUserId);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for scheduledJobsUserId
+    *******************************************************************************/
+   public DurableJobsMetaData withScheduledJobsUserId(String scheduledJobsUserId)
+   {
+      this.scheduledJobsUserId = scheduledJobsUserId;
       return (this);
    }
 

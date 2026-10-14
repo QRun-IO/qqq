@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.mapping.AbstractBulkLoadRollableValueError;
 
@@ -49,8 +50,24 @@ public final class JobChunkScope implements AutoCloseable
    private static final ThreadLocal<JobChunkScope> CURRENT = new ThreadLocal<>();
 
    private final QBackendTransaction transaction;
+   private final PageCheck           pageCheck;
    private final List<RowError>      rowErrors = new ArrayList<>();
    private final JobChunkScope       previous;
+
+
+
+   /*******************************************************************************
+    ** The chunk's cooperative check (pause, cancel, drain, lost lease), run
+    ** between pages; it throws JobInterruptedException to stop the chunk.
+    *******************************************************************************/
+   @FunctionalInterface
+   public interface PageCheck
+   {
+      /*******************************************************************************
+       ** Throw to stop the chunk here.
+       *******************************************************************************/
+      void check() throws QException;
+   }
 
 
 
@@ -74,7 +91,18 @@ public final class JobChunkScope implements AutoCloseable
     *******************************************************************************/
    public static JobChunkScope open(QBackendTransaction transaction)
    {
-      JobChunkScope scope = new JobChunkScope(transaction, CURRENT.get());
+      return (open(transaction, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Open a scope on this thread with a cooperative check that page-wise steps
+    ** (such as the streamed ETL execute step) run between pages.
+    *******************************************************************************/
+   public static JobChunkScope open(QBackendTransaction transaction, PageCheck pageCheck)
+   {
+      JobChunkScope scope = new JobChunkScope(transaction, pageCheck, CURRENT.get());
       CURRENT.set(scope);
       return (scope);
    }
@@ -82,11 +110,28 @@ public final class JobChunkScope implements AutoCloseable
 
 
    /*******************************************************************************
+    ** Between pages: run the chunk's cooperative check, if a job chunk with one
+    ** is running on this thread (no-op otherwise). Pause and cancel then stop a
+    ** chunk at the next page instead of at its end.
+    *******************************************************************************/
+   public static void checkBetweenPages() throws QException
+   {
+      JobChunkScope scope = CURRENT.get();
+      if(scope != null && scope.pageCheck != null)
+      {
+         scope.pageCheck.check();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Constructor
     *******************************************************************************/
-   private JobChunkScope(QBackendTransaction transaction, JobChunkScope previous)
+   private JobChunkScope(QBackendTransaction transaction, PageCheck pageCheck, JobChunkScope previous)
    {
       this.transaction = transaction;
+      this.pageCheck = pageCheck;
       this.previous = previous;
    }
 

@@ -28,16 +28,22 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
+import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
+import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
+import com.kingsrook.qqq.backend.core.jobs.plans.JobChunkScope;
+import com.kingsrook.qqq.backend.core.jobs.plans.JobInterruptedException;
 import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRef;
@@ -46,6 +52,8 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLine
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.Status;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -57,6 +65,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
@@ -305,6 +314,86 @@ class ChunkedJobsTest extends BaseTest
       var inline = new com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction().execute(input2);
       assertThat(inline.getValues().get(DurableJobDiversion.VALUE_DURABLE_JOB_ID)).isNull();
       assertThat(QueryAction.execute(TABLE_ITEM, new QQueryFilter()).stream().mapToInt(r -> r.getValueInteger("amount")).sum()).isEqualTo(144);
+   }
+
+
+
+   /*******************************************************************************
+    ** The streamed ETL execute step runs the chunk's cooperative check between
+    ** pages: a pause or cancel stops the chunk before its next page loads.
+    *******************************************************************************/
+   @Test
+   void testPageCheckStopsChunkBeforeLoading() throws QException
+   {
+      QInstance instance = defineInstance();
+      QContext.init(instance, newSession());
+      new InsertAction().execute(new InsertInput(TABLE_ITEM).withRecords(List.of(
+         new QRecord().withValue("code", "a").withValue("name", "A").withValue("amount", 1),
+         new QRecord().withValue("code", "b").withValue("name", "B").withValue("amount", 2))));
+
+      RunProcessInput input = new RunProcessInput();
+      input.setProcessName(PROCESS_DOUBLE);
+      input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+      input.setCallback(QProcessCallbackFactory.forFilter(new QQueryFilter()));
+
+      AtomicInteger checks = new AtomicInteger();
+      try(JobChunkScope ignored = JobChunkScope.open(null, () ->
+      {
+         checks.incrementAndGet();
+         throw (new JobInterruptedException(JobInterruptedException.Reason.CANCEL));
+      }))
+      {
+         Throwable stopped;
+         try
+         {
+            RunProcessOutput output = new RunProcessAction().execute(input);
+            stopped = output.getException().orElse(null);
+         }
+         catch(QException e)
+         {
+            stopped = e;
+         }
+         assertThat(JobInterruptedException.find(stopped)).isNotNull().extracting(JobInterruptedException::getReason).isEqualTo(JobInterruptedException.Reason.CANCEL);
+      }
+      assertThat(checks.get()).isPositive();
+      assertThat(QueryAction.execute(TABLE_ITEM, new QQueryFilter())).extracting(r -> r.getValueInteger("amount")).containsExactlyInAnyOrder(1, 2);
+
+      ////////////////////////////////////////////////////////////
+      // outside a job, or with no check, nothing changes       //
+      ////////////////////////////////////////////////////////////
+      JobChunkScope.checkBetweenPages();
+      try(JobChunkScope ignored = JobChunkScope.open(null))
+      {
+         JobChunkScope.checkBetweenPages();
+      }
+      RunProcessInput again = new RunProcessInput();
+      again.setProcessName(PROCESS_DOUBLE);
+      again.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
+      again.setCallback(QProcessCallbackFactory.forFilter(new QQueryFilter()));
+      RunProcessOutput output = new RunProcessAction().execute(again);
+      assertThat(output.getException()).isEmpty();
+      assertThat(QueryAction.execute(TABLE_ITEM, new QQueryFilter())).extracting(r -> r.getValueInteger("amount")).containsExactlyInAnyOrder(2, 4);
+   }
+
+
+
+   /*******************************************************************************
+    ** Insert dedupe across backends: bulk insert into a table with a unique key
+    ** reruns safely (NATURAL); without one it stays NONE (needs review on reclaim).
+    *******************************************************************************/
+   @Test
+   void testBulkInsertIdempotencyFollowsUniqueKeys() throws QException
+   {
+      QInstance instance = defineInstance();
+      QContext.init(instance, newSession());
+      QProcessMetaData keyed = new QProcessMetaData().withName(TABLE_ITEM + ".bulkInsert").withTableName(TABLE_ITEM);
+      assertThat(DurableJobs.defaultIdempotency(keyed, JobSourceType.STORAGE_FILE)).isEqualTo(JobIdempotency.NATURAL);
+
+      instance.addTable(new QTableMetaData().withName("jobs_test_unkeyed").withBackendName(TestUtils.MEMORY_BACKEND_NAME).withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.INTEGER)));
+      QProcessMetaData unkeyed = new QProcessMetaData().withName("jobs_test_unkeyed.bulkInsert").withTableName("jobs_test_unkeyed");
+      assertThat(DurableJobs.defaultIdempotency(unkeyed, JobSourceType.STORAGE_FILE)).isEqualTo(JobIdempotency.NONE);
+      assertThat(DurableJobs.defaultIdempotency(keyed, JobSourceType.STEPS)).isEqualTo(JobIdempotency.NONE);
    }
 
 

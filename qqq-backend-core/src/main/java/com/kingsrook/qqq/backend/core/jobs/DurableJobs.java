@@ -72,6 +72,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.BulkInsertExtractStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
@@ -507,6 +508,17 @@ public final class DurableJobs
 
       String name = process.getName();
       if(name.endsWith(".bulkEdit") || name.endsWith(".bulkDelete") || name.endsWith(".bulkEditWithFile"))
+      {
+         return (JobIdempotency.NATURAL);
+      }
+
+      /////////////////////////////////////////////////////////////////////////////////
+      // dedupe for inserts across backends (spec 2.5): bulk insert skips rows whose //
+      // unique key already exists (UniqueKeyHelper), so a rerun chunk does not      //
+      // duplicate rows it already loaded - they count as loaded, not as failures    //
+      /////////////////////////////////////////////////////////////////////////////////
+      QTableMetaData destinationTable = instance.getTable(destination);
+      if(name.endsWith(".bulkInsert") && destinationTable != null && destinationTable.getUniqueKeys() != null && !destinationTable.getUniqueKeys().isEmpty())
       {
          return (JobIdempotency.NATURAL);
       }

@@ -286,8 +286,20 @@ The kernel picks a **plan** for the process, generically:
   `alwaysDurable`, the normal process step returns its existing `jobUUID` async response, now bound to
   a durable job. The current Next async-status screen keeps working unchanged:
   `/status/{jobUUID}` reads `jobs_job` and adds `jobId` so the client can link to the job.
+  - *As built:* the execute step does not hand back an async `jobUUID`. It returns at once with
+    `durableJobId` (plus process summary lines), and Next shows "Running as a background job" with
+    an Open job link (qqq-frontend-next#126). The process screen never waits on a long job, and
+    `durableRunInline=true` opts out.
 - **Scheduled.** A scheduled process that is eligible creates a job (`DurableJobsMetaData.scheduledRunsAsJobs`,
   default true for `alwaysDurable` processes).
+  - *As built (`ScheduledJobs`):* only processes that opted in run as jobs when scheduled: they are
+    `alwaysDurable`, explicitly `eligible`, or listed in `eligibleProcessNames`. A process that is
+    eligible only by its kind (any streamed ETL) still runs inline, so enabling durable jobs never
+    silently changes an app's existing schedules.
+  - The job's owner is the scheduler's user. When the scheduler runs as the system user, the owner
+    is `DurableJobsMetaData.scheduledJobsUserId`. With no owner, the run stays inline and a warning
+    is logged once. A failed launch (for example, over the queue cap) skips that tick.
+  - Scheduled jobs use the `scheduler` channel. Backend-variant runs stay inline.
 
 ### 2.5 Idempotency and exactly-once (R2)
 - **SAME_TRANSACTION** is chosen automatically when the jobs store and the destination table share a
@@ -303,6 +315,11 @@ The kernel picks a **plan** for the process, generically:
 - **Dedupe for inserts across backends.** Bulk insert gets a `jobs_dedupe_key = jobId:rowNumber` when
   the destination has a unique key or a declared `jobRowKeyField`. Otherwise it uses `UniqueKeyHelper`
   on the table's unique keys. Rows that are already present on a rerun are counted as "already loaded".
+  - *As built:* bulk insert into a table with a unique key defaults to `NATURAL`. Bulk insert
+    already skips rows whose unique key exists (`UniqueKeyHelper`), so a rerun chunk counts those
+    rows as loaded. Without a unique key, and without a shared transactional backend, it stays
+    `NONE`, so a reclaimed chunk goes to `NEEDS_REVIEW`. The `jobRowKeyField` dedupe column is
+    not built yet.
 
 ### 2.6 Leases, heartbeats and reclaim (R2)
 - **Claiming.** `JobWorker` claims chunks through the store's **atomic** conditional update (a new
@@ -345,7 +362,9 @@ runs them through the standard `/processes` API with no extra endpoints. The ker
 | Restart | Resets every chunk that is not `DONE` and reruns them, in the same job. |
 | Run again | A new job with the same params, from the start. |
 
-Pause and cancel come from a cooperative check in the `ChunkRunner` between pages. It reads the job
+Pause and cancel come from a cooperative check in the `ChunkRunner` between pages (as built: the
+streamed ETL execute step calls `JobChunkScope.checkBetweenPages()` before each page of a CHUNKED
+job; STEPS jobs check between steps). It reads the job
 status, cached for 2 seconds. The flag in `AsyncJobStatus` is not used.
 
 ### 2.8 Concurrency, priority and backpressure (R2)
@@ -385,6 +404,9 @@ status, cached for 2 seconds. The flag in `AsyncJobStatus` is not used.
 
   A user who lost access fails the job with a permission error. The job never runs with elevated
   access.
+  - *As built:* each claim builds the owner's current automated session (current permissions),
+    intersects its keys with the captured ones, and sets the channel. Checking for a revoked token
+    on a token-scoped launch is not built yet: core has no token-revocation lookup to call.
 - **Audit.** Every record a chunk writes is audited under that user and channel (`audit.clientChannel`).
   The chunk also sets an audit detail of `job:<id>/chunk:<seq>`.
   - The job record screen links to "Changes made by this job": a saved filter on audit, by user,

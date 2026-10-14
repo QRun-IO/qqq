@@ -23,11 +23,14 @@ package com.kingsrook.qqq.backend.core.processes.implementations.audits;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Objects;
 import com.google.gson.reflect.TypeToken;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.actions.permissions.UseTablePermissionCustomPermissionChecker;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
@@ -164,6 +167,10 @@ public class GetAuditsForRecordProcess implements MetaDataProducerInterface<QPro
          }
       }
 
+      if(runBackendStepInput.isFieldAccessEnforced() || CorePermissionEnforcer.shouldEnforceFieldAccess(runBackendStepInput))
+      {
+         FieldAccessHelper.applyToRecords(AuditsMetaDataProvider.TABLE_NAME_AUDIT, List.of(auditDetailJoin), auditRecords, "process");
+      }
       runBackendStepOutput.addValue("audits", auditRecords);
    }
 

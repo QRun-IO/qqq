@@ -46,6 +46,7 @@ import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 public class RunProcessInput extends AbstractActionInput
 {
    private InputSource inputSource = QInputSource.SYSTEM;
+   private boolean fieldAccessEnforced;
 
    private String               processName;
    private QProcessCallback     callback;
@@ -573,5 +574,25 @@ public class RunProcessInput extends AbstractActionInput
    {
       setInputSource(inputSource);
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Boundary decision, independent of nested authorized scopes and caller values.
+    *******************************************************************************/
+   public boolean isFieldAccessEnforced()
+   {
+      return (fieldAccessEnforced);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set only from the process boundary; never from the process values map.
+    *******************************************************************************/
+   public void setFieldAccessEnforced(boolean fieldAccessEnforced)
+   {
+      this.fieldAccessEnforced = fieldAccessEnforced;
    }
 }

@@ -78,7 +78,7 @@ public class ProcessStatusExecutor extends AbstractMiddlewareExecutor<ProcessSta
             {
                ///////////////////////////////////////////////////////////////////////////////////////
                // if the job is complete, get the process result from state provider, and return it //
-               // this output should look like it did if the job finished synchronously!!           //
+               // one-time secrets are absent: async jobs retain only masked state placeholders.    //
                ///////////////////////////////////////////////////////////////////////////////////////
                Optional<ProcessState> processState = RunProcessAction.getStateForUser(processUUID, processName);
                if(processState.isPresent())

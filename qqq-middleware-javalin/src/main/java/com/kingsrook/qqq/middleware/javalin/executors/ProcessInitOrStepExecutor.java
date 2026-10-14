@@ -163,6 +163,10 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          }
 
          ProcessExecutorUtils.serializeRunProcessResultForCaller(output, processName, runProcessOutput);
+         if(!runProcessOutput.getOneTimeSecrets().isEmpty())
+         {
+            output.setOneTimeSecrets(runProcessOutput.getOneTimeSecrets());
+         }
          QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
       }
       catch(JobGoingAsyncException jgae)

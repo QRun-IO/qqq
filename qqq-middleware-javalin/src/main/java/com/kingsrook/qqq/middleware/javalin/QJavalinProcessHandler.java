@@ -434,6 +434,11 @@ public class QJavalinProcessHandler
          }
 
          serializeRunProcessResultForCaller(resultForCaller, runProcessOutput);
+         if(!runProcessOutput.getOneTimeSecrets().isEmpty())
+         {
+            resultForCaller.put("oneTimeSecrets", runProcessOutput.getOneTimeSecrets());
+            context.header("Cache-Control", "no-store");
+         }
          QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
       }
       catch(JobGoingAsyncException jgae)

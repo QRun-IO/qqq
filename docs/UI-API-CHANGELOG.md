@@ -55,6 +55,10 @@ spec'd routes.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Process init/step responses now optionally include `oneTimeSecrets` using the shared
+  `PreferenceSecretV1` schema, with `Cache-Control: no-store`. Secrets are delivered only
+  on synchronous completion; status responses expose only `values.oneTimeSecretsMasked`.
+  See `docs/misc/ProcessBackendSteps.adoc`.
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
   `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,

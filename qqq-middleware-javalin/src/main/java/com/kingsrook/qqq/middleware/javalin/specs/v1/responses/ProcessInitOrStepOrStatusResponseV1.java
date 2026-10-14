@@ -26,11 +26,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIIncludeProperties;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIOneOf;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.FieldMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.FrontendStep;
@@ -102,6 +104,20 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
 
       @OpenAPIDescription("Changes to be made to the process's metaData.")
       private ProcessMetaDataAdjustment processMetaDataAdjustment;
+
+      @OpenAPIDescription("Secrets shown once in synchronous init/step responses only. Never returned by status. Clients must not cache; response uses Cache-Control: no-store.")
+      @OpenAPIListItems(value = PreferenceSecretV1.class, useRef = true)
+      private List<PreferenceSecretV1> oneTimeSecrets;
+
+
+
+      /*******************************************************************************
+       ** Getter for secrets to display once without caching.
+       *******************************************************************************/
+      public List<PreferenceSecretV1> getOneTimeSecrets()
+      {
+         return (oneTimeSecrets);
+      }
 
 
 
@@ -478,6 +494,22 @@ public class ProcessInitOrStepOrStatusResponseV1 implements ProcessInitOrStepOrS
    public TypedResponse getTypedResponse()
    {
       return typedResponse;
+   }
+
+
+
+   /*******************************************************************************
+    ** Map the transient core secrets into the shared HTTP secret schema.
+    *******************************************************************************/
+   @Override
+   public void setOneTimeSecrets(List<OneTimeSecret> oneTimeSecrets)
+   {
+      if(this.typedResponse instanceof ProcessStepComplete complete)
+      {
+         complete.oneTimeSecrets = oneTimeSecrets.stream().map(secret -> new PreferenceSecretV1()
+            .withLabel(secret.getLabel()).withValue(secret.getValue())
+            .withMasked(secret.getMasked()).withUsageText(secret.getUsageText())).toList();
+      }
    }
 
 }

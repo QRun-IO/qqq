@@ -6561,7 +6561,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.3.0"
+  version: "1.4.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/version:

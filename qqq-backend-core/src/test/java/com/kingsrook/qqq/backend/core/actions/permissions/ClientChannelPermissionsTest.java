@@ -174,15 +174,14 @@ class ClientChannelPermissionsTest extends BaseTest
       }
       assertTrue(PermissionsHelper.hasTablePermission(input, TestUtils.TABLE_NAME_PERSON_MEMORY, TablePermissionSubType.READ));
 
-      ///////////////////////////////////////////////////////////////////////////
-      // audits: readable (record history), never written - no tampering        //
-      ///////////////////////////////////////////////////////////////////////////
+      //////////////////////////////////////////////////////////////////////////
+      // audits: hidden from the assistant by default (no read, no write)     //
+      //////////////////////////////////////////////////////////////////////////
       for(String table : List.of("audit", "auditDetail"))
       {
-         assertTrue(PermissionsHelper.hasTablePermission(input, table, TablePermissionSubType.READ), "assistant reads " + table);
-         for(TablePermissionSubType write : List.of(TablePermissionSubType.INSERT, TablePermissionSubType.EDIT, TablePermissionSubType.DELETE))
+         for(TablePermissionSubType subType : TablePermissionSubType.values())
          {
-            assertFalse(PermissionsHelper.hasTablePermission(input, table, write), "assistant may not " + write + " " + table);
+            assertFalse(PermissionsHelper.hasTablePermission(input, table, subType), "assistant may not " + subType + " " + table + " by default");
          }
       }
 
@@ -206,6 +205,38 @@ class ClientChannelPermissionsTest extends BaseTest
          }
          assertThat(new MetaDataAction().execute(new MetaDataInput()).getTables()).containsKeys(WALLED_TABLES.toArray(String[]::new));
       }
+   }
+
+
+
+   /***************************************************************************
+    ** a host that opts in (withAssistantAuditReads) lets the assistant read
+    ** audits - still never write them; other channels are unaffected.
+    ***************************************************************************/
+   @Test
+   void testAssistantAuditReadsAreOptIn() throws QException
+   {
+      QInstance qInstance = defineInstance();
+      ClientChannelsMetaData.ofOrWithNew(qInstance).withAssistantAuditReads();
+      new QInstanceValidator().validate(qInstance);
+
+      asAdminVia(qInstance, "assistant/turn-1");
+      QueryInput input = new QueryInput(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      for(String table : List.of("audit", "auditDetail"))
+      {
+         assertTrue(PermissionsHelper.hasTablePermission(input, table, TablePermissionSubType.READ), "assistant reads " + table + " when opted in");
+         for(TablePermissionSubType write : List.of(TablePermissionSubType.INSERT, TablePermissionSubType.EDIT, TablePermissionSubType.DELETE))
+         {
+            assertFalse(PermissionsHelper.hasTablePermission(input, table, write), "assistant may not " + write + " " + table);
+         }
+      }
+      assertFalse(PermissionsHelper.hasTablePermission(input, "worm_audit_chain", TablePermissionSubType.READ), "opt-in does not open worm_audit_*");
+
+      ///////////////////////////////////////////////////////////////
+      // the shared defaults (instances that register nothing) are //
+      // untouched by an opt-in on another instance                //
+      ///////////////////////////////////////////////////////////////
+      assertTrue(ClientChannelsMetaData.of(null).isDenied("assistant", "audit", null));
    }
 
 

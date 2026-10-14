@@ -26,6 +26,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.List;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
@@ -147,6 +148,12 @@ public class MemoryStorageAction implements QStorageInterface
 
          try
          {
+            ///////////////////////////////////////////////////////////////////
+            // a write to an existing reference replaces the object, as S3   //
+            // and filesystem storage do (deterministic keys rely on this)   //
+            ///////////////////////////////////////////////////////////////////
+            new DeleteAction().execute(new DeleteInput(tableName).withPrimaryKeys(List.of(reference)));
+
             QFieldMetaData blobField = getBlobField(tableName);
             InsertOutput insertOutput = new InsertAction().execute(new InsertInput(tableName).withRecord(new QRecord()
                .withValue(QContext.getQInstance().getTable(tableName).getPrimaryKeyField(), reference)

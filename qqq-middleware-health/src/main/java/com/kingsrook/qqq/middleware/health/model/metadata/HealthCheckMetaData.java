@@ -40,6 +40,7 @@ public class HealthCheckMetaData implements QSupplementalInstanceMetaData
    public static final String METADATA_KEY = "healthCheck";
 
    private Boolean               enabled      = true;
+   private String                readinessEndpointPath = "/ready";
    private String                endpointPath = "/health";
    private List<HealthIndicator> indicators   = new ArrayList<>();
    private QCodeReference        authenticator;
@@ -254,5 +255,26 @@ public class HealthCheckMetaData implements QSupplementalInstanceMetaData
    public void setTimeoutMs(Integer timeoutMs)
    {
       this.timeoutMs = timeoutMs;
+   }
+
+
+
+   /*******************************************************************************
+    ** Readiness is a separate unauthenticated probe.
+    *******************************************************************************/
+   public String getReadinessEndpointPath()
+   {
+      return (readinessEndpointPath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Configure the readiness path.
+    *******************************************************************************/
+   public HealthCheckMetaData withReadinessEndpointPath(String path)
+   {
+      readinessEndpointPath = path;
+      return (this);
    }
 }

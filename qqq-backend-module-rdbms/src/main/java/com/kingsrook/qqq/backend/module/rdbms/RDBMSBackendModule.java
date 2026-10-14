@@ -22,7 +22,11 @@ package com.kingsrook.qqq.backend.module.rdbms;
 
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -31,6 +35,7 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
@@ -38,9 +43,15 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.health.HealthCheck;
+import com.kingsrook.qqq.backend.core.health.HealthCheckInput;
+import com.kingsrook.qqq.backend.core.health.HealthCheckOutcome;
+import com.kingsrook.qqq.backend.core.health.HealthDetails;
+import com.kingsrook.qqq.backend.core.health.HealthRedactor;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -51,6 +62,7 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.modules.backend.SequenceResyncResult;
 import com.kingsrook.qqq.backend.module.rdbms.actions.AbstractRDBMSAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSAggregateAction;
+import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSConditionalUpdateAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSConsistentReadTransaction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSCountAction;
 import com.kingsrook.qqq.backend.module.rdbms.actions.RDBMSDeleteAction;
@@ -78,6 +90,48 @@ public class RDBMSBackendModule implements QBackendModuleInterface
    {
       QBackendModuleDispatcher.registerBackendModule(new RDBMSBackendModule());
    }
+
+   /*******************************************************************************
+    ** A read-only readiness probe; connection configuration never becomes details.
+    *******************************************************************************/
+   @Override
+   public HealthCheck getHealthCheck(QBackendMetaData backend)
+   {
+      RDBMSBackendMetaData rdbms = (RDBMSBackendMetaData) backend;
+      return (new HealthCheck()
+      {
+
+
+         /***********************************************************************
+          ** JDBC timeouts are whole seconds; the caller enforces the hard budget.
+          ***********************************************************************/
+         @Override
+         public HealthCheckOutcome run(HealthCheckInput input)
+         {
+            try(Connection connection = ConnectionManager.getConnection(rdbms);
+                Statement statement = connection.createStatement())
+            {
+               long remaining = Duration.between(Instant.now(), input.getDeadline()).toMillis();
+               if(remaining <= 0)
+               {
+                  return (HealthCheckOutcome.down("Database probe deadline expired"));
+               }
+               statement.setQueryTimeout((int) Math.min(Integer.MAX_VALUE, Math.max(1, (remaining + 999) / 1000)));
+               try(ResultSet result = statement.executeQuery("SELECT 1"))
+               {
+                  return (result.next() ? HealthCheckOutcome.up("Database reachable")
+                     .withDetails(new HealthDetails().withValue("vendor", rdbms.getVendor())) : HealthCheckOutcome.down("Database probe returned no row"));
+               }
+            }
+            catch(Exception e)
+            {
+               return (HealthCheckOutcome.down(HealthRedactor.redactThrowable(e)));
+            }
+         }
+      });
+   }
+
+
 
    /*******************************************************************************
     ** RDBMS actions translate same-backend sub-queries into SQL.
@@ -360,4 +414,29 @@ public class RDBMSBackendModule implements QBackendModuleInterface
       return (String.join(".", parts));
    }
 
+
+
+
+   /*******************************************************************************
+    ** Atomic conditional updates (CONDITIONAL_UPDATE), plus the database clock.
+    *******************************************************************************/
+   @Override
+   public ConditionalUpdateInterface getConditionalUpdateInterface()
+   {
+      return (new RDBMSConditionalUpdateAction());
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Row locks, as the backend's SQL dialect (action strategy) supports them.
+    *******************************************************************************/
+   @Override
+   public boolean supportsQueryLockMode(QBackendMetaData backendMetaData, QueryLockMode lockMode)
+   {
+      return (lockMode == QueryLockMode.FOR_UPDATE_SKIP_LOCKED
+         && backendMetaData instanceof RDBMSBackendMetaData rdbmsBackend
+         && rdbmsBackend.getActionStrategy().supportsForUpdateSkipLocked());
+   }
 }

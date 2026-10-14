@@ -101,6 +101,17 @@ public interface RDBMSActionStrategyInterface
 
 
    /***************************************************************************
+    ** Whether this database supports SELECT ... FOR UPDATE SKIP LOCKED (for
+    ** QueryLockMode.FOR_UPDATE_SKIP_LOCKED). False by default.
+    ***************************************************************************/
+   default boolean supportsForUpdateSkipLocked()
+   {
+      return (false);
+   }
+
+
+
+   /***************************************************************************
     ** Get the string to use for quoting identifiers (table names, column names).
     ** Default is backtick for MySQL/H2/SQLite. PostgreSQL should return empty string
     ** or double-quote.

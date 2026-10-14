@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin;
 
 
 import java.nio.charset.Charset;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -30,7 +31,9 @@ import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
+import com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
 import com.kingsrook.qqq.backend.core.logging.LogUtils;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -41,6 +44,8 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.middleware.javalin.health.HealthJavalinMetaDataProducer;
+import com.kingsrook.qqq.middleware.javalin.health.HealthRuntimeService;
 import com.kingsrook.qqq.middleware.javalin.metadata.JavalinRouteProviderMetaData;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.BrandingAssetsRouteProvider;
 import com.kingsrook.qqq.middleware.javalin.routeproviders.IsolatedSpaRouteProvider;
@@ -89,6 +94,8 @@ public class QApplicationJavalinServer
 {
    private static final QLogger LOG = QLogger.getLogger(QApplicationJavalinServer.class);
 
+   private final HealthRuntimeService healthRuntimeService = new HealthRuntimeService();
+
    private final AbstractQQQApplication application;
 
    private Integer                              port                                = 8000;
@@ -133,6 +140,14 @@ public class QApplicationJavalinServer
    {
       QInstance qInstance = application.defineValidatedQInstance();
       this.qInstance = qInstance;
+      if(qInstance.getSupplementalMetaData(HealthMonitoringMetaData.NAME) != null)
+      {
+         new HealthJavalinMetaDataProducer().produce(qInstance);
+         if(qInstance.getRuntimeServices().stream().noneMatch(reference -> HealthRuntimeService.class.getName().equals(reference.getName())))
+         {
+            qInstance.withRuntimeService(new QCodeReference(HealthRuntimeService.class));
+         }
+      }
 
       QJavalinMetaData javalinMetaData = getJavalinMetaDataToUse(qInstance);
       if(javalinMetaData != null)
@@ -192,6 +207,7 @@ public class QApplicationJavalinServer
 
       service = Javalin.create(config ->
       {
+         config.events.serverStopped(healthRuntimeService::stop);
          if((serveMaterial || serveNext) && getClass().getResource("/material-dashboard-overlay") != null)
          {
             config.staticFiles.add("/material-dashboard-overlay");
@@ -350,7 +366,23 @@ public class QApplicationJavalinServer
          javalinConfigurationCustomizer.accept(service);
       }
 
-      service.start(port);
+      try
+      {
+         healthRuntimeService.start(qInstance);
+         service.start(port);
+      }
+      catch(Exception e)
+      {
+         healthRuntimeService.stop();
+         throw e;
+      }
+
+      ///////////////////////////////////////////////////////////////////
+      // durable jobs (when the instance enables them): this pod's     //
+      // workers and lease reaper start with the server, and drain on  //
+      // stop (and on SIGTERM, through the runtime's shutdown hook).   //
+      ///////////////////////////////////////////////////////////////////
+      DurableJobsRuntime.start(qInstance);
    }
 
 
@@ -536,6 +568,11 @@ public class QApplicationJavalinServer
          return;
       }
 
+      if(this.qInstance != null)
+      {
+         DurableJobsRuntime.stop(this.qInstance, Duration.ofSeconds(25));
+      }
+
       for(AbstractMiddlewareVersion version : middlewareVersionList)
       {
          for(var spec : version.getEndpointSpecs())
@@ -651,9 +688,10 @@ public class QApplicationJavalinServer
 
    /*******************************************************************************
     ** Whether routes under a UI API version without an endpoint spec fail startup
-    ** (true) or are only logged as warnings (false, the default).  When not set,
-    ** the system property qqq.uiApi.strictRoutes or the environment variable
-    ** QQQ_UI_API_STRICT_ROUTES decides.
+    ** (true, the default since UI API 1.3.0 / QRun-IO/qqq#1159) or are only
+    ** logged as warnings (false).  When not set, the system property
+    ** qqq.uiApi.strictRoutes or the environment variable QQQ_UI_API_STRICT_ROUTES
+    ** decides: only "false" turns strict mode off.
     *******************************************************************************/
    public boolean isStrictUiApiRoutes()
    {
@@ -662,7 +700,7 @@ public class QApplicationJavalinServer
          return (strictUiApiRoutes);
       }
       String value = System.getProperty("qqq.uiApi.strictRoutes", System.getenv("QQQ_UI_API_STRICT_ROUTES"));
-      return ("true".equalsIgnoreCase(value));
+      return (!"false".equalsIgnoreCase(value));
    }
 
 

@@ -44,6 +44,7 @@ public class HelpContentPreUpdateCustomizer extends AbstractPreUpdateCustomizer
          for(QRecord record : records)
          {
             QRecord oldRecord = getOldRecordMap().get(record.getValueInteger("id"));
+            HelpContentPreInsertCustomizer.attribute(record, oldRecord);
             HelpContentPreDeleteCustomizer.removeOldRecordFromMetaData(oldRecord);
          }
       }

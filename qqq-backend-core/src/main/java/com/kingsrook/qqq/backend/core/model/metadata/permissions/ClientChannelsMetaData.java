@@ -78,6 +78,12 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public static final String CHANNEL_TOKEN              = "token";
 
    /***************************************************************************
+    ** core's audit tables (audit, auditDetail, ...): denied to the assistant by
+    ** default; withAssistantAuditReads() makes them readable, never writable
+    ***************************************************************************/
+   public static final String AUDIT_PATTERN = "audit*";
+
+   /***************************************************************************
     ** the assistant's generic default deny patterns - security surfaces any
     ** application may have, whoever defines them (lower-cased globs)
     ***************************************************************************/
@@ -87,7 +93,8 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
       "*secret*",
       "*password*",
       "*permission*", "role", "roles", "*_role", "*_roles", "*_role_*", "user_role*", "userrole*",
-      "*user_session*", "*usersession*");
+      "*user_session*", "*usersession*",
+      AUDIT_PATTERN);  // the audit trail: hidden unless the host opts in (withAssistantAuditReads)
 
    /***************************************************************************
     ** TRANSITIONAL: qbit-specific assistant denies, kept in core only until each
@@ -116,10 +123,11 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
       "*_secret*", "*_token", "*_tokens", "*_token_*", "*_key", "*_keys");
 
    /***************************************************************************
-    ** the assistant's default write-deny patterns: readable (e.g. a record's
-    ** history), never insertable, editable or deletable - no tampering
+    ** the assistant's default write-deny patterns: never insertable, editable
+    ** or deletable - no tampering - even when a host opts in to reading them
+    ** (withAssistantAuditReads)
     ***************************************************************************/
-   public static final List<String> ASSISTANT_DEFAULT_WRITE_DENIED_PATTERNS = List.of("audit*");
+   public static final List<String> ASSISTANT_DEFAULT_WRITE_DENIED_PATTERNS = List.of(AUDIT_PATTERN);
 
    private static final Pattern CHANNEL_PATTERN = Pattern.compile("[a-z0-9][a-z0-9-]*");
 
@@ -427,6 +435,26 @@ public class ClientChannelsMetaData implements QSupplementalInstanceMetaData
    public ClientChannelsMetaData withDeniedObject(String channelName, String objectName)
    {
       deniedObjects.computeIfAbsent(channelName.toLowerCase(), k -> new LinkedHashSet<>()).add(objectName);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Host opt-in: let the assistant READ the audit tables (audit*), e.g. for a
+    ** record-history tool.  They stay write-denied (no tampering), and the
+    ** user's own audit permissions still apply.  By default the assistant
+    ** cannot see audits at all.  Call it on the instance's own registry
+    ** (ofOrWithNew), never on the shared defaults.
+    *******************************************************************************/
+   public ClientChannelsMetaData withAssistantAuditReads()
+   {
+      List<String> patterns = deniedPatterns.get(CHANNEL_ASSISTANT);
+      if(patterns != null)
+      {
+         patterns.remove(AUDIT_PATTERN);
+      }
+      withDeniedWritePattern(CHANNEL_ASSISTANT, AUDIT_PATTERN);
       return (this);
    }
 

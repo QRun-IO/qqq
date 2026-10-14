@@ -1,0 +1,214 @@
+bundle: qqq-core
+version: 4.1.0-SNAPSHOT
+layer: CORE
+entries:
+  - key: table:sharedSavedView;slot:help
+    summary: Choose who can use a saved view.
+    content: |
+      Use {{label:sharedSavedView}} to make a saved view available to other people. Check the view and sharing scope before saving. Sharing a view does not grant access to the records it displays.
+  - key: table:quickSavedView;slot:help
+    summary: Put frequently used views within easy reach.
+    content: |
+      Use {{label:quickSavedView}} to add a shortcut to a saved view. Choose its label and display order. Enable a count when you want to see how many records match the view.
+  - key: table:sharedSavedReport;slot:help
+    summary: Choose who can reuse a saved report setup.
+    content: |
+      Use {{label:sharedSavedReport}} to share a report setup with other people. Check the report and sharing scope before saving. Sharing the setup does not grant access to its underlying records.
+  - key: table:scheduledReport;slot:help
+    summary: Arrange for a saved report to run at selected times.
+    content: |
+      Use {{label:scheduledReport}} to choose a report, its input values and a schedule. Check the time zone and delivery settings so the report runs when and where you expect.
+  - key: table:renderedReport;slot:help
+    summary: Check the status and output of a report run.
+    content: |
+      Open {{label:renderedReport}} to see whether a report is ready and retrieve its output. Check the report name and run time before using the results. If a run failed, review its status details before trying again.
+  - key: table:reportStorage;slot:help
+    summary: The stored files produced by report runs.
+    content: |
+      These files hold completed report output. Open the related report run to retrieve the file and understand which report settings produced it.
+  - key: table:auditDetail;slot:help
+    summary: Compare field values before and after a recorded change.
+    content: |
+      Use {{label:auditDetail}} to see which fields changed within an audit entry. Compare the old and new values alongside the parent entry's user, action and time.
+  - key: table:auditTable;slot:help
+    summary: Identify the table associated with an audit entry.
+    content: |
+      This record identifies a table in the audit history. Follow the related audit entries to understand what changed in that table.
+  - key: table:auditUser;slot:help
+    summary: Identify the person associated with an audit entry.
+    content: |
+      This record identifies the user recorded in audit history. Review the related audit entries to see the actions attributed to that user.
+  - key: table:scriptType;slot:help
+    summary: Choose the kind of script your application supports.
+    content: |
+      Use {{label:scriptType}} to understand a script's purpose and expected files. Choose the appropriate type when creating a script so its inputs and behavior match where it will run.
+  - key: table:scriptTypeFileSchema;slot:help
+    summary: See the files expected for a particular script type.
+    content: |
+      Use {{label:scriptTypeFileSchema}} to review the file names and requirements for a script type. Check these requirements when preparing a new script revision.
+  - key: table:scriptRevision;slot:help
+    summary: Review a version of a script and the changes it contains.
+    content: |
+      Open {{label:scriptRevision}} to inspect its files, author and change message. Test the revision before selecting it for use. Older revisions help you understand how a script changed over time.
+  - key: table:scriptRevisionFile;slot:help
+    summary: Inspect a file belonging to a script revision.
+    content: |
+      Use {{label:scriptRevisionFile}} to read the file's contents in the context of its script revision. Check the file name and revision before making changes or comparing versions.
+  - key: table:scriptLog;slot:help
+    summary: Review what happened during a script run.
+    content: |
+      Open {{label:scriptLog}} to inspect a run's inputs, outputs and messages. Use the run time and script revision to find the execution you are investigating.
+  - key: table:scriptLogLine;slot:help
+    summary: Read an individual message from a script run.
+    content: |
+      Review {{label:scriptLogLine}} with the other messages from the same run. The surrounding messages can explain what led to a warning or error.
+  - key: table:tableTrigger;slot:help
+    summary: Connect table changes to automated script work.
+    content: |
+      Use {{label:tableTrigger}} to choose which table events should run a script. Review the event and script together, then test the behavior before relying on the automation.
+  - key: process:helpContent.bulkInsert;slot:help
+    summary: Import several help entries from a file.
+    content: |
+      Use {{label:helpContent.bulkInsert}} to add guidance in bulk. Map your file's columns to the help fields, then review validation messages before continuing. Each target and screen role must be unique.
+  - key: process:helpContent.bulkEdit;slot:help
+    summary: Apply the same change to selected help entries.
+    content: |
+      Use {{label:helpContent.bulkEdit}} when several entries need the same change. Check your selection and review the proposed changes before applying them. Editing bundled text preserves its original source.
+  - key: process:helpContent.bulkEditWithFile;slot:help
+    summary: Update several help entries using values from a file.
+    content: |
+      Use {{label:helpContent.bulkEditWithFile}} to match file rows to existing entries and update their guidance. Review how records are matched and inspect the proposed changes before continuing.
+  - key: process:helpContent.bulkDelete;slot:help
+    summary: Remove selected help entries from the application.
+    content: |
+      Use {{label:helpContent.bulkDelete}} to remove entries you no longer need. Check the selected targets before confirming. Synchronizing bundles can recreate deleted entries that are still supplied by a bundle.
+  - key: table:helpContent;slot:help
+    summary: "Find, write and review the guidance shown throughout your application."
+    content: |
+      Use {{label:helpContent}} to explain what people can do on each screen.
+      
+      Choose a target and screen role, write a short summary, then add longer instructions when needed. Your edits appear in the application after you save.
+      
+      When bundled guidance changes, review the upstream text before accepting it or keeping your own wording.
+  - key: table:helpContent;field:id
+    summary: "The unique identifier for this help entry."
+    content: |
+      Use this identifier to distinguish entries with similar targets.
+  - key: table:helpContent;field:key
+    summary: "The screen, field or section this guidance explains."
+    content: |
+      Choose the exact target you want to document. A table field uses `table:tableName;field:fieldName`; a table header uses `table:tableName;slot:help`. Changing the target moves the help to that location.
+  - key: table:helpContent;field:role
+    summary: "Choose the screens where this help appears."
+    content: |
+      Use all screens for general guidance. Choose a narrower screen role when people need different instructions while viewing, editing or running an action.
+  - key: table:helpContent;field:summary
+    summary: "A short plain sentence shown as a tooltip."
+    content: |
+      Write a clear sentence that helps you decide what to do. Aim for 120 characters or fewer, without headings, links or formatting. Put detailed steps in the longer content.
+  - key: table:helpContent;field:format
+    summary: "How the longer help text is displayed."
+    content: |
+      Choose Markdown for headings, lists and links. Choose plain text when no formatting is needed. HTML is available for existing content.
+  - key: table:helpContent;field:content
+    summary: "Detailed guidance, examples and steps for this target."
+    content: |
+      Explain what you can do here and what happens next. Use short paragraphs and numbered steps for a sequence. You can refer to live labels and defaults so the guidance stays current.
+  - key: table:helpContent;field:permissionName
+    summary: "Limit this help to people with a specific permission."
+    content: |
+      Leave this blank when everyone who can see the target should see its help. Enter a permission name to restrict the guidance to people who hold that permission.
+  - key: table:helpContent;field:clientChannel
+    summary: "Limit this help to a particular application channel."
+    content: |
+      Leave this blank for all channels. Set a channel name when instructions apply only to that client, such as the web interface.
+  - key: table:helpContent;field:source
+    summary: "Where this entry originally came from."
+    content: |
+      Core, extension and host entries come from shipped help bundles. User entries were created in the application. Editing bundled text keeps its original source so you can still review upstream changes.
+  - key: table:helpContent;field:bundleId
+    summary: "The help bundle that supplies this entry."
+    content: |
+      Use this to identify which part of your application supplies the original wording. A blank bundle means the entry was created by a user.
+  - key: table:helpContent;field:bundleVersion
+    summary: "The version of the bundle last considered for this entry."
+    content: |
+      Check this version when comparing your guidance with a software update. Your edited wording is preserved until you choose to accept an upstream change.
+  - key: table:helpContent;field:lastSeededHash
+    summary: "The fingerprint used to recognize your edits."
+    content: |
+      This value lets synchronization tell whether your wording differs from the last accepted bundle text. You normally do not need to edit it.
+  - key: table:helpContent;field:upstreamStatus
+    summary: "Whether bundled guidance is current, changed or retired."
+    content: |
+      Current means there is no outstanding upstream review. Upstream changed means newer wording is available. Retired means the bundle no longer supplies this guidance; your edited text is kept.
+  - key: table:helpContent;field:upstreamSummary
+    summary: "The newer tooltip waiting for your review."
+    content: |
+      Compare this summary with your current wording. Accept upstream text to use the bundle wording, or keep your text to acknowledge the change without replacing your edits.
+  - key: table:helpContent;field:upstreamContent
+    summary: "The newer detailed guidance waiting for your review."
+    content: |
+      Read this alongside your current content before deciding. Accepting upstream replaces the summary, content and format together. Keeping your text preserves those fields.
+  - key: table:helpContent;field:modifiedBy
+    summary: "The person who last edited or reviewed this entry."
+    content: |
+      Use this identifier when following up on a wording change. Automatic synchronization preserves the recorded author.
+  - key: table:helpContent;field:createDate
+    summary: "When this help entry was first created."
+    content: |
+      Use this date to understand when guidance first became available.
+  - key: table:helpContent;field:modifyDate
+    summary: "When this help entry last changed."
+    content: |
+      Use this date to identify recent wording or review changes.
+  - key: table:helpContent;section:identity
+    summary: "Choose the target and screen role for this help."
+    content: |
+      Use the target key to choose where your guidance appears, and the role to choose which screens use it.
+  - key: table:helpContent;section:content
+    summary: "Write the short tooltip and longer instructions."
+    content: |
+      Start with a concise summary. Add longer help when you need to explain steps, examples or what happens next.
+  - key: table:helpContent;section:targeting
+    summary: "Choose who can see this guidance."
+    content: |
+      Leave both fields blank for general guidance. Restrict a permission or channel only when those readers need different instructions.
+  - key: table:helpContent;section:dates
+    summary: "See when this guidance was created and last changed."
+    content: |
+      Use these dates to find recently added or updated guidance.
+  - key: table:helpContent;section:provenance
+    summary: "Review where guidance came from and what changed upstream."
+    content: |
+      Compare your text with new bundle wording. Your edits are kept until you accept the upstream text.
+  - key: process:helpBundleSync;slot:help
+    summary: "Bring shipped help up to date while preserving your edits."
+    content: |
+      Run {{label:helpBundleSync}} after updating your application or its extensions.
+      
+      Review the proposed counts, then continue to apply them. Unedited entries receive the latest wording. Edited entries keep your text and are flagged when upstream wording changes. Retired unedited entries are removed; edited ones are kept for review.
+  - key: process:helpAcceptUpstream;slot:help
+    summary: "Replace your edited guidance with the current bundle wording."
+    content: |
+      Select entries whose upstream status is changed, then run {{label:helpAcceptUpstream}}. Your summary, longer content and format are replaced together. The review status returns to current.
+  - key: process:helpKeepMine;slot:help
+    summary: "Acknowledge an upstream change and keep your own wording."
+    content: |
+      Select entries whose upstream status is changed, then run {{label:helpKeepMine}}. Your wording stays in place and the review status returns to current. You will be asked again only if the bundle wording changes further.
+  - key: table:savedView;slot:help
+    summary: "Reuse the filters, columns and sorting you use most often."
+    content: |
+      Save a view when you want to return to the same way of exploring a table. Open {{label:savedView}} to manage your views. Check the filters before sharing a view so others understand which records it includes.
+  - key: table:savedReport;slot:help
+    summary: "Save a report setup so you can run it again."
+    content: |
+      Use {{label:savedReport}} to keep report filters and selected columns together. Review the setup before running the report, especially date ranges that may need to change each time.
+  - key: table:audit;slot:help
+    summary: "See who changed a record and when it happened."
+    content: |
+      Use {{label:audit}} to investigate changes. Find the record or time period, then open an entry to review the action and any field changes recorded for it.
+  - key: table:script;slot:help
+    summary: "Manage reusable scripts that extend your application."
+    content: |
+      Use {{label:script}} to find scripts and their revisions. Review and test changes before making a revision active, because scripts can affect records and automated work.

@@ -28,7 +28,10 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamWriteConstraints;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
@@ -57,6 +60,91 @@ import static org.junit.jupiter.api.Assertions.fail;
  *******************************************************************************/
 class JsonUtilsTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** All serialization entry points report the first repeating reference segment.
+    *******************************************************************************/
+   @Test
+   void testReferenceCycle()
+   {
+      CycleA cycle = new CycleA();
+      cycle.b = new CycleB();
+      cycle.b.a = cycle;
+
+      List<Function<Object, String>> serializers = List.of(JsonUtils::toJson, JsonUtils::toPrettyJson,
+         object -> JsonUtils.toJsonWithMapper(object, null));
+      for(Function<Object, String> serializer : serializers)
+      {
+         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> serializer.apply(cycle));
+         assertThat(exception.getMessage()).startsWith("Error in JSON Serialization")
+            .contains("reference cycle in CycleA:", "CycleA.b", "CycleB.a")
+            .endsWith("(repeats). Mark the back-reference @JsonIgnore.");
+         assertThat(exception.getMessage().split(" -> ")).hasSize(3);
+         assertThat(exception.getCause()).isInstanceOf(JsonProcessingException.class);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Depth limits can also be exceeded without a repeating reference segment.
+    *******************************************************************************/
+   @Test
+   void testNestingTooDeepWithoutCycle()
+   {
+      Map<String, ?> nested = Map.of("first", Map.of("second", Map.of("third", Map.of("value", 1))));
+      IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+         () -> JsonUtils.toJsonWithMapper(nested, mapper -> mapper.getFactory()
+            .setStreamWriteConstraints(StreamWriteConstraints.builder().maxNestingDepth(2).build())));
+
+      assertThat(exception.getMessage()).startsWith("Error in JSON Serialization")
+         .contains("nesting too deep (possible unbounded recursion)")
+         .contains(".first", ".second")
+         .doesNotContain("reference cycle");
+      assertThat(exception.getCause()).isInstanceOf(JsonProcessingException.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** Ordinary serialization errors retain their original message and cause.
+    *******************************************************************************/
+   @Test
+   void testOrdinarySerializationError()
+   {
+      List<Function<Object, String>> serializers = List.of(JsonUtils::toJson, JsonUtils::toPrettyJson,
+         object -> JsonUtils.toJsonWithMapper(object, null));
+      for(Function<Object, String> serializer : serializers)
+      {
+         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+            () -> serializer.apply(new LooksLikeAnEntityButJustThrowsInItsGetterMethod()));
+         assertEquals("Error in JSON Serialization", exception.getMessage());
+         assertThat(exception.getCause()).isInstanceOf(JsonProcessingException.class)
+            .hasRootCauseInstanceOf(IllegalStateException.class);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** First half of a serializable reference cycle.
+    *******************************************************************************/
+   private static class CycleA
+   {
+      public CycleB b;
+   }
+
+
+
+   /*******************************************************************************
+    ** Second half of a serializable reference cycle.
+    *******************************************************************************/
+   private static class CycleB
+   {
+      public CycleA a;
+   }
+
+
 
    /*******************************************************************************
     ** XML duration values must respect the numeric parsing limit.

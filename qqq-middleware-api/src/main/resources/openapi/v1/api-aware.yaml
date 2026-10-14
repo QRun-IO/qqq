@@ -188,6 +188,64 @@ components:
             $ref: "#/components/schemas/BulkLoadSummaryLine"
           type: "array"
       type: "object"
+    DeliveryDestinationsResponseV1:
+      properties:
+        destinations:
+          items:
+            properties:
+              name:
+                type: "string"
+              label:
+                type: "string"
+              icon:
+                type: "string"
+              maxClassification:
+                type: "string"
+              aboveMaxClassification:
+                type: "string"
+              order:
+                type: "integer"
+              maxAttachmentBytes:
+                format: "int64"
+                type: "integer"
+              allowBearerLinks:
+                type: "boolean"
+            type: "object"
+          type: "array"
+      type: "object"
+    DeliveryOutputResponseV1:
+      format: "binary"
+      type: "string"
+    DeliveryTargetStepResponseV1:
+      properties:
+        name:
+          type: "string"
+        label:
+          type: "string"
+        options:
+          items:
+            properties:
+              value:
+                type: "string"
+              label:
+                type: "string"
+              description:
+                type: "string"
+            type: "object"
+          type: "array"
+        freeText:
+          type: "boolean"
+        complete:
+          type: "boolean"
+        summary:
+          type: "string"
+      type: "object"
+    DeliveryTargetsRequestV1:
+      properties:
+        chosen:
+          additionalProperties: true
+          type: "object"
+      type: "object"
     FormAdjusterOutputV1:
       description: "Changes a form adjuster asks the form to apply.  Absent or null\
         \ properties mean no change."
@@ -4412,6 +4470,69 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "List visible sections and the signed-in user's preferences"
+      tags:
+      - "General"
+  /qqq/v1/{applicationApiPath}/{applicationApiVersion}/delivery/destinations:
+    get:
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDestinationsResponseV1"
+          description: "Delivery response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "List authorized output destinations"
+      tags:
+      - "General"
+  /qqq/v1/{applicationApiPath}/{applicationApiVersion}/delivery/destinations/{name}/targets:
+    post:
+      parameters:
+      - in: "path"
+        name: "name"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryTargetsRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryTargetStepResponseV1"
+          description: "Delivery response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Describe the next delivery target"
+      tags:
+      - "General"
+  /qqq/v1/{applicationApiPath}/{applicationApiVersion}/delivery/output/{logId}:
+    get:
+      parameters:
+      - in: "path"
+        name: "logId"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/octet-stream:
+              schema:
+                $ref: "#/components/schemas/DeliveryOutputResponseV1"
+          description: "Stored output; multiple attachments form a ZIP archive"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Download stored output as its owner or delivery administrator"
       tags:
       - "General"
   /qqq/v1/{applicationApiPath}/{applicationApiVersion}/preferences/{sectionName}:

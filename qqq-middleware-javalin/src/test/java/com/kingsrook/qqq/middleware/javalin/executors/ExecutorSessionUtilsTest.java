@@ -29,9 +29,12 @@ import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.middleware.javalin.TestUtils;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import io.javalin.http.Context;
+import io.javalin.http.Cookie;
+import io.javalin.http.SameSite;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -95,6 +98,33 @@ class ExecutorSessionUtilsTest
       // Cookie may or may not be set depending on auth module configuration
       // The test verifies that setupSession works correctly with sessionId cookie
    }
+
+
+
+   /***************************************************************************
+    ** Browser sessions must use an opaque, hardened cookie.
+    ***************************************************************************/
+   @Test
+   void testSessionCookieIsHttpOnlySecureAndSameSiteLax() throws Exception
+   {
+      when(mockContext.cookie(anyString())).thenReturn(null);
+      when(mockContext.header(anyString())).thenReturn(null);
+      when(mockContext.queryParam(anyString())).thenReturn(null);
+      when(mockContext.formParam(anyString())).thenThrow(new RuntimeException("formParam not available"));
+      when(mockContext.cookie(org.mockito.ArgumentMatchers.any(Cookie.class))).thenReturn(mockContext);
+
+      ExecutorSessionUtils.setupSession(mockContext, qInstance);
+
+      ArgumentCaptor<Cookie> cookieCaptor = ArgumentCaptor.forClass(Cookie.class);
+      verify(mockContext).cookie(cookieCaptor.capture());
+      Cookie cookie = cookieCaptor.getValue();
+      assertEquals("sessionId", cookie.getName());
+      assertTrue(cookie.isHttpOnly());
+      assertTrue(cookie.getSecure());
+      assertEquals(SameSite.LAX, cookie.getSameSite());
+      assertEquals("/", cookie.getPath());
+   }
+
 
 
    /*******************************************************************************

@@ -81,6 +81,8 @@ import com.nimbusds.oauth2.sdk.auth.Secret;
 import com.nimbusds.oauth2.sdk.id.ClientID;
 import com.nimbusds.oauth2.sdk.id.Issuer;
 import com.nimbusds.oauth2.sdk.id.State;
+import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
+import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import com.nimbusds.oauth2.sdk.pkce.CodeVerifier;
 import com.nimbusds.oauth2.sdk.token.AccessToken;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
@@ -134,7 +136,8 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             /////////////////////////////////////////
             // verify the state in our state table //
             /////////////////////////////////////////
-            AtomicReference<String> redirectUri = new AtomicReference<>(null);
+            AtomicReference<String> redirectUri  = new AtomicReference<>(null);
+            AtomicReference<String> codeVerifier = new AtomicReference<>(null);
             QContext.withTemporaryContext(new CapturedContext(qInstance, new QSystemUserSession()), () ->
             {
                QRecord redirectStateRecord = GetAction.execute(oauth2MetaData.getRedirectStateTableName(), Map.of("state", context.get("state")));
@@ -144,11 +147,15 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
                   throw (new QAuthenticationException("State not found"));
                }
                redirectUri.set(redirectStateRecord.getValueString("redirectUri"));
+               codeVerifier.set(redirectStateRecord.getValueString("codeVerifier"));
+
+               new DeleteAction().execute(new DeleteInput(oauth2MetaData.getRedirectStateTableName())
+                  .withQueryFilter(new QQueryFilter(new QFilterCriteria("state", QCriteriaOperator.EQUALS, context.get("state")))));
             });
 
             URI                    redirectURI       = new URI(redirectUri.get());
             ClientSecretBasic      clientSecretBasic = new ClientSecretBasic(new ClientID(oauth2MetaData.getClientId()), new Secret(oauth2MetaData.getClientSecret()));
-            AuthorizationCodeGrant codeGrant         = new AuthorizationCodeGrant(code, redirectURI);
+            AuthorizationCodeGrant codeGrant         = new AuthorizationCodeGrant(code, redirectURI, new CodeVerifier(codeVerifier.get()));
 
             URI          tokenEndpoint = getOIDCProviderMetadata(oauth2MetaData).getTokenEndpointURI();
             Scope        scope         = new Scope(oauth2MetaData.getScopes());
@@ -389,6 +396,8 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          Integer stateStringLength = stateTable.getField("state").getMaxLength();
          State   state             = stateStringLength == null ? new State(32) : new State((stateStringLength / 4) * 3);
          String  stateValue        = state.getValue();
+         CodeVerifier codeVerifier = new CodeVerifier();
+         CodeChallenge codeChallenge = CodeChallenge.compute(CodeChallengeMethod.S256, codeVerifier);
 
          /////////////////////////////
          // insert the state record //
@@ -397,7 +406,8 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
          {
             QRecord insertedState = new InsertAction().execute(new InsertInput(oauth2MetaData.getRedirectStateTableName()).withRecord(new QRecord()
                .withValue("state", stateValue)
-               .withValue("redirectUri", originalUrl))).getRecords().get(0);
+               .withValue("redirectUri", originalUrl)
+               .withValue("codeVerifier", codeVerifier.getValue()))).getRecords().get(0);
             if(CollectionUtils.nullSafeHasContents(insertedState.getErrors()))
             {
                LOG.warn("Error storing OAuth redirect state", logPair("errors", insertedState.getErrorsAsString()));
@@ -410,7 +420,9 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
             + "&redirect_uri=" + URLEncoder.encode(originalUrl, StandardCharsets.UTF_8)
             + "&response_type=code"
             + "&scope=" + URLEncoder.encode(oauth2MetaData.getScopes(), StandardCharsets.UTF_8)
-            + "&state=" + URLEncoder.encode(state.getValue(), StandardCharsets.UTF_8);
+            + "&state=" + URLEncoder.encode(state.getValue(), StandardCharsets.UTF_8)
+            + "&code_challenge=" + URLEncoder.encode(codeChallenge.getValue(), StandardCharsets.UTF_8)
+            + "&code_challenge_method=S256";
       }
       catch(Exception e)
       {

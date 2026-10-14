@@ -74,6 +74,7 @@ public class RedirectStateMetaDataProducer extends MetaDataProducer<QTableMetaDa
          .withField(new QFieldMetaData("id", QFieldType.INTEGER).withIsEditable(false))
          .withField(new QFieldMetaData("state", QFieldType.STRING).withIsEditable(false).withMaxLength(45).withBehavior(ValueTooLongBehavior.ERROR))
          .withField(new QFieldMetaData("redirectUri", QFieldType.STRING).withIsEditable(false).withMaxLength(4096).withBehavior(ValueTooLongBehavior.ERROR))
+         .withField(new QFieldMetaData("codeVerifier", QFieldType.STRING).withIsEditable(false).withMaxLength(128).withBehavior(ValueTooLongBehavior.ERROR))
          .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withIsEditable(false));
 
       return tableMetaData;

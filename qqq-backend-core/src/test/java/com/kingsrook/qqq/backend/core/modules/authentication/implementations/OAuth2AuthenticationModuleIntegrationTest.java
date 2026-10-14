@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.modules.authentication.implementations;
 
 
+import java.net.URI;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -32,8 +33,10 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.AuthScope;
@@ -53,8 +56,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -205,6 +210,37 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
 
 
    /***************************************************************************
+    ** Prove the backend-managed authorization-code flow uses PKCE.
+    ***************************************************************************/
+   @Test
+   void testBackendAuthorizationCodeFlowUsesPkce() throws Exception
+   {
+      stubOidcDiscovery();
+      String accessToken = createTestJwt("keycloak-subject-123", "Keycloak User", Map.of());
+      stubTokenEndpoint(accessToken);
+
+      OAuth2AuthenticationModule module = new OAuth2AuthenticationModule();
+      String redirectUrl = module.getLoginRedirectUrl("https://app.example.test/oidc/callback");
+      Map<String, String> parameters = parseQuery(redirectUrl);
+
+      assertEquals("S256", parameters.get("code_challenge_method"));
+      assertNotNull(parameters.get("code_challenge"));
+      assertTrue(!parameters.containsKey("code_verifier"));
+
+      QSession session = module.createSession(qInstance, Map.of(
+         "code", "keycloak-authorization-code",
+         "state", parameters.get("state")));
+
+      assertEquals("keycloak-subject-123", session.getUser().getIdReference());
+      wireMockServer.verify(postRequestedFor(urlEqualTo("/oauth/token"))
+         .withRequestBody(containing("code_verifier=")));
+      assertTrue(new QueryAction().execute(new QueryInput(REDIRECT_STATE_TABLE)).getRecords().isEmpty(),
+         "OAuth state must be one-time use");
+   }
+
+
+
+   /***************************************************************************
     ** Test that finalCustomizeSession is called after session resume
     ***************************************************************************/
    @Test
@@ -348,9 +384,11 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
          .withName(REDIRECT_STATE_TABLE)
          .withBackendName(BACKEND_NAME)
          .withPrimaryKeyField("id")
+         .withUniqueKey(new UniqueKey("state"))
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
          .withField(new QFieldMetaData("state", QFieldType.STRING).withMaxLength(100))
-         .withField(new QFieldMetaData("redirectUri", QFieldType.STRING)));
+         .withField(new QFieldMetaData("redirectUri", QFieldType.STRING))
+         .withField(new QFieldMetaData("codeVerifier", QFieldType.STRING)));
 
       //////////////////////////////////
       // Configure OAuth2 authentication
@@ -459,6 +497,23 @@ class OAuth2AuthenticationModuleIntegrationTest extends BaseTest
             .withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody(tokenResponse)));
+   }
+
+
+
+   /***************************************************************************
+    ** Parse authorization URL query parameters for assertions.
+    ***************************************************************************/
+   private Map<String, String> parseQuery(String url) throws Exception
+   {
+      Map<String, String> result = new HashMap<>();
+      for(String pair : new URI(url).getRawQuery().split("&"))
+      {
+         String[] parts = pair.split("=", 2);
+         result.put(java.net.URLDecoder.decode(parts[0], java.nio.charset.StandardCharsets.UTF_8),
+            java.net.URLDecoder.decode(parts[1], java.nio.charset.StandardCharsets.UTF_8));
+      }
+      return result;
    }
 
 

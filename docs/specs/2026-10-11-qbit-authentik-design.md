@@ -337,7 +337,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 | `userScope` | `internal` + `external` users | Optional `path_startswith` and/or `groups_by_name` filter, to partition a shared Authentik between apps. Out-of-scope users are invisible and cannot be written. |
 | `groupScope` | all non-superuser groups | Optional name prefix or attribute filter (`qqq.io/app: <appKey>`) for multi-app Authentiks |
 | `protectedUsernames` | `[]` | Added to the built-in protected set: the service account, users with `qqq.io/protected: true`, and superusers (§5.4) |
-| `bootstrapOperators` | `${env.AUTHENTIK_QBIT_BOOTSTRAP_OPERATORS}` (empty) | Emails that receive all `authentik.*` permissions even if the group attributes are wrong. A lockout escape hatch that logs a warning while in use; intended to be emptied after go-live. |
+| `bootstrapOperatorSubjects` | `${env.AUTHENTIK_QBIT_BOOTSTRAP_SUBJECTS}` (empty) | **Immutable ids, never emails** (users can change their own email in Authentik, and emails are not unique). A person is a bootstrap operator when the token `sub` equals an entry (a `sub` that looks like an email is ignored; kof22's provider uses `sub_mode: user_email`), or when the token email is verified, exactly ONE active Authentik user has it, and that user's pk or uuid equals an entry. Find the value in Authentik admin: Directory, Users, the user's numeric id (pk) or uuid. Grants all `authentik.*` permissions even if the group attributes are wrong: a lockout escape hatch that logs a warning while in use. **Empty it once real group grants exist** (after `identity-admins` membership is verified). Entries containing `@` fail validation. |
 | `permissionCatalog` | derived | The QQQ permission names that can be granted through `qqq.io/permissions`, taken from `PermissionsHelper.getAllAvailablePermissions` plus the `authentik.*` names. Unknown names are rejected. |
 | `recoveryEmailStage` | required if `CREDENTIALS` or `USERS` | Email stage slug or uuid for `recovery_email`, e.g. `kof22-recovery-email` |
 | `invitationFlow` | required for invites | Enrollment flow slug, e.g. `kof22-enrollment` |
@@ -517,7 +517,7 @@ Notes (resolved in phase 0, §0.2):
 - **Global permissions** are the role's `attrs.permissions` (finding i). The role is `present` with nothing but `permissions`, so it is re-asserted additively on every apply and carries no users or groups. `roles:` on the `created` service account applies on first create only; the role's later permission changes still reach it.
 - **Ordering on a fresh install** (finding iv): the leading `metaapplyblueprint` entry applies `kof22-oauth2-apps` first, inside the bootstrap's transaction. Verified on an empty 2026.8.3. If the infra instance did not exist yet, only the bootstrap fails, and it retries on the next discovery.
 - **Object permission** on `kof22-recovery-email` (needed by `recovery_email`, phase 3) is applied through the bare `created` stage entry's `permissions:` on every run.
-- **Seeding James's membership.** `groups:` on a `created` user only applies when the user is first created. James's account already exists, so his `identity-admins` membership is a one-time manual step in the Authentik UI (owner checklist item 10). `bootstrapOperators` covers the window before it's done.
+- **Seeding James's membership.** `groups:` on a `created` user only applies when the user is first created. James's account already exists, so his `identity-admins` membership is a one-time manual step in the Authentik UI (owner checklist item 10). `bootstrapOperatorSubjects` covers the window before it's done.
 - **Break-glass password.** The break-glass admin has no usable password from the blueprint. Its password is set once by hand and stored in 1Password. Its recovery path is `ak create_recovery_key` on the worker pod.
 
 ### 4.4 Migration from today's blueprint
@@ -684,7 +684,7 @@ The mapper is a `QAuthenticationModuleCustomizerInterface` component. It replace
 
 1. It takes the user's group names from the `groups` claim. The current kof22 `profile` mapping emits **direct** groups only.
 2. It resolves each group through `EffectivePermissionResolver`: group attributes plus all ancestors via `include_parents`, from the mirror or the API, cached 60 s. The result is the union of `qqq.io/permissions`, with `authentik.*` and other wildcard prefixes expanded against `permissionCatalog`.
-3. It adds static fallbacks if configured, through `withGroupPermissions(...)` (useful in tests and dev), plus `bootstrapOperators`.
+3. It adds static fallbacks if configured, through `withGroupPermissions(...)` (useful in tests and dev), plus `bootstrapOperatorSubjects`.
 4. It sets QQQ session permissions, user, email and full name.
 
 **Freshness.** Permissions are computed at session creation. The QQQ session is re-validated on each access-token refresh (1 hour in kof22), and the mapper runs again then. A webhook on a group or membership change also marks affected sessions in `qqq_user_session` for re-evaluation on their next request (phase 2). Phase 0 checks this is possible through the OAuth2 module's session store. If it isn't, the staleness is up to 1 hour, which is documented.
@@ -848,14 +848,14 @@ The qbit produces an app `authentikAdmin` (label **"Identity"**, icon `badge`). 
 | Groups | `AUTHENTIK_GROUP_TREE` widget + generic list | Tree over `parents` (many-to-many; shared children marked). Badges: superuser (red, locked), has-permissions, app-access. Member counts. |
 | Group detail | generic view + child widgets | Members (Add/Remove); **Permissions** (own + inherited, with an editor that offers only permissions the operator holds); **App access**; parents and children; roles (read); other attributes (`authentik.audit.read`) |
 | Access matrix | `AUTHENTIK_ACCESS_MATRIX` widget | Users in scope × `applicationsInScope`, cells computed by the qbit (not `check_access`, §0.2 iii; cached 5 min, 25 rows per page) |
-| Health | `AUTHENTIK_HEALTH` widget | API reachability and version, token expiry, blueprint instance status, webhook lag, last reconcile, possible blueprint reversions, `bootstrapOperators` in use |
+| Health | `AUTHENTIK_HEALTH` widget | API reachability and version, token expiry, blueprint instance status, webhook lag, last reconcile, possible blueprint reversions, `bootstrapOperatorSubjects` in use |
 | Audit | generic query on `authentik_admin_action` + `authentik_event` | Filter by operator, target, action, status, and source (QQQ vs Authentik UI) |
 
 ### 8.3 Admin-home widgets (standard widget types, from the mirror)
 
 - Statistics: active users, inactive users, service accounts, users without MFA, failed logins in 24 h.
 - Table: recent auth events.
-- Table: "attention" items: admins without MFA, tokens expiring within 14 days (including the qbit's own token), blueprint status not `successful`, `bootstrapOperators` still set.
+- Table: "attention" items: admins without MFA, tokens expiring within 14 days (including the qbit's own token), blueprint status not `successful`, `bootstrapOperatorSubjects` still set.
 
 ### 8.4 Frontend delivery
 
@@ -915,7 +915,7 @@ Authenticated API calls are not throttled by Authentik, and kof22's Authentik sh
 |---|---|
 | A compromised QQQ backend escalates in Authentik | The service account can't create superusers, touch superuser groups, read or mint tokens, impersonate, delete users, or change flows and policies (§5.1) |
 | A QQQ operator escalates themselves or a friend | Subset rule, no self-edits, two-person approval for `authentik.*` grants, protected accounts |
-| Lockout (last admin removed or deactivated) | Last-admin guard; break-glass superuser outside QQQ; `bootstrapOperators` |
+| Lockout (last admin removed or deactivated) | Last-admin guard; break-glass superuser outside QQQ; `bootstrapOperatorSubjects` |
 | A blueprint re-apply reverts QQQ edits | No `present` identity entries, no member lists (CI lint); bootstrap as `created` (verified, §4.2); reversion detector |
 | Lost update between QQQ and the Authentik UI | Stale check at execute; attribute merge-patch after a fresh read |
 | Account takeover through a recovery link | Links are never shown; email only |
@@ -992,7 +992,7 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 | The service account holds global user/group change rights (decision 1), so its blast radius is wider than revision 1's | Hard Authentik floor (no superuser, tokens, impersonation or delete); `userScope`/`groupScope`; guard; audit on both sides; 90-day token |
 | Someone reintroduces a `present` identity entry, and members get wiped | CI lint; contract test (d); reversion detector |
 | A bootstrap entry error rolls back the infrastructure blueprint | Separate bootstrap file; `metaapplyblueprint` ordering; minimal attrs; health widget |
-| A lockout through bad permission edits | Last-admin guard, break-glass, `bootstrapOperators`, two-person approval for `authentik.*` |
+| A lockout through bad permission edits | Last-admin guard, break-glass, `bootstrapOperatorSubjects`, two-person approval for `authentik.*` |
 | Session permissions go stale after a demotion | Token-refresh re-evaluation, webhook marking, live checks in the guard |
 | The service account can lock administrators out (remove members from `authentik Admins`, deactivate break-glass, strip `qqq.io/protected`, §0.2 ii-b). Re-parenting under a superuser group **is** refused by Authentik (§0.2 ii) | Guard refusal of every write that targets a protected account or a superuser group; drift report; recovery through cluster access |
 | Load on the shared Postgres | Throttle, caps, mirror |

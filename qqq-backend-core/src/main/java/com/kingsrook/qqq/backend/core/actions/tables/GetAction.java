@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -179,6 +180,11 @@ public class GetAction
       if(table.getCacheOf() != null)
       {
          new GetActionCacheHelper().handleCaching(getInput, getOutput);
+      }
+
+      if(!RecordReferenceSecurityHelper.canReadReference(table, getOutput.getRecord(), getInput.getTransaction()))
+      {
+         getOutput.setRecord(null);
       }
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////

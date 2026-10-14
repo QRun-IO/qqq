@@ -22,16 +22,28 @@ package com.kingsrook.qqq.backend.module.rdbms.strategy;
 
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.Aggregate;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateCapability;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.AggregateOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.GroupBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.module.rdbms.model.metadata.RDBMSBackendMetaData;
 
 
 /*******************************************************************************
@@ -100,12 +112,44 @@ public interface RDBMSActionStrategyInterface
 
 
 
+   /***************************************************************************
+    ** Hook for a vendor strategy to configure a prepared statement for a query that
+    ** carries the POTENTIALLY_LARGE_NUMBER_OF_RESULTS hint, so that the driver streams
+    ** the results rather than buffering them all in memory.  Default: no-op.
+    ***************************************************************************/
+   default void configureStatementForLargeResults(Connection connection, PreparedStatement statement) throws SQLException
+   {
+   }
+
+
+
    /*******************************************************************************
     ** Insert one row using only native defaults. The default syntax is MySQL/H2.
     *******************************************************************************/
    default String getInsertDefaultValuesClause()
    {
       return "() VALUES ()";
+   }
+
+
+   /*******************************************************************************
+    ** Start a transaction on the (autocommit-off) connection, such that every
+    ** read through it sees one snapshot - or, for a database with no better way,
+    ** at least asks for REPEATABLE READ isolation, and reports BEST_EFFORT.
+    ** Vendor-specific strategies override this with the vendor's snapshot syntax.
+    **
+    ** Called by RDBMSBackendModule.openConsistentReadTransaction, before any
+    ** statement has run on the connection.
+    *******************************************************************************/
+   default ConsistentReadStart beginConsistentRead(Connection connection, ConsistentReadInput input) throws SQLException
+   {
+      if(input.getImportSnapshotId().isPresent())
+      {
+         throw (new SQLException("Importing a snapshot is not supported by this database"));
+      }
+
+      connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+      return (new ConsistentReadStart(Optional.empty(), ConsistencyGuarantee.BEST_EFFORT));
    }
 
 
@@ -119,5 +163,84 @@ public interface RDBMSActionStrategyInterface
        **
        *******************************************************************************/
       void processResultSet(ResultSet rs) throws SQLException, QException;
+   }
+
+
+   /*******************************************************************************
+    ** Render a typed JSON path. Unsupported dialects fail explicitly.
+    *******************************************************************************/
+   default String jsonPathExpression(String column, JsonPathStorage storage, QFieldType type)
+   {
+      throw (new UnsupportedOperationException("JsonPathStorage requires PostgreSQL or the memory backend"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Placeholder for a serialized JSON object.
+    *******************************************************************************/
+   default String jsonObjectPlaceholder()
+   {
+      throw (new UnsupportedOperationException("JsonPathStorage requires PostgreSQL or the memory backend"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Atomic merge assignment for non-null keys and removed keys.
+    *******************************************************************************/
+   default String jsonMergeAssignment(String column)
+   {
+      throw (new UnsupportedOperationException("JsonPathStorage requires PostgreSQL or the memory backend"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional indexed JSON predicate. Values are already typed; replace bind values when used.
+    *******************************************************************************/
+   default String jsonPathPredicate(String column, QFieldMetaData field, QFilterCriteria criterion, List<Serializable> values)
+   {
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional extensions; third-party strategies remain source compatible.
+    *******************************************************************************/
+   default Set<AggregateCapability> getSupportedAggregateCapabilities(AggregateInput input)
+   {
+      return (Set.of());
+   }
+
+
+
+   /*******************************************************************************
+    ** Render the complete aggregate expression. Operands are resolved SQL, never client field names.
+    *******************************************************************************/
+   default String getAggregateExpression(AggregateOperator operator, String columnExpression, String otherColumnExpression, Aggregate aggregate, RDBMSBackendMetaData backend, List<Serializable> params)
+   {
+      return (operator.getSqlPrefix() + columnExpression + ")");
+   }
+
+
+
+   /*******************************************************************************
+    ** Render a bucket around an already resolved SQL column.
+    *******************************************************************************/
+   default String getGroupByBucketExpression(GroupBy group, String column, QFieldType sourceType, RDBMSBackendMetaData backend, List<Serializable> params)
+   {
+      throw (new UnsupportedOperationException("Bucketed grouping is not supported"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Sample only the main table; called before rendering any joins.
+    *******************************************************************************/
+   default String getSampledTableExpression(String table, String alias, BigDecimal percent, List<Serializable> params)
+   {
+      return (table + " AS " + alias);
    }
 }

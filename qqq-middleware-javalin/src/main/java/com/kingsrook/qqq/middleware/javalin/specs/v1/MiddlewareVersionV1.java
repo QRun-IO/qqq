@@ -28,14 +28,33 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
 
 
 /*******************************************************************************
- **
+ ** Version 1 of the QQQ UI API (`/qqq/v1`).  Its semantic version (see
+ ** docs/UI-API-CHANGELOG.md) is published as the OpenAPI info.version and by
+ ** GET /qqq/v1/version.
  *******************************************************************************/
 public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
 {
-   private static List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
+   /***************************************************************************
+    ** The semantic version of the v1 UI API.  Bump MINOR for additive changes
+    ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
+    ** needs a new URL version (/qqq/v2).
+    ***************************************************************************/
+   public static final String SEMANTIC_VERSION = "1.2.0";
 
-   static
+   /***************************************************************************
+    ** Optional core features, published by GET /version.
+    ***************************************************************************/
+   public static final List<String> FEATURES = List.of(
+      "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime");
+
+   private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
+
    {
+      list.add(new VersionSpecV1());
+      RealtimeStreamSpecV1 realtime = new RealtimeStreamSpecV1();
+      list.add(realtime);
+      list.add(new RealtimeSubscriptionsSpecV1(realtime::getHub));
       list.add(new AuthenticationMetaDataSpecV1());
       list.add(new ManageSessionSpecV1());
       list.add(new LogoutSpecV1());
@@ -54,9 +73,15 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       ///////////////////////////////////////////////////////////////////////////
       list.add(new TableVariantsSpecV1());
       list.add(new TableGetSpecV1());
+      list.add(new TableRecordFeaturesSpecV1());
       list.add(new TableInsertSpecV1());
       list.add(new TableUpdateSpecV1());
       list.add(new TableDeleteSpecV1());
+
+      list.add(new RelatedRecordPickerQuerySpecV1());
+      list.add(new RelatedRecordPickerPrepareSpecV1());
+      list.add(new RelatedRecordPickerAddSpecV1());
+      list.add(new RelatedRecordPickerRemoveSpecV1());
 
       list.add(new RecordDeveloperModeSpecV1());
       list.add(new RecordDeveloperPanelsSpecV1());
@@ -90,6 +115,28 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public String getVersion()
    {
       return "v1";
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public String getSemanticVersion()
+   {
+      return (SEMANTIC_VERSION);
+   }
+
+
+
+   /***************************************************************************
+    **
+    ***************************************************************************/
+   @Override
+   public List<String> getFeatures()
+   {
+      return (FEATURES);
    }
 
 

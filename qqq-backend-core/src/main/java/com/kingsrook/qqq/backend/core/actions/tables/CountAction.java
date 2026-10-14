@@ -23,12 +23,14 @@ package com.kingsrook.qqq.backend.core.actions.tables;
 
 import java.util.Collections;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
-import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.CurrentUserFilterHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocessor;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -102,14 +104,16 @@ public class CountAction
          throw (new QException("Count table is not available"));
       }
       countInput.setTableMetaData(table);
+      countInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, countInput.getFilter(), countInput.getTransaction()));
 
-      FilterValidationHelper.validateFieldNamesInFilter(countInput);
+      QueryFilterPreprocessor.prepare(countInput);
 
       QBackendMetaData backend = countInput.getBackend();
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // apply any available field behaviors to the filter (noting that, if anything changes, a new filter is returned) //
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      countInput.setFilter(CurrentUserFilterHelper.resolve(countInput, countInput.getFilter()));
       countInput.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, countInput.getFilter(), Collections.emptySet()));
 
       QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, countInput.getFilter(), CountAction.class.getSimpleName());

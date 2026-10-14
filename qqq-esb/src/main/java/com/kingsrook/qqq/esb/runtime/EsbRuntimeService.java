@@ -24,6 +24,7 @@ package com.kingsrook.qqq.esb.runtime;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.instances.QRuntimeServiceInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
 import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
 
 
@@ -36,6 +37,8 @@ import com.kingsrook.qqq.esb.connection.EsbConnectionManager;
 public class EsbRuntimeService implements QRuntimeServiceInterface
 {
    public static final String NAME = "esbRuntime";
+
+   private QInstance instance;
 
 
 
@@ -56,6 +59,7 @@ public class EsbRuntimeService implements QRuntimeServiceInterface
    @Override
    public void start(QInstance qInstance) throws QException
    {
+      instance = qInstance;
       QEsbRuntime.getInstance().start(qInstance);
    }
 
@@ -80,6 +84,7 @@ public class EsbRuntimeService implements QRuntimeServiceInterface
    @Override
    public void afterApplicationStop()
    {
+      RealtimeBus.close(instance);
       EsbConnectionManager.getInstance().closeAll();
    }
 

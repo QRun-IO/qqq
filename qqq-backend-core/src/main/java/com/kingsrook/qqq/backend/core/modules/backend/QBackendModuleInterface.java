@@ -21,6 +21,9 @@
 package com.kingsrook.qqq.backend.core.modules.backend;
 
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
@@ -33,9 +36,11 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
@@ -47,6 +52,16 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails
  *******************************************************************************/
 public interface QBackendModuleInterface
 {
+   /*******************************************************************************
+    ** Whether query, count and aggregate can translate same-backend sub-queries.
+    *******************************************************************************/
+   default boolean supportsSubQueries(QBackendMetaData backend)
+   {
+      return (false);
+   }
+
+
+
    /*******************************************************************************
     ** Method where a backend module must be able to provide its type (name).
     *******************************************************************************/
@@ -161,6 +176,40 @@ public interface QBackendModuleInterface
    {
       return (new QBackendTransaction());
    }
+
+   /*******************************************************************************
+    ** Open a read-only transaction through which every table read (passed as the
+    ** transaction on the read's input) reflects one instant - see ConsistencyScope
+    ** and ConsistencyGuarantee (QBackendTransaction.getConsistencyGuarantee).
+    ** Where the backend can share the snapshot, the transaction's
+    ** getExportedSnapshotId is set, and other transactions may attach to it via
+    ** ConsistentReadInput.importSnapshotId (while this one stays open).
+    **
+    ** The default - for backends with no such support - is Optional.empty().
+    ** The caller owns the returned transaction, and must close it.
+    *******************************************************************************/
+   default Optional<QBackendTransaction> openConsistentReadTransaction(ConsistentReadInput input) throws QException
+   {
+      return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** Advance each table's generated-key sequence past the largest key now in the
+    ** table, so the next generated insert gets max+1.  Needed after rows were
+    ** inserted with explicit (preserved) primary keys, e.g., a restore or a data
+    ** migration.
+    **
+    ** The default does nothing, and returns an empty list: backends without
+    ** generated key sequences have nothing to resync.
+    *******************************************************************************/
+   default List<SequenceResyncResult> resyncKeySequences(QBackendMetaData backend, Collection<QTableMetaData> tables) throws QException
+   {
+      return (List.of());
+   }
+
+
 
    /*******************************************************************************
     **

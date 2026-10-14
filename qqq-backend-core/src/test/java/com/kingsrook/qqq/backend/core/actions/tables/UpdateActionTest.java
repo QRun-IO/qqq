@@ -855,7 +855,7 @@ class UpdateActionTest extends BaseTest
     **
     *******************************************************************************/
    @Test
-   void testUpdateDoNotUpdateModifyDate() throws QException
+   void testUpdateDoNotUpdateModifyDate() throws QException, InterruptedException
    {
       QContext.getQSession().withSecurityKeyValues(MapBuilder.of(TestUtils.SECURITY_KEY_TYPE_STORE_ALL_ACCESS, ListBuilder.of(true)));
 
@@ -869,6 +869,10 @@ class UpdateActionTest extends BaseTest
 
       Instant initialModifyDate = qRecord.getValueInstant("modifyDate");
       assertNotNull(initialModifyDate);
+
+      // Allow the system clock to advance on platforms with coarse clock resolution.
+      Thread.sleep(20);
+
 
       ///////////////////////////////////////////////////////////////////
       // update the order, the modify date should be in the future now //

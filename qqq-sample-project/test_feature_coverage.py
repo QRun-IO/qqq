@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from test_next_acceptance import digest, write_fixture
+from next_acceptance import FEATURE_IDS
 
 
 class FeatureCoverageGateTest(unittest.TestCase):
@@ -52,7 +53,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
                              'SamplePackagedConfigurationIT': {'tests': 4}},
         }))
 
-    def run_gate(self, features=None, outcome='', report_only=False, stage='published', required=(), candidate_version=None):
+    def run_gate(self, features=None, outcome='', report_only=False, stage='published', required=()):
         inventory = dict(self.inventory)
         if features is not None:
             inventory['features'] = features
@@ -63,9 +64,8 @@ class FeatureCoverageGateTest(unittest.TestCase):
         if isinstance(required, str):
             required = (required,)
         run = subprocess.run([sys.executable, str(self.sample / 'verify-feature-coverage.py')]
-                             + ['--next-receipt-sha256', self.next_receipt_sha]
+                             + (['--next-receipt-sha256', self.next_receipt_sha] if self.next_receipt_sha else [])
                              + ['--stage', stage] + (['--report-only'] if report_only else [])
-                             + (['--candidate-version', candidate_version] if candidate_version else [])
                              + [option for feature in required for option in ('--require-feature', feature)],
                              capture_output=True, text=True)
         result = self.sample / 'target' / 'feature-coverage-result.json'
@@ -81,179 +81,44 @@ class FeatureCoverageGateTest(unittest.TestCase):
                 'owner_approval': 'https://github.com/QRun-IO/qqq/issues/790#issuecomment-123456',
                 'rationale': 'Scenario awaits a supported fixture', 'target_release': '4.1.1'}
 
-    # (candidate, index in release-deferrals.json, source revision the orb turns into that candidate,
-    #  Next version the candidate is paired with)
-    ACCEPTED_CANDIDATES = (('4.1.0-RC.1', 0, '4.1.0-SNAPSHOT', '1.0.0-RC.11'),
-                           ('4.1.0-RC.2', 1, '4.1.0-RC.1', '1.0.0-RC.11'),
-                           ('4.1.0-RC.3', 2, '4.1.0-RC.2', '1.0.0-RC.11'),
-                           ('4.1.0-RC.4', 3, '4.1.0-RC.3', '1.0.0-RC.14'),
-                           ('4.1.0-RC.5', 4, '4.1.0-RC.4', '1.0.0-RC.14'))
-
-    def configure_accepted_next(self, revision='4.1.0-SNAPSHOT', next_version='1.0.0-RC.11'):
-        shutil.copy(Path(__file__).with_name('release-deferrals.json'), self.sample)
-        (self.sample / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
-            '<qqq.frontend.next.version>' + next_version + '</qqq.frontend.next.version></properties></project>')
-        (self.sample.parent / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><properties>'
-            '<revision>' + revision + '</revision></properties></project>')
-        bom = self.sample.parent / 'qqq-bom'
-        bom.mkdir(exist_ok=True)
-        (bom / 'pom.xml').write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies>'
-            '<dependency><artifactId>qqq-frontend-next</artifactId><version>' + next_version + '</version></dependency>'
-            '</dependencies></dependencyManagement></project>')
-
-    def test_accepted_next_is_explicit_and_does_not_certify_missing_native_evidence(self):
-        for candidate, _, revision, next_version in self.ACCEPTED_CANDIDATES:
-            with self.subTest(candidate=candidate):
-                self.configure_accepted_next(revision, next_version)
-                (self.sample / 'target/next-acceptance/receipt.json').unlink(missing_ok=True)
-                self.assertEqual(1, self.run_gate(stage='source')[0])
-                code, result = self.run_gate(stage='source', candidate_version=candidate)
+    def test_missing_next_receipt_is_report_only_in_strict_coverage(self):
+        (self.sample / 'target/next-acceptance/receipt.json').unlink()
+        self.next_receipt_sha = None
+        for stage in ('source', 'published'):
+            with self.subTest(stage=stage):
+                code, result = self.run_gate(stage=stage)
                 self.assertEqual(0, code)
+                self.assertTrue(result['stage_passed'])
                 self.assertFalse(result['complete'])
-                self.assertEqual(7, len(result['accepted_next_features']))
-                self.assertEqual(candidate, result['accepted_next_release']['qqq_version'])
-                self.assertEqual(self.supported_count - 2 - 7, result['verified'])
+                self.assertEqual(set(FEATURE_IDS), {f['id'] for f in result['next_report_only_features']})
+                self.assertTrue(all(f['reasons'] for f in result['next_report_only_features']))
+                self.assertEqual([], result['gaps'])
+                self.assertEqual(self.supported_count - 7 - (2 if stage == 'source' else 0), result['verified'])
+        self.assertEqual(1, self.run_gate(required=FEATURE_IDS[0])[0])
+        self.feature['acceptance_status'] = 'pending'
+        self.assertEqual(1, self.run_gate(stage='source')[0])
+
+    def test_invalid_supplied_next_receipt_blocks_strict_coverage(self):
+        receipt = self.sample / 'target/next-acceptance/receipt.json'
+        receipt.write_text('{}')
+        for pin in (self.next_receipt_sha, None):
+            with self.subTest(pin=pin):
+                self.next_receipt_sha = pin
+                code, result = self.run_gate(stage='source')
+                self.assertEqual(1, code)
                 self.assertTrue(result['next_acceptance']['problems'])
-                self.assertEqual(1, self.run_gate(stage='source', candidate_version=candidate,
-                                                 required='core.widget.row_builder')[0])
-                for version in ('4.1.0', '4.1.0-RC.6', '4.2.0-RC.1', '4.1.0-rc.2', ' 4.1.0-RC.2',
-                                '4.1.0-rc.3', '4.1.0-RC.3 ', '4.1.0-RC3', '4.1.0-rc.4', '4.1.0-RC.4 ', '4.1.0-RC4',
-                                '4.1.0-rc.5', '4.1.0-RC.5 ', '4.1.0-RC5'):
-                    self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=version)[0])
-        # Each candidate only accepts its own source revisions: RC.2 on the pre-RC1 snapshot and RC.3 on the
-        # snapshot or the RC.1 revision are rejected.
-        self.configure_accepted_next('4.1.0-SNAPSHOT')
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.2')[0])
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
-        self.configure_accepted_next('4.1.0-RC.1')
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
-        self.configure_accepted_next('4.1.0-RC.2')
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
-        # RC.4 is paired with Next RC14 and RC.1-RC.3 with RC11: each candidate needs its own revision and Next pins.
-        for revision in ('4.1.0-SNAPSHOT', '4.1.0-RC.1', '4.1.0-RC.2'):
-            self.configure_accepted_next(revision, '1.0.0-RC.14')
-            self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
-        self.configure_accepted_next('4.1.0-RC.3', '1.0.0-RC.11')
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
-        self.assertEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
-        self.configure_accepted_next('4.1.0-RC.3', '1.0.0-RC.14')
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.3')[0])
-        self.assertEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.4')[0])
+                self.assertEqual([], result['next_report_only_features'])
 
-    def test_accepted_next_cannot_hide_framework_failures_or_public_gaps(self):
-        for candidate, _, revision, next_version in self.ACCEPTED_CANDIDATES:
-            with self.subTest(candidate=candidate):
-                self.configure_accepted_next(revision, next_version)
-                self.assertEqual(1, self.run_gate(stage='source', candidate_version=candidate, outcome='<failure/>')[0])
-                self.feature['acceptance_status'] = 'pending'
-                self.assertEqual(1, self.run_gate(stage='source', candidate_version=candidate)[0])
-                self.feature['acceptance_status'] = 'verified'
-                public = next(f for f in self.inventory['features'] if f['id'] == 'train.bom')
-                public['acceptance_status'] = 'pending'
-                self.assertEqual(1, self.run_gate(stage='published', candidate_version=candidate)[0])
-                public['acceptance_status'] = 'verified'
-
-    def test_accepted_next_rejects_changed_artifact_scope_or_approval(self):
-        path = self.sample / 'release-deferrals.json'
-        original = json.loads(Path(__file__).with_name('release-deferrals.json').read_text())
-        approvals = [entry['owner_approval'] for entry in original['accepted_next_release']]
-        identities = {entry['next_version']: {field: entry[field] for field in ('next_version', 'next_sha', 'jar_sha256')}
-                      for entry in original['accepted_next_release']}
-        self.assertEqual({'1.0.0-RC.11', '1.0.0-RC.14'}, set(identities))
-        for candidate, index, base_revision, next_version in self.ACCEPTED_CANDIDATES:
-            self.configure_accepted_next(base_revision, next_version)
-            self.assertEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-            other_identity = next(identity for version, identity in identities.items() if version != next_version)
-            for field, value in (('next_version', '1.0.0-RC.1'), ('next_version', '1.0.0-RC.9'),
-                                 ('next_version', '1.0.0-RC.12'), ('next_version', '1.0.0-RC.13'),
-                                 ('next_version', '1.0.0-RC.15'), ('next_sha', '0' * 40),
-                                 ('next_sha', other_identity['next_sha']),
-                                 ('jar_sha256', other_identity['jar_sha256']),
-                                 ('jar_sha256', '0' * 64), ('owner_approval', 'unapproved'),
-                                 *(('owner_approval', other) for other in approvals if other != approvals[index]),
-                                 ('owner_approval', approvals[index] + '0'),
-                                 ('features', ['core.security.authentication']), ('target_release', ''),
-                                 ('rationale', '')):
-                with self.subTest(candidate=candidate, field=field, value=value):
-                    changed = json.loads(json.dumps(original))
-                    changed['accepted_next_release'][index][field] = value
-                    path.write_text(json.dumps(changed))
-                    self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-            # The other approved Next identity, complete and with matching sample/BOM pins, is still not this
-            # candidate's artifact.
-            with self.subTest(candidate=candidate, identity=other_identity['next_version']):
-                changed = json.loads(json.dumps(original))
-                changed['accepted_next_release'][index].update(other_identity)
-                self.configure_accepted_next(base_revision, other_identity['next_version'])
-                path.write_text(json.dumps(changed))
-                self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-            self.configure_accepted_next(base_revision, next_version)
-            root_pom = self.sample.parent / 'pom.xml'
-            root_content = root_pom.read_text()
-            # The coverage verifier runs after publication too, so it also accepts the orb's bump commit revision.
-            allowed_after_publish = {'4.1.0-RC.1': ('4.1.0-SNAPSHOT', '4.1.0-RC.1'),
-                                     '4.1.0-RC.2': ('4.1.0-RC.1', '4.1.0-RC.2'),
-                                     '4.1.0-RC.3': ('4.1.0-RC.2', '4.1.0-RC.3'),
-                                     '4.1.0-RC.4': ('4.1.0-RC.3', '4.1.0-RC.4'),
-                                     '4.1.0-RC.5': ('4.1.0-RC.4', '4.1.0-RC.5')}[candidate]
-            for revision in ('4.1.0', '4.1.0-SNAPSHOT', '4.1.0-RC.1', '4.1.0-RC.2', '4.1.0-RC.3', '4.1.0-RC.4',
-                             '4.1.0-RC.5', '4.1.0-RC.6', '4.2.0-SNAPSHOT'):
-                with self.subTest(candidate=candidate, revision=revision):
-                    root_pom.write_text(root_content.replace(base_revision, revision))
-                    code = self.run_gate(stage='source', candidate_version=candidate)[0]
-                    self.assertEqual(revision in allowed_after_publish, code == 0)
-            root_pom.write_text(root_content)
-            for pom in (self.sample / 'pom.xml', self.sample.parent / 'qqq-bom/pom.xml'):
-                content = pom.read_text()
-                for pin in ('1.0.0-RC.2', '1.0.0-RC.12', '1.0.0-RC.13', other_identity['next_version']):
-                    with self.subTest(candidate=candidate, pom=str(pom), pin=pin):
-                        pom.write_text(content.replace(next_version, pin))
-                        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-                pom.write_text(content)
-
-    def test_accepted_next_policy_list_is_closed_and_unambiguous(self):
-        path = self.sample / 'release-deferrals.json'
-        original = json.loads(Path(__file__).with_name('release-deferrals.json').read_text())
-        rc1, rc2, rc3, rc4, rc5 = original['accepted_next_release']
-        rc6 = dict(rc5, qqq_version='4.1.0-RC.6')
-        approved = (rc1, rc2, rc3, rc4, rc5)
-        for candidate, _, revision, next_version in self.ACCEPTED_CANDIDATES[1:]:
-            self.configure_accepted_next(revision, next_version)
-            self.assertEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-            own = next(entry for entry in approved if entry['qqq_version'] == candidate)
-            others = [entry for entry in approved if entry is not own]
-            for label, policy in (('legacy object', own), ('empty', []), ('missing own entry', others),
-                                  ('duplicate own entry', [*approved, own]),
-                                  ('unapproved RC.6', [*approved, rc6]),
-                                  ('non-object entry', [*approved, candidate])):
-                with self.subTest(candidate=candidate, policy=label):
-                    path.write_text(json.dumps(dict(original, accepted_next_release=policy)))
-                    self.assertNotEqual(0, self.run_gate(stage='source', candidate_version=candidate)[0])
-            path.write_text(json.dumps(original))
-        self.configure_accepted_next('4.1.0-RC.5', '1.0.0-RC.14')
-        path.write_text(json.dumps(dict(original, accepted_next_release=[*approved, rc6])))
-        self.assertNotEqual(0, self.run_gate(stage='source', candidate_version='4.1.0-RC.6')[0])
-
-    def test_repository_pins_select_the_next_artifact_bound_to_the_newest_candidate(self):
-        import next_acceptance
-        candidate, index, _, next_version = self.ACCEPTED_CANDIDATES[-1]
-        self.assertEqual([c[0] for c in self.ACCEPTED_CANDIDATES], list(next_acceptance.APPROVED_NEXT_CANDIDATES))
-        binding = next_acceptance.APPROVED_NEXT_CANDIDATES[candidate]
-        self.assertEqual(next_version, binding['next']['next_version'])
-        self.assertRegex(binding['next']['next_sha'], '^[0-9a-f]{40}$')
-        self.assertRegex(binding['next']['jar_sha256'], '^[0-9a-f]{64}$')
-        self.assertRegex(binding['owner_approval'], r'^https://github\.com/QRun-IO/qqq/issues/798#issuecomment-[0-9]+$')
-        entry = json.loads(Path(__file__).with_name('release-deferrals.json').read_text())['accepted_next_release'][index]
-        self.assertEqual(candidate, entry['qqq_version'])
-        self.assertEqual(binding['next'], {field: entry[field] for field in binding['next']})
-        self.assertEqual(binding['owner_approval'], entry['owner_approval'])
-        root = Path(__file__).resolve().parent
-        self.assertIn('<qqq.frontend.next.version>' + next_version + '</qqq.frontend.next.version>',
-                      (root / 'pom.xml').read_text())
-        self.assertRegex((root.parent / 'qqq-bom/pom.xml').read_text(),
-                         r'<artifactId>qqq-frontend-next</artifactId>\s*<version>' + next_version.replace('.', r'\.')
-                         + '</version>')
+    def test_next_failed_tests_block_even_without_receipt(self):
+        (self.sample / 'target/next-acceptance/receipt.json').unlink()
+        self.next_receipt_sha = None
+        feature = next(f for f in self.inventory['features'] if f['id'] == FEATURE_IDS[0])
+        feature['verified_tests'] = ['NextCompatibility#failed']
+        (self.reports / 'TEST-next.xml').write_text(
+            '<testsuite><testcase classname="NextCompatibility" name="failed"><failure/></testcase></testsuite>')
+        code, result = self.run_gate(stage='source')
+        self.assertEqual(1, code)
+        self.assertEqual([feature['id']], [f['id'] for f in result['gaps']])
 
     def test_reviewed_passing_test_is_required(self):
         code, result = self.run_gate()
@@ -276,7 +141,7 @@ class FeatureCoverageGateTest(unittest.TestCase):
         feature['acceptance_status'] = 'pending'
         code, result = self.run_gate(stage='source', required=feature['id'])
         self.assertEqual(1, code)
-        self.assertIn('scenario review is pending', next(g['reasons'] for g in result['gaps'] if g['id'] == feature['id']))
+        self.assertIn('scenario review is pending', next(g['reasons'] for g in result['next_report_only_features'] if g['id'] == feature['id']))
         self.assertEqual('pending', json.loads((self.sample / 'feature-coverage.json').read_text())['features'][
             self.inventory['features'].index(feature)]['acceptance_status'])
 

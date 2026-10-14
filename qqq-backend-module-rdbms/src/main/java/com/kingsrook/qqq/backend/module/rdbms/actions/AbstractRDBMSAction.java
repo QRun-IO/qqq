@@ -22,6 +22,7 @@ package com.kingsrook.qqq.backend.module.rdbms.actions;
 
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -52,9 +53,11 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.count.CountInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.CriteriaOption;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.JoinsContext;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QSubQuery;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
@@ -62,6 +65,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
@@ -141,12 +145,35 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** The shared read expression for select, predicates, joins, ordering and aggregation.
+    *******************************************************************************/
+   protected String fieldExpression(String tableNameOrAlias, QFieldMetaData field)
+   {
+      String column = (tableNameOrAlias == null ? "" : escapeIdentifier(tableNameOrAlias) + ".") + escapeIdentifier(getColumnName(field));
+      if(field.getBackendStorage() instanceof JsonPathStorage storage)
+      {
+         return (getActionStrategy().jsonPathExpression(column, storage, field.getType()));
+      }
+      return (column);
+   }
+
+
+
+   /*******************************************************************************
     ** Get the column name to use for a field in the RDBMS, from the fieldMetaData.
     **
     ** That is, field.backendName if set -- else, field.name
     *******************************************************************************/
    public static String getColumnName(QFieldMetaData field)
    {
+      if(field.getBackendStorage() instanceof JsonPathStorage storage)
+      {
+         return (storage.getColumnName());
+      }
+      if(field.getBackendStorage() != null)
+      {
+         throw (new UnsupportedOperationException("Unsupported field storage: " + field.getBackendStorage().getClass().getName()));
+      }
       if(field.getBackendName() != null)
       {
          return (field.getBackendName());
@@ -361,10 +388,20 @@ public abstract class AbstractRDBMSAction
     *******************************************************************************/
    protected String makeFromClause(QInstance instance, String tableName, JoinsContext joinsContext, List<Serializable> params)
    {
+      return (makeFromClause(instance, tableName, joinsContext, params, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Aggregate-only overload adds sampling to the main table before joins.
+    *******************************************************************************/
+   protected String makeFromClause(QInstance instance, String tableName, JoinsContext joinsContext, List<Serializable> params, BigDecimal samplePercent)
+   {
       //////////////////////////////////////////////////////////////////////
       // start with the main table - un-aliased (well, aliased as itself) //
       //////////////////////////////////////////////////////////////////////
-      StringBuilder rs = new StringBuilder(escapeIdentifier(getTableName(joinsContext.getTable(tableName))) + " AS " + escapeIdentifier(tableName));
+      StringBuilder rs = new StringBuilder(getActionStrategy().getSampledTableExpression(escapeIdentifier(getTableName(joinsContext.getTable(tableName))), escapeIdentifier(tableName), samplePercent, params));
 
       ////////////////////////////////////////////////////////////////////////////////////////////////////////
       // sort the query joins from the main table "outward"...                                              //
@@ -665,7 +702,7 @@ public abstract class AbstractRDBMSAction
          // figure out the column name for the table/alias + field name. //
          // wrap that string in a function if we have a function adapter //
          //////////////////////////////////////////////////////////////////
-         String column = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
+         String column = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
          if(fieldFunctionAdapter != null)
          {
             String         tableNameOrAlias = fieldAndTableNameOrAlias.tableNameOrAlias();
@@ -691,6 +728,29 @@ public abstract class AbstractRDBMSAction
          {
             column = "LOWER(" + column + ")";
             values.replaceAll(value -> value instanceof String string ? string.toLowerCase(Locale.ROOT) : value);
+         }
+
+         if(values.size() == 1 && values.get(0) instanceof QSubQuery subQuery)
+         {
+            try
+            {
+               if(fieldFunctionAdapter != null)
+               {
+                  params.addAll(CollectionUtils.nonNullList(fieldFunctionAdapter.getParams(fieldFunction)));
+               }
+               QQueryFilter innerFilter = subQuery.getFilter() == null ? new QQueryFilter() : subQuery.getFilter().clone();
+               JoinsContext innerContext = joinsContext.forSubQuery(subQuery.getTableName(), innerFilter);
+               QTableMetaData innerTable = innerContext.getTable(subQuery.getTableName());
+               String selectedColumn = escapeIdentifier(subQuery.getTableName()) + "." + escapeIdentifier(getColumnName(innerTable.getField(subQuery.getFieldName())));
+               String from = makeFromClause(QContext.getQInstance(), subQuery.getTableName(), innerContext, params);
+               String where = makeWhereClause(innerContext, innerFilter, params);
+               clauses.add("(" + column + (criterion.getOperator() == QCriteriaOperator.NOT_IN ? " NOT IN " : " IN ") + "(SELECT " + selectedColumn + " FROM " + from + " WHERE " + where + "))");
+               continue;
+            }
+            catch(QException e)
+            {
+               throw (new IllegalArgumentException("Unable to translate sub-query", e));
+            }
          }
 
          Integer expectedNoOfParams = actionStrategy.appendCriterionToWhereClause(criterion, clause, column, values, field);
@@ -725,7 +785,7 @@ public abstract class AbstractRDBMSAction
             {
                JoinsContext.FieldAndTableNameOrAlias otherFieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(criterion.getOtherFieldName());
 
-               String otherColumn = escapeIdentifier(otherFieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(otherFieldAndTableNameOrAlias.field()));
+               String otherColumn = fieldExpression(otherFieldAndTableNameOrAlias.tableNameOrAlias(), otherFieldAndTableNameOrAlias.field());
                clause = new StringBuilder(clause.toString().replace("?", otherColumn));
 
                /////////////////////////////////////////////////////////////////////
@@ -777,6 +837,16 @@ public abstract class AbstractRDBMSAction
          /////////////////////////////////////////////////////////////////////////////////
          // finally, wrap the whole clause in ()'s and append it to the list of clauses //
          /////////////////////////////////////////////////////////////////////////////////
+         if(field.getBackendStorage() instanceof JsonPathStorage && fieldFunction == null && !usesFieldActionStrategy
+            && !criterion.hasOption(CriteriaOption.CASE_INSENSITIVE) && !StringUtils.hasContent(criterion.getOtherFieldName()))
+         {
+            String jsonColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
+            String jsonPredicate = actionStrategy.jsonPathPredicate(jsonColumn, field, criterion, values);
+            if(jsonPredicate != null)
+            {
+               clause = new StringBuilder(jsonPredicate);
+            }
+         }
          clauses.add("(" + clause + ")");
 
          params.addAll(values);
@@ -818,7 +888,7 @@ public abstract class AbstractRDBMSAction
     ***************************************************************************/
    protected Function<String, String> makeFieldNameToColumnReferenceFunction(String tableNameOrAlias, QTableMetaData table)
    {
-      return fieldName -> escapeIdentifier(tableNameOrAlias) + "." + escapeIdentifier(getColumnName(table.getField(fieldName)));
+      return fieldName -> fieldExpression(tableNameOrAlias, table.getField(fieldName));
    }
 
 
@@ -948,7 +1018,7 @@ public abstract class AbstractRDBMSAction
          if(orderBy instanceof QFilterOrderByAggregate orderByAggregate)
          {
             Aggregate aggregate = orderByAggregate.getAggregate();
-            String    clause    = (aggregate.getOperator() + "(" + escapeIdentifier(getColumnName(table.getField(aggregate.getFieldName()))) + ")");
+            String    clause    = (aggregate.getOperator() + "(" + fieldExpression(null, table.getField(aggregate.getFieldName())) + ")");
             clauses.add(clause + " " + ascOrDesc);
          }
          else if(orderBy instanceof QFilterOrderByGroupBy orderByGroupBy)
@@ -960,15 +1030,14 @@ public abstract class AbstractRDBMSAction
             JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(orderBy.getFieldName(), true);
             QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
 
-            String column         = getColumnName(field);
-            String tableDotColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(column);
+            String tableDotColumn = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
 
             if(field instanceof QVirtualFieldMetaData virtualField && virtualField.getFieldFunction() != null)
             {
                String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
                String         realFieldName  = virtualField.getFieldFunction().getFieldName();
                QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-               tableDotColumn = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
+               tableDotColumn = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
 
                QTableMetaData                     fieldTable           = joinsContext.getTable(fieldTableName);
                FieldFunction                      fieldFunction        = virtualField.getFieldFunction();
@@ -1007,13 +1076,14 @@ public abstract class AbstractRDBMSAction
       JoinsContext.FieldAndTableNameOrAlias fieldAndTableNameOrAlias = joinsContext.getFieldAndTableNameOrAlias(groupBy.getFieldName(), true /* allowVirtualFields */);
       QFieldMetaData                        field                    = fieldAndTableNameOrAlias.field();
 
+      int firstColumnParam = params.size();
       String fullFieldName;
       if(field instanceof QVirtualFieldMetaData virtualField && virtualField.getFieldFunction() != null)
       {
          String         fieldTableName = joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias());
          String         realFieldName  = virtualField.getFieldFunction().getFieldName();
          QFieldMetaData realField      = joinsContext.getTable(fieldTableName).getField(realFieldName);
-         String         columnName     = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(realField));
+         String         columnName     = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), realField);
 
          FieldFunction                      fieldFunction              = virtualField.getFieldFunction();
          RDBMSFieldFunctionAdapterInterface fieldFunctionAdapter       = backendMetaData.getFieldFunctionAdapter(fieldFunction.getFunctionTypeIdentifier());
@@ -1029,9 +1099,17 @@ public abstract class AbstractRDBMSAction
       }
       else
       {
-         fullFieldName = escapeIdentifier(fieldAndTableNameOrAlias.tableNameOrAlias()) + "." + escapeIdentifier(getColumnName(field));
+         fullFieldName = fieldExpression(fieldAndTableNameOrAlias.tableNameOrAlias(), field);
       }
 
+      if(groupBy.getBucket() != null)
+      {
+         List<Serializable> columnParams = new ArrayList<>(params.subList(firstColumnParam, params.size()));
+         params.subList(firstColumnParam, params.size()).clear();
+         List<Serializable> bucketParams = new ArrayList<>();
+         String template = getActionStrategy().getGroupByBucketExpression(groupBy, "@column@", field.getType(), backendMetaData, bucketParams);
+         return (bindExpressionTemplate(template, fullFieldName, columnParams, "", List.of(), bucketParams, params));
+      }
       if(groupBy.getFormatString() == null)
       {
          return (fullFieldName);
@@ -1314,5 +1392,47 @@ public abstract class AbstractRDBMSAction
    protected RDBMSActionStrategyInterface getActionStrategy()
    {
       return (this.actionStrategy);
+   }
+
+
+
+   /*******************************************************************************
+    ** Expand resolved operands while preserving bind order, including repeated virtual-field operands.
+    *******************************************************************************/
+   protected String bindExpressionTemplate(String template, String column, List<Serializable> columnParams, String otherColumn,
+      List<Serializable> otherParams, List<Serializable> expressionParams, List<Serializable> params)
+   {
+      StringBuilder sql = new StringBuilder();
+      int parameter = 0;
+      boolean quoted = false;
+      for(int i = 0; i < template.length();)
+      {
+         if(template.startsWith("@column@", i))
+         {
+            sql.append(column);
+            params.addAll(columnParams);
+            i += "@column@".length();
+         }
+         else if(template.startsWith("@other@", i))
+         {
+            sql.append(otherColumn);
+            params.addAll(otherParams);
+            i += "@other@".length();
+         }
+         else
+         {
+            char character = template.charAt(i++);
+            sql.append(character);
+            if(character == '\'')
+            {
+               quoted = !quoted;
+            }
+            else if(character == '?' && !quoted)
+            {
+               params.add(expressionParams.get(parameter++));
+            }
+         }
+      }
+      return (sql.toString());
    }
 }

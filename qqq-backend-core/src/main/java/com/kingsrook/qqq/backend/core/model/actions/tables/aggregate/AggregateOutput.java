@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.backend.core.model.actions.tables.aggregate;
 
 
+import java.math.BigDecimal;
 import java.util.List;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
 
@@ -31,6 +32,11 @@ import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
  *******************************************************************************/
 public class AggregateOutput extends AbstractActionOutput
 {
+   private boolean truncated;
+   private long rowsScanned;
+   private boolean sampled;
+   private BigDecimal samplePercent;
+
    private List<AggregateResult> results;
 
 
@@ -55,4 +61,128 @@ public class AggregateOutput extends AbstractActionOutput
       this.results = results;
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for truncated
+    *******************************************************************************/
+   public boolean getTruncated()
+   {
+      return (this.truncated);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for truncated
+    *******************************************************************************/
+   public void setTruncated(boolean truncated)
+   {
+      this.truncated = truncated;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for truncated
+    *******************************************************************************/
+   public AggregateOutput withTruncated(boolean truncated)
+   {
+      setTruncated(truncated);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for rowsScanned
+    *******************************************************************************/
+   public long getRowsScanned()
+   {
+      return (this.rowsScanned);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for rowsScanned
+    *******************************************************************************/
+   public void setRowsScanned(long rowsScanned)
+   {
+      this.rowsScanned = rowsScanned;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for rowsScanned
+    *******************************************************************************/
+   public AggregateOutput withRowsScanned(long rowsScanned)
+   {
+      setRowsScanned(rowsScanned);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for sampled
+    *******************************************************************************/
+   public boolean getSampled()
+   {
+      return (this.sampled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for sampled
+    *******************************************************************************/
+   public void setSampled(boolean sampled)
+   {
+      this.sampled = sampled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for sampled
+    *******************************************************************************/
+   public AggregateOutput withSampled(boolean sampled)
+   {
+      setSampled(sampled);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for samplePercent
+    *******************************************************************************/
+   public BigDecimal getSamplePercent()
+   {
+      return (this.samplePercent);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for samplePercent
+    *******************************************************************************/
+   public void setSamplePercent(BigDecimal samplePercent)
+   {
+      this.samplePercent = samplePercent;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for samplePercent
+    *******************************************************************************/
+   public AggregateOutput withSamplePercent(BigDecimal samplePercent)
+   {
+      setSamplePercent(samplePercent);
+      return (this);
+   }
 }

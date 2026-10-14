@@ -57,6 +57,8 @@ import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableM
  *******************************************************************************/
 public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 {
+   private Long metaDataGeneration;
+
    ///////////////////////////////////////////////////////////////////////////////
    // the environment values published to frontends (QRun-IO/qqq#730): exactly  //
    // these names, plus any name in the analytics namespace (ANALYTICS_*), which //
@@ -141,6 +143,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    @Override
    public void setMetaDataOutput(MetaDataOutput metaDataOutput)
    {
+      metaDataGeneration = metaDataOutput.getMetaDataGeneration();
       apps = new HashMap<>();
       for(QFrontendAppMetaData app : CollectionUtils.nonNullMap(metaDataOutput.getApps()).values())
       {
@@ -319,4 +322,35 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
       return homeAppName;
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for metaDataGeneration
+    *******************************************************************************/
+   public Long getMetaDataGeneration()
+   {
+      return (this.metaDataGeneration);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for metaDataGeneration
+    *******************************************************************************/
+   public void setMetaDataGeneration(Long metaDataGeneration)
+   {
+      this.metaDataGeneration = metaDataGeneration;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for metaDataGeneration
+    *******************************************************************************/
+   public MetaDataResponseV1 withMetaDataGeneration(Long metaDataGeneration)
+   {
+      setMetaDataGeneration(metaDataGeneration);
+      return (this);
+   }
 }

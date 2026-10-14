@@ -112,7 +112,7 @@ public class QInstance
    // Important to use LinkedHashmap here, to preserve the order in which entries are added. //
    ////////////////////////////////////////////////////////////////////////////////////////////
    private Map<String, QBitMetaData>             qBits                = new LinkedHashMap<>();
-   private Map<String, QTableMetaData>           tables               = new LinkedHashMap<>();
+   private volatile Map<String, QTableMetaData>  tables               = new LinkedHashMap<>();
    private Map<String, QJoinMetaData>            joins                = new LinkedHashMap<>();
    private Map<String, QPossibleValueSource>     possibleValueSources = new LinkedHashMap<>();
    private Map<String, QProcessMetaData>         processes            = new LinkedHashMap<>();
@@ -497,6 +497,22 @@ public class QInstance
    public void setBackends(Map<String, QBackendMetaData> backends)
    {
       this.backends = backends;
+   }
+
+
+
+   /*******************************************************************************
+    ** Replace existing, validated tables atomically; keep startup validation state.
+    *******************************************************************************/
+   public synchronized void replaceTables(Map<String, QTableMetaData> replacements, QInstanceValidationKey key)
+   {
+      if(key == null || !tables.keySet().containsAll(replacements.keySet()))
+      {
+         throw (new IllegalArgumentException("Only validated replacements of existing tables are allowed"));
+      }
+      Map<String, QTableMetaData> updated = new LinkedHashMap<>(tables);
+      updated.putAll(replacements);
+      tables = updated;
    }
 
 

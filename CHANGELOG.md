@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional AI table/field `DataClassification` (`PUBLIC`, `CONFIDENTIAL`, `PII`, `PHI`) and null-safe `AiDataClassifications` lookup/aggregation helpers. Existing exposure defaults and frontend metadata are unchanged.
+- Core aggregate analysis extensions: variance/deviation, percentiles, correlation, null/blank counts, string lengths, date/numeric buckets, dialect capabilities, opt-in paged fallback with row limits, and main-table sampling. SQL pushdown supports H2/MySQL and PostgreSQL according to advertised capabilities; existing aggregate callers retain their defaults.
+
+### Changed
+- Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.
+
+## [4.1.0-RC.6] — candidate (2026-10-13)
+
+Same Next pairing as RC.4/RC.5 (`1.0.0-RC.14`, BOM-managed). Core hooks for the backups qbit
+([design #1091](https://github.com/QRun-IO/qqq/pull/1091)); every hook is opt-in and existing behavior is unchanged.
+
+### Added
+- **Consistent read transactions ([#1116](https://github.com/QRun-IO/qqq/pull/1116))** — `QBackendModuleInterface.openConsistentReadTransaction(ConsistentReadInput)`
+  (default `Optional.empty()`) opens a read-only transaction in which every read reflects one instant, reporting its
+  `ConsistencyGuarantee` (`ONE_INSTANT`, `PER_TABLE`, `BEST_EFFORT`) and, on PostgreSQL, an exportable snapshot id that
+  other transactions can import. Implemented for PostgreSQL, MySQL/MariaDB, SQLite, H2, MongoDB and the memory backend.
+- **`KeysetPager` and raw reads ([#1114](https://github.com/QRun-IO/qqq/pull/1114))** — resumable keyset paging
+  (`pk > lastKey ORDER BY pk LIMIT n`) with a supplied transaction; `QueryInput.withRawRead(RawReadReason)` reads hidden,
+  password and heavy fields without display values, always permission-checked (`requiringPermission` or `checkedBy`)
+  and audited. Record and field security locks still apply.
+- **Restore-mode writes ([#1111](https://github.com/QRun-IO/qqq/pull/1111))** — `RestoreWriteFlag` on insert, update and
+  replace keeps supplied create/modify dates and can suppress automations, customizers, per-record audits and event
+  publication. It requires `RestoreWriteFlag.REQUIRED_PERMISSION`; record and field security, unique keys and required
+  fields still apply.
+- **Sequence resync ([#1112](https://github.com/QRun-IO/qqq/pull/1112))** — `QBackendModuleInterface.resyncKeySequences(backend, tables)`
+  advances generated-key sequences past the largest key after explicit-ID inserts (PostgreSQL `setval`, H2
+  `RESTART WITH`; MySQL, MariaDB and SQLite need nothing), returning a `SequenceResyncResult` per table.
+- **Table schema fingerprints ([#1113](https://github.com/QRun-IO/qqq/pull/1113))** — `TableSchemaFingerprint` (stable SHA-256 over a
+  canonical descriptor, ignoring cosmetic metadata) and `SchemaDiff` (added, removed and changed fields and table properties).
+- **Key provider SPI and streaming artifact encryption ([#1107](https://github.com/QRun-IO/qqq/pull/1107))** — a key provider SPI and a
+  Tink-based streaming cipher for large artifacts (backups). Adds `com.google.crypto.tink:tink` 1.23.0; `protobuf-java`
+  moves 4.33.3 → 4.33.6 (patch; the security override for the mysql-connector-j transitive stays in place).
+
+### Changed
+- **PostgreSQL large-result streaming ([#1106](https://github.com/QRun-IO/qqq/pull/1106))** — queries hinted as potentially large set a
+  cursor fetch size (default 1000; settable, 0 disables) when run inside a transaction, so pgjdbc streams instead of
+  buffering every row. MySQL is unchanged.
+
 ## [4.1.0-RC.5] — candidate (2026-10-12)
 
 Same Next pairing as RC.4 (`1.0.0-RC.14`, BOM-managed). **Breaking for code that touches AWS SDK types:** the S3 backend
@@ -134,6 +173,15 @@ Next acceptance-receipt waiver is bound to that exact artifact. See the [release
   [Permission Enforcement in Core Actions](docs/misc/CorePermissionEnforcement.adoc).
 
 ### Added
+- **Consistent read transactions** — `QBackendModuleInterface.openConsistentReadTransaction(ConsistentReadInput)`
+  (default: unsupported) returns a read-only transaction through which every table read reflects one instant, for
+  exports, backups and migrations. `QBackendTransaction.openConsistentReadFor(input)` is the convenience entry;
+  `getConsistencyGuarantee()` says what you actually got (`ONE_INSTANT`, `PER_TABLE`, `BEST_EFFORT`) and
+  `getExportedSnapshotId()` is the id other connections can attach to via `ConsistentReadInput.withImportSnapshotId`.
+  PostgreSQL uses `REPEATABLE READ, READ ONLY` plus `pg_export_snapshot()` / `SET TRANSACTION SNAPSHOT`; MySQL/MariaDB
+  `START TRANSACTION WITH CONSISTENT SNAPSHOT` (non-InnoDB tables report `BEST_EFFORT`); SQLite and H2 snapshot reads;
+  MongoDB a snapshot-read-concern session (replica set, best effort, falls back to `PER_TABLE`); the memory backend a
+  copy-on-read snapshot. Opt-in; nothing existing changes.
 - **`dryRun` on `InsertInput` / `UpdateInput` / `DeleteInput`** — runs pre-customizers (as a preview) and all
   validations, returns would-be records (or `DeleteOutput.dryRunPrimaryKeys`), and stores nothing.
 - **`QFieldMetaData.isSensitive`** — marks PII/secret fields; `ExportAction` leaves them out unless

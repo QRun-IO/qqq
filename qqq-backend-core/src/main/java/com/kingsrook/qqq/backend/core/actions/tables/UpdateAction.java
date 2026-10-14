@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.audits.DMLAuditAction;
 import com.kingsrook.qqq.backend.core.actions.automation.AutomationStatus;
 import com.kingsrook.qqq.backend.core.actions.automation.RecordAutomationStatusUpdater;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
@@ -50,6 +51,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDis
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
@@ -60,6 +63,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -142,6 +146,8 @@ public class UpdateAction
     *******************************************************************************/
    UpdateOutput execute(UpdateInput updateInput, boolean failOnRecordErrors) throws QException
    {
+      CorePermissionEnforcer.checkRestoreWriteFlag(updateInput, updateInput.getFlags());
+
       boolean enforce = false;
       if(StringUtils.hasContent(updateInput.getTableName()) && updateInput.getTable() != null)
       {
@@ -203,14 +209,21 @@ public class UpdateAction
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(updateInput, updateInterface);
-      List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
+      if(updateInput.getExpectedVersions() != null && !updateInput.getExpectedVersions().isEmpty() && oldRecordList.isEmpty())
+      {
+         oldRecordList = Optional.of(queryOldRecords(updateInput));
+      }
+      RecordVersionCheck.check(updateInput, oldRecordList.orElse(List.of()));
+      List<QRecord> listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
 
       ///////////////////////////////////////////////////////////////////////////////////////
       // allow caller to specify that we don't want to trigger automations. this isn't     //
       // isn't expected to be used much - by design, only for the process that is meant to //
       // heal automation status, so that it can force us into status=Pending-inserts       //
       ///////////////////////////////////////////////////////////////////////////////////////
-      if(!updateInput.getOmitTriggeringAutomations())
+      RestoreWriteFlag restoreWriteFlag    = RestoreWriteFlag.from(updateInput.getFlags());
+      boolean          suppressAutomations = restoreWriteFlag != null && restoreWriteFlag.getSuppressAutomations();
+      if(!updateInput.getOmitTriggeringAutomations() && !suppressAutomations)
       {
          setAutomationStatusField(updateInput, oldRecordList);
       }
@@ -271,6 +284,10 @@ public class UpdateAction
       {
          LOG.debug("Requested to omit DML audit");
       }
+      else if(restoreWriteFlag != null && !restoreWriteFlag.getPerRecordAudit())
+      {
+         RestoreWriteHelper.writeSummaryAudit(updateInput, "update", updateOutput.getRecords());
+      }
       else
       {
          DMLAuditInput dmlAuditInput = new DMLAuditInput()
@@ -291,7 +308,10 @@ public class UpdateAction
       {
          ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
       }
-      runPostUpdateCustomizers(updateInput, table, updateOutput, oldRecordList);
+      if(!skipsCustomizers(updateInput))
+      {
+         runPostUpdateCustomizers(updateInput, table, updateOutput, oldRecordList);
+      }
       if(failOnRecordErrors)
       {
          ReplaceAction.requireSuccessfulRecords(updateOutput.getRecords(), "UPDATE");
@@ -425,6 +445,18 @@ public class UpdateAction
 
 
    /*******************************************************************************
+    ** In restore mode, pre- and post-update customizers (table-level and
+    ** instance-level) only run if the flag says so.
+    *******************************************************************************/
+   private static boolean skipsCustomizers(UpdateInput updateInput)
+   {
+      RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(updateInput.getFlags());
+      return (restoreWriteFlag != null && !restoreWriteFlag.getRunCustomizers());
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    public void performValidations(UpdateInput updateInput, Optional<List<QRecord>> oldRecordList, boolean isPreview) throws QException
@@ -440,7 +472,14 @@ public class UpdateAction
          behaviorsToOmit = Set.of(DynamicDefaultValueBehavior.MODIFY_DATE);
       }
 
-      ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.UPDATE, QContext.getQInstance(), table, updateInput.getRecords(), behaviorsToOmit);
+      if(RestoreWriteFlag.from(updateInput.getFlags()) != null)
+      {
+         RestoreWriteHelper.applyFieldBehaviorsKeepingDates(ValueBehaviorApplier.Action.UPDATE, table, updateInput.getRecords(), behaviorsToOmit);
+      }
+      else
+      {
+         ValueBehaviorApplier.applyFieldBehaviors(ValueBehaviorApplier.Action.UPDATE, QContext.getQInstance(), table, updateInput.getRecords(), behaviorsToOmit);
+      }
       validatePrimaryKeysAreGiven(updateInput);
 
       if(oldRecordList.isPresent())
@@ -460,8 +499,12 @@ public class UpdateAction
       ///////////////////////////////////////////////////////////////////////////
       // after all validations, run the pre-update customizer, if there is one //
       ///////////////////////////////////////////////////////////////////////////
-      runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+      if(!skipsCustomizers(updateInput))
+      {
+         runPreUpdateCustomizers(updateInput, table, oldRecordList, isPreview);
+      }
       UniqueKeyHelper.validateUpdateUniqueKeys(updateInput);
+      RecordReferenceSecurityHelper.validateWrites(table, updateInput.getRecords(), RecordChangeType.UPDATE, updateInput.getTransaction());
    }
 
 
@@ -588,15 +631,20 @@ public class UpdateAction
             }
          }
 
+         RestoreWriteFlag restoreWriteFlag = RestoreWriteFlag.from(updateInput.getFlags());
          RecordChangeListenerHelper.fire(qInstance, new RecordChangeEvent()
             .withTableName(updateInput.getTableName())
             .withType(RecordChangeType.UPDATE)
             .withRecords(Collections.unmodifiableList(successfulRecords))
             .withOldRecords(Collections.unmodifiableList(pairedOldRecords))
-            .withTransaction(updateInput.getTransaction()));
+            .withTransaction(updateInput.getTransaction()), restoreWriteFlag != null && !restoreWriteFlag.getPublishEvents());
       }
       catch(Exception e)
       {
+         if(e instanceof RecordChangeListenerHelper.RequiredListenerException required)
+         {
+            throw (required);
+         }
          LOG.warn("Error preparing record change event", e, logPair("tableName", updateInput.getTableName()));
       }
    }

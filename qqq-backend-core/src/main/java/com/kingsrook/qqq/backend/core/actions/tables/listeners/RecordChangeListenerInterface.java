@@ -43,11 +43,23 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
  ** kept beyond the call.
  **
  ** Exceptions (and LinkageErrors, such as a NoClassDefFoundError from an
- ** optional library that isn't on the classpath) from a listener are logged
- ** and never fail the write.
+ ** optional library that isn't on the classpath) from an optional listener are
+ ** logged. Required integrity listeners propagate failures to the caller, which
+ ** must roll back its transaction.
  *******************************************************************************/
 public interface RecordChangeListenerInterface
 {
+   /*******************************************************************************
+    ** Integrity listeners must succeed before a caller can commit its write.
+    ** Ordinary notification listeners retain their best-effort behavior.
+    *******************************************************************************/
+   default boolean isRequired()
+   {
+      return (false);
+   }
+
+
+
    /*******************************************************************************
     ** Whether this listener wants events for this table and change type.  Actions
     ** ask before they fetch old records, so returning false for what a listener

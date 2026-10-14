@@ -21,6 +21,7 @@
 package com.kingsrook.qqq.middleware.javalin.specs;
 
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,12 +29,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QRuntimeException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.utils.ClassPathUtils;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.SchemaBuilder;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtension;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
 import com.kingsrook.qqq.openapi.model.Components;
 import com.kingsrook.qqq.openapi.model.Contact;
 import com.kingsrook.qqq.openapi.model.Content;
@@ -59,6 +64,88 @@ public abstract class AbstractMiddlewareVersion
 {
    public static final QLogger LOG = QLogger.getLogger(AbstractMiddlewareVersion.class);
 
+   ////////////////////////////////////////////////////////////////////////////
+   // specs registered by modules & qbits (MiddlewareSpecExtensionsMetaData) //
+   // - loaded from the QInstance when setQInstance is called, until routes  //
+   // have been bound (they can only be bound once).                         //
+   ////////////////////////////////////////////////////////////////////////////
+   private List<AbstractEndpointSpec<?, ?, ?>>  extensionSpecs = new ArrayList<>();
+   private Map<String, MiddlewareSpecExtension> extensions     = new LinkedHashMap<>();
+   private boolean                              routesDefined  = false;
+
+
+
+   /***************************************************************************
+    ** The semantic version (MAJOR.MINOR.PATCH) of this version of the API, as
+    ** published in the OpenAPI info.version.  MAJOR matches the URL version.
+    ** See docs/UI-API-CHANGELOG.md for the rules.  The default (for versions
+    ** that predate semver) is the URL version itself.
+    ***************************************************************************/
+   public String getSemanticVersion()
+   {
+      return (getVersion());
+   }
+
+
+
+   /***************************************************************************
+    ** Core feature names this version supports, published by the version
+    ** endpoint, so clients can toggle optional areas without probing.
+    ***************************************************************************/
+   public List<String> getFeatures()
+   {
+      return (List.of());
+   }
+
+
+
+   /***************************************************************************
+    ** The core specs plus the specs registered by extensions, in route order.
+    ***************************************************************************/
+   public List<AbstractEndpointSpec<?, ?, ?>> getAllEndpointSpecs()
+   {
+      List<AbstractEndpointSpec<?, ?, ?>> rs = new ArrayList<>(CollectionUtils.nonNullList(getEndpointSpecs()));
+      rs.addAll(extensionSpecs);
+      return (rs);
+   }
+
+
+
+   /***************************************************************************
+    ** The extensions whose specs this version serves.
+    ***************************************************************************/
+   public Map<String, MiddlewareSpecExtension> getExtensions()
+   {
+      return (extensions);
+   }
+
+
+
+   /***************************************************************************
+    ** Load the extension specs registered in a QInstance (replacing any loaded
+    ** before).  Called by setQInstance until routes are defined.
+    ***************************************************************************/
+   public void loadExtensions(QInstance qInstance)
+   {
+      MiddlewareSpecExtensionsMetaData registry = qInstance == null ? null : MiddlewareSpecExtensionsMetaData.of(qInstance);
+      if(registry == null)
+      {
+         this.extensionSpecs = new ArrayList<>();
+         this.extensions = new LinkedHashMap<>();
+         return;
+      }
+
+      try
+      {
+         this.extensionSpecs = registry.instantiateAllSpecs();
+         this.extensions = new LinkedHashMap<>(registry.getExtensions());
+      }
+      catch(ReflectiveOperationException e)
+      {
+         throw (new QRuntimeException("Error instantiating UI API extension specs", e));
+      }
+   }
+
 
 
    /***************************************************************************
@@ -80,7 +167,8 @@ public abstract class AbstractMiddlewareVersion
    {
       return (() ->
       {
-         for(AbstractEndpointSpec<?, ?, ?> spec : CollectionUtils.nonNullList(getEndpointSpecs()))
+         routesDefined = true;
+         for(AbstractEndpointSpec<?, ?, ?> spec : getAllEndpointSpecs())
          {
             spec.defineRoute(this, getVersionBasePath());
          }
@@ -115,7 +203,15 @@ public abstract class AbstractMiddlewareVersion
     ***************************************************************************/
    public void setQInstance(QInstance qInstance)
    {
-      getEndpointSpecs().forEach(spec -> spec.setQInstance(qInstance));
+      /////////////////////////////////////////////////////////////////////////////
+      // extension routes can only be bound once - so after that (e.g., hot-swap) //
+      // keep the loaded specs, and just give them the new instance               //
+      /////////////////////////////////////////////////////////////////////////////
+      if(!routesDefined)
+      {
+         loadExtensions(qInstance);
+      }
+      getAllEndpointSpecs().forEach(spec -> spec.setQInstance(qInstance));
    }
 
 
@@ -125,14 +221,53 @@ public abstract class AbstractMiddlewareVersion
     *******************************************************************************/
    public OpenAPI generateOpenAPIModel(String basePath) throws QException
    {
-      List<AbstractEndpointSpec<?, ?, ?>> list = getEndpointSpecs();
+      return (generateOpenAPIModel(basePath, getAllEndpointSpecs(), true, getSemanticVersion()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The OpenAPI document of one extension alone (its paths and the component
+    ** schemas its specs define) - what a qbit commits and contract-tests.
+    *******************************************************************************/
+   public OpenAPI generateExtensionOpenAPIModel(String basePath, MiddlewareSpecExtension extension) throws QException
+   {
+      try
+      {
+         List<AbstractEndpointSpec<?, ?, ?>> specs = new ArrayList<>();
+         for(QCodeReference reference : extension.getSpecs())
+         {
+            specs.add(MiddlewareSpecExtensionsMetaData.instantiateSpec(reference));
+         }
+         OpenAPI openAPI = generateOpenAPIModel(basePath, specs, false, extension.getSemanticVersion());
+         openAPI.getInfo()
+            .withTitle("QQQ Middleware API extension: " + extension.getName())
+            .withDescription(extension.getDescription());
+         return (openAPI);
+      }
+      catch(ReflectiveOperationException e)
+      {
+         throw (new QException("Error instantiating specs for extension " + extension.getName(), e));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Build the OpenAPI model for a list of specs.
+    *******************************************************************************/
+   private OpenAPI generateOpenAPIModel(String basePath, List<AbstractEndpointSpec<?, ?, ?>> list, boolean includeCoreComponents, String semanticVersion) throws QException
+   {
 
       Map<String, Path>    paths             = new LinkedHashMap<>();
       Map<String, Example> componentExamples = new LinkedHashMap<>();
 
       Set<Class<?>>       componentClasses = new HashSet<>();
       Map<String, Schema> componentSchemas = new TreeMap<>();
-      buildComponentSchemasFromComponentsPackage(componentSchemas, componentClasses);
+      if(includeCoreComponents)
+      {
+         buildComponentSchemasFromComponentsPackage(componentSchemas, componentClasses);
+      }
 
       String sessionUuidCookieSchemeName = "sessionUuidCookie";
       SecurityScheme sessionUuidCookieScheme = new SecurityScheme()
@@ -203,7 +338,7 @@ public abstract class AbstractMiddlewareVersion
 
       OpenAPI openAPI = new OpenAPI();
       openAPI.withInfo(new Info()
-         .withVersion(getVersion())
+         .withVersion(semanticVersion)
          .withTitle("QQQ Middleware API")
          .withDescription(getDescription())
          .withContact(new Contact().withEmail("contact@kingsrook.com"))
@@ -363,6 +498,14 @@ public abstract class AbstractMiddlewareVersion
          4. The response from the `manageSession` call (assuming success), sets the `sessionUUID` Cookie, which should be included in all subsequent requests for authentication.
          5. After the user is authenticated, the frontend calls `.../metaData`, to discover the apps, tables, processes, etc, that the application is made up of (and that the authenticated user has permission to access).
          6. As the user interacts with apps, tables, process, etc, the frontend utilizes the appropriate endpoints as required.
+         
+         ## Client channel
+         Every request should name its client in the `X-QQQ-Client` header: `channel[/detail]`, e.g. `next-ui`, `cli`,
+         or `assistant/<turnId>` (the accepted channels are listed by `GET .../version`; an unknown one is refused with 400).
+         The channel is recorded in audits.  It is attribution only: the actor is always the signed-in user, and a channel
+         never grants anything - but some objects are denied to some channels (e.g. the AI assistant can never see its own
+         configuration, identity and permission administration, audits, API keys or secrets), exactly as if the user had
+         no permission for them.
          """;
    }
 

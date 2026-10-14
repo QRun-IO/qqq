@@ -55,6 +55,8 @@ import com.kingsrook.qqq.esb.model.EsbTablePublication;
 import com.kingsrook.qqq.esb.model.EsbTrigger;
 import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
 import com.kingsrook.qqq.esb.stats.EsbStats;
+import com.kingsrook.qqq.middleware.javalin.specs.AbstractMiddlewareVersion;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.MiddlewareVersionV1;
 import io.javalin.Javalin;
 import jakarta.jms.Message;
 import jakarta.jms.MessageProducer;
@@ -91,9 +93,9 @@ public class EsbApiTestBase extends EsbTestBase
    public static final String DEAD_LETTERS_FULFILL_ORDER = BROKER_NAME_FULFILLMENT + ".dlq";
    public static final String DEAD_LETTERS_SYNC_ORDER    = DESTINATION_ORDER_EVENTS + "." + SUBSCRIPTION_SYNC_ORDER + ".dlq";
 
-   private static EsbRouteProvider routeProvider;
-   private static Javalin          service;
-   private static HttpClient       httpClient;
+   private static AbstractMiddlewareVersion middlewareVersion;
+   private static Javalin                   service;
+   private static HttpClient                httpClient;
 
    protected QInstance qInstance;
 
@@ -103,10 +105,16 @@ public class EsbApiTestBase extends EsbTestBase
     **
     *******************************************************************************/
    @BeforeAll
-   static void esbApiTestBaseBeforeAll()
+   static void esbApiTestBaseBeforeAll() throws Exception
    {
-      routeProvider = new EsbRouteProvider();
-      service = Javalin.create(config -> routeProvider.acceptJavalinConfig(config)).start(0);
+      ////////////////////////////////////////////////////////////////////////
+      // serve the UI API with the ESB extension, as QApplicationJavalinServer //
+      ////////////////////////////////////////////////////////////////////////
+      QInstance bootstrap = new QInstance();
+      new EsbJavalinMetaDataProducer().produce(bootstrap);
+      middlewareVersion = new MiddlewareVersionV1();
+      middlewareVersion.loadExtensions(bootstrap);
+      service = Javalin.create(config -> config.routes.apiBuilder(middlewareVersion.getJavalinEndpointGroup(bootstrap))).start(0);
       httpClient = HttpClient.newHttpClient();
    }
 
@@ -134,7 +142,7 @@ public class EsbApiTestBase extends EsbTestBase
    void esbApiTestBaseBeforeEach() throws Exception
    {
       qInstance = defineApiInstance();
-      routeProvider.setQInstance(qInstance);
+      middlewareVersion.setQInstance(qInstance);
       QContext.init(qInstance, new QSession());
       EsbStats.getInstance().reset();
       setPermissions();

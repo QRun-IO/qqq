@@ -87,6 +87,15 @@ spec'd routes.
     default wall that keeps the assistant away from its own configuration, identity, permissions,
     audits, API keys, credentials and secrets.
 - Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
+- Record collaboration (docs/COLLABORATION.md):
+  - Table metadata gains `recordFeatures` (`RecordFeaturesV1`), and the metadata responses gain
+    `metaDataGeneration`.
+  - Added `GET /table/{tableName}/{primaryKey}/features` (`RecordFeatureSummaryV1`).
+  - Added `GET /realtime/stream` (Server-Sent Events), with one schema per event type, and
+    `POST /realtime/subscriptions`.
+  - `PATCH /table/{tableName}/{primaryKey}` accepts an optional `expectedVersion`. A stale
+    version returns 409 `RecordConflictV1`.
+  - Core features `recordFeatures` and `realtime` are listed by `GET /version`.
 - Added related-record pickers (`docs/RELATED-RECORD-PICKER.md`): the operations
   `POST /table/{tableName}/relatedRecordPicker/{pickerName}/query|prepare|add|remove` with the
   `RelatedRecordPicker{Query,Prepare,Add,Remove}ResponseV1` schemas, and the table metadata

@@ -23,7 +23,9 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.executors.ExecutorSessionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.LogoutExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.LogoutInput;
 import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
@@ -106,6 +108,17 @@ public class LogoutSpecV1 extends AbstractEndpointSpec<LogoutInput, LogoutRespon
    {
       LogoutInput logoutInput = new LogoutInput();
       logoutInput.setSessionUUID(context.cookie(QJavalinImplementation.SESSION_UUID_COOKIE_NAME));
+      if(logoutInput.getSessionUUID() == null && (context.cookie(QJavalinImplementation.SESSION_ID_COOKIE_NAME) != null || context.header("Authorization") != null))
+      {
+         try
+         {
+            logoutInput.setSessionUUID(ExecutorSessionUtils.setupSession(context, qInstance).getUuid());
+         }
+         catch(QAuthenticationException ignored)
+         {
+            // An already invalid session can still have its cookies cleared.
+         }
+      }
       return (logoutInput);
    }
 

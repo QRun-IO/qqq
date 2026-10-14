@@ -31,6 +31,8 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
  *******************************************************************************/
 public class TableUpdateInput extends AbstractMiddlewareInput
 {
+   private String expectedVersion;
+
    private String                    tableName;
    private String                    primaryKey;
    private Map<String, Serializable> recordValues;
@@ -169,4 +171,35 @@ public class TableUpdateInput extends AbstractMiddlewareInput
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for expectedVersion
+    *******************************************************************************/
+   public String getExpectedVersion()
+   {
+      return (expectedVersion);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for expectedVersion
+    *******************************************************************************/
+   public void setExpectedVersion(String expectedVersion)
+   {
+      this.expectedVersion = expectedVersion;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for expectedVersion
+    *******************************************************************************/
+   public TableUpdateInput withExpectedVersion(String expectedVersion)
+   {
+      setExpectedVersion(expectedVersion);
+      return (this);
+   }
 }

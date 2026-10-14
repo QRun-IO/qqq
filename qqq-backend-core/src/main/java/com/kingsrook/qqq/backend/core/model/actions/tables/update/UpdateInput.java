@@ -21,9 +21,11 @@
 package com.kingsrook.qqq.backend.core.model.actions.tables.update;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
@@ -41,6 +43,8 @@ import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
  *******************************************************************************/
 public class UpdateInput extends AbstractTableActionInput
 {
+   private Map<Serializable, Serializable> expectedVersions;
+
    private QBackendTransaction transaction;
    private List<QRecord>       records;
    private InputSource         inputSource = QInputSource.SYSTEM;
@@ -488,4 +492,35 @@ public class UpdateInput extends AbstractTableActionInput
       return (this);
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for expectedVersions
+    *******************************************************************************/
+   public Map<Serializable, Serializable> getExpectedVersions()
+   {
+      return (expectedVersions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for expectedVersions
+    *******************************************************************************/
+   public void setExpectedVersions(Map<Serializable, Serializable> expectedVersions)
+   {
+      this.expectedVersions = expectedVersions;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for expectedVersions
+    *******************************************************************************/
+   public UpdateInput withExpectedVersions(Map<Serializable, Serializable> expectedVersions)
+   {
+      setExpectedVersions(expectedVersions);
+      return (this);
+   }
 }

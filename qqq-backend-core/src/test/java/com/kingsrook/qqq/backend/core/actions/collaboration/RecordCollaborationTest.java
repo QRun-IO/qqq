@@ -281,7 +281,7 @@ public class RecordCollaborationTest extends BaseTest
          .withMirroredSecurityKeyTypes(List.of(TestUtils.SECURITY_KEY_TYPE_STORE)).withCleanupProviders(List.of(new QCodeReference(Cleanup.class)));
       config.enrich(instance);
       config.enrich(instance);
-      assertEquals(1, instance.getRecordChangeListeners().size());
+      assertEquals(1, instance.getRecordChangeListeners().stream().filter(listener -> RecordReferenceChangeListener.class.getName().equals(listener.getName())).count());
       QContext.setQSession(new QSystemUserSession());
       insert(orders.getName(), new QRecord().withValue("id", 1).withValue("storeId", 1));
       String mirror = RecordReferenceSecurityConfig.lockFieldName(TestUtils.SECURITY_KEY_TYPE_STORE);

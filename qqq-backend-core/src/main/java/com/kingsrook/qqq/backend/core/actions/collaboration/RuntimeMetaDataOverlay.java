@@ -34,6 +34,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeatureOverride;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeaturesMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RuntimeMetaDataContribution;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 
 
 /*******************************************************************************
@@ -51,7 +53,23 @@ public class RuntimeMetaDataOverlay
     ** Atomically publish a new generation. Invalid provider contributions retain
     ** their previous accepted values. Refresh also invalidates code declarations.
     *******************************************************************************/
-   public static synchronized void refresh(QInstance instance) throws QException
+   public static void refresh(QInstance instance) throws QException
+   {
+      long generation;
+      synchronized(RuntimeMetaDataOverlay.class)
+      {
+         refreshSnapshot(instance);
+         generation = getGeneration(instance);
+      }
+      RealtimeBus.get(instance).publish(new RealtimeMessage()
+         .withChannel("instance").withEvent("metadata.changed").withData(Map.of("generation", generation)));
+   }
+
+
+   /*******************************************************************************
+    ** Refresh under the overlay lock; publish after releasing it to avoid listener deadlocks.
+    *******************************************************************************/
+   private static void refreshSnapshot(QInstance instance) throws QException
    {
       List<RecordFeatureOverride> overrides = new ArrayList<>();
       long generation = getGeneration(instance) + 1;

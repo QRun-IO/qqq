@@ -40,6 +40,7 @@ import com.kingsrook.qqq.backend.core.alerts.NotificationSeverity;
 import com.kingsrook.qqq.backend.core.alerts.NotificationSignal;
 import com.kingsrook.qqq.backend.core.alerts.QAlerts;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.jobs.DurableJobsTables;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -63,6 +64,7 @@ public final class JobSignals
 
    public static final String ALERT_JOB_FAILED  = "jobs.job-failed";
    public static final String ALERT_JOB_STALLED = "jobs.job-stalled";
+   public static final String ALERT_EFFECT_UNRESOLVED = "jobs.effect-unresolved";
    public static final String HEARTBEAT_REAPER  = "jobs.reaper";
 
    public static final String EVENT_STATUS   = "job.status";
@@ -221,6 +223,36 @@ public final class JobSignals
          .withSummary(why)
          .withRecordRef(AlertRecordRef.of(TABLE_JOB, jobId))
          .withLink(AlertLink.toRecord(TABLE_JOB, jobId, "Open the job")));
+   }
+
+
+
+   /*******************************************************************************
+    ** Raise the alert for an outbox effect whose delivery could not be
+    ** determined and that is queued for review (deduped per effect).
+    *******************************************************************************/
+   public static void effectUnresolved(QRecord effect)
+   {
+      Integer jobId    = effect.getValueInteger("jobId");
+      Integer effectId = effect.getValueInteger("id");
+      QAlerts.raise(new AlertSignal()
+         .withAlertTypeName(ALERT_EFFECT_UNRESOLVED)
+         .withDedupKey(String.valueOf(effectId))
+         .withSeverity(AlertSeverity.WARNING)
+         .withTitle("Effect " + effect.getValueString("effectName") + " of job " + jobId + " needs review")
+         .withSummary("It may or may not have been delivered to " + effect.getValueString("targetName") + ", and the target's lookup could not tell. Mark it sent, resend it, or skip it.")
+         .withRecordRef(AlertRecordRef.of(DurableJobsTables.TABLE_EFFECT, effectId))
+         .withLink(AlertLink.toRecord(TABLE_JOB, jobId, "Open the job")));
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve an effect's review alert.
+    *******************************************************************************/
+   public static void effectResolved(Integer effectId, String how)
+   {
+      QAlerts.resolve(ALERT_EFFECT_UNRESOLVED, String.valueOf(effectId), how);
    }
 
 

@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.effects.EffectStore;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkOutcome;
 import com.kingsrook.qqq.backend.core.jobs.model.JobLease;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
@@ -141,9 +142,43 @@ public class ChunkContext
     *******************************************************************************/
    public void completeInTransaction(ChunkOutcome outcome, List<QRecord> rowErrors, QBackendTransaction transaction) throws QException
    {
+      completeInTransaction(outcome, rowErrors, List.of(), transaction);
+   }
+
+
+
+   /*******************************************************************************
+    ** Mark the chunk DONE in the plan's transaction, with its row errors and its
+    ** outbox effects: the chunk's writes, its effects and its DONE mark commit
+    ** together (spec section 2.13).
+    *******************************************************************************/
+   public void completeInTransaction(ChunkOutcome outcome, List<QRecord> rowErrors, List<QRecord> effects, QBackendTransaction transaction) throws QException
+   {
       store.recordRowErrors(rowErrors, transaction);
+      new EffectStore(store.getSettings()).insertEffects(effects, transaction);
       store.completeChunk(lease, outcome, transaction);
       completedByPlan = true;
+   }
+
+
+
+   /*******************************************************************************
+    ** Write outbox effects outside a transaction (keys already written are
+    ** skipped, so a rerun never doubles them).
+    *******************************************************************************/
+   public void recordEffects(List<QRecord> effects) throws QException
+   {
+      new EffectStore(store.getSettings()).insertEffects(effects, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** This chunk's identity for effect keys.
+    *******************************************************************************/
+   public JobChunkScope.ChunkIdentity identity()
+   {
+      return (new JobChunkScope.ChunkIdentity(job.getValueInteger("id"), chunk.getValueInteger("id"), chunk.getValueInteger("seq"), job.getValueString("processName")));
    }
 
 

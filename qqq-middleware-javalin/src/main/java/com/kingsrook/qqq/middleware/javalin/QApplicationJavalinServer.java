@@ -665,9 +665,10 @@ public class QApplicationJavalinServer
 
    /*******************************************************************************
     ** Whether routes under a UI API version without an endpoint spec fail startup
-    ** (true) or are only logged as warnings (false, the default).  When not set,
-    ** the system property qqq.uiApi.strictRoutes or the environment variable
-    ** QQQ_UI_API_STRICT_ROUTES decides.
+    ** (true, the default since UI API 1.3.0 / QRun-IO/qqq#1159) or are only
+    ** logged as warnings (false).  When not set, the system property
+    ** qqq.uiApi.strictRoutes or the environment variable QQQ_UI_API_STRICT_ROUTES
+    ** decides: only "false" turns strict mode off.
     *******************************************************************************/
    public boolean isStrictUiApiRoutes()
    {
@@ -676,7 +677,7 @@ public class QApplicationJavalinServer
          return (strictUiApiRoutes);
       }
       String value = System.getProperty("qqq.uiApi.strictRoutes", System.getenv("QQQ_UI_API_STRICT_ROUTES"));
-      return ("true".equalsIgnoreCase(value));
+      return (!"false".equalsIgnoreCase(value));
    }
 
 

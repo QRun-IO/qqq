@@ -38,6 +38,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableBackendDetails;
@@ -168,6 +169,17 @@ public interface QBackendModuleInterface
    default ConditionalUpdateInterface getConditionalUpdateInterface()
    {
       return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether queries against this backend can take the given row locks
+    ** (QueryInput.lockMode). False by default.
+    *******************************************************************************/
+   default boolean supportsQueryLockMode(QBackendMetaData backendMetaData, QueryLockMode lockMode)
+   {
+      return (false);
    }
 
 

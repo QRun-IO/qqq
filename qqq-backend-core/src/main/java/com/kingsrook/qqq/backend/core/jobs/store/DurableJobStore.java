@@ -226,6 +226,45 @@ public class DurableJobStore
     *******************************************************************************/
    public Optional<JobLease> claimChunk(QRecord chunk, String podId, int leaseTtlSeconds) throws QException
    {
+      return (claimChunk(chunk, podId, leaseTtlSeconds, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether chunk claims use SELECT ... FOR UPDATE SKIP LOCKED (setting on, and
+    ** the jobs backend supports it).
+    *******************************************************************************/
+   public boolean usesSkipLockedClaims()
+   {
+      return (Boolean.TRUE.equals(settings.getUseSkipLockedClaims()) && SkipLockedClaims.isSupported(TABLE_CHUNK));
+   }
+
+
+
+   /*******************************************************************************
+    ** Claim the job's next claimable chunk (lowest seq) that no other claimer has
+    ** locked: FOR UPDATE SKIP LOCKED plus the fenced conditional update, in one
+    ** transaction.
+    *******************************************************************************/
+   public Optional<JobLease> claimNextChunkSkipLocked(Integer jobId, String podId, int leaseTtlSeconds) throws QException
+   {
+      QQueryFilter claimable = new QQueryFilter()
+         .withCriteria(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, jobId))
+         .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, List.of(ChunkStatus.PENDING.name(), ChunkStatus.RETRY.name())))
+         .withOrderBy(new QFilterOrderBy("seq"))
+         .withLimit(1);
+      return (SkipLockedClaims.claim(TABLE_CHUNK, claimable, (locked, transaction) ->
+         locked.isEmpty() ? Optional.empty() : claimChunk(locked.get(0), podId, leaseTtlSeconds, transaction)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Claim one specific chunk, optionally in a (claiming) transaction.
+    *******************************************************************************/
+   public Optional<JobLease> claimChunk(QRecord chunk, String podId, int leaseTtlSeconds, QBackendTransaction transaction) throws QException
+   {
       Instant now       = now();
       Instant expiresAt = now.plusSeconds(leaseTtlSeconds);
       String  token     = UUID.randomUUID().toString();
@@ -247,7 +286,7 @@ public class DurableJobStore
       int count = cas(TABLE_CHUNK, values, new QQueryFilter()
          .withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, chunk.getValueInteger("id")))
          .withCriteria(new QFilterCriteria("leaseVersion", QCriteriaOperator.EQUALS, version))
-         .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, List.of(ChunkStatus.PENDING.name(), ChunkStatus.RETRY.name()))), null);
+         .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, List.of(ChunkStatus.PENDING.name(), ChunkStatus.RETRY.name()))), transaction);
 
       if(count != 1)
       {

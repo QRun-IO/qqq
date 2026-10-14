@@ -77,6 +77,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 ### Unreleased (after 1.2.0; no change to the document)
 - Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 ### 1.3.0 (unreleased)
+- The assistant wall denies `audit*` (reads and writes) by default again; `withAssistantAuditReads()`
+  is the host opt-in for reads. See the security record in UI-API-CLIENT-CHANNELS.md.
 - Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):
   - Added `POST /processes/{processName}/jobs`: launch an eligible process as a durable background
     job (`ProcessJobLaunchResponseV1 {jobId, status}`). Over the per-user queue cap it returns
@@ -110,7 +112,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   and `PreferenceSectionPatchRequestV1` describe typed fields, fixed rows, inline ENUM
   choices and partial updates scoped to the signed-in user. `preferences` is a core
   feature and `/preferences` is reserved by core.
-- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*` write-denied only: the assistant can read a record's history, but cannot write audits.
+- AI tool kernel data access goes through the UI API. `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count, get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel. `CoreAiDataGateway` remains the default for other kernels. The assistant wall keeps `audit*` hidden by default; a host opts in to reads with `withAssistantAuditReads()`, and audits are never writable by the assistant (see UI-API-CLIENT-CHANNELS.md, security record).
 - Scoped credentials: `QSession.credentialScope` (`QCredentialScope`) narrows a session to the apps, tables, processes, reports, widgets and operations it lists, optionally read-only.
   - It is intersected with the user's live permissions.
   - The session's client channel is `token:<id>`; "token" is a new default channel.

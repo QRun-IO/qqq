@@ -26,14 +26,17 @@ import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.savedbulkloadprofiles.SavedBulkLoadProfile;
+import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
 /*******************************************************************************
@@ -76,7 +79,16 @@ public class DeleteSavedBulkLoadProfileProcess implements BackendStep
          DeleteInput input = new DeleteInput();
          input.setTableName(SavedBulkLoadProfile.TABLE_NAME);
          input.setPrimaryKeys(List.of(savedBulkLoadProfileId));
-         new DeleteAction().execute(input);
+         DeleteOutput output = new DeleteAction().execute(input);
+
+         /////////////////////////////////////////////////////////////////////
+         // a delete the backend refused (e.g., a record lock: only the     //
+         // owner may delete a shared profile) is an error, not a success   //
+         /////////////////////////////////////////////////////////////////////
+         if(CollectionUtils.nullSafeHasContents(output.getRecordsWithErrors()))
+         {
+            throw (new QUserFacingException("Error deleting Bulk Load Profile: " + output.getRecordsWithErrors().get(0).getErrors().get(0).getMessage()));
+         }
       }
       catch(Exception e)
       {

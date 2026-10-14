@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.jobs;
 
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallbackFactory;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
+import com.kingsrook.qqq.backend.core.actions.tables.StorageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
@@ -58,6 +60,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperat
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -66,6 +69,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
+import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.assist.BulkLoadUploadSources;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.AbstractTransformStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.ExtractViaQueryStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.LoadViaUpdateStep;
@@ -199,6 +203,16 @@ class ChunkedJobsTest extends BaseTest
       }
       UploadRef ref = UploadRefs.store("items.csv", "text/csv", new ByteArrayInputStream(csv.toString().getBytes(StandardCharsets.UTF_8)));
       assertThat(ref.sizeBytes()).isEqualTo(csv.length());
+
+      ////////////////////////////////////////////////////////////////////
+      // assisted bulk load opens the same upload refs (defineAll wires //
+      // UploadRefs in as the bulk-load upload source)                  //
+      ////////////////////////////////////////////////////////////////////
+      StorageInput opened = BulkLoadUploadSources.open(ref.ref());
+      try(InputStream in = new StorageAction().getInputStream(opened))
+      {
+         assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(csv.toString());
+      }
 
       String profile = """
          {"version":"v1","layout":"FLAT","hasHeaderRow":true,"fieldList":[

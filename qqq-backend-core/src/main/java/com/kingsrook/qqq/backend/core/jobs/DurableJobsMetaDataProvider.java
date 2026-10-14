@@ -393,7 +393,9 @@ public class DurableJobsMetaDataProvider
 
 
    /*******************************************************************************
-    ** jobs_event: the timeline of a job.
+    ** jobs_event: the timeline of a job. Type leads the fields: most events are
+    ** job-level, so a (usually empty) chunk column first would leave lists, such as
+    ** the job's Events child list, without a readable first column.
     *******************************************************************************/
    public QTableMetaData defineEventTable(String backendName)
    {
@@ -408,14 +410,14 @@ public class DurableJobsMetaDataProvider
          .withRecordSecurityLock(ownerLock(TABLE_JOB + ".userId", List.of(childJoinName(TABLE_EVENT))))
          .withField(readOnly("id", QFieldType.INTEGER))
          .withField(readOnly("jobId", QFieldType.INTEGER).withLabel("Job").withPossibleValueSourceName(TABLE_JOB))
-         .withField(readOnly("chunkId", QFieldType.INTEGER).withLabel("Chunk").withPossibleValueSourceName(TABLE_CHUNK))
          .withField(readOnly("type", QFieldType.STRING).withPossibleValueSourceName(JobEventType.NAME).withMaxLength(30))
+         .withField(readOnly("createDate", QFieldType.DATE_TIME))
+         .withField(readOnly("detail", QFieldType.TEXT))
+         .withField(readOnly("chunkId", QFieldType.INTEGER).withLabel("Chunk").withPossibleValueSourceName(TABLE_CHUNK))
          .withField(readOnly("actorUserId", QFieldType.STRING).withLabel("Actor").withMaxLength(250))
          .withField(readOnly("clientChannel", QFieldType.STRING).withMaxLength(250))
          .withField(readOnly("pod", QFieldType.STRING).withMaxLength(250))
-         .withField(readOnly("detail", QFieldType.TEXT))
-         .withField(readOnly("createDate", QFieldType.DATE_TIME))
-         .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "jobId", "chunkId", "type", "createDate")))
+         .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "jobId", "type", "createDate", "chunkId")))
          .withSection(new QFieldSection("details", "Details", new QIcon("text_snippet"), Tier.T2, List.of("actorUserId", "clientChannel", "pod", "detail"))));
    }
 

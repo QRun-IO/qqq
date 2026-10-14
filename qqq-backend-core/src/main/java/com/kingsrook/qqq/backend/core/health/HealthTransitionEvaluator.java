@@ -30,7 +30,10 @@ import com.kingsrook.qqq.backend.core.alerts.AlertRecordRef;
 import com.kingsrook.qqq.backend.core.alerts.AlertResolution;
 import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
 import com.kingsrook.qqq.backend.core.alerts.AlertSignal;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import org.json.JSONArray;
 
@@ -152,7 +155,7 @@ public class HealthTransitionEvaluator
          .withSummary(HealthRedactor.redact(summary)).withOccurredAt(now)
          .withRecordRef(new AlertRecordRef(HealthMetaDataProvider.CHECK_TABLE, check.getValue("id")))
          .withAttribute("component", HealthRedactor.redact(check.getValueString("component")))
-         .withLink(AlertLink.toPath("/systemHealth", "System Health")));
+         .withLink(AlertLink.toPath(homePath(), "System Health")));
    }
 
 
@@ -183,5 +186,17 @@ public class HealthTransitionEvaluator
    private int integer(QRecord record, String field)
    {
       return (record.getValueInteger(field) == null ? 0 : record.getValueInteger(field));
+   }
+
+
+
+   /*******************************************************************************
+    ** Where alerts link to: the host's configured health home, else /systemHealth.
+    *******************************************************************************/
+   static String homePath()
+   {
+      QInstance instance = QContext.getQInstance();
+      HealthMonitoringMetaData settings = instance == null ? null : QSupplementalInstanceMetaData.of(instance, HealthMonitoringMetaData.NAME);
+      return (settings == null || settings.getHomePath() == null || settings.getHomePath().isBlank() ? "/systemHealth" : settings.getHomePath());
    }
 }

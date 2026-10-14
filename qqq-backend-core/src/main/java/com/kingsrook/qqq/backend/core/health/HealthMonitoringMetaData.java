@@ -38,6 +38,7 @@ public class HealthMonitoringMetaData implements QSupplementalInstanceMetaData
    private int resultRetentionDays = 30;
    private boolean prometheusEnabled = false;
    private String runnerUserName = "health_runner";
+   private String homePath = "/systemHealth";
 
    public static final String NAME = "healthMonitoring";
 
@@ -291,6 +292,38 @@ public class HealthMonitoringMetaData implements QSupplementalInstanceMetaData
    public HealthMonitoringMetaData withRunnerUserName(String runnerUserName)
    {
       setRunnerUserName(runnerUserName);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for homePath: the UI path alerts link to (default /systemHealth;
+    ** hosts that place the health table elsewhere, e.g. under Admin, set it).
+    *******************************************************************************/
+   public String getHomePath()
+   {
+      return (this.homePath);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for homePath
+    *******************************************************************************/
+   public void setHomePath(String homePath)
+   {
+      this.homePath = homePath;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for homePath
+    *******************************************************************************/
+   public HealthMonitoringMetaData withHomePath(String homePath)
+   {
+      setHomePath(homePath);
       return (this);
    }
 }

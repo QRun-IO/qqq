@@ -166,9 +166,43 @@ class HealthMetaDataProducerTest
       assertThat(javalinMetaData1).isSameAs(javalinMetaData2);
 
       //////////////////////////////////////////////////////////////////////
-      // Route provider should be registered twice (implementation allows) //
-      // In practice, this shouldn't happen as producers run once          //
+      // Repeated production must not install duplicate HTTP routes.       //
+      // Apps may re-run metadata production during configuration.         //
       //////////////////////////////////////////////////////////////////////
-      assertThat(javalinMetaData2.getAdditionalRouteProviderReferences()).hasSize(2);
+      assertThat(javalinMetaData2.getAdditionalRouteProviderReferences()).hasSize(1);
+   }
+
+
+
+   /*******************************************************************************
+    ** Legacy apps get adapters without tables; opted-in apps get native health
+    ** tables. Repeated production registers each adapter and route only once.
+    *******************************************************************************/
+   @Test
+   void centralRegistryAndOptInTables() throws Exception
+   {
+      QInstance instance = new QInstance();
+      instance.addBackend(new com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData().withName("memory")
+         .withBackendType(com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryBackendModule.class));
+      HealthMetaDataProducer producer = new HealthMetaDataProducer()
+      {
+         /***********************************************************************
+          ** Existing indicator configuration remains the application's entry point.
+          ***********************************************************************/
+         @Override
+         protected HealthCheckMetaData buildHealthCheckMetaData(QInstance instance)
+         {
+            return (new HealthCheckMetaData().withIndicators(List.of(new MemoryHealthIndicator())));
+         }
+      };
+      producer.produce(instance);
+      assertThat(instance.getTable("health_check")).isNull();
+      assertThat(com.kingsrook.qqq.backend.core.health.HealthChecksMetaData.ofOrWithNew(instance).getChecks()).hasSize(1);
+      com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData.ofOrWithNew(instance).withBackendName("memory");
+      producer.produce(instance);
+      assertThat(instance.getTables()).containsKeys("health_check", "health_check_result", "health_component");
+      assertThat(com.kingsrook.qqq.backend.core.health.HealthChecksMetaData.ofOrWithNew(instance).getChecks().stream()
+         .filter(check -> "core.memory".equals(check.getName()))).hasSize(1);
+      assertThat(QJavalinMetaData.ofOrWithNew(instance).getAdditionalRouteProviderReferences()).hasSize(1);
    }
 }

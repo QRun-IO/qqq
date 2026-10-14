@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.UpdateInterface;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.health.HealthCheck;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
@@ -54,6 +55,16 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
  *******************************************************************************/
 public interface QBackendModuleInterface
 {
+   /*******************************************************************************
+    ** Optional backend readiness probe, registered by central health monitoring.
+    *******************************************************************************/
+   default HealthCheck getHealthCheck(QBackendMetaData backend)
+   {
+      return (null);
+   }
+
+
+
    /*******************************************************************************
     ** Whether query, count and aggregate can translate same-backend sub-queries.
     *******************************************************************************/

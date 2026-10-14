@@ -336,9 +336,12 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
    {
       List<String> rs = new ArrayList<>();
 
-      for(GroupBy groupBy : CollectionUtils.nonNullList(aggregateInput.getGroupBys()))
+      List<GroupBy> groupBys = CollectionUtils.nonNullList(aggregateInput.getGroupBys());
+      for(int i = 0; i < groupBys.size(); i++)
       {
-         rs.add(getSingleGroupByClause(groupBy, joinsContext, params, false));
+         GroupBy groupBy = groupBys.get(i);
+         String  clause  = getSingleGroupByClause(groupBy, joinsContext, params, false);
+         rs.add(groupBy.getBucket() == null ? clause : clause + " AS " + bucketAlias(i));
       }
 
       for(Aggregate aggregate : aggregateInput.getAggregates())
@@ -355,14 +358,28 @@ public class RDBMSAggregateAction extends AbstractRDBMSAction implements Aggrega
     *******************************************************************************/
    private String makeGroupByClause(AggregateInput aggregateInput, JoinsContext joinsContext, List<Serializable> params)
    {
-      List<String> columns = new ArrayList<>();
-      for(GroupBy groupBy : CollectionUtils.nonNullList(aggregateInput.getGroupBys()))
+      List<String>  columns  = new ArrayList<>();
+      List<GroupBy> groupBys = CollectionUtils.nonNullList(aggregateInput.getGroupBys());
+      for(int i = 0; i < groupBys.size(); i++)
       {
-         columns.add(groupBy.getBucket() == null ? getSingleGroupByClause(groupBy, joinsContext, params, false)
-            : String.valueOf(columns.size() + 1));
+         GroupBy groupBy = groupBys.get(i);
+         columns.add(groupBy.getBucket() == null ? getSingleGroupByClause(groupBy, joinsContext, params, false) : bucketAlias(i));
       }
 
       return (StringUtils.join(",", columns));
+   }
+
+
+
+   /*******************************************************************************
+    ** Bucketed group-bys are grouped by their select alias. The bucket expression
+    ** carries bind parameters, so a repeated expression would not match its
+    ** select clause (Postgres, H2), and positional GROUP BY is not accepted by H2
+    ** in its default mode; an output-column alias works on H2, MySQL and Postgres.
+    *******************************************************************************/
+   private String bucketAlias(int index)
+   {
+      return (escapeIdentifier("qqq_bucket_" + index));
    }
 
 

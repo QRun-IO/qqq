@@ -62,6 +62,13 @@ public class QSession implements Serializable, Cloneable
    /////////////////////////////////////////////
    private Map<String, Serializable> valuesForFrontend;
 
+   ////////////////////////////////////////////////////////////////////////////////
+   // which client made the request (e.g. next-ui, assistant/<turnId>) - set by  //
+   // the server (UI API header, UiApiInvoker, or server-side code); extra       //
+   // attribution for audit and client-channel deny rules - never grants access  //
+   ////////////////////////////////////////////////////////////////////////////////
+   private String clientChannel;
+
    public static final String VALUE_KEY_USER_TIMEZONE                = "UserTimezone";
    public static final String VALUE_KEY_USER_TIMEZONE_OFFSET_MINUTES = "UserTimezoneOffsetMinutes";
 
@@ -246,6 +253,53 @@ public class QSession implements Serializable, Cloneable
    public void setValues(Map<String, String> values)
    {
       this.values = values;
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel - the full channel, e.g. assistant/turn-123 (null
+    ** when the request named no client).
+    *******************************************************************************/
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** The channel name: the client channel up to its first '/', lower-cased
+    ** (e.g. assistant for assistant/turn-123); null when there is none.
+    *******************************************************************************/
+   public String getClientChannelName()
+   {
+      if(clientChannel == null || clientChannel.isBlank())
+      {
+         return (null);
+      }
+      return (clientChannel.strip().replaceFirst("/.*$", "").toLowerCase());
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public QSession withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
    }
 
 

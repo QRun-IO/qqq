@@ -38,6 +38,7 @@ public enum QCriteriaOperator
    STARTS_WITH,
    ENDS_WITH,
    CONTAINS,
+   CONTAINS_ALL,
    NOT_STARTS_WITH,
    NOT_ENDS_WITH,
    NOT_CONTAINS,

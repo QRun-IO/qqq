@@ -77,6 +77,15 @@ public class AuditsMetaDataProvider
    //////////////////////////////////////////////////////////////////////////
    private boolean defineRecordScreens = false;
 
+   ///////////////////////////////////////////////////////////////////////////////
+   // opt in to the audit.clientChannel field (which client made the change -   //
+   // e.g. next-ui, assistant/<turnId>).  Off by default: the backing table     //
+   // needs the column (VARCHAR(100), nullable) before turning this on.         //
+   ///////////////////////////////////////////////////////////////////////////////
+   private boolean includeClientChannelField = false;
+
+   public static final String FIELD_CLIENT_CHANNEL = "clientChannel";
+
 
 
    /*******************************************************************************
@@ -147,7 +156,9 @@ public class AuditsMetaDataProvider
          audit.getField("auditTableId").withLabel("Table");
          audit.getField("auditUserId").withLabel("User");
          audit.withSection(new QFieldSection("audit", "Audit", new QIcon("history"), Tier.T1,
-            List.of("id", "timestamp", "auditUserId", "auditTableId", "recordId", "message")));
+            audit.getFields().containsKey(FIELD_CLIENT_CHANNEL)
+               ? List.of("id", "timestamp", "auditUserId", FIELD_CLIENT_CHANNEL, "auditTableId", "recordId", "message")
+               : List.of("id", "timestamp", "auditUserId", "auditTableId", "recordId", "message")));
 
          QJoinMetaData join = instance.getJoin(QJoinMetaData.makeInferredJoinName(TABLE_NAME_AUDIT, TABLE_NAME_AUDIT_DETAIL));
          if(join != null && instance.getTable(TABLE_NAME_AUDIT_DETAIL) != null)
@@ -318,7 +329,7 @@ public class AuditsMetaDataProvider
     *******************************************************************************/
    private QTableMetaData defineAuditTable(String backendName)
    {
-      return new QTableMetaData()
+      QTableMetaData table = new QTableMetaData()
          .withName(TABLE_NAME_AUDIT)
          .withBackendName(backendName)
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.NONE))
@@ -332,6 +343,12 @@ public class AuditsMetaDataProvider
          .withField(new QFieldMetaData("message", QFieldType.STRING).withMaxLength(250).withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS))
          .withField(new QFieldMetaData("timestamp", QFieldType.DATE_TIME))
          .withoutCapabilities(Capability.TABLE_INSERT, Capability.TABLE_UPDATE, Capability.TABLE_DELETE);
+
+      if(includeClientChannelField)
+      {
+         table.withField(new QFieldMetaData(FIELD_CLIENT_CHANNEL, QFieldType.STRING).withLabel("Client").withMaxLength(100).withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS));
+      }
+      return (table);
    }
 
 
@@ -387,6 +404,29 @@ public class AuditsMetaDataProvider
       this.recordIdType = recordIdType;
       return (this);
    }
+
+
+   /*******************************************************************************
+    ** Fluent setter for includeClientChannelField: whether the audit table has
+    ** the clientChannel field (which client made each change).  The backing
+    ** table needs the column first.
+    *******************************************************************************/
+   public AuditsMetaDataProvider withClientChannelField(boolean includeClientChannelField)
+   {
+      this.includeClientChannelField = includeClientChannelField;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for includeClientChannelField
+    *******************************************************************************/
+   public boolean getIncludeClientChannelField()
+   {
+      return (this.includeClientChannelField);
+   }
+
 
 
    /*******************************************************************************

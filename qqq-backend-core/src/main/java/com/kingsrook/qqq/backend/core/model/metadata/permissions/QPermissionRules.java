@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.backend.core.model.metadata.permissions;
 
 
+import java.util.HashSet;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 
@@ -35,6 +37,12 @@ public class QPermissionRules implements Cloneable, QMetaDataObject
    private String          permissionBaseName;
 
    private QCodeReference customPermissionChecker;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // client channels (e.g. assistant) for which the object is always denied,  //
+   // whatever the user's permissions - see ClientChannelsMetaData             //
+   //////////////////////////////////////////////////////////////////////////////
+   private Set<String> deniedClients;
 
 
 
@@ -152,6 +160,7 @@ public class QPermissionRules implements Cloneable, QMetaDataObject
       try
       {
          QPermissionRules clone = (QPermissionRules) super.clone();
+         clone.deniedClients = deniedClients == null ? null : new HashSet<>(deniedClients);
          return clone;
       }
       catch(CloneNotSupportedException e)
@@ -191,4 +200,35 @@ public class QPermissionRules implements Cloneable, QMetaDataObject
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for deniedClients - client channel names (e.g. assistant) that are
+    ** always denied this object, whatever the user's permissions.
+    *******************************************************************************/
+   public Set<String> getDeniedClients()
+   {
+      return (this.deniedClients);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for deniedClients
+    *******************************************************************************/
+   public void setDeniedClients(Set<String> deniedClients)
+   {
+      this.deniedClients = deniedClients == null ? null : new HashSet<>(deniedClients);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for deniedClients
+    *******************************************************************************/
+   public QPermissionRules withDeniedClients(Set<String> deniedClients)
+   {
+      setDeniedClients(deniedClients);
+      return (this);
+   }
 }

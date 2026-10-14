@@ -146,14 +146,31 @@ fields are the workspace from the user's own connections, then the channel the u
      the alert `delivery.unauthorized` is raised, deduplicated per owner and destination per day. **There is
      no fallback to another destination, user or credential.**
 
-**Durable jobs.** A job declares the effect `deliver` as `IDEMPOTENT_EXTERNAL`. `DeliveryEffectTarget
-implements EffectTarget` maps:
+**Durable jobs** (agreed with the jobs owner):
 
-- `send` to `DeliverOutputAction`, with the effect key as the idempotency key;
-- `reconcile` to the destination's `lookup`.
+- **Effect.** The effect `deliver` is `IDEMPOTENT_EXTERNAL` and job-level. Its key is
+  `EffectKeys.key(jobId, -1, destinationKey, "deliver")`, which gives `jobId:-1:<destinationKey>:deliver`.
+  `destinationKey` is the `output_delivery` id, or the destination name for an ad-hoc delivery, so a
+  re-delivery to the same place dedupes. The effect's idempotency key is passed through unchanged as the
+  `DeliverOutputAction` key.
+- **The jobs side** (owned by the jobs work, stacked on #1195):
+  - `JobEffects.emitForJob(jobId, effectName, rowKey, payload)`;
+  - a `JobCompletionEffects` hook, called when a job finishes COMPLETED or COMPLETED_WITH_ERRORS, with the
+    job record including `outputStorageJson`.
 
-So a crash between "Slack accepted" and "marked SENT" is reconciled, not resent. Core provides this target
-once #1191 has merged; until then the action is called directly at job completion.
+  Job-level effects don't hold the job open. Their failures go to the Effects list and the
+  `jobs.effect-unresolved` alert.
+- **The delivery side** (this spec):
+  - `DeliveryJobCompletionEffects`, which turns a job's outputs and its delivery choices into `deliver`
+    effects;
+  - `DeliveryEffectTarget implements EffectTarget`. The dispatcher calls targets as the system user, so the
+    target builds the owner's session itself with `JobSessions.forJob(instance, store.getJob(jobId))` inside
+    `QContext.withTemporaryContext`. That is the same intersected-keys session chunks run under. `send` maps
+    to `DeliverOutputAction`, and `reconcile` maps to the destination's `lookup` (FOUND, NOT_FOUND and
+    UNKNOWN map directly).
+- **Lost access.** An owner who lost access gives `EffectResult.failed(...)`, never UNKNOWN.
+- **Exactly once.** A crash between "the destination accepted" and "marked SENT" is reconciled, not resent.
+- **Before #1191 merges,** the action is called directly at job completion.
 
 ## 3. Saved deliveries: `output_delivery`
 

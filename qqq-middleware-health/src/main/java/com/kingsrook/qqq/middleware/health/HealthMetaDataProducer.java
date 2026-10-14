@@ -22,9 +22,13 @@ package com.kingsrook.qqq.middleware.health;
 
 
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.health.HealthChecksMetaData;
+import com.kingsrook.qqq.backend.core.health.HealthMetaDataProvider;
+import com.kingsrook.qqq.backend.core.health.HealthMonitoringMetaData;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.middleware.health.model.metadata.HealthCheckMetaData;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
@@ -89,6 +93,23 @@ public class HealthMetaDataProducer extends MetaDataProducer<QJavalinMetaData>
          // Add health check metadata to QInstance supplemental data //
          //////////////////////////////////////////////////////////
          qInstance.withSupplementalMetaData(healthCheckMetaData);
+         if(healthCheckMetaData.getIndicators() != null)
+         {
+            HealthChecksMetaData registry = HealthChecksMetaData.ofOrWithNew(qInstance);
+            for(HealthIndicator indicator : healthCheckMetaData.getIndicators())
+            {
+               HealthIndicatorCheck adapter = new HealthIndicatorCheck(indicator);
+               if(registry.getChecks().stream().noneMatch(check -> check.getName().equals(adapter.getName())))
+               {
+                  registry.withCheck(adapter.toMetaData());
+               }
+            }
+         }
+         HealthMonitoringMetaData monitoring = QSupplementalInstanceMetaData.of(qInstance, HealthMonitoringMetaData.NAME);
+         if(monitoring != null && qInstance.getTable(HealthMetaDataProvider.CHECK_TABLE) == null)
+         {
+            new HealthMetaDataProvider().defineAll(qInstance, monitoring.getBackendName(), null);
+         }
 
          LOG.info("Health check metadata configured",
             logPair("enabled", healthCheckMetaData.getEnabled()),
@@ -98,9 +119,11 @@ public class HealthMetaDataProducer extends MetaDataProducer<QJavalinMetaData>
          ///////////////////////////////////////////////////////////////////////////
          // Auto-register JavalinHealthRouteProvider to consume health metadata //
          ///////////////////////////////////////////////////////////////////////////
-         javalinMetaData.withAdditionalRouteProviderReference(
-            new QCodeReference(JavalinHealthRouteProvider.class)
-         );
+         if(javalinMetaData.getAdditionalRouteProviderReferences() == null || javalinMetaData.getAdditionalRouteProviderReferences().stream()
+            .noneMatch(reference -> JavalinHealthRouteProvider.class.getName().equals(reference.getName())))
+         {
+            javalinMetaData.withAdditionalRouteProviderReference(new QCodeReference(JavalinHealthRouteProvider.class));
+         }
 
          LOG.info("Health route provider auto-registered via metadata");
       }

@@ -1,0 +1,305 @@
+components:
+  schemas:
+    HealthCheckV1:
+      properties:
+        name:
+          nullable: true
+          type: "string"
+        label:
+          nullable: true
+          type: "string"
+        kind:
+          nullable: true
+          type: "string"
+        severity:
+          nullable: true
+          type: "string"
+        currentStatus:
+          nullable: true
+          type: "string"
+        currentMessage:
+          nullable: true
+          type: "string"
+        currentSince:
+          nullable: true
+          type: "string"
+        lastRunAt:
+          nullable: true
+          type: "string"
+        lastLatencyMs:
+          nullable: true
+          type: "integer"
+      type: "object"
+    HealthComponentV1:
+      properties:
+        name:
+          nullable: true
+          type: "string"
+        label:
+          nullable: true
+          type: "string"
+        status:
+          nullable: true
+          type: "string"
+        since:
+          nullable: true
+          type: "string"
+        checksUp:
+          nullable: true
+          type: "integer"
+        checksDegraded:
+          nullable: true
+          type: "integer"
+        checksDown:
+          nullable: true
+          type: "integer"
+        checksUnknown:
+          nullable: true
+          type: "integer"
+        worstCheckId:
+          nullable: true
+          type: "integer"
+        updatedAt:
+          nullable: true
+          type: "string"
+        checks:
+          items:
+            $ref: "#/components/schemas/HealthCheckV1"
+          type: "array"
+      type: "object"
+    HealthCountsV1:
+      properties:
+        up:
+          nullable: true
+          type: "integer"
+        degraded:
+          nullable: true
+          type: "integer"
+        down:
+          nullable: true
+          type: "integer"
+        unknown:
+          nullable: true
+          type: "integer"
+      type: "object"
+    HealthDetailsV1:
+      properties:
+        values:
+          additionalProperties: true
+          type: "object"
+      type: "object"
+    HealthHistoryV1:
+      properties:
+        results:
+          items:
+            $ref: "#/components/schemas/HealthResultV1"
+          type: "array"
+      type: "object"
+    HealthMetricV1:
+      properties:
+        name:
+          nullable: true
+          type: "string"
+        value:
+          type: "number"
+        unit:
+          nullable: true
+          type: "string"
+      type: "object"
+    HealthResultV1:
+      properties:
+        id:
+          nullable: true
+          type: "integer"
+        status:
+          nullable: true
+          type: "string"
+        message:
+          nullable: true
+          type: "string"
+        detailsJson:
+          nullable: true
+          type: "string"
+        metricsJson:
+          nullable: true
+          type: "string"
+        latencyMs:
+          nullable: true
+          type: "integer"
+        startedAt:
+          nullable: true
+          type: "string"
+        finishedAt:
+          nullable: true
+          type: "string"
+        runnerPod:
+          nullable: true
+          type: "string"
+        isTransition:
+          type: "boolean"
+        triggeredBy:
+          nullable: true
+          type: "string"
+      type: "object"
+    HealthRunV1:
+      properties:
+        status:
+          nullable: true
+          type: "string"
+        message:
+          nullable: true
+          type: "string"
+        details:
+          $ref: "#/components/schemas/HealthDetailsV1"
+        latencyMs:
+          nullable: true
+          type: "integer"
+        metrics:
+          items:
+            $ref: "#/components/schemas/HealthMetricV1"
+          type: "array"
+      type: "object"
+    HealthRunnerV1:
+      properties:
+        lastBeatAt:
+          nullable: true
+          type: "string"
+        pods:
+          items:
+            nullable: true
+            type: "string"
+          type: "array"
+      type: "object"
+    HealthSummaryV1:
+      properties:
+        status:
+          nullable: true
+          type: "string"
+        since:
+          nullable: true
+          type: "string"
+        counts:
+          $ref: "#/components/schemas/HealthCountsV1"
+        components:
+          items:
+            $ref: "#/components/schemas/HealthComponentV1"
+          type: "array"
+        runner:
+          $ref: "#/components/schemas/HealthRunnerV1"
+      type: "object"
+  securitySchemes:
+    sessionUuidCookie:
+      in: "cookie"
+      name: "sessionUUID"
+      type: "apiKey"
+info:
+  contact:
+    email: "contact@kingsrook.com"
+  description: "Central health summary, components, history and on-demand checks."
+  title: "QQQ Middleware API extension: health"
+  version: "1.0.0"
+openapi: "3.0.3"
+paths:
+  /qqq/v1/health/summary:
+    get:
+      description: "Requires health.read permission. Returns redacted health state."
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthSummaryV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Health summary"
+      tags:
+      - "Health"
+  /qqq/v1/health/components/{name}:
+    get:
+      description: "Requires health.read permission. Returns redacted health state."
+      parameters:
+      - description: "Stable health check or component name."
+        in: "path"
+        name: "name"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthComponentV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Health component"
+      tags:
+      - "Health"
+  /qqq/v1/health/checks/{name}/history:
+    get:
+      description: "Requires health.read permission. Returns redacted health state."
+      parameters:
+      - description: "Stable health check or component name."
+        in: "path"
+        name: "name"
+        required: true
+        schema:
+          type: "string"
+      - description: "limit is capped at 500; from/to are inclusive ISO-8601 instants."
+        in: "query"
+        name: "from"
+        required: false
+        schema:
+          type: "string"
+      - description: "limit is capped at 500; from/to are inclusive ISO-8601 instants."
+        in: "query"
+        name: "to"
+        required: false
+        schema:
+          type: "string"
+      - description: "limit is capped at 500; from/to are inclusive ISO-8601 instants."
+        in: "query"
+        name: "limit"
+        required: false
+        schema:
+          type: "integer"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthHistoryV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Health history"
+      tags:
+      - "Health"
+  /qqq/v1/health/checks/{name}/run:
+    post:
+      description: "Requires health.write permission. Returns redacted health state."
+      parameters:
+      - description: "Stable health check or component name."
+        in: "path"
+        name: "name"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthRunV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Health run"
+      tags:
+      - "Health"

@@ -25,11 +25,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.module.filesystem.TestUtils;
 import com.kingsrook.qqq.backend.module.filesystem.s3.BaseS3Test;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
 /*******************************************************************************
@@ -61,6 +63,10 @@ public class S3StorageActionTest extends BaseS3Test
       inputStream.transferTo(byteArrayOutputStream);
 
       assertEquals(data, byteArrayOutputStream.toString(StandardCharsets.UTF_8));
+      inputStream.close();
+      s3StorageAction.deleteObject(storageInput);
+      s3StorageAction.deleteObject(storageInput);
+      assertThrows(QException.class, () -> s3StorageAction.getInputStream(storageInput));
 
    }
 

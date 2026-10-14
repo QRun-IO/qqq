@@ -22,7 +22,12 @@
 package com.kingsrook.qqq.backend.core.jobs;
 
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
+import com.kingsrook.qqq.backend.core.jobs.effects.JobEffectDeclaration;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSemantics;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -49,6 +54,7 @@ public class DurableProcessMetaData extends QSupplementalProcessMetaData
    private Integer maxParallelChunks = 1;
    private Boolean chunkParallelSafe = false;
    private Integer maxConcurrentJobs;
+   private List<JobEffectDeclaration> effects = new ArrayList<>();
 
 
 
@@ -86,6 +92,58 @@ public class DurableProcessMetaData extends QSupplementalProcessMetaData
       validator.assertCondition(maxParallelChunks == null || maxParallelChunks >= 1, "Process " + process.getName() + " durable maxParallelChunks must be at least 1.");
       validator.assertCondition(maxParallelChunks == null || maxParallelChunks == 1 || Boolean.TRUE.equals(chunkParallelSafe), "Process " + process.getName() + " durable maxParallelChunks over 1 requires chunkParallelSafe.");
       validator.assertCondition(chunkSize == null || chunkSize >= 1, "Process " + process.getName() + " durable chunkSize must be at least 1.");
+
+      ///////////////////////////////////////////////////////////////////////
+      // declared side effects: unique names, a type, a known step, and an //
+      // external effect needs a registered target (LOCAL_TX has none)     //
+      ///////////////////////////////////////////////////////////////////////
+      DurableJobsMetaData settings = DurableJobsMetaData.of(qInstance);
+      Set<String>         names    = new HashSet<>();
+      for(JobEffectDeclaration effect : effects == null ? List.<JobEffectDeclaration>of() : effects)
+      {
+         String prefix = "Process " + process.getName() + " effect " + effect.getName();
+         validator.assertCondition(effect.getName() != null && !effect.getName().isBlank(), "Process " + process.getName() + " has an effect with no name.");
+         validator.assertCondition(names.add(effect.getName()), prefix + " is declared twice.");
+         validator.assertCondition(effect.getEffectType() != null, prefix + " has no effect type.");
+         validator.assertCondition(effect.getStepName() == null || process.getStep(effect.getStepName()) != null, prefix + " names step " + effect.getStepName() + ", which the process does not have.");
+         if(effect.getEffectType() != null && effect.getEffectType().isExternal())
+         {
+            validator.assertCondition(effect.getTargetName() != null && settings != null && settings.getEffectTargets().containsKey(effect.getTargetName()),
+               prefix + " needs a target registered in DurableJobsMetaData.effectTargets (" + effect.getTargetName() + ").");
+         }
+         else if(effect.getEffectType() != null)
+         {
+            validator.assertCondition(effect.getTargetName() == null, prefix + " is LOCAL_TX: it is written in the chunk's transaction and has no target.");
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Declare a side effect one of the process's steps causes.
+    *******************************************************************************/
+   public DurableProcessMetaData withEffect(JobEffectDeclaration effect)
+   {
+      this.effects.add(effect);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The declared effect with this name, or null.
+    *******************************************************************************/
+   public JobEffectDeclaration getEffect(String name)
+   {
+      for(JobEffectDeclaration effect : effects == null ? List.<JobEffectDeclaration>of() : effects)
+      {
+         if(effect.getName() != null && effect.getName().equals(name))
+         {
+            return (effect);
+         }
+      }
+      return (null);
    }
 
 
@@ -269,4 +327,23 @@ public class DurableProcessMetaData extends QSupplementalProcessMetaData
       return (this);
    }
 
+
+   /*******************************************************************************
+    ** Getter for effects: the side effects its steps cause outside the job's database (section 2.13)
+    *******************************************************************************/
+   public List<JobEffectDeclaration> getEffects()
+   {
+      return (this.effects);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effects
+    *******************************************************************************/
+   public DurableProcessMetaData withEffects(List<JobEffectDeclaration> effects)
+   {
+      this.effects = effects;
+      return (this);
+   }
 }

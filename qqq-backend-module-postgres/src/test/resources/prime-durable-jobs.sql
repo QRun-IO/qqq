@@ -244,3 +244,84 @@ CREATE TABLE kill_test_load
    name   VARCHAR(250) NOT NULL,
    amount INTEGER
 );
+
+-- The side-effect outbox (spec section 2.13).
+DROP TABLE IF EXISTS jobs_effect CASCADE;
+CREATE TABLE jobs_effect
+(
+   id                 SERIAL PRIMARY KEY,
+   job_id             INTEGER NOT NULL REFERENCES jobs_job (id) ON DELETE CASCADE,
+   effect_name        VARCHAR(100) NOT NULL,
+   status             VARCHAR(30) NOT NULL,
+   needs_review       BOOLEAN NOT NULL DEFAULT FALSE,
+   row_key            VARCHAR(250),
+   target_name        VARCHAR(100),
+   effect_type        VARCHAR(30) NOT NULL,
+   chunk_id           INTEGER,
+   chunk_seq          INTEGER,
+   idempotency_key    VARCHAR(500) NOT NULL UNIQUE,
+   payload_json       TEXT,
+   payload_ref        VARCHAR(1000),
+   attempt            INTEGER DEFAULT 0,
+   max_attempts       INTEGER,
+   reconcile_attempts INTEGER DEFAULT 0,
+   next_attempt_at    TIMESTAMPTZ,
+   lease_owner        VARCHAR(250),
+   lease_token        VARCHAR(100),
+   lease_expires_at   TIMESTAMPTZ,
+   lease_version      INTEGER DEFAULT 0,
+   provider_ref       VARCHAR(500),
+   last_error         TEXT,
+   sent_at            TIMESTAMPTZ,
+   create_date        TIMESTAMPTZ,
+   modify_date        TIMESTAMPTZ
+);
+CREATE INDEX jobs_effect_due_idx ON jobs_effect (status, next_attempt_at);
+CREATE INDEX jobs_effect_job_idx ON jobs_effect (job_id);
+
+-- Stubs for the side-effect fault-injection tests: the rows to process, an
+-- email server log (every send; it does not dedupe), an S3 PUT log plus its
+-- object map, and the "other database" an upsert target writes to.
+DROP TABLE IF EXISTS effects_test_customer CASCADE;
+CREATE TABLE effects_test_customer
+(
+   id     SERIAL PRIMARY KEY,
+   code   VARCHAR(50) NOT NULL UNIQUE,
+   email  VARCHAR(250) NOT NULL,
+   visits INTEGER DEFAULT 0
+);
+
+DROP TABLE IF EXISTS stub_email_sent CASCADE;
+CREATE TABLE stub_email_sent
+(
+   id          SERIAL PRIMARY KEY,
+   message_id  VARCHAR(250) NOT NULL,
+   recipient   VARCHAR(250),
+   pod_id      VARCHAR(100),
+   create_date TIMESTAMPTZ DEFAULT now()
+);
+
+DROP TABLE IF EXISTS stub_s3_put CASCADE;
+CREATE TABLE stub_s3_put
+(
+   id          SERIAL PRIMARY KEY,
+   object_key  VARCHAR(500) NOT NULL,
+   pod_id      VARCHAR(100),
+   create_date TIMESTAMPTZ DEFAULT now()
+);
+
+DROP TABLE IF EXISTS stub_s3_object CASCADE;
+CREATE TABLE stub_s3_object
+(
+   object_key VARCHAR(500) PRIMARY KEY,
+   content    TEXT
+);
+
+DROP TABLE IF EXISTS other_db_customer_flag CASCADE;
+CREATE TABLE other_db_customer_flag
+(
+   id          SERIAL PRIMARY KEY,
+   code        VARCHAR(50) NOT NULL,
+   flag        VARCHAR(50),
+   modify_date TIMESTAMPTZ DEFAULT now()
+);

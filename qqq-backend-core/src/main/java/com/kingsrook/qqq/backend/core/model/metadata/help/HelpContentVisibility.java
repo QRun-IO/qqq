@@ -52,7 +52,9 @@ public class HelpContentVisibility
             && (!StringUtils.hasContent(content.getPermissionName()) || (session != null && session.hasPermission(content.getPermissionName())))
             && (!StringUtils.hasContent(content.getClientChannel()) || (session != null && content.getClientChannel().equals(session.getClientChannelName()))))
          {
-            result.add(content.clone().withPermissionName(null).withClientChannel(null).withCodeContent(null));
+            HelpTextRenderer renderer = new HelpTextRenderer(QContext.getQInstance());
+            result.add(content.clone().withPermissionName(null).withClientChannel(null).withCodeContent(null)
+               .withContent(renderer.render(content.getContent())).withSummary(renderer.render(content.getSummary())));
          }
       }
       return (result);

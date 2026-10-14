@@ -52,6 +52,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -352,6 +353,21 @@ public class RDBMSQueryAction extends AbstractRDBMSAction implements QueryInterf
             // todo - other sql grammars?
             sql.append(" OFFSET ").append(filter.getSkip());
          }
+      }
+
+      if(queryInput.getLockMode() == QueryLockMode.FOR_UPDATE_SKIP_LOCKED)
+      {
+         ///////////////////////////////////////////////////////////////////////
+         // row locks for work queues (e.g., durable job leases), in the      //
+         // caller's transaction. Lock only the main table's rows (OF alias): //
+         // joins - such as record-lock security joins - are outer joins,     //
+         // which cannot be locked, and must not be.                          //
+         ///////////////////////////////////////////////////////////////////////
+         if(!getActionStrategy().supportsForUpdateSkipLocked())
+         {
+            throw (new QException("This database does not support FOR UPDATE SKIP LOCKED."));
+         }
+         sql.append(" FOR UPDATE OF ").append(escapeIdentifier(tableName)).append(" SKIP LOCKED");
       }
 
       // todo sql customization - can edit sql and/or param list

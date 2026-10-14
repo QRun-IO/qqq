@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
 import com.kingsrook.qqq.backend.core.jobs.JobSessions;
 import com.kingsrook.qqq.backend.core.jobs.SystemScope;
+import com.kingsrook.qqq.backend.core.jobs.effects.EffectDispatcher;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkOutcome;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
@@ -109,6 +110,9 @@ public class DurableJobsRuntime
    private final AtomicInteger busy     = new AtomicInteger(0);
 
    private ExecutorService          workers;
+   private ExecutorService          effectWorkers;
+
+   private static volatile EffectDispatcher.FaultHook effectFaultHook = EffectDispatcher.FaultHook.NONE;
    private Thread                   shutdownHook;
    private ScheduledExecutorService scheduler;
 
@@ -218,6 +222,17 @@ public class DurableJobsRuntime
       {
          workers.submit(this::workerLoop);
       }
+
+      ////////////////////////////////////////////////////////////////////////
+      // outbox dispatchers on their own threads: a slow target never holds //
+      // up chunk workers or lease heartbeats                              //
+      ////////////////////////////////////////////////////////////////////////
+      int effectThreads = settings.getEffectDispatcherThreads() == null ? 0 : settings.getEffectDispatcherThreads();
+      effectWorkers = Executors.newFixedThreadPool(Math.max(1, effectThreads), runnable -> daemon(runnable, "qqq-jobs-effects-" + podId));
+      for(int i = 0; i < effectThreads; i++)
+      {
+         effectWorkers.submit(this::effectLoop);
+      }
       LOG.info("Durable jobs runtime started", logPair("podId", podId), logPair("workerThreads", threads));
    }
 
@@ -261,6 +276,47 @@ public class DurableJobsRuntime
             sleepQuietly(settings.getPollIntervalMillis());
          }
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** One outbox dispatcher thread: deliver due effects; sleep when idle.
+    *******************************************************************************/
+   private void effectLoop()
+   {
+      QContext.init(instance, new QSystemUserSession());
+      EffectDispatcher dispatcher = new EffectDispatcher(settings, store, podId, effectFaultHook);
+      while(!draining.get() && !Thread.currentThread().isInterrupted())
+      {
+         try
+         {
+            if(dispatcher.dispatchOnce() == 0)
+            {
+               Thread.sleep(settings.getPollIntervalMillis() + jitterMillis(settings.getPollIntervalMillis() / 2));
+            }
+         }
+         catch(InterruptedException e)
+         {
+            Thread.currentThread().interrupt();
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Durable jobs effect dispatcher error", e, logPair("podId", podId));
+            sleepQuietly(settings.getPollIntervalMillis());
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Test seam: a hook called around each effect delivery (fault injection).
+    ** Set before start; production never sets it.
+    *******************************************************************************/
+   public static void setEffectFaultHook(EffectDispatcher.FaultHook hook)
+   {
+      effectFaultHook = hook == null ? EffectDispatcher.FaultHook.NONE : hook;
    }
 
 
@@ -457,8 +513,13 @@ public class DurableJobsRuntime
       draining.set(true);
       withSystemContext(() -> updateWorkerRow(true));
       workers.shutdown();
+      effectWorkers.shutdown();
       try
       {
+         if(!effectWorkers.awaitTermination(Math.min(drainTimeout.toMillis(), 5000), TimeUnit.MILLISECONDS))
+         {
+            effectWorkers.shutdownNow();
+         }
          if(!workers.awaitTermination(drainTimeout.toMillis(), TimeUnit.MILLISECONDS))
          {
             LOG.warn("Durable jobs runtime did not drain in time; leases will be reclaimed", logPair("podId", podId), logPair("busy", busy.get()));

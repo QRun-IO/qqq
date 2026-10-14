@@ -558,4 +558,15 @@ public class PostgreSQLRDBMSActionStrategy extends BaseRDBMSActionStrategy
       }
       return ("CAST(" + expression + " AS DATE)");
    }
+
+
+
+   /***************************************************************************
+    ** PostgreSQL supports SELECT ... FOR UPDATE SKIP LOCKED.
+    ***************************************************************************/
+   @Override
+   public boolean supportsForUpdateSkipLocked()
+   {
+      return (true);
+   }
 }

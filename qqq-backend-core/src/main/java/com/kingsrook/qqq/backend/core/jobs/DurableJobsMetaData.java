@@ -22,14 +22,18 @@
 package com.kingsrook.qqq.backend.core.jobs;
 
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.tables.ConditionalUpdateAction;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.QSupplementalInstanceMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 
 
@@ -59,11 +63,20 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    private Integer assistantMaxActiveJobs = 2;
    private Boolean scheduledRunsAsJobs = true;
    private String scheduledJobsUserId;
+   private List<QCodeReference> completionEffectProviders = new ArrayList<>();
    private Set<String> eligibleProcessNames = new HashSet<>();
    private String podId;
    private String uploadsStorageTableName;
    private Integer uploadExpiryDays = 7;
    private Long maxUploadBytes = 1073741824L;
+   private Map<String, QCodeReference> effectTargets = new LinkedHashMap<>();
+   private Integer effectMaxAttempts = 5;
+   private Integer effectReconcileAttempts = 3;
+   private Integer effectLeaseTtlSeconds = 60;
+   private Integer effectRetryBaseSeconds = 5;
+   private Integer effectBatchSize = 20;
+   private Integer effectDispatcherThreads = 1;
+   private Boolean useSkipLockedClaims = true;
 
 
 
@@ -115,7 +128,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    @Override
    public void validate(QInstance qInstance, QInstanceValidator validator)
    {
-      for(String tableName : List.of(DurableJobsTables.TABLE_JOB, DurableJobsTables.TABLE_CHUNK, DurableJobsTables.TABLE_ROW_ERROR, DurableJobsTables.TABLE_EVENT, DurableJobsTables.TABLE_WORKER, DurableJobsTables.TABLE_UPLOAD))
+      for(String tableName : List.of(DurableJobsTables.TABLE_JOB, DurableJobsTables.TABLE_CHUNK, DurableJobsTables.TABLE_ROW_ERROR, DurableJobsTables.TABLE_EVENT, DurableJobsTables.TABLE_WORKER, DurableJobsTables.TABLE_UPLOAD, DurableJobsTables.TABLE_EFFECT))
       {
          validator.assertCondition(qInstance.getTable(tableName) != null, "Durable jobs are enabled but table " + tableName + " is not defined (use DurableJobsMetaDataProvider.defineAll).");
       }
@@ -125,6 +138,13 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
          QBackendMetaData backend = qInstance.getBackendForTable(DurableJobsTables.TABLE_JOB);
          validator.assertCondition(backend != null && ConditionalUpdateAction.isSupported(backend), "Durable jobs require a backend with CONDITIONAL_UPDATE for the jobs tables.");
       }
+
+      for(Map.Entry<String, QCodeReference> target : effectTargets.entrySet())
+      {
+         validator.assertCondition(target.getValue() != null, "Durable jobs effect target " + target.getKey() + " has no code reference.");
+      }
+      validator.assertCondition(effectMaxAttempts != null && effectMaxAttempts >= 1, "Durable jobs effectMaxAttempts must be at least 1.");
+      validator.assertCondition(effectLeaseTtlSeconds != null && effectLeaseTtlSeconds >= 1, "Durable jobs effectLeaseTtlSeconds must be at least 1.");
 
       if(storageTableName != null)
       {
@@ -578,4 +598,206 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
       return (this);
    }
 
+
+   /*******************************************************************************
+    ** Getter for effectTargets: side-effect targets by name (EffectTarget code references); the outbox delivers to these
+    *******************************************************************************/
+   public Map<String, QCodeReference> getEffectTargets()
+   {
+      return (this.effectTargets);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effectTargets
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectTargets(Map<String, QCodeReference> effectTargets)
+   {
+      this.effectTargets = effectTargets;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for effectMaxAttempts: delivery attempts before an effect is FAILED
+    *******************************************************************************/
+   public Integer getEffectMaxAttempts()
+   {
+      return (this.effectMaxAttempts);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effectMaxAttempts
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectMaxAttempts(Integer effectMaxAttempts)
+   {
+      this.effectMaxAttempts = effectMaxAttempts;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for effectReconcileAttempts: reconcile tries for an UNKNOWN effect before it is queued for review
+    *******************************************************************************/
+   public Integer getEffectReconcileAttempts()
+   {
+      return (this.effectReconcileAttempts);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effectReconcileAttempts
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectReconcileAttempts(Integer effectReconcileAttempts)
+   {
+      this.effectReconcileAttempts = effectReconcileAttempts;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for effectLeaseTtlSeconds: how long a dispatcher holds an effect while delivering it; an expired lease means the outcome is unknown
+    *******************************************************************************/
+   public Integer getEffectLeaseTtlSeconds()
+   {
+      return (this.effectLeaseTtlSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effectLeaseTtlSeconds
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectLeaseTtlSeconds(Integer effectLeaseTtlSeconds)
+   {
+      this.effectLeaseTtlSeconds = effectLeaseTtlSeconds;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for effectRetryBaseSeconds: first retry delay for an effect; doubles per attempt (capped at 1 hour)
+    *******************************************************************************/
+   public Integer getEffectRetryBaseSeconds()
+   {
+      return (this.effectRetryBaseSeconds);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effectRetryBaseSeconds
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectRetryBaseSeconds(Integer effectRetryBaseSeconds)
+   {
+      this.effectRetryBaseSeconds = effectRetryBaseSeconds;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for effectBatchSize: effects one dispatcher pass claims
+    *******************************************************************************/
+   public Integer getEffectBatchSize()
+   {
+      return (this.effectBatchSize);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effectBatchSize
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectBatchSize(Integer effectBatchSize)
+   {
+      this.effectBatchSize = effectBatchSize;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for effectDispatcherThreads: dispatcher threads per pod (0 = this pod delivers no effects)
+    *******************************************************************************/
+   public Integer getEffectDispatcherThreads()
+   {
+      return (this.effectDispatcherThreads);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for effectDispatcherThreads
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectDispatcherThreads(Integer effectDispatcherThreads)
+   {
+      this.effectDispatcherThreads = effectDispatcherThreads;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for useSkipLockedClaims: claim chunks and effects with SELECT ... FOR UPDATE SKIP LOCKED where the backend supports it (else conditional updates)
+    *******************************************************************************/
+   public Boolean getUseSkipLockedClaims()
+   {
+      return (this.useSkipLockedClaims);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for useSkipLockedClaims
+    *******************************************************************************/
+   public DurableJobsMetaData withUseSkipLockedClaims(Boolean useSkipLockedClaims)
+   {
+      this.useSkipLockedClaims = useSkipLockedClaims;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Register a side-effect target (an EffectTarget implementation) by name.
+    *******************************************************************************/
+   public DurableJobsMetaData withEffectTarget(String name, QCodeReference codeReference)
+   {
+      this.effectTargets.put(name, codeReference);
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for completionEffectProviders: JobCompletionEffects providers asked for job-level effects (e.g., output delivery) when a job is about to complete
+    *******************************************************************************/
+   public List<QCodeReference> getCompletionEffectProviders()
+   {
+      return (this.completionEffectProviders);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for completionEffectProviders
+    *******************************************************************************/
+   public DurableJobsMetaData withCompletionEffectProviders(List<QCodeReference> completionEffectProviders)
+   {
+      this.completionEffectProviders = completionEffectProviders;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Register a JobCompletionEffects provider (job-level effects, such as
+    ** delivering a job's outputs, written when a job is about to complete).
+    *******************************************************************************/
+   public DurableJobsMetaData withCompletionEffectProvider(QCodeReference codeReference)
+   {
+      this.completionEffectProviders.add(codeReference);
+      return (this);
+   }
 }

@@ -82,8 +82,8 @@ committed document. Phase 5 adds them to the document as an optional path family
 | Method | Path | Next src | Replacement (phase 4) |
 |---|---|---|---|
 | POST | /material-dashboard-backend/form-adjuster/{id}/{onChange,onLoad} | lib/api/form-adjuster.ts:114 | v1 spec `POST /table/{t}/formAdjuster/{id}/{event}` added in 1.3.0 (#1152); Next moves once it ships in an RC |
-| GET | /apis.json?tableName= | lib/api/developer.ts:282 | `apis` list in `GET /table/{t}/{pk}/developer` response (v1) |
-| GET | {apiPath}versions.json | lib/api/developer.ts:301 | same, versions included |
+| GET | /apis.json?tableName= | lib/api/developer.ts:282 | v1 `GET /table/{t}/apis` added in 1.3.0 (#1152) |
+| GET | {apiPath}versions.json | lib/api/developer.ts:301 | same (versions and table spec paths included) |
 | GET (+href) | {apiPath}{ver}/{table}/openapi.json | lib/api/developer.ts:318,330; components/developer/RecordApiAccess.tsx:239 | links in the same response (documentation links stay hrefs) |
 | GET (href) | {apiPath}{ver}/ and {apiPath}{ver}/openapi.json | components/developer/RecordApiAccess.tsx:237-238 | links in the same response |
 

@@ -27,6 +27,8 @@ import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.effects.EffectStatus;
+import com.kingsrook.qqq.backend.core.jobs.effects.JobEffectType;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
@@ -35,6 +37,7 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobSemantics;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.processes.JobControlProcesses;
+import com.kingsrook.qqq.backend.core.jobs.processes.JobEffectReviewProcesses;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
@@ -59,6 +62,7 @@ import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.DEFAULT_PRIO
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.SECURITY_KEY_USER;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.SECURITY_KEY_USER_ALL_ACCESS;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_CHUNK;
+import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_EFFECT;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_EVENT;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_JOB;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_ROW_ERROR;
@@ -102,6 +106,8 @@ public class DurableJobsMetaDataProvider
       addEnumPvs(instance, JobSourceType.NAME, JobSourceType.values());
       addEnumPvs(instance, JobIdempotency.NAME, JobIdempotency.values());
       addEnumPvs(instance, JobSemantics.NAME, JobSemantics.values());
+      addEnumPvs(instance, JobEffectType.NAME, JobEffectType.values());
+      addEnumPvs(instance, EffectStatus.NAME, EffectStatus.values());
 
       instance.addTable(enrich(defineJobTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineChunkTable(backendName), backendDetailEnricher));
@@ -109,6 +115,7 @@ public class DurableJobsMetaDataProvider
       instance.addTable(enrich(defineEventTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineWorkerTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineUploadTable(backendName), backendDetailEnricher));
+      instance.addTable(enrich(defineEffectTable(backendName), backendDetailEnricher));
 
       ////////////////////////////////////////////////////////////////////////
       // assisted bulk load (profile, suggestMapping, validate) reads files //
@@ -122,11 +129,13 @@ public class DurableJobsMetaDataProvider
       instance.addJoin(childJoin(TABLE_CHUNK));
       instance.addJoin(childJoin(TABLE_ROW_ERROR));
       instance.addJoin(childJoin(TABLE_EVENT));
+      instance.addJoin(childJoin(TABLE_EFFECT));
 
       for(var process : JobControlProcesses.defineAll())
       {
          instance.addProcess(process);
       }
+      JobEffectReviewProcesses.defineAll().forEach(instance::addProcess);
    }
 
 
@@ -397,6 +406,58 @@ public class DurableJobsMetaDataProvider
          .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "jobId", "chunkId", "rowNumber", "recordPk")))
          .withSection(new QFieldSection("error", "Error", new QIcon("error_outline"), Tier.T2, List.of("fieldName", "errorCode", "message", "retryJobId", "resolved")))
          .withSection(new QFieldSection("dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate"))));
+   }
+
+
+
+   /*******************************************************************************
+    ** jobs_effect: the transactional outbox of side effects outside the job's
+    ** database (spec section 2.13). Written in the chunk's transaction; delivered
+    ** by the dispatcher; idempotencyKey is unique (jobId:chunkSeq:rowKey:effect).
+    *******************************************************************************/
+   public QTableMetaData defineEffectTable(String backendName)
+   {
+      return (new QTableMetaData()
+         .withName(TABLE_EFFECT)
+         .withLabel("Job Effect")
+         .withIcon(new QIcon("outbox"))
+         .withBackendName(backendName)
+         .withPrimaryKeyField("id")
+         .withRecordLabelFormat("%s %s")
+         .withRecordLabelFields("effectName", "rowKey")
+         .withUniqueKey(new UniqueKey("idempotencyKey"))
+         .withRecordSecurityLock(ownerLock(TABLE_JOB + ".userId", List.of(childJoinName(TABLE_EFFECT))))
+         .withField(readOnly("id", QFieldType.INTEGER))
+         .withField(readOnly("jobId", QFieldType.INTEGER).withLabel("Job").withPossibleValueSourceName(TABLE_JOB))
+         .withField(readOnly("effectName", QFieldType.STRING).withLabel("Effect").withMaxLength(100))
+         .withField(readOnly("status", QFieldType.STRING).withPossibleValueSourceName(EffectStatus.NAME).withMaxLength(30))
+         .withField(readOnly("needsReview", QFieldType.BOOLEAN).withDefaultValue(false))
+         .withField(readOnly("rowKey", QFieldType.STRING).withLabel("Row Key").withMaxLength(250))
+         .withField(readOnly("targetName", QFieldType.STRING).withLabel("Target").withMaxLength(100))
+         .withField(readOnly("effectType", QFieldType.STRING).withPossibleValueSourceName(JobEffectType.NAME).withMaxLength(30))
+         .withField(readOnly("chunkId", QFieldType.INTEGER).withLabel("Chunk").withPossibleValueSourceName(TABLE_CHUNK))
+         .withField(readOnly("chunkSeq", QFieldType.INTEGER).withLabel("Chunk Sequence"))
+         .withField(readOnly("idempotencyKey", QFieldType.STRING).withMaxLength(500))
+         .withField(confidential(readOnly("payloadJson", QFieldType.TEXT).withLabel("Payload")))
+         .withField(readOnly("payloadRef", QFieldType.STRING).withLabel("Payload Object").withMaxLength(1000))
+         .withField(readOnly("attempt", QFieldType.INTEGER).withDefaultValue(0))
+         .withField(readOnly("maxAttempts", QFieldType.INTEGER))
+         .withField(readOnly("reconcileAttempts", QFieldType.INTEGER).withDefaultValue(0))
+         .withField(readOnly("nextAttemptAt", QFieldType.DATE_TIME))
+         .withField(readOnly("leaseOwner", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("leaseToken", QFieldType.STRING).withMaxLength(100))
+         .withField(readOnly("leaseExpiresAt", QFieldType.DATE_TIME))
+         .withField(readOnly("leaseVersion", QFieldType.INTEGER).withDefaultValue(0))
+         .withField(readOnly("providerRef", QFieldType.STRING).withLabel("Provider Reference").withMaxLength(500))
+         .withField(confidential(readOnly("lastError", QFieldType.TEXT)))
+         .withField(readOnly("sentAt", QFieldType.DATE_TIME))
+         .withField(readOnly("createDate", QFieldType.DATE_TIME))
+         .withField(readOnly("modifyDate", QFieldType.DATE_TIME))
+         .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "jobId", "effectName", "status", "needsReview", "rowKey")))
+         .withSection(new QFieldSection("delivery", "Delivery", new QIcon("outbox"), Tier.T2, List.of("targetName", "effectType", "attempt", "maxAttempts", "reconcileAttempts", "nextAttemptAt", "providerRef", "lastError", "sentAt")))
+         .withSection(new QFieldSection("source", "Source", new QIcon("input"), Tier.T2, List.of("chunkId", "chunkSeq", "idempotencyKey", "payloadJson", "payloadRef")))
+         .withSection(new QFieldSection("lease", "Lease", new QIcon("lock_clock"), Tier.T3, List.of("leaseOwner", "leaseToken", "leaseExpiresAt", "leaseVersion")))
+         .withSection(new QFieldSection("dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate"))));
    }
 
 

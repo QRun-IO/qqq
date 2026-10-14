@@ -165,13 +165,21 @@ public class JobClaimer
             continue;
          }
 
+         boolean skipLocked = store.usesSkipLockedClaims();
          for(QRecord chunk : chunks)
          {
             if(!ChunkStatus.valueOf(chunk.getValueString("status")).isClaimable())
             {
                continue;
             }
-            Optional<JobLease> lease = store.claimChunk(chunk, podId, settings.getLeaseTtlSeconds());
+
+            ////////////////////////////////////////////////////////////////////
+            // on Postgres: lock-and-claim the next chunk no other pod holds; //
+            // else the fenced conditional update on this candidate           //
+            ////////////////////////////////////////////////////////////////////
+            Optional<JobLease> lease = skipLocked
+               ? store.claimNextChunkSkipLocked(jobId, podId, settings.getLeaseTtlSeconds())
+               : store.claimChunk(chunk, podId, settings.getLeaseTtlSeconds());
             if(lease.isPresent())
             {
                if(candidate.status == JobStatus.QUEUED)
@@ -192,8 +200,9 @@ public class JobClaimer
             }
             ////////////////////////////////////////////////////////////////
             // another pod won this chunk - try the job's next chunk once //
+            // (a SKIP LOCKED claim already skipped every locked chunk)   //
             ////////////////////////////////////////////////////////////////
-            if(maxParallel == 1)
+            if(maxParallel == 1 || skipLocked)
             {
                break;
             }

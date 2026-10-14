@@ -34,6 +34,7 @@ public final class DurableJobsTables
    public static final String TABLE_EVENT     = "jobs_event";
    public static final String TABLE_WORKER    = "jobs_worker";
    public static final String TABLE_UPLOAD    = "jobs_upload";
+   public static final String TABLE_EFFECT    = "jobs_effect";
 
    public static final String SECURITY_KEY_USER            = "jobs_user";
    public static final String SECURITY_KEY_USER_ALL_ACCESS = "jobs_user_all_access";

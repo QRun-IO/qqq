@@ -108,13 +108,13 @@ public class HealthWidgets extends AbstractWidgetRenderer
             case "healthComponents" ->
             {
                table = HealthMetaDataProvider.COMPONENT_TABLE;
-               columns = List.of("name", "status", "since", "checksDown", "checksDegraded", "worstCheckId");
+               columns = List.of("label", "status", "since", "checksDown");
                filter.withOrderBy(new QFilterOrderBy("name", true));
             }
             case "healthProblems" ->
             {
                table = HealthMetaDataProvider.CHECK_TABLE;
-               columns = List.of("label", "component", "currentStatus", "currentMessage", "currentSince");
+               columns = List.of("label", "currentStatus", "currentMessage", "currentSince");
                filter.withCriteria(new QFilterCriteria("currentStatus", QCriteriaOperator.NOT_EQUALS, "UP"))
                   .withCriteria(new QFilterCriteria("registered", QCriteriaOperator.EQUALS, true));
             }

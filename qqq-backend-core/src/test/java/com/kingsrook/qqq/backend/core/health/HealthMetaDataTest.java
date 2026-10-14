@@ -79,6 +79,22 @@ class HealthMetaDataTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Alerts link to the host's configured health home, else /systemHealth.
+    *******************************************************************************/
+   @Test
+   void alertLinkUsesConfiguredHomePath() throws Exception
+   {
+      QInstance instance = install();
+      assertThat(HealthTransitionEvaluator.homePath()).isEqualTo("/systemHealth");
+      instance.withSupplementalMetaData(new HealthMonitoringMetaData().withBackendName(TestUtils.MEMORY_BACKEND_NAME).withHomePath("/admin/adminHealth"));
+      assertThat(HealthTransitionEvaluator.homePath()).isEqualTo("/admin/adminHealth");
+      instance.withSupplementalMetaData(new HealthMonitoringMetaData().withBackendName(TestUtils.MEMORY_BACKEND_NAME).withHomePath(" "));
+      assertThat(HealthTransitionEvaluator.homePath()).isEqualTo("/systemHealth");
+   }
+
+
+
+   /*******************************************************************************
     ** Verify health behavior against the public contract.
     *******************************************************************************/
    @Test
@@ -243,6 +259,10 @@ class HealthMetaDataTest extends BaseTest
          QWidgetData data = widgets.render(new RenderWidgetInput().withWidgetMetaData(instance.getWidget(name))).getWidgetData();
          if(data instanceof TableData table)
          {
+            ////////////////////////////////////////////////////////////////
+            // readable at every width: home tables carry at most 4 columns //
+            ////////////////////////////////////////////////////////////////
+            assertThat(table.getColumns()).hasSizeLessThanOrEqualTo(4);
             assertThat(table.getRows()).isEmpty();
             assertThat(table.getNoRowsFoundHTML()).isEqualTo("No checks have run yet");
          }

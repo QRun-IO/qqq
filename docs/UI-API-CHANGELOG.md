@@ -73,12 +73,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### Unreleased (after 1.2.0; no change to the document)
+### 1.3.0 (unreleased)
 - Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
   spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
   opts out temporarily. Applications must run the spec'd alerts, assistant and sql-workbench qbit
   releases.
-### 1.3.0 (unreleased)
 - Extended preferences with `POST /preferences/{sectionName}/actions/{actionName}` and
   `PreferenceActionRequestV1`, `PreferenceActionResponseV1`, `PreferenceActionV1`, and
   `PreferenceSecretV1`. Section actions support SECTION/LIST/ROW scopes, typed inputs,

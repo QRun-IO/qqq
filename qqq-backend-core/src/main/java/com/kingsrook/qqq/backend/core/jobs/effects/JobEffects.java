@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.jobs.effects;
 
 import java.io.Serializable;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,6 +55,11 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public final class JobEffects
 {
+   /** The chunk sequence in the keys of job-level effects (not from a chunk). */
+   public static final int JOB_LEVEL_CHUNK_SEQ = -1;
+
+
+
    /*******************************************************************************
     ** Static helpers only.
     *******************************************************************************/
@@ -129,6 +135,45 @@ public final class JobEffects
          throw (new QException("Effect " + effectName + " for " + rowKey + " was not delivered (" + (result == null ? "no result" : result.outcome() + ": " + result.message()) + ")."));
       }
       return (key);
+   }
+
+
+
+   /*******************************************************************************
+    ** Write a job-level effect (not from a chunk) to the outbox, with key
+    ** jobId:-1:rowKey:effectName. Returns true when a new row was written,
+    ** false when the key was already in the outbox. Used by the job completion
+    ** hook (JobCompletionEffects); external effect types only.
+    *******************************************************************************/
+   public static boolean emitForJob(Integer jobId, JobLevelEffect effect) throws QException
+   {
+      if(effect.effectType() == null || !effect.effectType().isExternal())
+      {
+         throw (new QException("Job-level effect " + effect.effectName() + " must be IDEMPOTENT_EXTERNAL or NON_IDEMPOTENT_EXTERNAL."));
+      }
+      DurableJobsMetaData settings = DurableJobsMetaData.of(QContext.getQInstance());
+      if(settings == null || !settings.getEffectTargets().containsKey(effect.targetName()))
+      {
+         throw (new QException("Job-level effect " + effect.effectName() + " names target " + effect.targetName() + ", which is not registered in DurableJobsMetaData.effectTargets."));
+      }
+      Map<String, Serializable> values = effect.payload() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(effect.payload());
+      QRecord row = new QRecord()
+         .withValue("jobId", jobId)
+         .withValue("chunkSeq", JOB_LEVEL_CHUNK_SEQ)
+         .withValue("effectName", effect.effectName())
+         .withValue("effectType", effect.effectType().name())
+         .withValue("targetName", effect.targetName())
+         .withValue("rowKey", StringUtils.safeTruncate(effect.rowKey(), 250))
+         .withValue("idempotencyKey", EffectKeys.key(jobId, JOB_LEVEL_CHUNK_SEQ, effect.rowKey(), effect.effectName()))
+         .withValue("payloadJson", JsonUtils.toJson(values))
+         .withValue("payloadRef", effect.payloadRef())
+         .withValue("status", EffectStatus.PENDING.name())
+         .withValue("needsReview", false)
+         .withValue("attempt", 0)
+         .withValue("reconcileAttempts", 0)
+         .withValue("maxAttempts", settings.getEffectMaxAttempts())
+         .withValue("leaseVersion", 0);
+      return (new EffectStore(settings).insertEffects(List.of(row), null) > 0);
    }
 
 

@@ -531,6 +531,22 @@ forms each kind of target needs:
   - A `FAILED` effect makes it `COMPLETED_WITH_ERRORS`.
   - An effect that needs review makes it `NEEDS_REVIEW`.
 
+**4a. Job-level effects (completion hook).** Some effects belong to the job, not to a chunk:
+delivering its outputs, for example (output delivery, QRun-IO/qqq#1200, effect "deliver").
+- **Registration:** a `JobCompletionEffects` provider is registered in
+  `DurableJobsMetaData.completionEffectProviders`.
+- **When it is asked:** when the job's chunks and their effects are done, and the job would end
+  COMPLETED or COMPLETED_WITH_ERRORS. The provider gets the job record, including
+  `outputStorageJson`, and that status.
+- **What it returns:** `JobLevelEffect`s, which are written with `JobEffects.emitForJob` under key
+  `jobId:-1:rowKey:effectName`.
+- **Waiting:** the job waits for these effects like any other, so a crash never loses a delivery,
+  and a FAILED delivery makes the job COMPLETED_WITH_ERRORS.
+- **Repeat asks:** the provider may be asked more than once and returns the same keys, which are
+  skipped once written.
+- **Provider failures:** a provider that throws holds the job, and it is asked again. A provider
+  that keeps failing leaves the job running, so stall detection raises `jobs.job-stalled`.
+
 **5. Leasing on Postgres.** Where the backend supports it (`QueryLockMode.FOR_UPDATE_SKIP_LOCKED`,
 Postgres), chunks and effects are claimed with `SELECT … FOR UPDATE SKIP LOCKED` inside a short
 transaction. Competing pods then skip each other's rows instead of racing. The claim still bumps

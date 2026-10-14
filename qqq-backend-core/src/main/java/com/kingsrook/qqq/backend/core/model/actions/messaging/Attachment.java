@@ -21,6 +21,11 @@
 package com.kingsrook.qqq.backend.core.model.actions.messaging;
 
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.concurrent.Callable;
+
+
 /*******************************************************************************
  **
  *******************************************************************************/
@@ -28,6 +33,8 @@ public class Attachment
 {
    private byte[] contents;
    private String name;
+   private Callable<InputStream> streamSupplier;
+   private String contentType = "application/octet-stream";
 
 
 
@@ -91,4 +98,54 @@ public class Attachment
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Stream-backed attachment; each invocation opens a fresh stream owned by the caller.
+    *******************************************************************************/
+   public Attachment withStreamSupplier(Callable<InputStream> streamSupplier)
+   {
+      this.streamSupplier = streamSupplier;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether this attachment requires streaming support from its provider.
+    *******************************************************************************/
+   public boolean isStreamBacked()
+   {
+      return (streamSupplier != null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Open the attachment without buffering storage output into memory.
+    *******************************************************************************/
+   public InputStream openStream() throws Exception
+   {
+      return (streamSupplier == null ? new ByteArrayInputStream(contents) : streamSupplier.call());
+   }
+
+
+   /*******************************************************************************
+    ** MIME type sent to the messaging transport.
+    *******************************************************************************/
+   public String getContentType()
+   {
+      return (contentType);
+   }
+
+
+
+   /*******************************************************************************
+    ** Configure the MIME type, defaulting unknown types to binary.
+    *******************************************************************************/
+   public Attachment withContentType(String contentType)
+   {
+      this.contentType = contentType == null ? "application/octet-stream" : contentType;
+      return (this);
+   }
 }

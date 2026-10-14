@@ -73,6 +73,12 @@ public class SendMessageAction extends AbstractQActionFunction<SendMessageInput,
          throw (new QException("Messaging provider " + input.getMessagingProviderName() + " does not support idempotency"));
       }
 
+      if(input.getAttachmentList() != null && input.getAttachmentList().stream().anyMatch(attachment -> attachment.isStreamBacked())
+         && !capabilities.contains(MessagingProviderCapability.STREAMING_ATTACHMENTS))
+      {
+         throw new QException("Messaging provider does not support streaming attachments");
+      }
+
       SendMessageOutput output = messagingProviderInterface.sendMessage(input);
       if(output == null)
       {

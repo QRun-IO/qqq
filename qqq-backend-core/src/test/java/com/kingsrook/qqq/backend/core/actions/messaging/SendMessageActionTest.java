@@ -168,7 +168,7 @@ class SendMessageActionTest extends BaseTest
    {
       registerTestProvider();
       assertTrue(SendMessageAction.isAvailable(TestUtils.EMAIL_MESSAGING_PROVIDER_NAME));
-      assertTrue(SendMessageAction.capabilities(TestUtils.EMAIL_MESSAGING_PROVIDER_NAME).isEmpty());
+      assertEquals(Set.of(MessagingProviderCapability.STREAMING_ATTACHMENTS), SendMessageAction.capabilities(TestUtils.EMAIL_MESSAGING_PROVIDER_NAME));
       assertTrue(SendMessageAction.isAvailable(TestUtils.SES_MESSAGING_PROVIDER_NAME));
       assertTrue(SendMessageAction.capabilities(TestUtils.SES_MESSAGING_PROVIDER_NAME).isEmpty());
       assertTrue(SendMessageAction.isAvailable("richTest"));

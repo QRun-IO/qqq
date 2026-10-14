@@ -30,7 +30,8 @@ Related work, which this design uses and does not duplicate:
 > decided as recommended ("they are approved. we will adjust as needed once we can view them
 > working").
 >
-> **Owner decisions (2026-10-13)**, from the request below:
+> **Owner decisions (2026-10-13)**, from the request below (retention, wipe and audit protection
+> are in §13–§15):
 > - **Name:** qbit-secured-data. Tables `secured_data_*`, permissions `secured_data.*` and
 >   `secured_data_*` table features.
 > - **Classification** uses core's `DataClassification` on tables and fields. Code sets the
@@ -491,6 +492,9 @@ the access log and on users. No other dashboards.
 - **(c) Reveal and break-glass** (§7.2–§7.3) with the UI API extension `secured-data` 1.0.0.
 - **(d) Next UI** (§9).
 - **(e) App home and anomaly alerts** (§7.4, §8).
+- **(f) Retention and wipe** (§13), with crypto-shredding keys (§14.3).
+- **(g) Audit value protection and egress**: §14.1–§14.2 as a core PR; §15 in core, qqq-esb and
+  the qbits listed, coordinated with their owners; the canary and wipe-proof tests.
 
 ## 11. Acceptance matrix
 For each of FULL, REVEALABLE, MASKED, HIDDEN users over query, get, export, quick search, filter,
@@ -516,3 +520,250 @@ sort, aggregate, process records, widget, the QQQ API and the assistant channel:
 5. **Default tiers.** Recommended: CONFIDENTIAL FULL, PII MASKED, PHI MASKED (fail closed once the
    qbit is installed; the policy opens access).
 6. **Reveal scope.** Recommended: one field of one record, per user, all of the user's sessions.
+
+## 13. Retention and wipe (qbit, phase f)
+
+> **Owner request (2026-10-13, verbatim):** "remove or wipe or overwrite secure data after X days...
+> we want to remove readings from a medical device after 30 days. we want the reading record to
+> stay - but the one field with the data needs to be wiped... fully audited".
+>
+> **Owner decision:** the default action NULLs the field and writes a marker row, so screens show
+> "Wiped per policy (30 days)".
+
+### 13.1 Tables
+- **`secured_data_retention_rule`** [Retention rule] (main table, in the nav):
+  - Identity and target: `id`, `name`, `table_name`, and `field_names` (one or more fields of the
+    table, as a comma list validated against the table).
+  - Age: `age_field_name` (the date or date-time field the age is measured from, e.g.
+    `reading_time`) and `age_days` (at least 1).
+  - `action`: NULL_WITH_MARKER (the default), OVERWRITE_TEXT, KEYED_HASH, DELETE_RECORD or
+    ARCHIVE_THEN_WIPE (§13.2).
+  - Action options:
+    - `overwrite_text`: default "[wiped per policy]"; text fields only.
+    - `audit_treatment`: SHREDDABLE (the default) or CHANGED_ONLY (§14).
+    - `archive_storage_name`: a qbit-object-storage store; used by ARCHIVE_THEN_WIPE only.
+    - `batch_size`: default 500.
+  - Status and housekeeping: `is_active`, `last_run_at`, `last_run_count`, `create_date`,
+    `modify_date` and `modified_by`.
+- **`secured_data_wipe_marker`** [Wipe marker]:
+  - Columns: `id`, `table_name`, `record_id`, `field_name`, `rule_id`, `action`, `wiped_at` and
+    `run_id`. Unique on (table_name, record_id, field_name).
+  - It is a child of the rule. It also shows as a child list on any record screen, through a
+    generic "Wiped fields" widget.
+  - Core needs no change for this. The record GET response gains nothing; instead, the widget and
+    a field adornment read the marker. Next shows "Wiped per policy (N days)" for a null field
+    that has a marker.
+- **`secured_data_legal_hold`** [Legal hold]:
+  - Columns: `id`, `table_name`, `record_id` (nullable, meaning the whole table), `reason`,
+    `placed_by`, `placed_at`, `released_by`, `released_at` and `status` (ACTIVE or RELEASED).
+  - An active hold on a record, or on its table, pauses every rule for that record. A run counts
+    held records separately.
+- **`secured_data_wipe_run`** [Wipe run]:
+  - Columns: `id`, `rule_id`, `started_at`, `finished_at`, `status`, `eligible_count`,
+    `held_count`, `wiped_count`, `error_count`, `record_ids` and `message`. `record_ids` is bounded
+    text; the full list is in the audit.
+  - It is insert-only for users; only the process writes it.
+
+### 13.2 Actions
+| Action | Field | Record | Audit detail (§14) |
+|---|---|---|---|
+| NULL_WITH_MARKER (default) | set to null; a marker row is written | kept | `wiped:v1:<ruleId>` |
+| OVERWRITE_TEXT | set to `overwrite_text` (STRING and TEXT fields only; validated) | kept | `wiped:v1:<ruleId>` |
+| KEYED_HASH | set to `hmac:v1:<keyId>:<mac>` with the instance key, so a known value can be matched later. Refused for low-entropy fields (§7.6). | kept | `wiped:v1:<ruleId>` |
+| DELETE_RECORD | — | deleted by a normal delete, with its audit; associations follow the table's own rules | the delete audit |
+| ARCHIVE_THEN_WIPE | the values are first written to the rule's qbit-object-storage store as one encrypted JSON object per record (a locked WORM bucket where available), then handled as NULL_WITH_MARKER | kept | `wiped:v1:<ruleId>` plus the archive object key |
+
+- **Every action** destroys the per-record-per-field audit keys of the wiped fields, in the same
+  transaction as the field update (§14.3).
+- **A record is eligible** when its `age_field_name` is older than `now - age_days`, the field is
+  not already null, and it has no active legal hold.
+
+### 13.3 The process
+`secured_data_wipe` is a standard streamed-ETL process. It extracts eligible ids, transforms
+them, and loads in batches of `batch_size`. It runs in two ways:
+- **On a schedule**, daily by default (configurable), as the system, for every active rule.
+- **As a table action**, "Run wipe now" on selected rules (permission `secured_data.retention`). It
+  shows the standard **Review** (eligible, held and to-wipe counts per rule, never values) and
+  **Result** lines.
+
+Every batch writes the following, as the system:
+- one `secured_data_wipe_run` row;
+- `secured_data_access_log` rows of type WIPE: the rule, table and field, up to 50 record ids per
+  row, the action and the outcome;
+- the core audit of each update, with the `wiped:v1` detail.
+
+**No values are ever read into logs, Review lines, messages or audits.** The process selects ids
+only and updates by id.
+
+### 13.4 Backups versus the wipe period
+Wiped values remain in backups taken before the wipe. The rule screen shows a "Backups" panel
+with:
+- the backup retention it knows about:
+  - qbit-backups policies, through its retention API when present;
+  - an admin-entered CNPG/WAL retention (`SecuredDataQBitConfig.withBackupRetentionDays(...)`;
+    unknown by default).
+- a warning when any retention exceeds `age_days`, for example: "Backups keep data for 35 days,
+  longer than this rule's 30 days. Wiped values remain recoverable from backups until they
+  expire."
+
+The app home shows the same warning for every rule it applies to.
+
+## 14. Audit value protection (core hook + qbit)
+
+> **Owner decision:** audit details for PHI and PII fields never store values. "Changed by whom,
+> when" stays visible.
+>
+> **Design correction (2026-10-13):** an HMAC with a global key of a low-entropy value (such as a
+> BP reading), sealed in WORM for six years, can be brute-forced by anyone who holds the key. That
+> would defeat a 30-day wipe. Fields under a wipe rule, and low-entropy fields, therefore use
+> crypto-shredding.
+
+### 14.1 Core hook (additive core PR)
+For every audited field whose effective classification is PII or PHI, `DMLAuditAction` asks an
+`AuditValueProtectorInterface` for the values to store. The protector is registered through
+`AuditValueProtectionMetaData`, a supplemental instance metadata. The classification comes from
+`AiDataClassifications`, or from the protector's own classification source.
+
+```java
+public interface AuditValueProtectorInterface
+{
+   /** Never returns plain values for classified fields. */
+   ProtectedAuditValues protect(QTableMetaData table, QFieldMetaData field, Serializable primaryKey,
+                                Serializable oldValue, Serializable newValue, DMLType dmlType);
+}
+public record ProtectedAuditValues(String oldToken, String newToken, String message) {}
+```
+
+- **What the detail stores.** `oldValue` and `newValue` hold the tokens. `message` contains no
+  value: "Changed Systolic", "Set Systolic" or "Removed Systolic". Display formatting (such as
+  possible-value labels) is skipped for these fields.
+- **Without a protector, core still never writes classified values.** The built-in default uses
+  the instance HMAC key from the environment (`QQQ_AUDIT_HMAC_KEY`, base64, from Infisical) and
+  writes `hmac:v1:<keyId>:<mac>`. With no key configured, it writes `changed:v1` (no derivative)
+  and logs one WARN at startup.
+- **Unclassified fields** are unchanged: their values are audited as today.
+- **Verifying a known value.** `ClassifiedValueTokens.verify(...)` (§14.5) checks
+  a value against an `hmac:` token, or against a `shred:` token while its key still exists. The
+  qbit uses it for an admin-only "Verify a value" record action on audit details, and that action
+  is itself access-logged.
+
+### 14.2 Token formats (what qbit-worm-audit seals)
+All tokens are ASCII, at most 200 characters, and are stored in `auditDetail.oldValue` and
+`newValue`. The MAC input for both keyed tokens is
+`m = table \x1f field \x1f pk \x1f canonical(value)`.
+
+| Token | Meaning |
+|---|---|
+| `hmac:v1:<keyId>:<b64url(HMAC-SHA256(K_instance, m))>` | HMAC with the instance key: PII/PHI fields without a wipe rule |
+| `shred:v1:<auditKeyId>:<b64url(HMAC-SHA256(DEK, m))>` | HMAC with a per-record-per-field key: fields under a wipe rule, or low-entropy fields |
+| `changed:v1` | changed, with no derivative: the rule option "changed only", or no key configured |
+| `wiped:v1:<ruleId>` | the wipe itself (as the new value) |
+| `shredded:v1:<ruleId>` | a separate audit detail on the record, written when its keys are destroyed |
+
+- **`canonical(value)`** is the field type's canonical string: `ValueUtils` as-string, decimals
+  stripped of trailing zeros, and instants in ISO-8601 UTC. Null is never tokenised; it is simply
+  an absent old or new value.
+- **`keyId`** names the instance key version. Rotation keeps old keys for verification only.
+- **Binding table, field and pk into `m`** stops anyone correlating equal values across records.
+
+### 14.3 Crypto-shredding
+- **`secured_data_audit_key`** [Audit key] (not in the nav; admins see metadata only):
+  - Columns: `id`, `table_name`, `record_id`, `field_name`, `wrapped_key` and `created_at`.
+    Unique on (table, record, field).
+  - `wrapped_key` is a random 256-bit DEK, wrapped with AES-GCM under the KEK from
+    `QQQ_SECURED_DATA_KEK`. The column is HIDDEN to every user, never exported, and never in ESB
+    events.
+- **Creating keys.** The first time a protected field is audited for a record, the qbit's
+  protector creates the DEK and writes a `shred:` token.
+- **Shredding.** The wipe deletes the record-field's key row in the same transaction as nulling
+  the field, and writes `shredded:v1`. The sealed audit rows stay intact, so WORM holds, but they
+  can no longer be verified or brute-forced: the MAC key is gone.
+- **Which fields shred:**
+  - any field named in an active retention rule with `audit_treatment = SHREDDABLE`;
+  - any PII/PHI field that is low-entropy by the §7.6 rules.
+
+  Other classified fields use the instance HMAC. The rule option CHANGED_ONLY writes `changed:v1`
+  for its field and creates no key.
+- **Keys are not WORM and get short backups.**
+  - qbit-worm-audit never seals `secured_data_audit_key`, and WORM exports exclude it.
+  - qbit-backups excludes it from long-term policies: its backup set is registered with a short
+    retention (7 days by default).
+- **Residual risk: CNPG physical backups and WAL archives cannot exclude a table.** A wiped
+  value's key stays in them until they expire. Until then, someone who holds both such a backup
+  and the KEK can recover the value. The rule screen's Backups panel (§13.4) states this window.
+- **KEK:** without `QQQ_SECURED_DATA_KEK` (from Infisical, via the environment) the keys in the
+  table are useless, so a database dump alone reveals nothing. KEK rotation re-wraps the rows in
+  place.
+
+### 14.5 Reusable token helper (core)
+The token helper is not audit-specific: email outboxes, ESB, webhooks and logs use it too.
+Package `com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess`:
+
+```java
+public final class ClassifiedValueTokens
+{
+   // record-bound value: m = table  field  pk  canonical(value); hmac:v1 or shred:v1 per the protector
+   static String forRecordField(QTableMetaData table, QFieldMetaData field, Serializable pk, Serializable value);
+   // non-record value: m = domain  part1  ...  canonical(value), e.g. ("email", template, variable, messageId); hmac:v1 only
+   static String forContext(List<String> bindingParts, Serializable value);
+   static String changed();                                   // "changed:v1"
+   static boolean verifyRecordField(QTableMetaData table, QFieldMetaData field, Serializable pk, Serializable candidate, String token);
+   static boolean verifyContext(List<String> bindingParts, Serializable candidate, String token);
+   static String canonical(Serializable value);
+}
+public interface ClassifiedValueKeySource { Optional<KeyAndId> instanceKey(); Optional<KeyAndId> keyForRecordField(String table, String field, Serializable pk); }
+public interface LogRedactorInterface { String redact(String message); }   // registered on QLogger; QRecord logPair values are masked by core
+```
+
+- The instance key is `QQQ_AUDIT_HMAC_KEY` (one instance key for every use). Without it, every
+  method returns `changed:v1`.
+- `forRecordField` uses the record-field DEK (shred) when the field shreds (§14.3), so a wipe
+  also shreds tokens of that value held elsewhere (an email outbox snapshot of a record-bound
+  variable).
+- Non-record low-entropy values get `changed:v1`: there is no record key to shred.
+- The non-record binding always starts with a domain (`email`, `esb`, `webhook`), so it can never
+  collide with a record binding.
+
+### 14.4 qbit-worm-audit
+- qbit-worm-audit seals `audit` and `auditDetail` rows as written, including these tokens.
+- It must never seal or export `secured_data_audit_key`.
+- It treats a `shredded:v1` detail as a normal row.
+- Verifying the chain never needs the DEKs.
+
+## 15. No classified values in any egress (phase g)
+
+> **Owner decision:** no PHI in audits or any egress.
+
+Every path that copies record values out of the database must drop or tokenise PII/PHI fields.
+The only exception is an interactive response to a user who is entitled to the value (FULL).
+
+| Egress | Treatment | Where |
+|---|---|---|
+| Audit details | §14 tokens | core `DMLAuditAction` |
+| Application logs and error messages | A `QLogger` redaction hook masks classified fields with `FieldValueMasker` in `logPair` values that are `QRecord`s, and in core messages that embed a field value (validation, unique-key violations, value-format errors). A `LogRedactorInterface` hook lets the qbit add patterns. | core |
+| ESB table events | Classified field values are omitted from the payload, but their names stay in `changedFields`. A subscription can opt in with `includeClassified=true` only where the PHI routing allows it. | qqq-esb |
+| Outbound webhooks | Built from ESB and table events, so the same omission applies. Webhook payload customizers cannot add the values back. | qbit-webhooks |
+| Notifications and email | Rendered per recipient through masking (§3.4). Templates never include PHI fields by default. | core, qbit-alerts, collaboration |
+| Quick-search indexes | PII/PHI fields are never indexed, for any user (decided by classification). | qbit-quick-search |
+| Assistant transcripts | Values reach the model only as the assistant's PHI routing allows. Stored transcripts redact the PII/PHI values the model saw (coordinated with the assistant program). | qbit-assistant |
+| Data-analysis caches | No cached value or group key from a PII/PHI field; counts only. | qbit-data-analysis |
+| Exports and reports | Masked per tier (§3.3). Stored report files inherit the requester's tier and expire. | core |
+| Collaboration timeline and comments | The timeline shows §14 tokens through audit details. Comment text is user-written and out of scope (documented). | qbit-collaboration |
+
+**Canary PHI test.** It runs end to end in the qbit, with a unit variant in core:
+1. Plant marker values (`CANARY-PHI-<random>`) in PHI and PII fields.
+2. Exercise every egress above that is available on the test classpath:
+   - CRUD with audits;
+   - a failing validation and a duplicate-key error;
+   - log capture;
+   - an ESB event;
+   - an export as a MASKED user;
+   - a quick-search index build, if that qbit is present;
+   - a wipe run.
+3. Fail if any marker, or any substring of it longer than 4 characters, appears in any captured
+   output, log line, audit row, event payload or file.
+
+**Wipe-proof test.** Wipe a low-entropy field, such as a systolic reading in the range 60–250.
+Then brute-force every plausible value against every audit token for that record, with every key
+the test can reach: the instance HMAC key, the KEK and all remaining DEKs. Nothing may match.
+When qbit-worm-audit is on the classpath, the WORM chain must still verify.

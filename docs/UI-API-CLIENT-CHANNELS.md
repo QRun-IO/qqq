@@ -53,7 +53,7 @@ checkers, the user's permissions.
 - `assistant_*`: its own configuration. That covers providers, models, prices, profiles, skills,
   policy, budgets, usage, tool-call logs and conversations.
 - `authentik_*`: identity, permissions and policies.
-- `audit*`: audits, so the assistant cannot tamper with them.
+- `audit*` is write-denied only: the assistant can read a record's history but never insert, edit or delete audits (`withDeniedWritePattern`).
 - `*api_key*` and `*apikey*`.
 - `*credential*`, `*secret*` and `*password*`.
 - `*permission*` and the role tables: `role`, `roles`, `*_role`, `*_roles`, `*_role_*`, `user_role*`.

@@ -81,7 +81,7 @@ committed document. Phase 5 adds them to the document as an optional path family
 ### 1.3 LEGACY / outside `/qqq/v1` (6)
 | Method | Path | Next src | Replacement (phase 4) |
 |---|---|---|---|
-| POST | /material-dashboard-backend/form-adjuster/{id}/{onChange,onLoad} | lib/api/form-adjuster.ts:114 | new v1 spec `POST /table/{t}/formAdjuster/{id}/{event}` |
+| POST | /material-dashboard-backend/form-adjuster/{id}/{onChange,onLoad} | lib/api/form-adjuster.ts:114 | v1 spec `POST /table/{t}/formAdjuster/{id}/{event}` added in 1.3.0 (#1152); Next moves once it ships in an RC |
 | GET | /apis.json?tableName= | lib/api/developer.ts:282 | `apis` list in `GET /table/{t}/{pk}/developer` response (v1) |
 | GET | {apiPath}versions.json | lib/api/developer.ts:301 | same, versions included |
 | GET (+href) | {apiPath}{ver}/{table}/openapi.json | lib/api/developer.ts:318,330; components/developer/RecordApiAccess.tsx:239 | links in the same response (documentation links stay hrefs) |

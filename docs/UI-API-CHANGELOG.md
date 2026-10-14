@@ -74,14 +74,24 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ## Versions
 
-### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
-1.1.0 was never released; its additions ship here.
+### 1.3.0 (QQQ 4.1.0-RC.7, unreleased)
+- Added `POST /table/{tableName}/formAdjuster/{identifier}/{event}` (tag `Tables`, #1152): runs a
+  table form's on-load or on-change adjuster and returns `FormAdjusterOutputV1`. It replaces the
+  Material Dashboard module's unversioned `POST /material-dashboard-backend/form-adjuster/...`
+  route for v1 clients. The adjuster runs in the caller's session (the legacy route runs it as the
+  system user, unauthenticated), and the caller must be allowed to insert or edit records in the
+  table. It answers 404 when the application registers no form adjusters.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing
   is stored). Uploads are read through `BulkLoadUploadSources` by their opaque ref, as the session
   user. The `X-QQQ-AI-Route: hipaa` request header allows sample values of classified and unmapped
   columns; without it they are left out.
+- `baseline.yaml` is now the RC.6 document (1.2.0). The bulk-load operations above were first
+  listed under 1.2.0, but they merged after RC.6 was cut, so they ship in 1.3.0.
+
+### 1.2.0 (QQQ 4.1.0-RC.6)
+1.1.0 was never released; its additions ship here.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

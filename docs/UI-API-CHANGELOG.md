@@ -72,6 +72,17 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - **Sunset:** they are removed together with the Material Dashboard. No date is set yet; it will be
   announced here.
 
+## 1.4.0 — Output delivery (unreleased)
+
+- Added `GET /delivery/destinations`, `POST /delivery/destinations/{name}/targets`
+  (`{chosen: {...}}`), and `GET /delivery/output/{logId}`. Discovery and target
+  selection use the authenticated user's permissions; hidden and unknown names
+  both return 404.
+- Stored output is available only to its owner or `output_delivery.admin`.
+  Responses stream directly from storage, with multiple files streamed as ZIP.
+- Added the `delivery` feature and reserved core route prefix. Published complete
+  request, destination, target-step and binary-response schemas.
+
 ## Versions
 
 ### Unreleased (after 1.2.0; no change to the document)

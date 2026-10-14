@@ -519,6 +519,64 @@ components:
             $ref: "#/components/schemas/BulkLoadSummaryLine"
           type: "array"
       type: "object"
+    DeliveryDestinationsResponseV1:
+      properties:
+        destinations:
+          items:
+            properties:
+              name:
+                type: "string"
+              label:
+                type: "string"
+              icon:
+                type: "string"
+              maxClassification:
+                type: "string"
+              aboveMaxClassification:
+                type: "string"
+              order:
+                type: "integer"
+              maxAttachmentBytes:
+                format: "int64"
+                type: "integer"
+              allowBearerLinks:
+                type: "boolean"
+            type: "object"
+          type: "array"
+      type: "object"
+    DeliveryOutputResponseV1:
+      format: "binary"
+      type: "string"
+    DeliveryTargetStepResponseV1:
+      properties:
+        name:
+          type: "string"
+        label:
+          type: "string"
+        options:
+          items:
+            properties:
+              value:
+                type: "string"
+              label:
+                type: "string"
+              description:
+                type: "string"
+            type: "object"
+          type: "array"
+        freeText:
+          type: "boolean"
+        complete:
+          type: "boolean"
+        summary:
+          type: "string"
+      type: "object"
+    DeliveryTargetsRequestV1:
+      properties:
+        chosen:
+          additionalProperties: true
+          type: "object"
+      type: "object"
     ExposedJoin:
       properties:
         isMany:
@@ -6467,7 +6525,7 @@ info:
     \ its own\nconfiguration, identity and permission administration, audits, API\
     \ keys or secrets), exactly as if the user had\nno permission for them.\n"
   title: "QQQ Middleware API"
-  version: "1.3.0"
+  version: "1.4.0"
 openapi: "3.0.3"
 paths:
   /qqq/v1/version:
@@ -6961,6 +7019,69 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "List visible sections and the signed-in user's preferences"
+      tags:
+      - "General"
+  /qqq/v1/delivery/destinations:
+    get:
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDestinationsResponseV1"
+          description: "Delivery response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "List authorized output destinations"
+      tags:
+      - "General"
+  /qqq/v1/delivery/destinations/{name}/targets:
+    post:
+      parameters:
+      - in: "path"
+        name: "name"
+        required: true
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryTargetsRequestV1"
+        required: true
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryTargetStepResponseV1"
+          description: "Delivery response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Describe the next delivery target"
+      tags:
+      - "General"
+  /qqq/v1/delivery/output/{logId}:
+    get:
+      parameters:
+      - in: "path"
+        name: "logId"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/octet-stream:
+              schema:
+                $ref: "#/components/schemas/DeliveryOutputResponseV1"
+          description: "Stored output; multiple attachments form a ZIP archive"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Download stored output as its owner or delivery administrator"
       tags:
       - "General"
   /qqq/v1/preferences/{sectionName}:

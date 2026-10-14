@@ -39,7 +39,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ** and PATCH for fixes (UiApiContractTest enforces it); a breaking change
     ** needs a new URL version (/qqq/v2).
     ***************************************************************************/
-   public static final String SEMANTIC_VERSION = "1.3.0";
+   public static final String SEMANTIC_VERSION = "1.4.0";
 
    /***************************************************************************
     ** Optional core features, published by GET /version.
@@ -47,7 +47,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
       "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
-      "help", "preferences");
+      "help", "preferences", "delivery");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -63,6 +63,9 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
 
       list.add(new MetaDataSpecV1());
       list.add(new PreferencesSpecV1());
+      list.add(new DeliveryDestinationsSpecV1());
+      list.add(new DeliveryTargetsSpecV1());
+      list.add(new DeliveryOutputSpecV1());
       list.add(new PreferenceSectionGetSpecV1());
       list.add(new PreferenceSectionPatchSpecV1());
       list.add(new PreferenceSectionActionSpecV1());

@@ -176,12 +176,17 @@ an SSH key) can mint a `QSession` with
 `UiApiInProcessSessions.register(session, ttl)` and pass the returned token through
 `UiApiCredentials.ofInProcessSession(token)`. TTL must be positive and at most 24 hours.
 Tokens exist only in this JVM; use `revoke(token)` when the gateway session ends. Registration
-and resolution copy the session, including its mutable collections, to isolate request state.
+and resolution copy the session (`QSession.clone()`, which also carries a credential scope),
+to isolate request state.
 
 The invoker sends only `X-QQQ-In-Process-Session` when these credentials are supplied.
 Both session setup paths accept it **only from a loopback socket peer**, and an invalid,
 expired or revoked token returns 401 without falling back to other credentials.
 `UiApiCredentials.fromContext(ctx)` deliberately ignores this header.
+The forwarding headers (`X-Forwarded-For`, `X-Real-IP`, `Forwarded`) are never trusted: only
+the socket peer counts. If a reverse proxy runs on the same host, every proxied request arrives
+from loopback, so the 256-bit token held in JVM memory is then the whole protection. The token is
+never written to logs, exception messages or the 401 response, and must not be logged by callers.
 
 `invokeForStream(request)` returns an `AutoCloseable UiApiStreamResponse` with status,
 headers (`getHeader(name)` is case-insensitive), `isSuccess()` and `getInputStream()`.

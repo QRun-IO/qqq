@@ -370,7 +370,7 @@ public class ChunkedProcessPlan implements JobPlan
 
       boolean             sameTransaction = JobIdempotency.SAME_TRANSACTION.name().equals(job.getValueString("idempotency")) && !isValidate;
       QBackendTransaction transaction     = sameTransaction ? QBackendTransaction.openFor(new InsertInput(destinationTableName(job, process))) : null;
-      try(JobChunkScope scope = JobChunkScope.open(transaction))
+      try(JobChunkScope scope = JobChunkScope.open(transaction, context::check))
       {
          context.check();
 

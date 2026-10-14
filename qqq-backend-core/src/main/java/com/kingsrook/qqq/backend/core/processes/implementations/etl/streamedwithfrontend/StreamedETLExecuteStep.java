@@ -256,6 +256,11 @@ public class StreamedETLExecuteStep extends BaseStreamedETLStep implements Backe
     *******************************************************************************/
    private int consumeRecordsFromPipe(RecordPipe recordPipe, AbstractTransformStep transformStep, AbstractLoadStep loadStep, RunBackendStepInput runBackendStepInput, RunBackendStepOutput runBackendStepOutput, List<QRecord> loadedRecordList) throws QException
    {
+      ////////////////////////////////////////////////////////////////////////
+      // in a durable job chunk: stop here if the job was paused or cancelled //
+      ////////////////////////////////////////////////////////////////////////
+      JobChunkScope.checkBetweenPages();
+
       /////////////////////////////////////////////////////////////////////////////
       // open a transaction for the whole process, if that's the requested level //
       /////////////////////////////////////////////////////////////////////////////

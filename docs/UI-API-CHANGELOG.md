@@ -95,8 +95,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   - A process run over `durableThresholdRows` (or `alwaysDurable`) no longer runs its execute step
     inline: the step returns at once with the value `durableJobId` and a summary line, and the job
     does the work.
-
-### Unreleased (after 1.2.0; no change to the document)
 - Process init/step responses now optionally include `oneTimeSecrets` using the shared
   `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
   in its own response; a step that went async hands them, once, to the first status poll that

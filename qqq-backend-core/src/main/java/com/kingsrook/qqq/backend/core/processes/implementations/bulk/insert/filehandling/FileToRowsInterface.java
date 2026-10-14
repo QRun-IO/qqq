@@ -49,6 +49,10 @@ public interface FileToRowsInterface extends AutoCloseable, Iterator<BulkLoadFil
       {
          rs = new XlsxFileToRows();
       }
+      else if(fileName.toLowerCase(Locale.ROOT).endsWith(".jsonl"))
+      {
+         rs = new JsonlFileToRows();
+      }
       else
       {
          throw (new QUserFacingException("Unrecognized file extension - expecting .csv or .xlsx"));

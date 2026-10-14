@@ -74,6 +74,10 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 ## Versions
 
 ### 1.4.0 (unreleased)
+- Added the core extension `health` 1.0.0 (central health monitoring, `docs/specs/HEALTH.md`):
+  `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
+  `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds
+  `HealthMonitoringMetaData`; `/health` joins `ESTABLISHED_PREFIXES`. The core document is unchanged.
 - Added `POST /table/{tableName}/formAdjuster/{identifier}/{event}` (tag `Tables`, #1152): runs a
   table form's on-load or on-change adjuster and returns `FormAdjusterOutputV1`. It replaces the
   Material Dashboard module's unversioned `POST /material-dashboard-backend/form-adjuster/...`
@@ -83,15 +87,6 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - `baseline.yaml` is now the RC.7 document (1.3.0).
 
 ### 1.3.0 (QQQ 4.1.0-RC.7)
-- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
-  `UiApiInvoker` (in-process invocation; no change to the document).
-- Added `UiApiRequest.withHeader(name, value)` (no change to the document) for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
-- Added the core extension `health` 1.0.0 (central health monitoring, `docs/specs/HEALTH.md`):
-  `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
-  `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds
-  `HealthMonitoringMetaData`; `/health` joins `ESTABLISHED_PREFIXES`. The core document is unchanged.
-
-### 1.3.0 (unreleased)
 - Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 - Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
   spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
@@ -151,6 +146,7 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   - Added secured `GET /help/search?q=&limit=` with ranked results, canonical keys, summaries, long help and application-relative links (default 20, maximum 50).
   - Added `GET /help/coverage?kind=&missingOnly=&parentKey=` for users with INSERT or EDIT permission on `helpContent`; includes hidden targets and scoped totals before the missing-only filter.
   - Per-session permission and client-channel targeting, safe Markdown rendering and cross-node reload. `GET /version` advertises the `help` feature.
+- Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to `UiApiInvoker`.
 - Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
   `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
   `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing
@@ -168,8 +164,8 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
   See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
   frontend obligations, sample fixtures and the process-step validation limitation.
-- `baseline.yaml` was the RC.6 document (1.2.0) for this release. The bulk-load and contingent-field additions
-  above were first listed under 1.2.0, but they merged after RC.6 was cut, so they ship in 1.3.0.
+- `baseline.yaml` was the RC.6 document (1.2.0) for this release; the in-app help, invoker, bulk-load
+  and contingent-field additions above were first listed under 1.2.0 but merged after RC.6 was cut.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6)
 1.1.0 was never released; its additions ship here.

@@ -25,12 +25,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapKnownEntries;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 
 
 /***************************************************************************
@@ -192,9 +192,32 @@ public class TableMetaDataLight implements ToSchema
     **
     ***************************************************************************/
    @OpenAPIDescription("Help Contents for this table.") // todo describe more
-   public Map<String, List<QHelpContent>> getHelpContents()
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   public Map<String, List<HelpContentV1>> getHelpContents()
    {
-      return (this.wrapped.getHelpContents());
+      return (HelpContentV1.of(this.wrapped.getHelpContents()));
    }
 
+
+
+
+   /*******************************************************************************
+    ** Publish the session-specific collaboration metadata.
+    *******************************************************************************/
+   @OpenAPIDescription("Enabled record collaboration features, public settings, and this session's table capabilities.")
+   public RecordFeaturesV1 getRecordFeatures()
+   {
+      return (wrapped.getRecordFeatures() == null ? null : new RecordFeaturesV1(wrapped.getRecordFeatures()));
+   }
+
+
+
+   /*******************************************************************************
+    ** Publish the current runtime metadata generation.
+    *******************************************************************************/
+   @OpenAPIDescription("Runtime metadata generation; refetch metadata when this changes.")
+   public Long getMetaDataGeneration()
+   {
+      return (wrapped.getMetaDataGeneration());
+   }
 }

@@ -45,8 +45,10 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamed.StreamedETLProcess;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -722,6 +724,69 @@ public class StreamedETLWithFrontendProcessTest extends BaseTest
       int          previewIdx = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_PREVIEW);
       int          reviewIdx  = stepList.indexOf(StreamedETLWithFrontendProcess.STEP_NAME_REVIEW);
       assertEquals(previewIdx + 1, reviewIdx, "review step should still immediately follow preview");
+   }
+
+
+
+   /*******************************************************************************
+    ** Per-page load secrets must reach the outer execute output without state leakage.
+    *******************************************************************************/
+   @Test
+   void testPageOneTimeSecrets() throws QException
+   {
+      QInstance instance = QContext.getQInstance();
+      QProcessMetaData process = StreamedETLWithFrontendProcess.defineProcessMetaData(
+         TestUtils.TABLE_NAME_SHAPE, TestUtils.TABLE_NAME_PERSON_MEMORY,
+         ExtractViaQueryStep.class, SecretTransformStep.class, SecretLoadStep.class);
+      process.setName("secretLoad");
+      process.setTableName(TestUtils.TABLE_NAME_SHAPE);
+      instance.addProcess(process);
+      TestUtils.insertDefaultShapes(instance);
+
+      RunProcessOutput output = runProcess(instance, process);
+      assertThat(output.getOneTimeSecrets()).extracting(OneTimeSecret::getValue).containsExactly("transform-access-token", "load-access-token");
+      assertThat(output.getValues().get(RunProcessAction.ONE_TIME_SECRETS_MASKED)).isEqualTo(List.of("****transform", "****token"));
+      assertThat(com.kingsrook.qqq.backend.core.actions.processes.RunProcessActionOneTimeSecretsTest.json(RunProcessAction.getState(output.getProcessUUID()).orElseThrow()))
+         .doesNotContain("transform-access-token", "load-access-token");
+   }
+
+
+
+   /*******************************************************************************
+    ** A load step representing an API which creates an access token.
+    *******************************************************************************/
+   public static class SecretLoadStep extends LoadViaInsertStep
+   {
+      /***************************************************************************
+       ** Produce a one-time token while loading a page.
+       ***************************************************************************/
+      @Override
+      public void runOnePage(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         super.runOnePage(input, output);
+         output.addOneTimeSecret(new OneTimeSecret().withLabel("Access token").withValue("load-access-token").withMasked("****token"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A transform can also return a secret during execution, before the load runs.
+    *******************************************************************************/
+   public static class SecretTransformStep extends TestTransformShapeToPersonStep
+   {
+      /***************************************************************************
+       ** Preview must not create tokens; emit one during actual execution only.
+       ***************************************************************************/
+      @Override
+      public void runOnePage(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         super.runOnePage(input, output);
+         if(StreamedETLWithFrontendProcess.STEP_NAME_EXECUTE.equals(input.getStepName()))
+         {
+            output.addOneTimeSecret(new OneTimeSecret().withLabel("Transform token").withValue("transform-access-token").withMasked("****transform"));
+         }
+      }
    }
 
 }

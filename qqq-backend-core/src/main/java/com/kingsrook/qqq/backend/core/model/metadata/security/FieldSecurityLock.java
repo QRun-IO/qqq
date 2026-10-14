@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.model.metadata.security;
 
 import java.io.Serializable;
 import java.util.List;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldMaskStyle;
 
 
 /*******************************************************************************
@@ -30,6 +31,7 @@ import java.util.List;
  *******************************************************************************/
 public class FieldSecurityLock
 {
+   private FieldMaskStyle maskStyle;
    private String             securityKeyType;
    private Behavior           defaultBehavior = Behavior.DENY;
    private List<Serializable> overrideValues;
@@ -52,7 +54,9 @@ public class FieldSecurityLock
    public enum Behavior
    {
       ALLOW,
-      DENY
+      DENY,
+      MASK,
+      REVEAL
    }
 
 
@@ -150,4 +154,35 @@ public class FieldSecurityLock
    }
 
 
+
+
+
+   /*******************************************************************************
+    ** Getter for maskStyle
+    *******************************************************************************/
+   public FieldMaskStyle getMaskStyle()
+   {
+      return (maskStyle);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for maskStyle
+    *******************************************************************************/
+   public void setMaskStyle(FieldMaskStyle maskStyle)
+   {
+      this.maskStyle = maskStyle;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maskStyle
+    *******************************************************************************/
+   public FieldSecurityLock withMaskStyle(FieldMaskStyle maskStyle)
+   {
+      setMaskStyle(maskStyle);
+      return (this);
+   }
 }

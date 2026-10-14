@@ -46,6 +46,14 @@ public class QAuthenticationMetaData implements TopLevelMetaDataInterface
 
    private QCodeReference customizer;
 
+   //////////////////////////////////////////////////////////////////////////////
+   // optional module class (a QAuthenticationModuleInterface).  When set, the  //
+   // dispatcher uses it instead of the module registered for the type, so a    //
+   // scoped provider (e.g., one API) can use an application's own module.      //
+   // Required for type CUSTOM.                                                 //
+   //////////////////////////////////////////////////////////////////////////////
+   private QCodeReference moduleCodeReference;
+
    private Boolean sessionStoreEnabled = false;
 
 
@@ -235,9 +243,42 @@ public class QAuthenticationMetaData implements TopLevelMetaDataInterface
     ***************************************************************************/
    public void validate(QInstance qInstance, QInstanceValidator qInstanceValidator)
    {
-      //////////////////
-      // noop at base //
-      //////////////////
+      if(QAuthenticationType.CUSTOM.equals(type))
+      {
+         qInstanceValidator.assertCondition(moduleCodeReference != null, "Authentication [" + name + "] of type CUSTOM must set a moduleCodeReference.");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for moduleCodeReference
+    *******************************************************************************/
+   public QCodeReference getModuleCodeReference()
+   {
+      return (this.moduleCodeReference);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for moduleCodeReference
+    *******************************************************************************/
+   public void setModuleCodeReference(QCodeReference moduleCodeReference)
+   {
+      this.moduleCodeReference = moduleCodeReference;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for moduleCodeReference: an application module class used for
+    ** this provider instead of the module registered for its type.
+    *******************************************************************************/
+   public QAuthenticationMetaData withModuleCodeReference(QCodeReference moduleCodeReference)
+   {
+      this.moduleCodeReference = moduleCodeReference;
+      return (this);
    }
 
 

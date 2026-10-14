@@ -21,12 +21,16 @@
 package com.kingsrook.qqq.backend.core.actions.messaging;
 
 
+import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageStatus;
 import com.kingsrook.qqq.backend.core.model.metadata.messaging.QMessagingProviderMetaData;
+import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderCapability;
 import com.kingsrook.qqq.backend.core.modules.messaging.MessagingProviderInterface;
 import com.kingsrook.qqq.backend.core.modules.messaging.QMessagingProviderDispatcher;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -39,7 +43,9 @@ public class SendMessageAction extends AbstractQActionFunction<SendMessageInput,
 {
 
    /*******************************************************************************
-    **
+    ** Dispatch through the named provider. Templates and idempotency require declared
+    ** capabilities. Category, linked record, sender name, locale, and variables
+    ** without a template are advisory and unsupported providers silently ignore them.
     *******************************************************************************/
    @Override
    public SendMessageOutput execute(SendMessageInput input) throws QException
@@ -57,7 +63,76 @@ public class SendMessageAction extends AbstractQActionFunction<SendMessageInput,
 
       MessagingProviderInterface messagingProviderInterface = new QMessagingProviderDispatcher().getMessagingProviderInterface(messagingProvider.getType());
 
-      return (messagingProviderInterface.sendMessage(input));
+      Set<MessagingProviderCapability> capabilities = messagingProviderInterface.getCapabilities();
+      if(input.getTemplateName() != null && !capabilities.contains(MessagingProviderCapability.TEMPLATES))
+      {
+         throw (new QException("Messaging provider " + input.getMessagingProviderName() + " does not support templates"));
+      }
+      if(input.getIdempotencyKey() != null && !capabilities.contains(MessagingProviderCapability.IDEMPOTENCY))
+      {
+         throw (new QException("Messaging provider " + input.getMessagingProviderName() + " does not support idempotency"));
+      }
+
+      SendMessageOutput output = messagingProviderInterface.sendMessage(input);
+      if(output == null)
+      {
+         output = new SendMessageOutput();
+      }
+      if(output.getStatus() == null)
+      {
+         output.setStatus(SendMessageStatus.SENT);
+      }
+      return (output);
+   }
+
+
+
+   /*******************************************************************************
+    ** Capabilities of a named provider in the current QInstance. Returns an empty
+    ** set if metadata is absent or its type cannot resolve. Use isAvailable to
+    ** distinguish unavailable providers from providers with no optional features.
+    *******************************************************************************/
+   public static Set<MessagingProviderCapability> capabilities(String messagingProviderName)
+   {
+      MessagingProviderInterface provider = findProvider(messagingProviderName);
+      return (provider == null ? Set.of() : provider.getCapabilities());
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether provider metadata exists in the current QInstance and its type resolves.
+    ** Does not check transport connectivity, credentials, or delivery readiness.
+    *******************************************************************************/
+   public static boolean isAvailable(String messagingProviderName)
+   {
+      return (findProvider(messagingProviderName) != null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve an optional provider without treating missing registration as an error.
+    *******************************************************************************/
+   private static MessagingProviderInterface findProvider(String messagingProviderName)
+   {
+      if(!StringUtils.hasContent(messagingProviderName))
+      {
+         return (null);
+      }
+      QMessagingProviderMetaData metadata = QContext.getQInstance().getMessagingProvider(messagingProviderName);
+      if(metadata == null)
+      {
+         return (null);
+      }
+      try
+      {
+         return (new QMessagingProviderDispatcher().getMessagingProviderInterface(metadata));
+      }
+      catch(QModuleDispatchException e)
+      {
+         return (null);
+      }
    }
 
 }

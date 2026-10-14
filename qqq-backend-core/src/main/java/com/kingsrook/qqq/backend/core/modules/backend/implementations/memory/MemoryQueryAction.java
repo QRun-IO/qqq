@@ -52,7 +52,17 @@ public class MemoryQueryAction implements QueryInterface
          // add the records to the output one-by-one -- this more closely matches how "real" backends perform //
          // and works better w/ pipes                                                                         //
          ///////////////////////////////////////////////////////////////////////////////////////////////////////
-         for(QRecord qRecord : MemoryRecordStore.getInstance().query(queryInput))
+         List<QRecord> records;
+         if(queryInput.getTransaction() instanceof MemoryConsistentReadTransaction snapshotTransaction)
+         {
+            records = snapshotTransaction.callInSnapshot(() -> MemoryRecordStore.getInstance().query(queryInput));
+         }
+         else
+         {
+            records = MemoryRecordStore.getInstance().query(queryInput);
+         }
+
+         for(QRecord qRecord : records)
          {
             queryOutput.addRecord(qRecord);
          }

@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.storage.StorageInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.assist.BulkLoadAssist;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.filehandling.FileToRowsInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.mapping.RowsToRecordInterface;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.model.BulkInsertMapping;
@@ -56,6 +57,16 @@ public class BulkInsertExtractStep extends AbstractExtractStep
    {
       int rowsAdded     = 0;
       int originalLimit = Objects.requireNonNullElse(getLimit(), Integer.MAX_VALUE);
+
+      ///////////////////////////////////////////////////////////////////////////
+      // a row limit from the process values (assisted bulk load's SAMPLE dry  //
+      // run validates only the first rows of the file - see BulkLoadAssist)   //
+      ///////////////////////////////////////////////////////////////////////////
+      Integer rowLimit = runBackendStepInput.getValueInteger(BulkLoadAssist.VALUE_ROW_LIMIT);
+      if(rowLimit != null && rowLimit > 0)
+      {
+         originalLimit = Math.min(originalLimit, rowLimit);
+      }
 
       StorageInput          storageInput      = BulkInsertStepUtils.getStorageInputForTheFile(runBackendStepInput);
       BulkInsertMapping     bulkInsertMapping = (BulkInsertMapping) runBackendStepOutput.getValue("bulkInsertMapping");

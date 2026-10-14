@@ -46,6 +46,8 @@ public class DeleteInput extends AbstractTableActionInput
    private QQueryFilter        queryFilter;
    private InputSource         inputSource = QInputSource.SYSTEM;
 
+   private boolean dryRun = false;
+
    private boolean omitDmlAudit = false;
    private String  auditContext = null;
 
@@ -358,6 +360,42 @@ public class DeleteInput extends AbstractTableActionInput
       }
 
       return (this.flags.contains(flag));
+   }
+
+
+   /*******************************************************************************
+    ** Getter for dryRun - if true, resolve the records to delete (a filter is always resolved to primary
+    ** keys), run the pre-delete customizers (with isPreview=true) and all validations,
+    ** but do NOT delete anything: no backend delete, no association cascades, audits,
+    ** record change listeners or post-delete customizers.  The output's
+    ** dryRunPrimaryKeys are the keys that would be deleted (deletedRecordCount stays
+    ** 0); recordsWithErrors/Warnings are as for a real delete.  Note that a dry run
+    ** does not validate the cascading delete of associated child records.
+    *******************************************************************************/
+   public boolean getDryRun()
+   {
+      return (this.dryRun);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public void setDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dryRun - see getDryRun.
+    *******************************************************************************/
+   public DeleteInput withDryRun(boolean dryRun)
+   {
+      this.dryRun = dryRun;
+      return (this);
    }
 
 }

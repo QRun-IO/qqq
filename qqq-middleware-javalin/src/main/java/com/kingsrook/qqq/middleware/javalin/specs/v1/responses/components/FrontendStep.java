@@ -22,7 +22,6 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 
 
 import java.util.List;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
@@ -158,9 +157,10 @@ public class FrontendStep implements ToSchema
     **
     ***************************************************************************/
    @OpenAPIDescription("Help content shown on the step/screen.")
-   public List<QHelpContent> getHelpContents()
+   @OpenAPIListItems(value = HelpContentV1.class, useRef = true)
+   public List<HelpContentV1> getHelpContents()
    {
-      return (this.wrapped.getHelpContents());
+      return (HelpContentV1.of(this.wrapped.getHelpContents()));
    }
 
 }

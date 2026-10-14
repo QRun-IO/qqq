@@ -21,10 +21,14 @@
 package com.kingsrook.qqq.backend.core.model.metadata.frontend;
 
 
+import java.util.List;
+import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionInput;
+import com.kingsrook.qqq.backend.core.model.metadata.help.HelpContentVisibility;
+import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 
 
@@ -36,6 +40,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.reporting.QReportMetaData;
 @JsonInclude(Include.NON_NULL)
 public class QFrontendReportMetaData
 {
+   private Map<String, List<QHelpContent>> helpContents;
+
    private String name;
    private String label;
    private String processName;
@@ -55,6 +61,7 @@ public class QFrontendReportMetaData
     *******************************************************************************/
    public QFrontendReportMetaData(AbstractActionInput actionInput, QReportMetaData reportMetaData, boolean includeSteps)
    {
+      this.helpContents = HelpContentVisibility.filter(reportMetaData.getHelpContent());
       this.name = reportMetaData.getName();
       this.label = reportMetaData.getLabel();
       this.processName = reportMetaData.getProcessName();
@@ -122,4 +129,13 @@ public class QFrontendReportMetaData
       return hasPermission;
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for helpContents
+    *******************************************************************************/
+   public Map<String, List<QHelpContent>> getHelpContents()
+   {
+      return (helpContents);
+   }
 }

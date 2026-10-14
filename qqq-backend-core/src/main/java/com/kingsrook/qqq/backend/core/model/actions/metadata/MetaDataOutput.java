@@ -42,6 +42,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
  *******************************************************************************/
 public class MetaDataOutput extends AbstractActionOutput
 {
+   private Long metaDataGeneration;
+
    private Map<String, QFrontendTableMetaData>        tables;
    private Map<String, QFrontendProcessMetaData>      processes;
    private Map<String, QFrontendReportMetaData>       reports;
@@ -361,4 +363,35 @@ public class MetaDataOutput extends AbstractActionOutput
       this.homeAppName = homeAppName;
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for metaDataGeneration
+    *******************************************************************************/
+   public Long getMetaDataGeneration()
+   {
+      return (this.metaDataGeneration);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for metaDataGeneration
+    *******************************************************************************/
+   public void setMetaDataGeneration(Long metaDataGeneration)
+   {
+      this.metaDataGeneration = metaDataGeneration;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for metaDataGeneration
+    *******************************************************************************/
+   public MetaDataOutput withMetaDataGeneration(Long metaDataGeneration)
+   {
+      setMetaDataGeneration(metaDataGeneration);
+      return (this);
+   }
 }

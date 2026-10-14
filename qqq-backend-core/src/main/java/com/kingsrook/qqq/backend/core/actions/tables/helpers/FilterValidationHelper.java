@@ -21,12 +21,14 @@
 package com.kingsrook.qqq.backend.core.actions.tables.helpers;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -34,9 +36,12 @@ import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.Tab
 import com.kingsrook.qqq.backend.core.model.actions.tables.QueryOrCountInputInterface;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByAggregate;
 import com.kingsrook.qqq.backend.core.model.actions.tables.aggregate.QFilterOrderByGroupBy;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QSubQuery;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
@@ -70,7 +75,7 @@ public class FilterValidationHelper
 
       List<String> unrecognizedFieldNames = new ArrayList<>();
 
-      validateFieldNamesInFilterInner(input, input.getFilter(), input.getTable(), new HashMap<>(), unrecognizedFieldNames);
+      validateFieldNamesInFilterInner(input, input.getFilter(), input.getTable(), new HashMap<>(), unrecognizedFieldNames, 0);
 
       if(!unrecognizedFieldNames.isEmpty())
       {
@@ -83,8 +88,12 @@ public class FilterValidationHelper
    /***************************************************************************
     *
     ***************************************************************************/
-   private static void validateFieldNamesInFilterInner(QueryOrCountInputInterface queryOrCountInputInterface, QQueryFilter filter, QTableMetaData mainTable, Map<String, QTableMetaData> joinTables, List<String> unrecognizedFieldNames) throws QException
+   private static void validateFieldNamesInFilterInner(QueryOrCountInputInterface queryOrCountInputInterface, QQueryFilter filter, QTableMetaData mainTable, Map<String, QTableMetaData> joinTables, List<String> unrecognizedFieldNames, int depth) throws QException
    {
+      if(depth > 64)
+      {
+         throw (new QUserFacingException("Query filter nesting is too deep."));
+      }
       if(filter == null)
       {
          throw (new QUserFacingException("Query Filter contained a null subfilter"));
@@ -94,6 +103,35 @@ public class FilterValidationHelper
          if(criteria == null || !StringUtils.hasContent(criteria.getFieldName()) || criteria.getOperator() == null)
          {
             throw (new QUserFacingException("Query Filter criteria must specify a field name and operator"));
+         }
+         if(criteria.getOperator() == QCriteriaOperator.CONTAINS_ALL)
+         {
+            QVirtualFieldMetaData virtualField = CollectionUtils.nonNullMap(mainTable.getVirtualFields()).get(criteria.getFieldName());
+            if(virtualField == null || virtualField.getCriteriaExpander() == null)
+            {
+               throw (new QUserFacingException("CONTAINS_ALL is only supported on virtual fields with a criteria expander."));
+            }
+         }
+         for(Serializable value : CollectionUtils.nonNullList(criteria.getValues()))
+         {
+            if(value instanceof QSubQuery subQuery)
+            {
+               if(criteria.getValues().size() != 1 || (criteria.getOperator() != QCriteriaOperator.IN && criteria.getOperator() != QCriteriaOperator.NOT_IN) || criteria.getOtherFieldName() != null)
+               {
+                  throw (new QUserFacingException("A sub-query must be the single value of IN or NOT_IN."));
+               }
+               QTableMetaData subTable = QContext.getQInstance().getTable(subQuery.getTableName());
+               if(subTable == null || subQuery.getFieldName() == null || !subTable.getFields().containsKey(subQuery.getFieldName()))
+               {
+                  throw (new QUserFacingException("Sub-query must select an existing field from an existing table."));
+               }
+               QueryInput inner = new QueryInput(subQuery.getTableName()).withFilter(subQuery.getFilter());
+               inner.setInputSource(queryOrCountInputInterface.getInputSource());
+               if(subQuery.getFilter() != null)
+               {
+                  validateFieldNamesInFilterInner(inner, subQuery.getFilter(), subTable, new HashMap<>(), unrecognizedFieldNames, depth + 1);
+               }
+            }
          }
          validateFieldNameFromFilter(criteria.getFieldName(), queryOrCountInputInterface, mainTable, joinTables, unrecognizedFieldNames);
          validateFieldNameFromFilter(criteria.getOtherFieldName(), queryOrCountInputInterface, mainTable, joinTables, unrecognizedFieldNames);
@@ -126,7 +164,7 @@ public class FilterValidationHelper
 
       for(QQueryFilter subFilter : CollectionUtils.nonNullList(filter.getSubFilters()))
       {
-         validateFieldNamesInFilterInner(queryOrCountInputInterface, subFilter, mainTable, joinTables, unrecognizedFieldNames);
+         validateFieldNamesInFilterInner(queryOrCountInputInterface, subFilter, mainTable, joinTables, unrecognizedFieldNames, depth + 1);
       }
    }
 

@@ -21,8 +21,10 @@
 package com.kingsrook.qqq.backend.core.model.actions.values;
 
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractActionOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 
@@ -35,6 +37,16 @@ public class SearchPossibleValueSourceOutput extends AbstractActionOutput
    private List<QPossibleValue<?>> results = new ArrayList<>();
 
    private String warning;
+
+   ////////////////////////////////////////////////////////////////////////////
+   // for picker requests: each option's picker display values (raw, and    //
+   // formatted/translated where they differ), keyed by the option's id, and //
+   // whether another page follows.                                          //
+   ////////////////////////////////////////////////////////////////////////////
+   private Map<Serializable, Map<String, Serializable>> pickerValues;
+   private Map<Serializable, Map<String, String>>       pickerDisplayValues;
+   private Boolean                                      hasMore;
+
 
 
    /*******************************************************************************
@@ -119,4 +131,95 @@ public class SearchPossibleValueSourceOutput extends AbstractActionOutput
    }
 
 
+
+   /*******************************************************************************
+    ** Getter for pickerValues
+    *******************************************************************************/
+   public Map<Serializable, Map<String, Serializable>> getPickerValues()
+   {
+      return (pickerValues);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerValues
+    *******************************************************************************/
+   public void setPickerValues(Map<Serializable, Map<String, Serializable>> pickerValues)
+   {
+      this.pickerValues = pickerValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerValues
+    *******************************************************************************/
+   public SearchPossibleValueSourceOutput withPickerValues(Map<Serializable, Map<String, Serializable>> pickerValues)
+   {
+      this.pickerValues = pickerValues;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for pickerDisplayValues
+    *******************************************************************************/
+   public Map<Serializable, Map<String, String>> getPickerDisplayValues()
+   {
+      return (pickerDisplayValues);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for pickerDisplayValues
+    *******************************************************************************/
+   public void setPickerDisplayValues(Map<Serializable, Map<String, String>> pickerDisplayValues)
+   {
+      this.pickerDisplayValues = pickerDisplayValues;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for pickerDisplayValues
+    *******************************************************************************/
+   public SearchPossibleValueSourceOutput withPickerDisplayValues(Map<Serializable, Map<String, String>> pickerDisplayValues)
+   {
+      this.pickerDisplayValues = pickerDisplayValues;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hasMore
+    *******************************************************************************/
+   public Boolean getHasMore()
+   {
+      return (hasMore);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for hasMore
+    *******************************************************************************/
+   public void setHasMore(Boolean hasMore)
+   {
+      this.hasMore = hasMore;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hasMore
+    *******************************************************************************/
+   public SearchPossibleValueSourceOutput withHasMore(Boolean hasMore)
+   {
+      this.hasMore = hasMore;
+      return (this);
+   }
 }

@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.model.actions.messaging.Party;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.PartyRole;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageStatus;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailContentRole;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailPartyRole;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -134,7 +135,7 @@ public class SendEmailAction
          throw (new QException("Error sending email", e));
       }
 
-      return null;
+      return (new SendMessageOutput().withStatus(SendMessageStatus.SENT));
    }
 
 

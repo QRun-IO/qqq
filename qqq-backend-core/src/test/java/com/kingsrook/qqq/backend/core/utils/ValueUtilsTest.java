@@ -42,7 +42,9 @@ import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.automation.AutomationStatus;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QValueException;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +61,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class ValueUtilsTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** Field-aware conversion preserves legacy diagnostics for ordinary fields.
+    *******************************************************************************/
+   @Test
+   void unclassifiedConversionKeepsOriginalMessage()
+   {
+      QFieldMetaData field = new QFieldMetaData("reading", QFieldType.INTEGER).withLabel("Reading");
+      QTableMetaData table = new QTableMetaData().withName("readings").withField(field);
+      QValueException exception = assertThrows(QValueException.class, () -> ValueUtils.getValueAsFieldType(table, field, "invalid-number"));
+      assertEquals("Value [invalid-number] could not be converted to an Integer.", exception.getMessage());
+      assertEquals(NumberFormatException.class, exception.getCause().getClass());
+   }
+
+
 
    /*******************************************************************************
     **

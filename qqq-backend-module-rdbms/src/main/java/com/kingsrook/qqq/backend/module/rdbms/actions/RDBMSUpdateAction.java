@@ -36,6 +36,8 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
@@ -162,14 +164,9 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          List<Serializable> rowValues = new ArrayList<>();
          values.add(rowValues);
 
-         for(String fieldName : fieldsBeingUpdated)
-         {
-            Serializable value = record.getValue(fieldName);
-            value = scrubValue(table.getField(fieldName), value);
-            rowValues.add(value);
-         }
+         rowValues.addAll(updateValues(table, fieldsBeingUpdated, record));
          Serializable idValue = record.getValue(table.getPrimaryKeyField());
-         idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+         idValue = scrubValue(table, table.getField(table.getPrimaryKeyField()), table.getField(table.getPrimaryKeyField()).getType(), idValue);
          rowValues.add(idValue);
       }
 
@@ -204,8 +201,10 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
     *******************************************************************************/
    private String writeUpdateSQLPrefix(QTableMetaData table, List<String> fieldsBeingUpdated)
    {
-      String columns = fieldsBeingUpdated.stream()
-         .map(f -> escapeIdentifier(this.getColumnName(table.getField(f))) + " = ?")
+      String columns = JsonStorageValues.columns(fieldsBeingUpdated.stream().map(table::getField).toList()).stream()
+         .map(field -> field.getBackendStorage() instanceof JsonPathStorage
+            ? getActionStrategy().jsonMergeAssignment(escapeIdentifier(getColumnName(field)))
+            : escapeIdentifier(getColumnName(field)) + " = ?")
          .collect(Collectors.joining(", "));
 
       String tableName = escapeIdentifier(getTableName(table));
@@ -241,12 +240,7 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          ////////////////////////////////////////////////////////////////
          QRecord      record0 = page.get(0);
          List<Object> params  = new ArrayList<>();
-         for(String fieldName : fieldsBeingUpdated)
-         {
-            Serializable value = record0.getValue(fieldName);
-            value = scrubValue(table.getField(fieldName), value);
-            params.add(value);
-         }
+         params.addAll(updateValues(table, fieldsBeingUpdated, record0));
 
          //////////////////////////////////////////////////////////////////////
          // values in the where clause (in list) are the id from each record //
@@ -254,7 +248,7 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          for(QRecord record : page)
          {
             Serializable idValue = record.getValue(table.getPrimaryKeyField());
-            idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+            idValue = scrubValue(table, table.getField(table.getPrimaryKeyField()), table.getField(table.getPrimaryKeyField()).getType(), idValue);
             params.add(idValue);
          }
 
@@ -284,6 +278,30 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
    {
       statusCounter += amount;
       updateInput.getAsyncJobCallback().updateStatusOnlyUpwards(statusCounter, updateInput.getRecords().size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Bind each physical column once; JSON merges include only submitted logical fields.
+    *******************************************************************************/
+   protected List<Serializable> updateValues(QTableMetaData table, List<String> fieldNames, QRecord record)
+   {
+      List<QFieldMetaData> fields = fieldNames.stream().map(table::getField).toList();
+      List<Serializable> values = new ArrayList<>();
+      for(QFieldMetaData field : JsonStorageValues.columns(fields))
+      {
+         if(field.getBackendStorage() instanceof JsonPathStorage storage)
+         {
+            values.add(JsonStorageValues.object(record, fields, storage.getColumnName()));
+            values.add(JsonStorageValues.removedKeys(record, fields, storage.getColumnName()));
+         }
+         else
+         {
+            values.add(scrubValue(table, field, field.getType(), record.getValue(field.getName())));
+         }
+      }
+      return (values);
    }
 
 }

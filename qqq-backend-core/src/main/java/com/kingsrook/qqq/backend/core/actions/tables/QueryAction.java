@@ -33,19 +33,25 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
+import com.kingsrook.qqq.backend.core.actions.audits.AuditAction;
+import com.kingsrook.qqq.backend.core.actions.collaboration.RecordReferenceSecurityHelper;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QueryInterface;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.BufferedRecordPipe;
 import com.kingsrook.qqq.backend.core.actions.reporting.RecordPipeBufferedWrapper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
-import com.kingsrook.qqq.backend.core.actions.tables.helpers.FilterValidationHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.CurrentUserFilterHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryActionCacheHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.SelectionValidationHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.query.QueryFilterPreprocessor;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.actions.values.ValueBehaviorApplier;
@@ -59,6 +65,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.RawReadReason;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.data.QRecordEntity;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
@@ -72,6 +79,7 @@ import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.backend.core.utils.ListingHash;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -80,6 +88,9 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class QueryAction
 {
+   private int fieldAccessRecordCount;
+   private String fieldAccessActionName = "query";
+
    private static final QLogger LOG = QLogger.getLogger(QueryAction.class);
 
    private Optional<TableCustomizerInterface> postQueryRecordCustomizer;
@@ -89,6 +100,7 @@ public class QueryAction
    private QueryInterface           queryInterface;
    private QPossibleValueTranslator qPossibleValueTranslator;
    private boolean preservePrimaryKeys;
+   private boolean enforcingPermissions = false;
    private final Set<Object> nativePrimaryKeys = new HashSet<>();
 
 
@@ -98,6 +110,7 @@ public class QueryAction
     *******************************************************************************/
    public QueryOutput execute(QueryInput queryInput) throws QException
    {
+      fieldAccessActionName = "query";
       return execute(queryInput, false);
    }
 
@@ -122,7 +135,75 @@ public class QueryAction
     *******************************************************************************/
    private QueryOutput execute(QueryInput queryInput, boolean preservePrimaryKeys) throws QException
    {
+      if(queryInput.getRawReadReason() != null)
+      {
+         authorizeAndAuditRawRead(queryInput);
+      }
+
+      FieldAccessHelper.PendingExactMatch exactMatch = null;
+      boolean enforce = false;
+      if(queryInput.getTableName() != null && queryInput.getTable() != null)
+      {
+         CorePermissionEnforcer.checkTablePermissions(queryInput, TablePermissionSubType.READ);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(queryInput);
+         if(enforce)
+         {
+            FieldAccessHelper.assertSelectedFieldsAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFieldNamesToInclude());
+            exactMatch = CorePermissionEnforcer.checkReadCriteria(queryInput, queryInput.getQueryJoins(), queryInput.getFilter(), null);
+         }
+      }
+
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         QueryOutput output = executeInAuthorizedScope(queryInput, preservePrimaryKeys, enforce);
+         if(exactMatch != null)
+         {
+            exactMatch.complete(fieldAccessRecordCount, fieldAccessActionName);
+         }
+         return (output);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A raw read (see QueryInput.withRawRead) must pass its reason's permission
+    ** check, is audited, and has its flags (re)applied.  This always applies, not
+    ** only when core permission enforcement is turned on, since a raw read is an
+    ** explicit opt-in to see more than a normal query does.  Record locks and
+    ** field security locks are not touched here.
+    *******************************************************************************/
+   private void authorizeAndAuditRawRead(QueryInput queryInput) throws QException
+   {
+      QTableMetaData table = queryInput.getTable();
+      if(table == null)
+      {
+         throw (new QException("A table named [" + queryInput.getTableName() + "] was not found in the active QInstance"));
+      }
+
+      RawReadReason rawReadReason = queryInput.getRawReadReason();
+      rawReadReason.checkPermission(queryInput, table);
+      queryInput.applyRawReadFlags();
+
+      String userName = QContext.getQSession() == null || QContext.getQSession().getUser() == null ? null : QContext.getQSession().getUser().getIdReference();
+      LOG.info("Raw read of table", logPair("tableName", table.getName()), logPair("reason", rawReadReason.getReason()), logPair("user", userName));
+      CorePermissionEnforcer.runTrusted("audit of a raw read", () ->
+      {
+         AuditAction.execute(table.getName(), null, null, "Raw read of table (hidden, password, and heavy fields included): " + rawReadReason.getReason());
+         return (null);
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** The query itself - after any permission enforcement owed to the caller.
+    *******************************************************************************/
+   private QueryOutput executeInAuthorizedScope(QueryInput queryInput, boolean preservePrimaryKeys, boolean enforce) throws QException
+   {
       this.preservePrimaryKeys = preservePrimaryKeys;
+      this.enforcingPermissions = enforce;
+      this.fieldAccessRecordCount = 0;
       nativePrimaryKeys.clear();
       ActionHelper.validateSession(queryInput);
 
@@ -136,15 +217,16 @@ public class QueryAction
       {
          throw (new QException("A table named [" + queryInput.getTableName() + "] was not found in the active QInstance"));
       }
-      table = TableMetaDataPersonalizerAction.execute(queryInput);
+      table = TableMetaDataPersonalizerAction.execute(queryInput, enforce);
       if(table == null)
       {
          throw (new QException("Query table is not available"));
       }
       queryInput.setTableMetaData(table);
+      queryInput.setFilter(RecordReferenceSecurityHelper.secureFilter(table, queryInput.getFilter(), queryInput.getTransaction()));
 
+      QueryFilterPreprocessor.prepare(queryInput);
       validateFieldNamesToInclude(queryInput);
-      FilterValidationHelper.validateFieldNamesInFilter(queryInput);
       QBackendMetaData backend = queryInput.getBackend();
       postQueryRecordCustomizer = QCodeLoader.getTableCustomizer(table, TableCustomizers.POST_QUERY_RECORD.getRole());
       this.queryInput = queryInput;
@@ -166,6 +248,7 @@ public class QueryAction
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       // apply any available field behaviors to the filter (noting that, if anything changes, a new filter is returned) //
       ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      queryInput.setFilter(CurrentUserFilterHelper.resolve(queryInput, queryInput.getFilter()));
       queryInput.setFilter(ValueBehaviorApplier.applyFieldBehaviorsToFilter(QContext.getQInstance(), table, queryInput.getFilter(), Collections.emptySet()));
 
       QueryStat queryStat = QueryStatManager.newQueryStat(backend, table, queryInput.getFilter(), QueryAction.class.getSimpleName());
@@ -495,7 +578,7 @@ public class QueryAction
       {
          if(qPossibleValueTranslator == null)
          {
-            qPossibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession());
+            qPossibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession()).withFieldAccessEnforcement(enforcingPermissions);
          }
          qPossibleValueTranslator.translatePossibleValuesInRecords(queryInput.getTable(), records, queryInput.getQueryJoins(), queryInput.getFieldsToTranslatePossibleValues());
       }
@@ -521,6 +604,16 @@ public class QueryAction
             }
             primaryKeys.put(record, record.resolvePrimaryKey(queryInput.getTable()));
          }
+      }
+
+      ////////////////////////////////////////////////////////////////////////////
+      // when enforcing permissions, remove values of fields (incl. joined and  //
+      // associated tables' fields) that a FieldSecurityLock denies the session //
+      ////////////////////////////////////////////////////////////////////////////
+      if(enforcingPermissions)
+      {
+         fieldAccessRecordCount += records.size();
+         FieldAccessHelper.applyToRecords(queryInput.getTableName(), queryInput.getQueryJoins(), records, fieldAccessActionName);
       }
 
       //////////////////////////////
@@ -633,5 +726,16 @@ public class QueryAction
       }
 
       queryInterface.cancelAction();
+   }
+
+
+
+   /*******************************************************************************
+    ** Execute with the owning egress action name, including export reveal suppression.
+    *******************************************************************************/
+   public QueryOutput execute(QueryInput input, String actionName) throws QException
+   {
+      fieldAccessActionName = actionName;
+      return (execute(input, false));
    }
 }

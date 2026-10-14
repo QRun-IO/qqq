@@ -1,0 +1,126 @@
+:sectnums!:
+
+== Record Picker for Large Possible Value Sources
+include::../variables.adoc[]
+
+A possible-value field whose source is a large table (100,000+ media, products, customers) needs more than an inline dropdown.
+A table-type `QPossibleValueSource` can declare a `QPossibleValuePicker`.
+Every field that uses the source then offers a searchable, filterable, paged picker dialog in the frontend, with thumbnails where the table has images.
+The inline typeahead stays for quick picks.
+
+=== Layers
+
+[cols="1,3"]
+|===
+|Layer |Responsibility
+
+|QQQ core
+|`QPossibleValuePicker` metadata on the source; picker requests in `SearchPossibleValueSourceAction` (search, allow-listed filters and sorts, keyset or offset paging, `limit + 1` instead of a count, display values per option); validation in `QInstanceValidator`.
+
+|Javalin middleware (v1)
+|The `picker` object of the possible-values request body (table, process and standalone routes); `values`, `displayValues` and `hasMore` in the response; `picker` and `pickerTableName` on field metadata.
+
+|Frontend (QQQ Next UI)
+|Thumbnails in the inline typeahead and on the selection, Browse/Change, Preview and View; the lazily loaded picker dialog.
+
+|Application
+|Declares the picker on the source, chooses its fields, and adds the indexes its filters and sorts need.
+|===
+
+=== Metadata
+
+[source,java]
+----
+qInstance.getPossibleValueSource("media").withPicker(new QPossibleValuePicker()
+   .withThumbnailField("thumbnailUrl")              // image URL per option and for the selection
+   .withPreviewField("galleryUrl")                  // larger image for the preview pane
+   .withSubtitleFields(List.of("mediaTypeId", "mimeType"))
+   .withDetailFields(List.of("width", "height", "fileSize", "altText"))
+   .withFilterFields(List.of("mediaTypeId", "isActive", "createDate", "width"))
+   .withSearchFields(List.of("name", "fileName"))   // default: the source's searchFields
+   .withSort("Newest", "id", false)                 // first sort is the default
+   .withSort("Name", "name", true)
+   .withPageSize(48)
+   .withUploadProcessName("UploadCmsImageFile")     // optional: add a record from the picker...
+   .withUploadResultIdField("mediaId"));            // ...and select the id this output value holds
+----
+
+Every named field must exist on the source table (the validator checks it), `pageSize` is 1 to 200, and an upload process must exist and name its result value.
+
+=== API contract
+
+Picker requests use the existing v1 possible-values routes (`POST /table/{table}/possibleValues/{field}`, the process and standalone routes), with a `picker` object in the body:
+
+[source,json]
+----
+{
+  "searchTerm": "harbor",
+  "values": { "siteId": 1 },
+  "picker": {
+    "filter": {
+      "criteria": [ { "fieldName": "mediaTypeId", "operator": "EQUALS", "values": [2] } ],
+      "orderBys": [ { "fieldName": "id", "isAscending": false } ]
+    },
+    "afterId": 1234,
+    "limit": 48
+  }
+}
+----
+
+* `filter.criteria` may only name the picker's `filterFields` and compare to values, never to another field. Other fields get `400`, so a picker cannot probe columns it does not declare.
+* `filter.orderBys` may only name the picker's sort fields or the primary key. Without one, the first declared sort applies.
+* `afterId`: keyset paging. When the ordering is the primary key alone, the next page continues after this id (`id < afterId` descending, `>` ascending), which is an index range scan. Other orderings use `skip`.
+* `limit`: options per page (default `pageSize`, capped at 200). The action reads `limit + 1` rows to set `hasMore` and never counts.
+* `ids` with `picker` looks up the selection with its display values (the thumbnail of the current value).
+* The field's own `possibleValueSourceFilter` (with `values` interpolation) still applies, `AND`ed with the picker filter and the search (`CONTAINS` over the search fields).
+
+The response adds, per option, the picker's display fields, raw and formatted where they differ, and `hasMore`:
+
+[source,json]
+----
+{
+  "options": [
+    { "id": 1235, "label": "Harbor at dusk",
+      "values": { "thumbnailUrl": "https://cdn.example/m/1235/t.jpg", "galleryUrl": "https://cdn.example/m/1235/g.jpg", "mediaTypeId": 2, "width": 1600 },
+      "displayValues": { "mediaTypeId": "Photo", "width": "1,600" } }
+  ],
+  "hasMore": true
+}
+----
+
+Requests without `picker` are unchanged (prefix search, no `values`, no `hasMore`).
+
+=== Security
+
+Picker searches run like other possible-value searches: the caller needs `READ`, `INSERT` or `EDIT` on the table that has the field (or permission to run the process), and the search runs in the core's authorized scope for the source table.
+Record security locks on the source table still apply, so a user sees only the records they may.
+Under `ENFORCE`, the picker filter may not use fields denied by a `FieldSecurityLock`.
+Display values of denied fields are left out of `values`.
+
+=== Scale
+
+* No counts: `hasMore` comes from reading one extra row.
+* Keyset paging for the default "newest first" ordering. Infinite scroll never uses `OFFSET` there.
+* Offset paging only for other orderings (name, size), which users rarely scroll far.
+* Search is a case-insensitive `CONTAINS` (`LOWER(column) LIKE '%term%'`). On PostgreSQL with 100,000 media it reads the matching site's rows once and keeps the newest page, in about 30 ms. Applications can add a trigram index (`pg_trgm`) on `LOWER(column)` when tables grow further.
+* Applications should index each offered ordering together with the filters that are always applied, e.g. `(site_id, id DESC)`, `(site_id, name)` and `(site_id, file_size DESC)`. On PostgreSQL with 100,000 media (kof22), every ordered page then reads an index range in under 1.5 ms of SQL, and keyset page N costs the same as page 1.
+
+=== Frontend
+
+The inline field shows the selection's thumbnail with Change, Preview (full-size lightbox) and View (the record, in a new tab).
+The typeahead asks for 20 options with thumbnails.
+The dialog loads on demand (`import()`), so it adds nothing to route first loads.
+It provides:
+
+* debounced server-side search
+* filter controls generated from the source table's field types (possible-value fields get a select of their own values; booleans Yes/No; numbers and dates a range; strings contains)
+* the declared sorts
+* grid and list views with lazily loaded thumbnails
+* infinite scroll with a Load more fallback
+* a preview pane with the detail fields
+* upload-and-select through the upload process
+* single or multiple selection
+* filters, sort and view remembered per field in local storage
+* keyboard navigation (arrows by row, Enter or double-click to confirm, Space to toggle in multiple selection)
+* a focus trap and Escape to close
+* full screen on phones

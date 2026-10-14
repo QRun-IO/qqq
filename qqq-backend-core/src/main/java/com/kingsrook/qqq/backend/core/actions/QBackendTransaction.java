@@ -24,9 +24,14 @@ package com.kingsrook.qqq.backend.core.actions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistencyGuarantee;
+import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.backend.QBackendModuleInterface;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
@@ -65,6 +70,55 @@ public class QBackendTransaction implements AutoCloseable
       QBackendModuleInterface  qModule                  = qBackendModuleDispatcher.getQBackendModule(input.getBackend());
       QBackendTransaction      transaction              = qModule.openTransaction(input);
       return (transaction);
+   }
+
+
+
+   /*******************************************************************************
+    ** Open a consistent-read transaction (see QBackendModuleInterface
+    ** .openConsistentReadTransaction) on the named backend.
+    **
+    ** @throws QException if the backend's module doesn't support them.
+    *******************************************************************************/
+   public static QBackendTransaction openConsistentReadFor(ConsistentReadInput input) throws QException
+   {
+      QBackendMetaData backend = QContext.getQInstance().getBackend(input.getBackendName());
+      if(backend == null)
+      {
+         throw (new QException("Unrecognized backend name: " + input.getBackendName()));
+      }
+
+      QBackendModuleInterface qModule = new QBackendModuleDispatcher().getQBackendModule(backend);
+      Optional<QBackendTransaction> transaction = qModule.openConsistentReadTransaction(input);
+      if(transaction.isEmpty())
+      {
+         throw (new QException("Backend [" + input.getBackendName() + "] does not support consistent read transactions"));
+      }
+      return (transaction.get());
+   }
+
+
+
+   /*******************************************************************************
+    ** For a transaction from openConsistentReadTransaction, the id of a snapshot
+    ** that other transactions can attach to (via ConsistentReadInput
+    ** .importSnapshotId) - for backends that support sharing one (e.g., postgres).
+    ** Empty otherwise.
+    *******************************************************************************/
+   public Optional<String> getExportedSnapshotId()
+   {
+      return (Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** What a transaction from openConsistentReadTransaction guarantees.  Callers
+    ** should record this, rather than assume ONE_INSTANT.
+    *******************************************************************************/
+   public ConsistencyGuarantee getConsistencyGuarantee()
+   {
+      return (ConsistencyGuarantee.BEST_EFFORT);
    }
 
 

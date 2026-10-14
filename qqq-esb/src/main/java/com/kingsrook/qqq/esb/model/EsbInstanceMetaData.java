@@ -62,6 +62,7 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
    //////////////////////////////////////////////////////////////////////
    private static final String INSTANCE_NAME_PATTERN = "[A-Za-z0-9._~-]+";
 
+   private String realtimeDestinationName = "qqq.realtime";
    private String                               instanceName;
    private Map<String, QEsbProviderMetaData>    providers    = new LinkedHashMap<>();
    private Map<String, QEsbDestinationMetaData> destinations = new LinkedHashMap<>();
@@ -370,4 +371,35 @@ public class EsbInstanceMetaData implements QSupplementalInstanceMetaData
       this.destinations = destinations;
    }
 
+
+
+
+   /*******************************************************************************
+    ** Getter for realtimeDestinationName
+    *******************************************************************************/
+   public String getRealtimeDestinationName()
+   {
+      return (realtimeDestinationName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for realtimeDestinationName
+    *******************************************************************************/
+   public void setRealtimeDestinationName(String realtimeDestinationName)
+   {
+      this.realtimeDestinationName = realtimeDestinationName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for realtimeDestinationName
+    *******************************************************************************/
+   public EsbInstanceMetaData withRealtimeDestinationName(String realtimeDestinationName)
+   {
+      setRealtimeDestinationName(realtimeDestinationName);
+      return (this);
+   }
 }

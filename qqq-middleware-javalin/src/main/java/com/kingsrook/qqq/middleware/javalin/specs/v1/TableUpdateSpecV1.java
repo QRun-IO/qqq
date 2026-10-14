@@ -27,9 +27,12 @@ import java.util.Map;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
 import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.exceptions.RecordVersionConflictException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.utils.ExceptionUtils;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.executors.TableUpdateExecutor;
 import com.kingsrook.qqq.middleware.javalin.executors.io.TableUpdateInput;
@@ -37,6 +40,7 @@ import com.kingsrook.qqq.middleware.javalin.specs.AbstractEndpointSpec;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicOperation;
 import com.kingsrook.qqq.middleware.javalin.specs.BasicResponse;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.TableUpdateResponseV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.RecordConflictV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.utils.TagsV1;
 import com.kingsrook.qqq.openapi.model.Content;
 import com.kingsrook.qqq.openapi.model.Example;
@@ -80,6 +84,10 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
    public List<Parameter> defineRequestParameters()
    {
       return List.of(
+         new Parameter()
+            .withName("expectedVersion")
+            .withDescription("Optional optimistic version from the last read, encoded as a string in the version field's format (ISO-8601 for modify dates). A mismatch returns 409 RecordConflictV1 and leaves the record unchanged. Omit for an unconditional update. Tables with recordVersionField set to an empty string opt out.")
+            .withRequired(false).withSchema(new Schema().withType(Type.STRING)).withIn(In.QUERY),
          new Parameter()
             .withName("tableName")
             .withDescription("Name of the table containing the record to update.")
@@ -161,6 +169,7 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
       QRecord record = new QRecord();
       record.setTableName(tableName);
       QJavalinImplementation.setRecordValuesForInsertOrUpdate(context, QContext.getQInstance().getTable(tableName), record, updateInput);
+      input.setExpectedVersion(getRequestParam(context, "expectedVersion"));
       input.setRecord(record);
       return (input);
    }
@@ -173,7 +182,8 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
    @Override
    public Map<String, Schema> defineComponentSchemas()
    {
-      return Map.of(TableUpdateResponseV1.class.getSimpleName(), new TableUpdateResponseV1().toSchema());
+      return Map.of(TableUpdateResponseV1.class.getSimpleName(), new TableUpdateResponseV1().toSchema(),
+         "RecordConflictV1", new RecordConflictV1().toSchema());
    }
 
 
@@ -200,4 +210,37 @@ public class TableUpdateSpecV1 extends AbstractEndpointSpec<TableUpdateInput, Ta
       );
    }
 
+
+
+   /*******************************************************************************
+    ** The stale-version response is a documented, structured HTTP 409.
+    *******************************************************************************/
+   @Override
+   public List<BasicResponse> defineAdditionalBasicResponses()
+   {
+      return (List.of(new BasicResponse(io.javalin.http.HttpStatus.CONFLICT, "The record changed since it was read.", "RecordConflictV1")));
+   }
+
+
+   /*******************************************************************************
+    ** Only version conflicts change the existing error mapping.
+    *******************************************************************************/
+   @Override
+   protected void handleException(Context context, Exception exception)
+   {
+      var conflictException = ExceptionUtils.findClassInRootChain(exception,
+         RecordVersionConflictException.class);
+      if(conflictException != null)
+      {
+         var conflict = conflictException.getConflict();
+         var response = new RecordConflictV1()
+            .withCurrentVersion(conflict.getCurrentVersion()).withChangedFields(conflict.getChangedFields())
+            .withModifiedByUserId(conflict.getModifiedByUserId()).withModifiedAt(conflict.getModifiedAt());
+         context.status(409).contentType("application/json").result(JsonUtils.toJson(response));
+      }
+      else
+      {
+         super.handleException(context, exception);
+      }
+   }
 }

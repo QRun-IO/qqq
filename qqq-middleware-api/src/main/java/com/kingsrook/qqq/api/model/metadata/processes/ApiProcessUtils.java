@@ -49,6 +49,15 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class ApiProcessUtils
 {
+   //////////////////////////////////////////////////////////////////////////////
+   // request metadata the API puts in every process run's values (set by the  //
+   // server from the HTTP request; a process may read them, e.g. for limits). //
+   //////////////////////////////////////////////////////////////////////////////
+   public static final String REQUEST_VALUE_PREFIX    = "apiRequest.";
+   public static final String REQUEST_REMOTE_ADDRESS  = REQUEST_VALUE_PREFIX + "remoteAddress";
+   public static final String REQUEST_FORWARDED_FOR   = REQUEST_VALUE_PREFIX + "forwardedFor";
+   public static final String REQUEST_USER_AGENT      = REQUEST_VALUE_PREFIX + "userAgent";
+
    private static final QLogger LOG = QLogger.getLogger(ApiProcessUtils.class);
 
    private static Map<Pair<String, String>, Map<String, QProcessMetaData>> processApiNameMap = new HashMap<>();

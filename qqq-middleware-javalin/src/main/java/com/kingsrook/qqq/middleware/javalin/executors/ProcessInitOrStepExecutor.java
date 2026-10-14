@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
 import com.kingsrook.qqq.backend.core.actions.async.JobGoingAsyncException;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.processes.OneTimeSecretHandoff;
 import com.kingsrook.qqq.backend.core.actions.processes.QProcessCallback;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -150,11 +151,19 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          ////////////////////////////////////////
          // run the process as an async action //
          ////////////////////////////////////////
+         final String handoffKey = processUUID;
          RunProcessOutput runProcessOutput = new AsyncJobManager().withProcessUUID(processUUID).startJob(processName, input.getStepTimeoutMillis(), TimeUnit.MILLISECONDS, (callback) ->
          {
             runProcessInput.setAsyncJobCallback(callback);
-            return (new RunProcessAction().execute(runProcessInput));
+            RunProcessOutput jobOutput = new RunProcessAction().execute(runProcessInput);
+            ////////////////////////////////////////////////////////////////////
+            // park one-time secrets for a status poll, in case the step went //
+            // async; taken right back below when it finished synchronously   //
+            ////////////////////////////////////////////////////////////////////
+            OneTimeSecretHandoff.offer(handoffKey, jobOutput.getOneTimeSecrets());
+            return (jobOutput);
          });
+         OneTimeSecretHandoff.take(handoffKey);
 
          LOG.debug("Process result error? " + runProcessOutput.getException());
          for(QFieldMetaData outputField : QContext.getQInstance().getProcess(runProcessInput.getProcessName()).getOutputFields())
@@ -163,6 +172,10 @@ public class ProcessInitOrStepExecutor extends AbstractMiddlewareExecutor<Proces
          }
 
          ProcessExecutorUtils.serializeRunProcessResultForCaller(output, processName, runProcessOutput);
+         if(!runProcessOutput.getOneTimeSecrets().isEmpty())
+         {
+            output.setOneTimeSecrets(runProcessOutput.getOneTimeSecrets());
+         }
          QJavalinAccessLogger.logProcessSummary(processName, processUUID, runProcessOutput);
       }
       catch(JobGoingAsyncException jgae)

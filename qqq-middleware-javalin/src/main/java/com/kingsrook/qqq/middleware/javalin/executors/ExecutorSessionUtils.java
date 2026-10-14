@@ -21,13 +21,17 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QModuleDispatchException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.ClientChannelsMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleDispatcher;
 import com.kingsrook.qqq.backend.core.modules.authentication.QAuthenticationModuleInterface;
@@ -35,6 +39,7 @@ import com.kingsrook.qqq.backend.core.modules.authentication.implementations.Aut
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
+import com.kingsrook.qqq.middleware.javalin.specs.invoke.UiApiInProcessSessions;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.TableVariant;
 import io.javalin.http.Context;
 
@@ -48,6 +53,7 @@ public class ExecutorSessionUtils
 
    public static final int    SESSION_COOKIE_AGE       = 60 * 60 * 24;
    public static final String SESSION_ID_COOKIE_NAME   = "sessionId";
+   public static final String CLIENT_CHANNEL_HEADER    = "X-QQQ-Client";
    public static final String API_KEY_NAME             = "apiKey";
 
 
@@ -55,82 +61,91 @@ public class ExecutorSessionUtils
    /*******************************************************************************
     **
     *******************************************************************************/
-   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException
+   public static QSession setupSession(Context context, QInstance qInstance) throws QModuleDispatchException, QAuthenticationException, QBadRequestException
    {
       QAuthenticationModuleDispatcher qAuthenticationModuleDispatcher = new QAuthenticationModuleDispatcher();
       QAuthenticationModuleInterface  authenticationModule            = qAuthenticationModuleDispatcher.getQModule(qInstance.getAuthentication());
 
+      String inProcessToken = context.header(UiApiInProcessSessions.HEADER);
       try
       {
          /////////////////////////////////////////////////
          // note:  duplicated in QJavalinImplementation //
          /////////////////////////////////////////////////
-         Map<String, String> authenticationContext = new HashMap<>();
-
-         String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
-         String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
-         String authorizationHeaderValue = context.header("Authorization");
-         String apiKeyHeaderValue        = context.header("x-api-key");
-         String codeQueryParamValue      = context.queryParam("code");
-         String stateQueryParamValue     = context.queryParam("state");
-
-         if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
+         QSession session;
+         if(inProcessToken != null)
          {
-            authenticationContext.put("code", codeQueryParamValue);
-            authenticationContext.put("state", stateQueryParamValue);
-         }
-         else if(StringUtils.hasContent(sessionIdCookieValue))
-         {
-            ///////////////////////////////////////////////////////
-            // sessionId - maybe used by table-based auth module //
-            ///////////////////////////////////////////////////////
-            authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
-         }
-         else if(StringUtils.hasContent(sessionUuidCookieValue))
-         {
-            ///////////////////////////////////////////////////////////////////////////
-            // session UUID - known to be used by auth0 module (in aug. 2023 update) //
-            ///////////////////////////////////////////////////////////////////////////
-            authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
-         }
-         else if(apiKeyHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////
-            // next, look for an api key header:                           //
-            // this will be used to look up auth0 values via an auth table //
-            /////////////////////////////////////////////////////////////////
-            authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
-         }
-         else if(authorizationHeaderValue != null)
-         {
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            // second, look for the authorization header:                                                  //
-            // either with a "Basic " prefix (for a username:password pair)                                //
-            // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
-            /////////////////////////////////////////////////////////////////////////////////////////////////
-            processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            session = resolveInProcessSession(context.req().getRemoteAddr(), inProcessToken);
          }
          else
          {
-            try
+            Map<String, String> authenticationContext = new HashMap<>();
+
+            String sessionIdCookieValue     = context.cookie(SESSION_ID_COOKIE_NAME);
+            String sessionUuidCookieValue   = context.cookie(Auth0AuthenticationModule.SESSION_UUID_KEY);
+            String authorizationHeaderValue = context.header("Authorization");
+            String apiKeyHeaderValue        = context.header("x-api-key");
+            String codeQueryParamValue      = context.queryParam("code");
+            String stateQueryParamValue     = context.queryParam("state");
+
+            if(StringUtils.hasContent(codeQueryParamValue) && StringUtils.hasContent(stateQueryParamValue))
             {
-               String authorizationFormValue = context.formParam("Authorization");
-               if(StringUtils.hasContent(authorizationFormValue))
+               authenticationContext.put("code", codeQueryParamValue);
+               authenticationContext.put("state", stateQueryParamValue);
+            }
+            else if(StringUtils.hasContent(sessionIdCookieValue))
+            {
+               ///////////////////////////////////////////////////////
+               // sessionId - maybe used by table-based auth module //
+               ///////////////////////////////////////////////////////
+               authenticationContext.put(SESSION_ID_COOKIE_NAME, sessionIdCookieValue);
+            }
+            else if(StringUtils.hasContent(sessionUuidCookieValue))
+            {
+               ///////////////////////////////////////////////////////////////////////////
+               // session UUID - known to be used by auth0 module (in aug. 2023 update) //
+               ///////////////////////////////////////////////////////////////////////////
+               authenticationContext.put(Auth0AuthenticationModule.SESSION_UUID_KEY, sessionUuidCookieValue);
+            }
+            else if(apiKeyHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////
+               // next, look for an api key header:                           //
+               // this will be used to look up auth0 values via an auth table //
+               /////////////////////////////////////////////////////////////////
+               authenticationContext.put(API_KEY_NAME, apiKeyHeaderValue);
+            }
+            else if(authorizationHeaderValue != null)
+            {
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               // second, look for the authorization header:                                                  //
+               // either with a "Basic " prefix (for a username:password pair)                                //
+               // or with a "Bearer " prefix (for a token that can be handled the same as a sessionId cookie) //
+               /////////////////////////////////////////////////////////////////////////////////////////////////
+               processAuthorizationValue(authenticationContext, authorizationHeaderValue);
+            }
+            else
+            {
+               try
                {
-                  processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  String authorizationFormValue = context.formParam("Authorization");
+                  if(StringUtils.hasContent(authorizationFormValue))
+                  {
+                     processAuthorizationValue(authenticationContext, authorizationFormValue);
+                  }
+               }
+               catch(Exception e)
+               {
+                  LOG.info("Exception looking for Authorization formParam", e);
                }
             }
-            catch(Exception e)
-            {
-               LOG.info("Exception looking for Authorization formParam", e);
-            }
-         }
 
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
-         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-         QContext.init(qInstance, null);
-         QSession session = authenticationModule.createSession(qInstance, authenticationContext);
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // put the qInstance into context - but no session yet (since, the whole point of this call is to setup the session!) //
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            QContext.init(qInstance, null);
+            session = authenticationModule.createSession(qInstance, authenticationContext);
+         }
          QContext.init(qInstance, session, null, null);
 
          //////////////////////////////////////////////////////////////////////////////////////////////
@@ -139,15 +154,16 @@ public class ExecutorSessionUtils
          //////////////////////////////////////////////////////////////////////////////////////////////
 
          /////////////////////////////////////////////////////////////////////////////////
-         // if we got a session id cookie in, then send it back with updated cookie age //
+         // refresh cookies only for sessions created by the authentication module    //
          /////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
          {
             QJavalinImplementation.setSessionCookie(context, SESSION_ID_COOKIE_NAME, session.getIdReference());
          }
 
          setUserTimezoneOffsetMinutesInSession(context, session);
          setUserTimezoneInSession(context, session);
+         setClientChannelInSession(context, qInstance, session);
 
          return (session);
       }
@@ -156,13 +172,72 @@ public class ExecutorSessionUtils
          ////////////////////////////////////////////////////////////////////////////////
          // if exception caught, clear out the cookie so the frontend will reauthorize //
          ////////////////////////////////////////////////////////////////////////////////
-         if(authenticationModule.usesSessionIdCookie())
+         if(inProcessToken == null && authenticationModule.usesSessionIdCookie())
          {
             context.removeCookie(SESSION_ID_COOKIE_NAME);
          }
 
          throw (qae);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Accept a JVM-local token only from the socket's loopback peer. Forwarded
+    ** headers do not establish trust. Invalid tokens never fall back to other auth.
+    *******************************************************************************/
+   public static QSession resolveInProcessSession(String remoteAddr, String token) throws QAuthenticationException
+   {
+      try
+      {
+         if(remoteAddr != null && !remoteAddr.isBlank() && InetAddress.getByName(remoteAddr).isLoopbackAddress())
+         {
+            return (UiApiInProcessSessions.resolve(token).orElseThrow(() -> new QAuthenticationException("Invalid in-process session")));
+         }
+      }
+      catch(UnknownHostException e)
+      {
+         throw (new QAuthenticationException("Invalid in-process session"));
+      }
+      throw (new QAuthenticationException("Invalid in-process session"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The client channel of the request (X-QQQ-Client: channel[/detail]) - set
+    ** on the session for every request (null when the header is absent), so a
+    ** session object never carries another request's channel.  The channel must
+    ** be allowed by ClientChannelsMetaData (else 400).  Attribution only: the
+    ** actor is the authenticated user, and a channel can only be denied things.
+    *******************************************************************************/
+   static void setClientChannelInSession(Context context, QInstance qInstance, QSession session) throws QBadRequestException
+   {
+      //////////////////////////////////////////////////////////////////////////
+      // a scoped credential (e.g. an access token) is always token:<id> - a  //
+      // request cannot relabel it                                            //
+      //////////////////////////////////////////////////////////////////////////
+      if(session.getCredentialScope() != null)
+      {
+         session.setClientChannel(session.getCredentialScope().getClientChannel());
+         return;
+      }
+
+      String header = context.header(CLIENT_CHANNEL_HEADER);
+      if(!StringUtils.hasContent(header))
+      {
+         session.setClientChannel(null);
+         return;
+      }
+
+      String value = header.strip();
+      String name  = ClientChannelsMetaData.channelName(value);
+      if(value.length() > 200 || !ClientChannelsMetaData.of(qInstance).isAllowedChannel(name))
+      {
+         throw (new QBadRequestException("Unknown client channel in " + CLIENT_CHANNEL_HEADER + ": " + name));
+      }
+      session.setClientChannel(value);
    }
 
 

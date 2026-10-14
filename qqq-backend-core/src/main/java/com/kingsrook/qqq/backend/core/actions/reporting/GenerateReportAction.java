@@ -36,10 +36,16 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.AbstractQActionFunction;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncRecordPipeLoop;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
+import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.DataSourceQueryInputCustomizer;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportCustomRecordSourceInterface;
 import com.kingsrook.qqq.backend.core.actions.reporting.customizers.ReportViewCustomizer;
@@ -49,6 +55,7 @@ import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QFormulaException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QReportingException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
@@ -111,6 +118,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class GenerateReportAction extends AbstractQActionFunction<ReportInput, ReportOutput>
 {
+   private boolean enforceFieldAccess;
+   private static final Pattern AGGREGATE_REFERENCE = Pattern.compile("\\$\\{(?:pivot|total|variancePivot|varianceTotal)\\.[^.}]+\\.([^}]+)}");
+
    private static final QLogger LOG = QLogger.getLogger(GenerateReportAction.class);
 
    /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -142,11 +152,53 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
     *******************************************************************************/
    public ReportOutput execute(ReportInput reportInput) throws QException
    {
+      enforceFieldAccess = CorePermissionEnforcer.shouldEnforceFieldAccess(reportInput);
+      if(CorePermissionEnforcer.shouldEnforce(reportInput))
+      {
+         ////////////////////////////////////////////////////////////////////////////
+         // only a report defined in the instance is authorized by its permission //
+         // (and then runs its queries trusted).  Caller-supplied report meta     //
+         // data is not: under ENFORCE it is refused; otherwise it runs without   //
+         // an authorized scope, so each of its queries is checked on its own.    //
+         ////////////////////////////////////////////////////////////////////////////
+         String          reportName = reportInput.getReportMetaData() != null ? reportInput.getReportMetaData().getName() : reportInput.getReportName();
+         QReportMetaData registered = StringUtils.hasContent(reportName) && QContext.getQInstance() != null ? QContext.getQInstance().getReport(reportName) : null;
+         if(registered == null || (reportInput.getReportMetaData() != null && reportInput.getReportMetaData() != registered))
+         {
+            if(PermissionEnforcement.ENFORCE.equals(reportInput.getPermissionEnforcement()))
+            {
+               throw (new QPermissionDeniedException("Permission denied: only reports defined in the instance can be run with permission enforcement."));
+            }
+            return (executeInAuthorizedScope(reportInput));
+         }
+         PermissionsHelper.checkReportPermissionThrowing(reportInput, reportName);
+      }
+
+      //////////////////////////////////////////////////////////////////////
+      // the report's own queries are authorized by the report permission //
+      //////////////////////////////////////////////////////////////////////
+      try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
+      {
+         return (executeInAuthorizedScope(reportInput));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** generate the report, inside an authorized scope.
+    *******************************************************************************/
+   private ReportOutput executeInAuthorizedScope(ReportInput reportInput) throws QException
+   {
       ReportOutput    reportOutput = new ReportOutput();
       QReportMetaData report       = getReportMetaData(reportInput);
 
       this.views = report.getViews();
       this.dataSources = report.getDataSources();
+      if(enforceFieldAccess)
+      {
+         assertReportFieldsAllowed();
+      }
 
       ReportFormat reportFormat = reportInput.getReportDestination().getReportFormat();
       if(reportFormat == null)
@@ -463,6 +515,7 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
       // run a record pipe loop, over the query (or other data-supplier/source) for this data source //
       /////////////////////////////////////////////////////////////////////////////////////////////////
       RecordPipe recordPipe = new BufferedRecordPipe(1000);
+      java.util.concurrent.atomic.AtomicReference<QueryInput> finalQuery = new java.util.concurrent.atomic.AtomicReference<>(new QueryInput(dataSource.getSourceTable()).withQueryJoins(cloneDataSourceQueryJoins(dataSource)));
       new AsyncRecordPipeLoop().run("Report[" + reportInput.getReportName() + "]", null, recordPipe, (callback) ->
       {
          if(dataSource.getCustomRecordSource() != null)
@@ -493,6 +546,11 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
                queryInput = queryInputCustomizer.run(reportInput, queryInput);
             }
 
+            if(enforceFieldAccess)
+            {
+               FieldAccessHelper.assertCriteriaAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFilter(), null);
+            }
+            finalQuery.set(queryInput);
             return (new QueryAction().execute(queryInput));
          }
          else if(dataSource.getStaticDataSupplier() != null)
@@ -524,6 +582,11 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
             finalTransformStepInput.setRecords(records);
             finalTransformStep.runOnePage(finalTransformStepInput, finalTransformStepOutput);
             records = finalTransformStepOutput.getRecords();
+         }
+
+         if(enforceFieldAccess && dataSource.getSourceTable() != null)
+         {
+            FieldAccessHelper.applyToRecords(finalQuery.get().getTableName(), finalQuery.get().getQueryJoins(), records, "report");
          }
 
          Integer total = countByDataSource.get(dataSource.getName());
@@ -800,6 +863,10 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
             //////////////////////////////////////////////////////
             FieldAndJoinTable fieldAndJoinTable = FieldAndJoinTable.get(table, fieldName);
             field = fieldAndJoinTable.field();
+            if(enforceFieldAccess && !FieldAccessHelper.getTier(fieldAndJoinTable.joinTable(), field.getName()).canGroupOrAggregate())
+            {
+               continue;
+            }
          }
          catch(Exception e)
          {
@@ -1195,4 +1262,55 @@ public class GenerateReportAction extends AbstractQActionFunction<ReportInput, R
    {
    }
 
+
+
+
+   /*******************************************************************************
+    ** Report grouping, sorting and pivots must not infer restricted values.
+    *******************************************************************************/
+   private void assertReportFieldsAllowed() throws QPermissionDeniedException
+   {
+      for(QReportView view : views)
+      {
+         QReportView sourceView = view;
+         if(view.getPivotTableSourceViewName() != null)
+         {
+            sourceView = views.stream().filter(candidate -> candidate.getName().equals(view.getPivotTableSourceViewName())).findFirst().orElse(view);
+         }
+         for(QReportDataSource source : dataSources)
+         {
+            if(source.getSourceTable() == null || (!Objects.equals(source.getName(), sourceView.getDataSourceName()) && !Objects.equals(source.getName(), view.getVarianceDataSourceName())))
+            {
+               continue;
+            }
+            Set<String> fields = new HashSet<>(CollectionUtils.nonNullList(view.getSummaryFields()));
+            for(QFilterOrderBy orderBy : CollectionUtils.nonNullList(view.getOrderByFields()))
+            {
+               fields.add(orderBy.getFieldName());
+            }
+            if(view.getPivotTableDefinition() != null)
+            {
+               CollectionUtils.nonNullList(view.getPivotTableDefinition().getRows()).forEach(group -> fields.add(group.getFieldName()));
+               CollectionUtils.nonNullList(view.getPivotTableDefinition().getColumns()).forEach(group -> fields.add(group.getFieldName()));
+               CollectionUtils.nonNullList(view.getPivotTableDefinition().getValues()).forEach(value -> fields.add(value.getFieldName()));
+            }
+            for(QReportField column : CollectionUtils.nonNullList(sourceView.getColumns()))
+            {
+               if(fields.remove(column.getName()))
+               {
+                  fields.add(Objects.requireNonNullElse(column.getSourceFieldName(), column.getName()));
+               }
+            }
+            for(QReportField column : CollectionUtils.nonNullList(view.getColumns()))
+            {
+               Matcher matcher = AGGREGATE_REFERENCE.matcher(Objects.toString(column.getFormula(), ""));
+               while(matcher.find())
+               {
+                  fields.add(matcher.group(1));
+               }
+            }
+            FieldAccessHelper.assertCriteriaAllowed(source.getSourceTable(), source.getQueryJoins(), null, fields);
+         }
+      }
+   }
 }

@@ -222,6 +222,101 @@ class RecordSearchSpecV1Test extends SpecTestBase
 
 
    /*******************************************************************************
+    ** Each result carries plain-text highlights of matching non-label fields;
+    ** the response summarizes each table and the provider status.
+    *******************************************************************************/
+   @Test
+   void testResponseHasHighlightsTablesAndProvider()
+   {
+      HttpResponse<String> response = post(Map.of("searchTerm", "KELKHOFF"));
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject body = JsonUtils.toJSONObject(response.getBody());
+
+      JSONObject darin = body.getJSONArray("results").getJSONObject(0);
+      assertEquals("Darin Kelkhoff", darin.getString("recordLabel"));
+      assertThat(darin.has("score")).isFalse();
+      JSONObject highlight = darin.getJSONArray("highlights").getJSONObject(0);
+      assertEquals("email", highlight.getString("fieldName"));
+      assertEquals("Email", highlight.getString("fieldLabel"));
+      assertEquals("darin.kelkhoff@gmail.com", highlight.getString("text"));
+      assertEquals(6, highlight.getJSONArray("matches").getJSONObject(0).getInt("start"));
+      assertEquals(14, highlight.getJSONArray("matches").getJSONObject(0).getInt("end"));
+
+      JSONArray tables = body.getJSONArray("tables");
+      assertEquals(2, tables.length());
+      JSONObject person = tables.getJSONObject(0);
+      assertEquals("person", person.getString("tableName"));
+      assertEquals("Person", person.getString("tableLabel"));
+      assertEquals(2, person.getInt("resultCount"));
+      assertThat(person.getBoolean("hasMore")).isFalse();
+      assertEquals("DEFAULT", person.getString("source"));
+      assertThat(person.has("totalCount")).isFalse();
+      assertEquals("pet", tables.getJSONObject(1).getString("tableName"));
+      assertEquals(0, tables.getJSONObject(1).getInt("resultCount"));
+
+      assertEquals("NONE", body.getJSONObject("provider").getString("status"));
+
+      ///////////////////////////////////////////////////////////////////
+      // a match in the label only: the (non-label) email is a detail //
+      ///////////////////////////////////////////////////////////////////
+      JSONObject tim = JsonUtils.toJSONObject(post(Map.of("searchTerm", "Tim")).getBody()).getJSONArray("results").getJSONObject(0);
+      assertEquals("Tim Chamberlain", tim.getString("recordLabel"));
+      assertThat(tim.has("highlights")).isFalse();
+      assertEquals("tchamberlain@mmltholdings.com", tim.getJSONArray("details").getJSONObject(0).getString("displayValue"));
+   }
+
+
+
+   /*******************************************************************************
+    ** offset pages through one table; sort is validated.
+    *******************************************************************************/
+   @Test
+   void testOffsetAndSort()
+   {
+      HttpResponse<String> response = post(Map.of("searchTerm", "mmltholdings", "limitPerTable", 2));
+      assertThat(results(response)).containsExactly("person|Person|2|James Maes", "person|Person|3|Tim Chamberlain");
+      assertThat(JsonUtils.toJSONObject(response.getBody()).getJSONArray("tables").getJSONObject(0).getBoolean("hasMore")).isTrue();
+
+      response = post(Map.of("searchTerm", "mmltholdings", "limitPerTable", 2, "offset", 2, "sort", "relevance"));
+      assertThat(results(response)).containsExactly("person|Person|4|Tyler Samples", "person|Person|5|Garret Richardson");
+      assertThat(JsonUtils.toJSONObject(response.getBody()).getJSONArray("tables").getJSONObject(0).getBoolean("hasMore")).isFalse();
+
+      assertThat(results(post(Map.of("searchTerm", "mmltholdings", "sort", "RECENT")))).hasSize(4);
+
+      for(Map<String, ?> body : List.<Map<String, ?>>of(Map.of("searchTerm", "a", "offset", "x"), Map.of("searchTerm", "a", "sort", "bogus"), Map.of("searchTerm", "a", "sort", 1)))
+      {
+         HttpResponse<String> badResponse = post(body);
+         assertEquals(400, badResponse.getStatus(), "for body " + body + ": " + badResponse.getBody());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** The provider's status and each table's source are reported.
+    *******************************************************************************/
+   @Test
+   void testProviderStatusAndSources()
+   {
+      serverQInstance.withRecordSearchProvider(new QCodeReference(PersonOnlyProvider.class));
+      JSONObject body = JsonUtils.toJSONObject(post(Map.of("searchTerm", "ch")).getBody());
+      assertEquals("OK", body.getJSONObject("provider").getString("status"));
+      assertEquals("PROVIDER", body.getJSONArray("tables").getJSONObject(0).getString("source"));
+      assertEquals("DEFAULT", body.getJSONArray("tables").getJSONObject(1).getString("source"));
+      assertEquals(3.5, body.getJSONArray("results").getJSONObject(0).getDouble("score"));
+
+      serverQInstance.withRecordSearchProvider(new QCodeReference(FailingProvider.class));
+      body = JsonUtils.toJSONObject(post(Map.of("searchTerm", "ch")).getBody());
+      assertEquals("FAILED", body.getJSONObject("provider").getString("status"));
+      assertEquals("QException", body.getJSONObject("provider").getString("failureClass"));
+      assertThat(body.getJSONObject("provider").has("message")).isFalse();
+      assertEquals("FALLBACK", body.getJSONArray("tables").getJSONObject(0).getString("source"));
+      assertEquals("FALLBACK", body.getJSONArray("tables").getJSONObject(1).getString("source"));
+   }
+
+
+
+   /*******************************************************************************
     ** Provider that claims the person table and always finds persons 6 then 1.
     *******************************************************************************/
    public static class PersonOnlyProvider implements RecordSearchProviderInterface
@@ -244,7 +339,7 @@ class RecordSearchSpecV1Test extends SpecTestBase
       public RecordSearchOutput search(RecordSearchInput input)
       {
          return (new RecordSearchOutput().withResults(List.of(
-            new RecordSearchResult().withTableName(TestUtils.TABLE_NAME_PERSON).withRecordId("6"),
+            new RecordSearchResult().withTableName(TestUtils.TABLE_NAME_PERSON).withRecordId("6").withScore(3.5),
             new RecordSearchResult().withTableName(TestUtils.TABLE_NAME_PERSON).withRecordId(1))));
       }
    }

@@ -41,7 +41,15 @@ public class MemoryCountAction implements CountInterface
    {
       try
       {
-         CountOutput countOutput = MemoryRecordStore.getInstance().count(countInput);
+         CountOutput countOutput;
+         if(countInput.getTransaction() instanceof MemoryConsistentReadTransaction snapshotTransaction)
+         {
+            countOutput = snapshotTransaction.callInSnapshot(() -> MemoryRecordStore.getInstance().count(countInput));
+         }
+         else
+         {
+            countOutput = MemoryRecordStore.getInstance().count(countInput);
+         }
          return (countOutput);
       }
       catch(Exception e)

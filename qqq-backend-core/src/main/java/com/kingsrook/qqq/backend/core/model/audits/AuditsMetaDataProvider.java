@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.model.audits;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
@@ -34,9 +35,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 import com.kingsrook.qqq.backend.core.processes.implementations.audits.GetAuditsForRecordProcess;
 
@@ -61,7 +65,26 @@ public class AuditsMetaDataProvider
    public static final String TABLE_NAME_AUDIT        = "audit";
    public static final String TABLE_NAME_AUDIT_DETAIL = "auditDetail";
 
+   /** the audit record view's section listing its field changes (audit details) */
+   public static final String FIELD_CHANGES_SECTION_NAME = "fieldChanges";
+
    private QFieldType recordIdType = QFieldType.INTEGER;
+
+   //////////////////////////////////////////////////////////////////////////
+   // opt in to the audit record screens (see defineStandardAuditScreens). //
+   // Off by default: an application that adds fields to the audit tables //
+   // after defineAll must also add them to these sections.               //
+   //////////////////////////////////////////////////////////////////////////
+   private boolean defineRecordScreens = false;
+
+   ///////////////////////////////////////////////////////////////////////////////
+   // opt in to the audit.clientChannel field (which client made the change -   //
+   // e.g. next-ui, assistant/<turnId>).  Off by default: the backing table     //
+   // needs the column (VARCHAR(100), nullable) before turning this on.         //
+   ///////////////////////////////////////////////////////////////////////////////
+   private boolean includeClientChannelField = false;
+
+   public static final String FIELD_CLIENT_CHANNEL = "clientChannel";
 
 
 
@@ -73,6 +96,10 @@ public class AuditsMetaDataProvider
       defineStandardAuditTables(instance, backendName, backendDetailEnricher);
       defineStandardAuditPossibleValueSources(instance);
       defineStandardAuditJoins(instance);
+      if(defineRecordScreens)
+      {
+         defineStandardAuditScreens(instance);
+      }
 
       GetAuditsForRecordProcess getAuditsForRecordProcess = new GetAuditsForRecordProcess();
       if(getAuditsForRecordProcess.isEnabled())
@@ -109,6 +136,77 @@ public class AuditsMetaDataProvider
          .withType(JoinType.ONE_TO_MANY)
          .withJoinOn(new JoinOn("id", "auditId")));
 
+   }
+
+
+
+   /*******************************************************************************
+    ** Record screens for the audit tables: named sections instead of the
+    ** generic ones, and an audit record's field changes (its audit details)
+    ** listed on it. Needs the tables and the audit-to-detail join; a table or
+    ** join that is absent is skipped, and so is a table that already has
+    ** sections (an application's own layout wins). Run by defineAll when
+    ** withDefineRecordScreens(true); callable directly after defineAll.
+    *******************************************************************************/
+   public void defineStandardAuditScreens(QInstance instance)
+   {
+      QTableMetaData audit = instance.getTable(TABLE_NAME_AUDIT);
+      if(audit != null && hasNoSections(audit))
+      {
+         audit.getField("auditTableId").withLabel("Table");
+         audit.getField("auditUserId").withLabel("User");
+         audit.withSection(new QFieldSection("audit", "Audit", new QIcon("history"), Tier.T1,
+            audit.getFields().containsKey(FIELD_CLIENT_CHANNEL)
+               ? List.of("id", "timestamp", "auditUserId", FIELD_CLIENT_CHANNEL, "auditTableId", "recordId", "message")
+               : List.of("id", "timestamp", "auditUserId", "auditTableId", "recordId", "message")));
+
+         QJoinMetaData join = instance.getJoin(QJoinMetaData.makeInferredJoinName(TABLE_NAME_AUDIT, TABLE_NAME_AUDIT_DETAIL));
+         if(join != null && instance.getTable(TABLE_NAME_AUDIT_DETAIL) != null)
+         {
+            instance.addWidget(ChildRecordListRenderer.widgetMetaDataBuilder(join)
+               .withLabel("Field Changes")
+               .withMaxRows(100)
+               .withCanAddChildRecord(false)
+               .withOnlyIncludeFieldNames(List.of("fieldName", "oldValue", "newValue", "message"))
+               .getWidgetMetaData());
+            audit.withSection(new QFieldSection(FIELD_CHANGES_SECTION_NAME, new QIcon("difference"), Tier.T2)
+               .withLabel("Field Changes")
+               .withWidgetName(join.getName()));
+         }
+      }
+
+      QTableMetaData detail = instance.getTable(TABLE_NAME_AUDIT_DETAIL);
+      if(detail != null && hasNoSections(detail))
+      {
+         detail.withRecordLabelFields("fieldName");
+         detail.getField("auditId").withLabel("Audit");
+         detail.withSection(new QFieldSection("change", "Field Change", new QIcon("difference"), Tier.T1,
+            List.of("id", "auditId", "fieldName", "oldValue", "newValue", "message")));
+      }
+
+      QTableMetaData auditTable = instance.getTable(TABLE_NAME_AUDIT_TABLE);
+      if(auditTable != null && hasNoSections(auditTable))
+      {
+         auditTable.withSection(new QFieldSection("auditTable", "Audited Table", new QIcon("table_chart"), Tier.T1, List.of("id", "label", "name")));
+         auditTable.withSection(new QFieldSection("dates", "Dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
+      }
+
+      QTableMetaData auditUser = instance.getTable(TABLE_NAME_AUDIT_USER);
+      if(auditUser != null && hasNoSections(auditUser))
+      {
+         auditUser.withSection(new QFieldSection("auditUser", "Audited User", new QIcon("person"), Tier.T1, List.of("id", "name")));
+         auditUser.withSection(new QFieldSection("dates", "Dates", new QIcon("calendar_month"), Tier.T3, List.of("createDate", "modifyDate")));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a table has no sections yet.
+    *******************************************************************************/
+   private static boolean hasNoSections(QTableMetaData table)
+   {
+      return (table.getSections() == null || table.getSections().isEmpty());
    }
 
 
@@ -231,7 +329,7 @@ public class AuditsMetaDataProvider
     *******************************************************************************/
    private QTableMetaData defineAuditTable(String backendName)
    {
-      return new QTableMetaData()
+      QTableMetaData table = new QTableMetaData()
          .withName(TABLE_NAME_AUDIT)
          .withBackendName(backendName)
          .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.NONE))
@@ -245,6 +343,12 @@ public class AuditsMetaDataProvider
          .withField(new QFieldMetaData("message", QFieldType.STRING).withMaxLength(250).withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS))
          .withField(new QFieldMetaData("timestamp", QFieldType.DATE_TIME))
          .withoutCapabilities(Capability.TABLE_INSERT, Capability.TABLE_UPDATE, Capability.TABLE_DELETE);
+
+      if(includeClientChannelField)
+      {
+         table.withField(new QFieldMetaData(FIELD_CLIENT_CHANNEL, QFieldType.STRING).withLabel("Client").withMaxLength(100).withBehavior(ValueTooLongBehavior.TRUNCATE_ELLIPSIS));
+      }
+      return (table);
    }
 
 
@@ -298,6 +402,60 @@ public class AuditsMetaDataProvider
    public AuditsMetaDataProvider withRecordIdType(QFieldType recordIdType)
    {
       this.recordIdType = recordIdType;
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Fluent setter for includeClientChannelField: whether the audit table has
+    ** the clientChannel field (which client made each change).  The backing
+    ** table needs the column first.
+    *******************************************************************************/
+   public AuditsMetaDataProvider withClientChannelField(boolean includeClientChannelField)
+   {
+      this.includeClientChannelField = includeClientChannelField;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for includeClientChannelField
+    *******************************************************************************/
+   public boolean getIncludeClientChannelField()
+   {
+      return (this.includeClientChannelField);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for defineRecordScreens
+    *******************************************************************************/
+   public boolean getDefineRecordScreens()
+   {
+      return (this.defineRecordScreens);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for defineRecordScreens
+    *******************************************************************************/
+   public void setDefineRecordScreens(boolean defineRecordScreens)
+   {
+      this.defineRecordScreens = defineRecordScreens;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for defineRecordScreens: whether defineAll also defines the
+    ** audit record screens (sections and the Field Changes child list).
+    *******************************************************************************/
+   public AuditsMetaDataProvider withDefineRecordScreens(boolean defineRecordScreens)
+   {
+      this.defineRecordScreens = defineRecordScreens;
       return (this);
    }
 

@@ -134,14 +134,14 @@ The behavior is explicitly filled with its default in frontend metadata. Ordinar
 fields omit both properties. The write-validation opt-out is backend metadata and
 is not a frontend property.
 
-Search a table field using `POST /qqq/v1/table/addressBook/possibleValues/stateId`:
+Search a table field using `POST /qqq/v1/table/placeAddress/possibleValues/stateId`:
 
 ```json
 {"values":{"countryId":1},"useCase":"form"}
 ```
 
 For process fields use
-`POST /qqq/v1/processes/addressBookPickPlace/possibleValues/stateId` with the same
+`POST /qqq/v1/processes/placeAddressPick/possibleValues/stateId` with the same
 body. Process requests can additionally supply `processValues`.
 
 | Context | Values and responsibilities |
@@ -230,8 +230,8 @@ tables are unchanged. The new **Places** navigation section contains:
 | `country` | `id`, `name`; TABLE PVS `country` |
 | `countryState` | `id`, `countryId`, `name`; TABLE PVS `countryState` |
 | `stateCity` | `id`, `stateId`, `name`; TABLE PVS `stateCity` |
-| `addressBook` | `id`, `label`, `countryId`, `stateId`, `cityId`; country â†’ state â†’ city cascade |
-| `addressBookPickPlace` | `pickPlace` frontend step with `countryId`, `stateId`, `cityId`; `echoCity` backend step; `result` displays `chosenCityName` |
+| `placeAddress` | `id`, `label`, `countryId`, `stateId`, `cityId`; country â†’ state â†’ city cascade |
+| `placeAddressPick` | `pickPlace` frontend step with `countryId`, `stateId`, `cityId`; `echoCity` backend step; `result` displays `chosenCityName` |
 
 Countries: USA = 1, Canada = 2. States/provinces: Illinois = 1, Missouri = 2,
 Ontario = 3, Quebec = 4. Cities: Chester = 1, Springfield = 2, St. Louis = 3,

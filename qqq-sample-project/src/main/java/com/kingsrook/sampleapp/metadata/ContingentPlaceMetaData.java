@@ -78,7 +78,7 @@ public final class ContingentPlaceMetaData
       {
          instance.addPossibleValueSource(QPossibleValueSource.newForTable(name));
       }
-      QTableMetaData address = new QTableMetaData().withName("addressBook").withLabel("Address book")
+      QTableMetaData address = new QTableMetaData().withName("placeAddress").withLabel("Address book")
          .withBackendName(SampleMetaDataProvider.RDBMS_BACKEND_NAME).withPrimaryKeyField("id")
          .withRecordLabelFormat("%s").withRecordLabelFields("label")
          .withField(new QFieldMetaData("id", QFieldType.INTEGER))
@@ -88,13 +88,13 @@ public final class ContingentPlaceMetaData
          address.withField(field);
       }
       instance.addTable(address);
-      for(String tableName : List.of("country", "countryState", "stateCity", "addressBook"))
+      for(String tableName : List.of("country", "countryState", "stateCity", "placeAddress"))
       {
          QTableMetaData table = instance.getTable(tableName);
          table.withBackendDetails(new RDBMSTableBackendDetails().withTableName(QInstanceEnricher.inferBackendName(tableName)));
          QInstanceEnricher.setInferredFieldBackendNames(table);
       }
-      instance.addProcess(new QProcessMetaData().withName("addressBookPickPlace").withLabel("Pick a place")
+      instance.addProcess(new QProcessMetaData().withName("placeAddressPick").withLabel("Pick a place")
          .withStep(new QFrontendStepMetaData().withName("pickPlace")
             .withComponent(new QFrontendComponentMetaData().withType(QComponentType.EDIT_FORM))
             .withFormField(placeFields().get(0)).withFormField(placeFields().get(1)).withFormField(placeFields().get(2)))
@@ -106,7 +106,7 @@ public final class ContingentPlaceMetaData
             .withViewField(new QFieldMetaData("chosenCityName", QFieldType.STRING))));
       instance.addApp(new QAppMetaData().withName("places").withLabel("Places").withIcon(new QIcon("location_city"))
          .withChild(address).withChild(instance.getTable("country")).withChild(instance.getTable("countryState"))
-         .withChild(instance.getTable("stateCity")).withChild(instance.getProcess("addressBookPickPlace")));
+         .withChild(instance.getTable("stateCity")).withChild(instance.getProcess("placeAddressPick")));
    }
 
 

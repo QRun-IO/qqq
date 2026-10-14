@@ -184,9 +184,9 @@ public class SampleMetaDataProviderTest
       Assertions.assertEquals(2, new QueryAction().execute(new QueryInput().withTableName("country")).getRecords().size());
       Assertions.assertEquals(4, new QueryAction().execute(new QueryInput().withTableName("countryState")).getRecords().size());
       Assertions.assertEquals(8, new QueryAction().execute(new QueryInput().withTableName("stateCity")).getRecords().size());
-      Assertions.assertEquals(2, new QueryAction().execute(new QueryInput().withTableName("addressBook")).getRecords().size());
-      assertTrue(ContingentPossibleValueHelper.getDependencyFieldNames(QContext.getQInstance().getTable("addressBook").getField("stateId")).contains("countryId"));
-      assertNotNull(QContext.getQInstance().getProcess("addressBookPickPlace"));
+      Assertions.assertEquals(2, new QueryAction().execute(new QueryInput().withTableName("placeAddress")).getRecords().size());
+      assertTrue(ContingentPossibleValueHelper.getDependencyFieldNames(QContext.getQInstance().getTable("placeAddress").getField("stateId")).contains("countryId"));
+      assertNotNull(QContext.getQInstance().getProcess("placeAddressPick"));
       RunBackendStepInput input = new RunBackendStepInput();
       input.addValue("cityId", 5);
       RunBackendStepOutput output = new RunBackendStepOutput();

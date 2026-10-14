@@ -1,5 +1,3 @@
 # Breaking-change reports UiApiContractTest accepts, one substring per line (text after # is the reason).
 # Only corrections of the document to what the server always did belong here: no client could rely on
 # the old description. Cleared when the baseline is refreshed (PublishAPI --baseline). See docs/UI-API-CHANGELOG.md.
-
-POST /qqq/v1/widget/{widgetName} response 200 application/json: $ref changed from #/components/schemas/WidgetResponseV1 to #/components/schemas/WidgetData   # 1.2.0: the server always returned the widget data unwrapped (WidgetSpecV1.handleOutput); the document described a {widgetData} wrapper

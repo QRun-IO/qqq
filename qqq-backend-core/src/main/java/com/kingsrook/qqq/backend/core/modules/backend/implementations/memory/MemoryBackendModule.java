@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.modules.backend.implementations.memory;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.InsertInterface;
@@ -148,5 +149,16 @@ public class MemoryBackendModule implements QBackendModuleInterface
    public QStorageInterface getStorageInterface()
    {
       return (new MemoryStorageAction());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Override
+   public ConditionalUpdateInterface getConditionalUpdateInterface()
+   {
+      return (new MemoryConditionalUpdateAction());
    }
 }

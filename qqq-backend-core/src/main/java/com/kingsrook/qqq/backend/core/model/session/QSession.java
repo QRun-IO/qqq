@@ -385,6 +385,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public List<Serializable> getSecurityKeyValues(String keyName)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived);
+      }
+
       if(securityKeyValues == null)
       {
          return (new ArrayList<>());
@@ -400,6 +406,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public List<Serializable> getSecurityKeyValues(String keyName, QFieldType type)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived);
+      }
+
       if(securityKeyValues == null)
       {
          return (new ArrayList<>());
@@ -426,6 +438,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public boolean hasSecurityKeyValue(String keyName, Serializable value)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived.contains(value));
+      }
+
       if(securityKeyValues == null)
       {
          return (false);
@@ -447,6 +465,12 @@ public class QSession implements Serializable, Cloneable
     *******************************************************************************/
    public boolean hasSecurityKeyValue(String keyName, Serializable value, QFieldType fieldType)
    {
+      List<Serializable> derived = derivedSecurityKeyValues(keyName);
+      if(derived != null)
+      {
+         return (derived.contains(value));
+      }
+
       if(securityKeyValues == null)
       {
          return (false);
@@ -729,4 +753,21 @@ public class QSession implements Serializable, Cloneable
       return (this);
    }
 
+
+
+   /*******************************************************************************
+    ** Reserved session-relative keys cannot be overridden by captured key values.
+    *******************************************************************************/
+   private List<Serializable> derivedSecurityKeyValues(String keyName)
+   {
+      if("qqq.session.userId".equals(keyName))
+      {
+         return (getUser() == null || getUser().getIdReference() == null ? List.of() : List.of(getUser().getIdReference()));
+      }
+      if(keyName != null && keyName.startsWith("qqq.permission."))
+      {
+         return (hasPermission(keyName.substring("qqq.permission.".length())) ? List.of(true) : List.of());
+      }
+      return (null);
+   }
 }

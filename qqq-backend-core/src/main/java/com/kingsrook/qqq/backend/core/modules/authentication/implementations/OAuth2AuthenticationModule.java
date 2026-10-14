@@ -510,6 +510,7 @@ public class OAuth2AuthenticationModule implements QAuthenticationModuleInterfac
       String name  = payload.optString("name", sub);
 
       user.setIdReference(sub);
+      user.setEmail(payload.optString("email", null));
       user.setFullName(name);
 
       ////////////////////////////////////////////////////////////

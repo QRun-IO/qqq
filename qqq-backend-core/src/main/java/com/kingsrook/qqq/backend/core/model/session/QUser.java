@@ -29,6 +29,7 @@ import java.io.Serializable;
  *******************************************************************************/
 public class QUser implements Cloneable, Serializable
 {
+   private String email;
    private String idReference;
    private String fullName;
 
@@ -119,4 +120,34 @@ public class QUser implements Cloneable, Serializable
    }
 
 
+
+
+   /*******************************************************************************
+    ** Authenticated email address, when supplied by the authentication module.
+    *******************************************************************************/
+   public String getEmail()
+   {
+      return (email);
+   }
+
+
+
+   /*******************************************************************************
+    ** Set the authenticated email address.
+    *******************************************************************************/
+   public void setEmail(String email)
+   {
+      this.email = email;
+   }
+
+
+
+   /*******************************************************************************
+    ** Configure the authenticated email address.
+    *******************************************************************************/
+   public QUser withEmail(String email)
+   {
+      this.email = email;
+      return (this);
+   }
 }

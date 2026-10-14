@@ -1010,7 +1010,7 @@ public class MemoryRecordStore
       {
          for(QRecord record : input.getRecords())
          {
-            Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
+            Serializable primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, record.getValue(primaryKeyField.getName()));
 
             if(CollectionUtils.nullSafeHasContents(record.getErrors()))
             {
@@ -1093,7 +1093,7 @@ public class MemoryRecordStore
       int                        rowsDeleted     = 0;
       for(Serializable primaryKeyValue : input.getPrimaryKeys())
       {
-         primaryKeyValue = ValueUtils.getValueAsFieldType(primaryKeyField.getType(), primaryKeyValue);
+         primaryKeyValue = ValueUtils.getValueAsFieldType(table, primaryKeyField, primaryKeyValue);
          if(tableData.containsKey(primaryKeyValue))
          {
             tableData.remove(primaryKeyValue);

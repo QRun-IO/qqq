@@ -85,8 +85,8 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
          for(List<QRecord> page : insertPages(insertInput, primaryKeyField))
          {
             boolean suppliedKeys = page.stream().filter(record -> CollectionUtils.nullSafeIsEmpty(record.getErrors()))
-               .anyMatch(record -> scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName())) != null);
-            boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(primaryKeyField, page.get(0).getValue(primaryKeyField.getName())));
+               .anyMatch(record -> scrubValue(table, primaryKeyField, primaryKeyField.getType(), record.getValue(primaryKeyField.getName())) != null);
+            boolean zeroKey = suppliedKeys && page.size() == 1 && isZeroPrimaryKey(primaryKeyField, scrubValue(table, primaryKeyField, primaryKeyField.getType(), page.get(0).getValue(primaryKeyField.getName())));
             List<QFieldMetaData> insertableFields = table.getFields().values().stream()
                .filter(field -> suppliedKeys || !field.getName().equals(table.getPrimaryKeyField())).toList();
             List<QFieldMetaData> logicalFields = insertableFields;
@@ -143,7 +143,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
                   else
                   {
                      sql.append("?");
-                     params.add(scrubValue(field, record.getValue(field.getName())));
+                     params.add(scrubValue(table, field, field.getType(), record.getValue(field.getName())));
                   }
                }
                sql.append(")");
@@ -262,7 +262,7 @@ public class RDBMSInsertAction extends AbstractRDBMSAction implements InsertInte
             {
                continue;
             }
-            Serializable keyValue = scrubValue(primaryKeyField, record.getValue(primaryKeyField.getName()));
+            Serializable keyValue = scrubValue(input.getTable(), primaryKeyField, primaryKeyField.getType(), record.getValue(primaryKeyField.getName()));
             if(isZeroPrimaryKey(primaryKeyField, keyValue))
             {
                //////////////////////////////////////////////////////////////////////////////////////////////////////

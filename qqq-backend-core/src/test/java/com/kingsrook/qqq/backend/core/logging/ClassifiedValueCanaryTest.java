@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.logging;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldMaskS
 import com.kingsrook.qqq.backend.core.actions.reporting.ExportAction;
 import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
+import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -48,6 +50,10 @@ import com.kingsrook.qqq.backend.core.model.actions.reporting.ReportFormat;
 import com.kingsrook.qqq.backend.core.model.actions.tables.WipeAuditFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -56,15 +62,18 @@ import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.ValueTooLongBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.WhiteSpaceBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
+import com.kingsrook.qqq.backend.core.modules.backend.implementations.utils.BackendQueryFilterUtils;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import org.apache.logging.log4j.LogManager;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -76,6 +85,100 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class ClassifiedValueCanaryTest extends BaseTest
 {
+   /*******************************************************************************
+    ** Invalid classified numbers stay private through actions and logged causes.
+    *******************************************************************************/
+   @Test
+   void invalidClassifiedNumbers() throws Exception
+   {
+      String marker = "CANARY-PHI-" + canaryToken();
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      String name = table.getName();
+      QFieldMetaData field = new QFieldMetaData("reading", QFieldType.INTEGER).withLabel("Reading")
+         .withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PHI));
+      table.addField(field);
+      new InsertAction().execute(new InsertInput(name).withRecord(new QRecord().withValue("id", 101).withValue("reading", 1)));
+      field.withBehavior(WhiteSpaceBehavior.TRIM);
+      assertEquals(1, new QueryAction().execute(new QueryInput(name)
+         .withFilter(new QQueryFilter(new QFilterCriteria("reading", QCriteriaOperator.EQUALS, " 1 ")))).getRecords().size());
+      QLoggerTest.ListAppender appender = QLoggerTest.ListAppender.createAppender();
+      org.apache.logging.log4j.core.Logger logger = (org.apache.logging.log4j.core.Logger) LogManager.getRootLogger();
+      appender.start();
+      logger.addAppender(appender);
+      try
+      {
+         for(DataClassification classification : List.of(DataClassification.PHI, DataClassification.PII))
+         {
+            field.withSupplementalMetaData(new AiFieldMetaData().withClassification(classification));
+            Exception insert = assertThrows(Exception.class, () -> new InsertAction().execute(new InsertInput(name)
+               .withRecord(new QRecord().withValue("id", 102).withValue("reading", marker))));
+            Exception update = assertThrows(Exception.class, () -> new UpdateAction().execute(new UpdateInput().withTableName(name)
+               .withRecord(new QRecord().withValue("id", 101).withValue("reading", marker))));
+            Exception query = assertThrows(Exception.class, () -> new QueryAction().execute(new QueryInput(name)
+               .withFilter(new QQueryFilter(new QFilterCriteria("reading", QCriteriaOperator.EQUALS, marker)))));
+            for(Exception exception : List.of(insert, update, query))
+            {
+               assertSafeCauses(exception, marker);
+               Throwable cause = exception;
+               while(cause.getCause() != null)
+               {
+                  cause = cause.getCause();
+               }
+               assertEquals("Value [***] could not be converted for Reading", cause.getMessage());
+               QLogger.getLogger(ClassifiedValueCanaryTest.class).warn("Invalid classified number", exception);
+            }
+         }
+      }
+      finally
+      {
+         logger.removeAppender(appender);
+         appender.stop();
+      }
+      assertFalse(appender.getEventList().isEmpty());
+      appender.getEventList().forEach(event ->
+      {
+         assertNoFragments(event.getMessage().getFormattedMessage(), marker);
+         assertSafeCauses(event.getThrown(), marker);
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** Cache and association comparisons can run without a JoinsContext.
+    *******************************************************************************/
+   @Test
+   void classifiedConversionWithoutJoinsContext()
+   {
+      String marker = "CANARY-PHI-" + canaryToken();
+      QTableMetaData table = QContext.getQInstance().getTable(TestUtils.TABLE_NAME_PERSON_MEMORY);
+      table.addField(new QFieldMetaData("readingDate", QFieldType.DATE).withLabel("Reading Date")
+         .withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PHI)));
+      QRecord record = new QRecord().withTableName(table.getName()).withValue("readingDate", LocalDate.now());
+      QValueException exception = assertThrows(QValueException.class, () -> BackendQueryFilterUtils.doesRecordMatch(
+         new QQueryFilter(new QFilterCriteria("readingDate", QCriteriaOperator.GREATER_THAN, marker)), record));
+      assertEquals("Value [***] could not be converted for Reading Date", exception.getMessage());
+      assertNull(exception.getCause());
+      record.setValue("readingDate", marker);
+      assertSafeCauses(assertThrows(QValueException.class, () -> record.getValueLocalDate("readingDate")), marker);
+   }
+
+
+
+   /*******************************************************************************
+    ** Inspect every cause, including parser exceptions attached to log events.
+    *******************************************************************************/
+   private static void assertSafeCauses(Throwable throwable, String marker)
+   {
+      while(throwable != null)
+      {
+         assertNoFragments(String.valueOf(throwable.getMessage()), marker);
+         throwable = throwable.getCause();
+      }
+   }
+
+
+
    /*******************************************************************************
     ** No classified substring escapes.
     *******************************************************************************/

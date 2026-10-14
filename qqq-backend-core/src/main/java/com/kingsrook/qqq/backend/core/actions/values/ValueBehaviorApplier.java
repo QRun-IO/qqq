@@ -27,18 +27,20 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.ClassifiedValues;
-import com.kingsrook.qqq.backend.core.exceptions.QValueException;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QSubQuery;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.expressions.AbstractFilterExpression;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldDisplayBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldFilterBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 
 /*******************************************************************************
@@ -100,18 +102,19 @@ public class ValueBehaviorApplier
 
             if(applyBehavior)
             {
-               try
+               ValueUtils.withFieldConversionContext(table, field, () ->
                {
                   fieldBehavior.apply(action, recordList, instance, table, field);
-               }
-               catch(QValueException e)
-               {
-                  if(ClassifiedValues.isClassified(table, field.getName()))
-                  {
-                     throw new QValueException("Invalid value [***] for " + field.getLabel());
-                  }
-                  throw e;
-               }
+                  return null;
+               });
+            }
+         }
+
+         if((action == Action.INSERT || action == Action.UPDATE) && ClassifiedValues.isClassified(table, field.getName()))
+         {
+            for(QRecord record : recordList)
+            {
+               ValueUtils.getValueAsFieldType(table, field, record.getValue(field.getName()));
             }
          }
       }
@@ -158,6 +161,7 @@ public class ValueBehaviorApplier
       //////////////////////////////////////////////////////////////////////////////
       for(QFilterCriteria criteria : CollectionUtils.nonNullList(filter.getCriteria()))
       {
+         QTableMetaData fieldTable = table;
          QFieldMetaData field = table.getFields().get(criteria.getFieldName());
          if(field == null && criteria.getFieldName() != null && criteria.getFieldName().contains("."))
          {
@@ -168,6 +172,7 @@ public class ValueBehaviorApplier
                if(joinTable != null)
                {
                   field = joinTable.getFields().get(parts[1]);
+                  fieldTable = joinTable;
                }
             }
          }
@@ -189,7 +194,7 @@ public class ValueBehaviorApplier
                   // call to apply the behavior on the criteria - which will return a //
                   // new criteria if any values are changed, else the input criteria  //
                   //////////////////////////////////////////////////////////////////////
-                  criteriaToUse = apply(criteriaToUse, instance, table, field, filterBehavior);
+                  criteriaToUse = apply(criteriaToUse, instance, fieldTable, field, filterBehavior);
 
                   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
                   // if the new criteria is not the same as the old criteria, mark that we need to make and return a clone. //
@@ -202,6 +207,10 @@ public class ValueBehaviorApplier
             }
          }
 
+         if(field != null)
+         {
+            validateClassifiedCriteriaValues(criteriaToUse, fieldTable, field);
+         }
          newCriteriaList.add(criteriaToUse);
       }
 
@@ -258,7 +267,7 @@ public class ValueBehaviorApplier
 
       for(Serializable value : criteria.getValues())
       {
-         Serializable newValue = filterBehavior.applyToFilterCriteriaValue(value, instance, table, field);
+         Serializable newValue = ValueUtils.withFieldConversionContext(table, field, () -> filterBehavior.applyToFilterCriteriaValue(value, instance, table, field));
          if(!Objects.equals(value, newValue))
          {
             newValues.add(newValue);
@@ -282,4 +291,35 @@ public class ValueBehaviorApplier
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Reject invalid classified operands before a backend can report raw values.
+    ** Expressions, virtual fields and functions retain their backend semantics.
+    *******************************************************************************/
+   private static void validateClassifiedCriteriaValues(QFilterCriteria criteria, QTableMetaData table, QFieldMetaData field)
+   {
+      if(field instanceof QVirtualFieldMetaData || criteria.getFieldFunction() != null
+         || !ClassifiedValues.isClassified(table, field.getName()))
+      {
+         return;
+      }
+      switch(criteria.getOperator())
+      {
+         case EQUALS, NOT_EQUALS, NOT_EQUALS_OR_IS_NULL, IN, NOT_IN, IS_NULL_OR_IN,
+            GREATER_THAN, GREATER_THAN_OR_EQUALS, LESS_THAN, LESS_THAN_OR_EQUALS, BETWEEN, NOT_BETWEEN ->
+         {
+            for(Serializable value : CollectionUtils.nonNullList(criteria.getValues()))
+            {
+               if(!(value instanceof AbstractFilterExpression<?>) && !(value instanceof QSubQuery) && !"${currentUser}".equals(value))
+               {
+                  ValueUtils.getValueAsFieldType(table, field, value);
+               }
+            }
+         }
+         default ->
+         {
+         }
+      }
+   }
 }

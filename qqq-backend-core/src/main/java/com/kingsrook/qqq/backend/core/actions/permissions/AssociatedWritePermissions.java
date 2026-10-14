@@ -268,7 +268,7 @@ public final class AssociatedWritePermissions
       List<Serializable> keys = new ArrayList<>();
       for(Serializable key : CollectionUtils.nonNullList(input.getPrimaryKeys()))
       {
-         Serializable typedKey = ValueUtils.getValueAsFieldType(table.getField(table.getPrimaryKeyField()).getType(), key);
+         Serializable typedKey = ValueUtils.getValueAsFieldType(table, table.getField(table.getPrimaryKeyField()), key);
          if(visited.add(AssociatedRecordUpdate.primaryKey(table, new QRecord().withValue(table.getPrimaryKeyField(), typedKey))))
          {
             keys.add(typedKey);

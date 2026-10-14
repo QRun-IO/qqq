@@ -335,8 +335,8 @@ public class ValidateRecordSecurityLockHelper
                boolean updatingAnyLockJoinFields = false;
                for(JoinOn joinOn : rightMostJoin.getJoinOns())
                {
-                  QFieldType   type             = rightMostJoinTable.getField(joinOn.getRightField()).getType();
-                  Serializable inputRecordValue = ValueUtils.getValueAsFieldType(type, inputRecord.getValue(joinOn.getRightField()));
+                  QFieldMetaData field          = rightMostJoinTable.getField(joinOn.getRightField());
+                  Serializable inputRecordValue = ValueUtils.getValueAsFieldType(rightMostJoinTable, field, inputRecord.getValue(joinOn.getRightField()));
                   inputRecordJoinValues.add(inputRecordValue);
 
                   // if we have a value in this field (and it's not the primary key), then it means we're updating part of the lock

@@ -33,7 +33,6 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendFieldMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValuePicker;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
@@ -375,9 +374,10 @@ public class FieldMetaData implements ToSchema
     ** screens, per each entry's roles), as in the legacy table meta-data.
     ***************************************************************************/
    @OpenAPIDescription("Help Contents for this field.")
-   public List<QHelpContent> getHelpContents()
+   @OpenAPIListItems(value = HelpContentV1.class, useRef = true)
+   public List<HelpContentV1> getHelpContents()
    {
-      return (this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents());
+      return (HelpContentV1.of(this.wrappedFull != null ? this.wrappedFull.getHelpContents() : this.wrappedFrontend.getHelpContents()));
    }
 
 

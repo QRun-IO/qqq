@@ -46,7 +46,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
     ***************************************************************************/
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
-      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime");
+      "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime", "help");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -66,6 +66,8 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableQuerySpecV1());
       list.add(new TableCountSpecV1());
       list.add(new RecordSearchSpecV1());
+      list.add(new HelpSearchSpecV1());
+      list.add(new HelpCoverageSpecV1());
 
       ///////////////////////////////////////////////////////////////////////////
       // before TableGetSpecV1: GET /table/{t}/variants would otherwise match //

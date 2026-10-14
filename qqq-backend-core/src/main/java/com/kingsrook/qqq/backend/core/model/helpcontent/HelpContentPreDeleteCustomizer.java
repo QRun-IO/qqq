@@ -66,6 +66,7 @@ public class HelpContentPreDeleteCustomizer extends AbstractPreDeleteCustomizer
       {
          QRecord recordWithoutContent = new QRecord(oldRecord);
          recordWithoutContent.setValue("content", null);
+         recordWithoutContent.setValue("summary", null);
          QInstanceHelpContentManager.processHelpContentRecord(QContext.getQInstance(), recordWithoutContent);
       }
    }

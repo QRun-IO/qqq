@@ -76,6 +76,11 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- In-app help (docs/HELP-CONTENT.md):
+  - Typed `HelpContentV1` entries and slot maps across all existing help properties; new `helpContents` maps on apps, processes and reports. Targeting fields remain server-only.
+  - Added secured `GET /help/search?q=&limit=` with ranked results, canonical keys, summaries, long help and application-relative links (default 20, maximum 50).
+  - Added `GET /help/coverage?kind=&missingOnly=&parentKey=` for users with INSERT or EDIT permission on `helpContent`; includes hidden targets and scoped totals before the missing-only filter.
+  - Per-session permission and client-channel targeting, safe Markdown rendering and cross-node reload. `GET /version` advertises the `help` feature.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

@@ -34,18 +34,17 @@ import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendProcessMe
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendReportMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 import com.kingsrook.qqq.middleware.javalin.executors.io.MetaDataOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
-import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.AppTreeNode;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.Branding;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.HelpContentV1;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ProcessMetaDataLight;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.ReportMetaData;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.SupplementalInstanceMetaData;
@@ -106,8 +105,8 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
    private SupplementalInstanceMetaData supplementalInstanceMetaData;
 
    @OpenAPIDescription("Instance-level help content, by slot name (for example the query screen's bulkAddFilterValues and bulkAddFilterValuesPossibleValueSource slots).  Omitted when the instance defines none.")
-   @OpenAPIHasAdditionalProperties()
-   private Map<String, List<QHelpContent>> helpContents;
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   private Map<String, List<HelpContentV1>> helpContents;
    @OpenAPIDescription("Environment values a frontend may use: Google Picker public browser settings GOOGLE_APP_CLIENT_ID and GOOGLE_APP_API_KEY, and the analytics settings (ANALYTICS_PROVIDERS, ANALYTICS_PLUGIN_SCRIPTS, ANALYTICS_PLUGIN_SCRIPT_URLS, GOOGLE_ANALYTICS_ENABLED, GOOGLE_ANALYTICS_TRACKING_ID, POSTHOG_ENABLED, POSTHOG_API_KEY, POSTHOG_PROJECT_API_KEY, POSTHOG_HOST, and any other ANALYTICS_* value), from the instance's QQQ_ENV_* environment.  An explicit allow-list - never the whole environment.  Omitted when none are set.")
    @OpenAPIMapValueType(String.class)
    private Map<String, String> environmentValues;
@@ -184,7 +183,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
 
       supplementalInstanceMetaData = SupplementalInstanceMetaData.of(metaDataOutput);
 
-      helpContents = CollectionUtils.nullSafeHasContents(metaDataOutput.getHelpContents()) ? metaDataOutput.getHelpContents() : null;
+      helpContents = CollectionUtils.nullSafeHasContents(metaDataOutput.getHelpContents()) ? HelpContentV1.of(metaDataOutput.getHelpContents()) : null;
       environmentValues = publishedEnvironmentValues(metaDataOutput.getEnvironmentValues());
       homeAppName = metaDataOutput.getHomeAppName();
    }
@@ -296,7 +295,7 @@ public class MetaDataResponseV1 implements MetaDataOutputInterface, ToSchema
     **
     *******************************************************************************/
    @JsonInclude(JsonInclude.Include.NON_NULL)
-   public Map<String, List<QHelpContent>> getHelpContents()
+   public Map<String, List<HelpContentV1>> getHelpContents()
    {
       return helpContents;
    }

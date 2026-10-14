@@ -22,26 +22,21 @@ package com.kingsrook.qqq.backend.core.actions.ai.tools;
 
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.Objects;
 import com.kingsrook.qqq.backend.core.actions.ai.AiExposure;
 import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
 import com.kingsrook.qqq.backend.core.actions.ai.AiTableMetaData;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKind;
-import com.kingsrook.qqq.backend.core.actions.ai.output.AiLinkBuilder;
+import com.kingsrook.qqq.backend.core.actions.help.HelpSearchAction;
+import com.kingsrook.qqq.backend.core.actions.help.HelpSearchResult;
+import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
-import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
 /*******************************************************************************
@@ -110,61 +105,47 @@ public class SearchHelpTool extends AbstractAiTool
    @Override
    public Map<String, Object> execute(AiToolContext context, AiToolInput input) throws QException
    {
-      Set<String> terms = new LinkedHashSet<>();
-      for(String word : input.getRequiredString("query").toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+"))
+      String query = input.getRequiredString("query");
+      try
       {
-         if(word.length() >= 2 && terms.size() < MAX_TERMS)
+         HelpSearchAction.terms(query);
+      }
+      catch(QBadRequestException e)
+      {
+         throw (AiToolException.invalidInput(e.getMessage()));
+      }
+      List<HelpSearchResult> candidates = new ArrayList<>();
+      for(HelpSearchResult candidate : new HelpSearchAction().collectCandidates())
+      {
+         if(allowCandidate(context, candidate))
          {
-            terms.add(word);
+            candidates.add(candidate);
          }
       }
-
-      if(terms.isEmpty())
-      {
-         throw (AiToolException.invalidInput("The query must contain at least one word of 2 or more characters."));
-      }
-
-      List<Candidate> candidates = new ArrayList<>();
-      collectCandidates(context, candidates);
-
-      List<Candidate> matches = new ArrayList<>();
-      for(Candidate candidate : candidates)
-      {
-         String text = candidate.searchText();
-         candidate.score = 0;
-         for(String term : terms)
-         {
-            if(text.contains(term))
-            {
-               candidate.score++;
-            }
-         }
-         if(candidate.score > 0)
-         {
-            matches.add(candidate);
-         }
-      }
-
-      matches.sort(Comparator.comparing((Candidate c) -> -c.score).thenComparing(c -> c.kind).thenComparing(c -> c.key));
-
       List<Map<String, Object>> results = new ArrayList<>();
-      for(Candidate match : matches.subList(0, Math.min(MAX_RESULTS, matches.size())))
+      for(HelpSearchResult match : HelpSearchAction.rank(candidates, query, MAX_RESULTS))
       {
          Map<String, Object> result = new LinkedHashMap<>();
-         result.put("kind", match.kind);
-         result.put("name", match.name);
-         if(match.table != null)
+         result.put("kind", match.getKind());
+         result.put("name", match.getName());
+         result.put("key", match.getKey());
+         result.put("summary", Objects.requireNonNullElse(context.sanitize(match.getSummary()), ""));
+         if(match.getTable() != null)
          {
-            result.put("table", match.table);
+            result.put("table", match.getTable());
          }
-         result.put("label", match.label);
-         if(match.text != null)
+         if(match.getProcess() != null)
          {
-            result.put("help", context.sanitize(match.text));
+            result.put("process", match.getProcess());
          }
-         if(match.href != null)
+         result.put("label", match.getLabel());
+         if(match.getText() != null)
          {
-            result.put("href", match.href);
+            result.put("help", context.sanitize(AiHelpText.clean(match.getText())));
+         }
+         if(match.getHref() != null)
+         {
+            result.put("href", match.getHref());
          }
          results.add(result);
       }
@@ -181,112 +162,64 @@ public class SearchHelpTool extends AbstractAiTool
 
 
    /*******************************************************************************
-    ** Collect the searchable objects this session can see.
+    ** Keep assistant exposure and personalization on top of shared help visibility.
     *******************************************************************************/
-   private static void collectCandidates(AiToolContext context, List<Candidate> candidates) throws QException
+   private static boolean allowCandidate(AiToolContext context, HelpSearchResult candidate) throws QException
    {
-      for(QAppMetaData app : new TreeMap<>(CollectionUtils.nonNullMap(context.getQInstance().getApps())).values())
+      if(candidate.getTable() != null)
       {
-         if(context.isVisible(app))
+         QTableMetaData table = context.getQInstance().getTable(candidate.getTable());
+         if(table == null || !context.isVisible(table) || context.getTableExposure(table) == AiExposure.NONE)
          {
-            candidates.add(new Candidate("app", app.getName(), null, app.getLabel(), AiHelpText.plain(app.getHelpContent()), AiLinkBuilder.objectHref(app.getName())));
+            return (false);
          }
-      }
-
-      for(QTableMetaData table : new TreeMap<>(CollectionUtils.nonNullMap(context.getQInstance().getTables())).values())
-      {
-         if(!context.isVisible(table) || context.getTableExposure(table) == AiExposure.NONE)
+         if("field".equals(candidate.getKind()))
          {
-            continue;
-         }
-
-         AiTableMetaData aiTableMetaData = AiTableMetaData.of(table);
-         candidates.add(new Candidate("table", table.getName(), null, table.getLabel(), join(aiTableMetaData == null ? null : aiTableMetaData.getAiDescription(), AiHelpText.plain(table.getHelpContent())), AiLinkBuilder.objectHref(table.getName())));
-
-         QTableMetaData personalized = context.personalize(table);
-         for(QFieldMetaData field : context.getNameableFields(personalized).values())
-         {
-            AiFieldMetaData aiFieldMetaData = AiFieldMetaData.of(field);
-            String          text            = join(aiFieldMetaData == null ? null : aiFieldMetaData.getAiDescription(), AiHelpText.plain(field.getHelpContents()));
-            if(text != null)
+            QFieldMetaData field = context.getNameableFields(context.personalize(table)).get(candidate.getName());
+            if(field == null)
             {
-               candidates.add(new Candidate("field", field.getName(), table.getName(), field.getLabel(), text, null));
+               return (false);
             }
+            AiFieldMetaData ai = AiFieldMetaData.of(field);
+            candidate.setText(join(ai == null ? null : ai.getAiDescription(), candidate.getText()));
          }
-      }
-
-      for(QProcessMetaData process : new TreeMap<>(CollectionUtils.nonNullMap(context.getQInstance().getProcesses())).values())
-      {
-         if(!process.getIsHidden() && context.isVisible(process))
+         else if("table".equals(candidate.getKind()))
          {
-            candidates.add(new Candidate("process", process.getName(), process.getTableName(), process.getLabel(), null, AiLinkBuilder.objectHref(process.getName())));
+            AiTableMetaData ai = AiTableMetaData.of(table);
+            candidate.setText(join(ai == null ? null : ai.getAiDescription(), candidate.getText()));
          }
       }
-
-      for(QWidgetMetaDataInterface widget : new TreeMap<>(CollectionUtils.nonNullMap(context.getQInstance().getWidgets())).values())
+      if(candidate.getProcess() != null && !context.isVisible(context.getQInstance().getProcess(candidate.getProcess())))
       {
-         if(context.getSettings().isWidgetAllowed(widget.getName()) && context.isVisible(widget))
-         {
-            candidates.add(new Candidate("widget", widget.getName(), null, widget.getLabel(), join(widget.getTooltip(), AiHelpText.plain(widget.getHelpContent())), null));
-         }
+         return (false);
       }
+      if("app".equals(candidate.getKind()) && !context.isVisible(context.getQInstance().getApp(candidate.getName())))
+      {
+         return (false);
+      }
+      if("report".equals(candidate.getKind()) && !context.isVisible(context.getQInstance().getReport(candidate.getName())))
+      {
+         return (false);
+      }
+      if("widget".equals(candidate.getKind()))
+      {
+         QWidgetMetaDataInterface widget = context.getQInstance().getWidget(candidate.getName());
+         if(!context.getSettings().isWidgetAllowed(widget.getName()) || !context.isVisible(widget))
+         {
+            return (false);
+         }
+         candidate.setText(join(widget.getTooltip(), candidate.getText()));
+      }
+      return (true);
    }
 
 
 
    /*******************************************************************************
-    ** Join non-null texts (null if none).
+    ** Join optional assistant descriptions with visible help.
     *******************************************************************************/
    private static String join(String a, String b)
    {
-      if(a == null)
-      {
-         return (b);
-      }
-      return (b == null ? a : a + " " + b);
-   }
-
-
-
-   /*******************************************************************************
-    ** One searchable object.
-    *******************************************************************************/
-   private static class Candidate
-   {
-      private final String kind;
-      private final String name;
-      private final String table;
-      private final String label;
-      private final String text;
-      private final String href;
-      private final String key;
-
-      private int score;
-
-
-
-      /*******************************************************************************
-       ** Constructor
-       *******************************************************************************/
-      Candidate(String kind, String name, String table, String label, String text, String href)
-      {
-         this.kind = kind;
-         this.name = name;
-         this.table = table;
-         this.label = label;
-         this.text = text;
-         this.href = href;
-         this.key = (table == null ? "" : table + ".") + name;
-      }
-
-
-
-      /*******************************************************************************
-       ** The text to match terms against (lower case).
-       *******************************************************************************/
-      String searchText()
-      {
-         return ((name + " " + (label == null ? "" : label) + " " + (text == null ? "" : text)).toLowerCase(Locale.ROOT));
-      }
+      return (a == null ? b : b == null ? a : a + " " + b);
    }
 }

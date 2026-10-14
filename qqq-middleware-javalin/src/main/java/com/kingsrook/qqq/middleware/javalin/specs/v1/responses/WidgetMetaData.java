@@ -26,12 +26,13 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.WidgetDropdownData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendWidgetMetaData;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIHasAdditionalProperties;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components.HelpContentV1;
 
 
 /*******************************************************************************
@@ -235,11 +236,11 @@ public class WidgetMetaData implements ToSchema
    /*******************************************************************************
     ** Help content by role.
     *******************************************************************************/
-   @OpenAPIDescription("Help content by role.")
-   @OpenAPIHasAdditionalProperties
-   public Map<String, List<QHelpContent>> getHelpContent()
+   @OpenAPIDescription("Help content by slot.")
+   @OpenAPIMapValueType(value = HelpContentV1.class, useRef = true, array = true)
+   public Map<String, List<HelpContentV1>> getHelpContent()
    {
-      return (wrapped.getHelpContent());
+      return (HelpContentV1.of(wrapped.getHelpContent()));
    }
 
 

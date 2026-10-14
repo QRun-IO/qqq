@@ -196,14 +196,10 @@ public class SchemaBuilder
          OpenAPIMapValueType openAPIMapValueTypeAnnotation = element.getAnnotation(OpenAPIMapValueType.class);
          if(openAPIMapValueTypeAnnotation != null)
          {
-            if(openAPIMapValueTypeAnnotation.useRef())
-            {
-               schema.withAdditionalProperties(new Schema().withRef("#/components/schemas/" + openAPIMapValueTypeAnnotation.value().getSimpleName()));
-            }
-            else
-            {
-               schema.withAdditionalProperties(classToSchema(openAPIMapValueTypeAnnotation.value()));
-            }
+            Schema valueSchema = openAPIMapValueTypeAnnotation.useRef()
+               ? new Schema().withRef("#/components/schemas/" + openAPIMapValueTypeAnnotation.value().getSimpleName())
+               : classToSchema(openAPIMapValueTypeAnnotation.value());
+            schema.withAdditionalProperties(openAPIMapValueTypeAnnotation.array() ? new Schema().withType(Type.ARRAY).withItems(valueSchema) : valueSchema);
          }
       }
       else

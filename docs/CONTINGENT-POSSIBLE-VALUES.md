@@ -243,3 +243,32 @@ These names and ids are stable fixtures for the Next acceptance spec.
 
 | Repo | Table / process | Field A -> Field B | Mechanism | Status |
 |---|---|---|---|---|
+| KofTwentyTwo/Website-Backend | menu_item | menuId -> parentId | filter `menuId` | PR #167 (draft) |
+| KofTwentyTwo/Website-Backend | page | siteId -> parentPageId, featuredMediaId | filter `siteId` | PR #167 (draft) |
+| KofTwentyTwo/Website-Backend | project | siteId -> categoryId, featuredMediaId | filter `siteId` | PR #167 (draft) |
+| KofTwentyTwo/Website-Backend | project_category | siteId -> featuredMediaId | filter `siteId` | PR #167 (draft) |
+| KofTwentyTwo/Website-Backend | photo_album | projectId -> projectUpdateId | filter `projectId` | PR #167 (draft) |
+| KofTwentyTwo/Website-Backend | photo_album, photo_album_folder | siteId -> projectId, photoAlbumFolderId, parentId | filter + SHOW_ALL_UNTIL_SET (siteId optional) | after this RC |
+| KofTwentyTwo/Website-Backend | photo_album | id -> coverPhotoId | filter `photoAlbumId` | after this RC |
+| KofTwentyTwo/Website-Backend | blog_post_tag_int, blog_post, project_update | blogPostId -> blogTagId; blogId / projectId -> featuredMediaId | custom provider + dependsOn | after this RC |
+| QRun-IO/qbit-crm | crmDeal | pipelineId -> pipelineStageId | filter | PR #6 |
+| QRun-IO/qbit-crm | crmActivity | activityTypeId -> outcomeId | filter | PR #6 |
+| QRun-IO/qbit-crm | crmEmailListMember | contactId -> formSubmissionId | filter | PR #6 |
+| QRun-IO/qbit-crm | crmActivity | companyId -> contactId, dealId | - | not applied (company optional) |
+| QRun-IO/qbit-easypost-tracking | easypost_tracked_table | sourceTableName -> trackingCode/carrier/notifyUser field names | custom provider reads otherValues | PR #17 |
+| QRun-IO/qbit-marketing | campaign, claim, finding, metric, outcome_event | productId -> product-scoped FKs (11) | filter `productId` | PR #10 |
+| QRun-IO/qbit-wms | 21 tables + CycleCount form | warehouseId / clientId / itemId / activityTypeId scoping (30 filters) | filter | PR #5 |
+| QRun-IO/qbit-assistant | assistant_provider | providerType -> model, kind | custom provider + dependsOn | requested from the assistant agent |
+| QRun-IO/qbit-data-analysis | watch | table_name -> saved_id | filter | requested from the data-analysis agent |
+| QRun-IO/qbit-collaboration | comment; feature setting | threadId -> parentCommentId; scopeType -> scopeName | filter; custom provider | requested from the collaboration agent |
+| QRun-IO/qbit-secured-data, qbit-email, qbit-file-gateway, qbit-edi | (no PVS fields on develop yet) | table -> field; provider -> from address; connection -> bucket; partner -> mapping | filter / custom provider | rule sent to the owning agents |
+| QRun-IO/qbit-alerts | alerts_mute, alerts_subscription | scopeType -> scopeValue | custom provider + dependsOn (scopeValue is free text today) | follow-up after this RC |
+| QRun-IO/qbit-backups | backup_plan_scope | selectorType -> selectorValue | custom provider + dependsOn | follow-up after this RC |
+| QRun-IO/qbit-web-performance | budget | scope -> scopeValue | custom provider + dependsOn | follow-up after this RC |
+| QRun-IO/qbit-cdn | cdn_table_tag_rule | tableName -> publishedField | `tables` PVS + field provider | follow-up after this RC |
+| QRun-IO/qbit-webhooks | webhooks_subscription | eventTypeName -> include/excludeFields; apiName -> apiVersion | field provider; core apiVersion provider | follow-up |
+| QRun-IO/qbit-workflows | workflow_revision, workflow_test_scenario | apiName -> apiVersion | core apiVersion provider | follow-up (core) |
+| QRun-IO/qbit-workflows | tableTrigger, RunRecordWorkflow, TestAssertion, UpdateInputRecordFieldStep | table -> workflow / field | filter / custom | already contingent |
+| QRun-IO/qbit-quick-search | config and process field PVSs | table -> field | custom provider | already contingent |
+| QRun-IO/qbit-customizable-table-views | customizable_table, view field, view widget | tableName / tableViewId -> view, field, widget | filter / custom | already contingent |
+| QRun-IO/qbit-object-storage, sql-workbench, authentik, others | - | - | - | no editable pairs (audited 2026-10-13) |

@@ -24,6 +24,7 @@ DROP TABLE IF EXISTS jobs_row_error CASCADE;
 DROP TABLE IF EXISTS jobs_event CASCADE;
 DROP TABLE IF EXISTS jobs_chunk CASCADE;
 DROP TABLE IF EXISTS jobs_worker CASCADE;
+DROP TABLE IF EXISTS jobs_log CASCADE;
 DROP TABLE IF EXISTS jobs_job CASCADE;
 DROP TABLE IF EXISTS kill_test_step_log CASCADE;
 DROP TABLE IF EXISTS kill_test_target CASCADE;
@@ -31,6 +32,16 @@ DROP TABLE IF EXISTS jobs_storage CASCADE;
 
 CREATE TABLE jobs_job
 (
+   current_phase VARCHAR(250),
+   percent_done INTEGER,
+   progress_message VARCHAR(1000),
+   bytes_done BIGINT,
+   bytes_total BIGINT,
+   eta_seconds BIGINT,
+   progress_json TEXT,
+   log_seq BIGINT,
+   log_dropped INTEGER,
+   lease_owner VARCHAR(250),
    id                        SERIAL PRIMARY KEY,
    label                     VARCHAR(250),
    process_name              VARCHAR(250) NOT NULL,
@@ -325,3 +336,17 @@ CREATE TABLE other_db_customer_flag
    flag        VARCHAR(50),
    modify_date TIMESTAMPTZ DEFAULT now()
 );
+
+
+CREATE TABLE jobs_log
+(
+   id BIGSERIAL PRIMARY KEY,
+   job_id INTEGER NOT NULL REFERENCES jobs_job(id) ON DELETE CASCADE,
+   chunk_id INTEGER REFERENCES jobs_chunk(id) ON DELETE SET NULL,
+   attempt INTEGER,
+   level VARCHAR(10) NOT NULL,
+   logged_at TIMESTAMP WITH TIME ZONE NOT NULL,
+   phase VARCHAR(250),
+   message VARCHAR(1000)
+);
+CREATE INDEX jobs_log_cursor_idx ON jobs_log(job_id, id);

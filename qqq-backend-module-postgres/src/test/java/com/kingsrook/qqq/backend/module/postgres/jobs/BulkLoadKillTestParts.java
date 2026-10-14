@@ -25,6 +25,7 @@ package com.kingsrook.qqq.backend.module.postgres.jobs;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizerInterface;
 import com.kingsrook.qqq.backend.core.actions.customizers.TableCustomizers;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -36,6 +37,8 @@ import com.kingsrook.qqq.backend.core.alerts.NotificationSignal;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.jobs.SystemScope;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobPhase;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgress;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.audits.AuditsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
@@ -172,7 +175,15 @@ public class BulkLoadKillTestParts
       {
          if(!isPreview)
          {
+            JobProgress progress = JobProgress.current();
+            if(progress.getSnapshot().getCurrentPhase() == null)
+            {
+               progress.phases(JobPhase.of("load", "Load rows", 100)).phase("load");
+            }
+            progress.total(records.size(), "rows").done(0).info("Loading page: " + records.size() + " rows");
+            progress.flush();
             SleepUtils.sleep((long) INSERT_MILLIS_PER_ROW * records.size(), TimeUnit.MILLISECONDS);
+            progress.done(records.size()).info("Loaded page: " + records.size() + " rows");
          }
          return (records);
       }
@@ -253,7 +264,7 @@ public class BulkLoadKillTestParts
        **
        *******************************************************************************/
       @Override
-      public AutoCloseable subscribe(java.util.function.Consumer<RealtimeMessage> listener)
+      public AutoCloseable subscribe(Consumer<RealtimeMessage> listener)
       {
          return (() ->
          {

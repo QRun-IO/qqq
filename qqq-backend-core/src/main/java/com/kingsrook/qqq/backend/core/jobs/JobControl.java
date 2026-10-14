@@ -23,6 +23,7 @@ package com.kingsrook.qqq.backend.core.jobs;
 
 
 import java.io.Serializable;
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +37,9 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobMode;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
 import com.kingsrook.qqq.backend.core.jobs.plans.StepsJobPlan;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogWriter;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressMath;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 import com.kingsrook.qqq.backend.core.jobs.runtime.JobFinalizer;
 import com.kingsrook.qqq.backend.core.jobs.runtime.JobSignals;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
@@ -114,7 +118,7 @@ class JobControl
             {
                throw (new QUserFacingException(label + " has no failed chunks to retry."));
             }
-            require(store.setJobStatus(jobId, EnumSet.of(JobStatus.FAILED, JobStatus.NEEDS_REVIEW, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.PAUSED, JobStatus.QUEUED, JobStatus.RUNNING), JobStatus.QUEUED, requeue()), action, status);
+            require(store.setJobStatus(jobId, EnumSet.of(JobStatus.FAILED, JobStatus.NEEDS_REVIEW, JobStatus.COMPLETED_WITH_ERRORS, JobStatus.PAUSED, JobStatus.QUEUED, JobStatus.RUNNING), JobStatus.QUEUED, requeue(job)), action, status);
             event(jobId, JobEventType.RETRIED, "Retrying " + retried + " failed chunks");
          }
          case RESTART ->
@@ -129,7 +133,7 @@ class JobControl
             }
             int reset = store.setChunkStatuses(jobId, EnumSet.of(ChunkStatus.PENDING, ChunkStatus.RETRY, ChunkStatus.FAILED, ChunkStatus.NEEDS_REVIEW, ChunkStatus.CANCELLED), ChunkStatus.PENDING,
                new LinkedHashMap<>(Map.of("attempt", 0)));
-            require(store.setJobStatus(jobId, EnumSet.of(status), JobStatus.QUEUED, requeue()), action, status);
+            require(store.setJobStatus(jobId, EnumSet.of(status), JobStatus.QUEUED, requeue(job)), action, status);
             event(jobId, JobEventType.RESTARTED, "Restarted; " + reset + " unfinished chunks will run again");
          }
          case RETRY_FAILED_ROWS ->
@@ -141,7 +145,7 @@ class JobControl
          case DOWNLOAD_FAILED_ROWS -> throw (new QUserFacingException("Download the failed rows with the Download Failed Rows action."));
          case RUN_AGAIN ->
          {
-            Integer newJobId = DurableJobs.launch(relaunchRequest(job));
+            Integer newJobId = DurableJobs.runAgain(jobId);
             event(jobId, JobEventType.LAUNCHED, "Run again as job " + newJobId);
             return (label + ": started again as job " + newJobId + ".");
          }
@@ -162,7 +166,7 @@ class JobControl
     ** The request that runs a job again from the start, with the same inputs.
     *******************************************************************************/
    @SuppressWarnings("unchecked")
-   private static LaunchRequest relaunchRequest(QRecord job) throws QException
+   static LaunchRequest relaunchRequest(QRecord job) throws QException
    {
       LaunchRequest request = new LaunchRequest(job.getValueString("processName"))
          .withValues(StepsJobPlan.readValues(job.getValueString("paramsJson")))
@@ -233,9 +237,12 @@ class JobControl
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static Map<String, Serializable> requeue()
+   private static Map<String, Serializable> requeue(QRecord job)
    {
       Map<String, Serializable> values = reason(null);
+      var snapshot = new JobProgressSnapshot().withUnitLabel("rows");
+      new JobProgressMath().update(snapshot, job, 0, Instant.now());
+      values.putAll(JobLogWriter.progressValues(snapshot));
       values.put("finishedAt", null);
       values.put("errorMessage", null);
       return (values);

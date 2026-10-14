@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgress;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.mapping.AbstractBulkLoadRollableValueError;
 
@@ -49,6 +50,8 @@ import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.mapp
  *******************************************************************************/
 public final class JobChunkScope implements AutoCloseable
 {
+   private JobProgress progress;
+
    private static final ThreadLocal<JobChunkScope> CURRENT = new ThreadLocal<>();
 
    private final QBackendTransaction  transaction;
@@ -298,4 +301,36 @@ public final class JobChunkScope implements AutoCloseable
          return (list);
       }
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for progress
+    *******************************************************************************/
+   public JobProgress getProgress()
+   {
+      return (this.progress);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for progress
+    *******************************************************************************/
+   public void setProgress(JobProgress progress)
+   {
+      this.progress = progress;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for progress
+    *******************************************************************************/
+   public JobChunkScope withProgress(JobProgress progress)
+   {
+      this.progress = progress;
+      return (this);
+   }
+
 }

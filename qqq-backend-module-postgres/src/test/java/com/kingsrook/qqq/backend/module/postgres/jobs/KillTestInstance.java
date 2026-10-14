@@ -32,6 +32,8 @@ import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaData;
 import com.kingsrook.qqq.backend.core.jobs.DurableJobsMetaDataProvider;
 import com.kingsrook.qqq.backend.core.jobs.DurableProcessMetaData;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobPhase;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgress;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
@@ -150,12 +152,17 @@ public class KillTestInstance
       @Override
       public void run(RunBackendStepInput input, RunBackendStepOutput output) throws QException
       {
+         var progress = JobProgress.of(input);
+         progress.phases(JobPhase.of("step", "Run step", 100))
+            .phase("step").total(1, "steps").done(0).info("Starting " + input.getStepName());
+         progress.flush();
          Integer stepMillis = input.getValueInteger("stepMillis");
          SleepUtils.sleep(stepMillis == null ? 1500 : stepMillis, TimeUnit.MILLISECONDS);
          new InsertAction().execute(new InsertInput(TABLE_STEP_LOG).withRecord(new QRecord()
             .withValue("stepName", input.getStepName())
             .withValue("podId", System.getProperty(POD_PROPERTY))));
          output.addValue("last", input.getStepName());
+         progress.done(1).info("Finished " + input.getStepName());
       }
    }
 

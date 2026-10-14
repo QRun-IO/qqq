@@ -21,6 +21,8 @@
 package com.kingsrook.qqq.middleware.javalin.executors;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobManager;
 import com.kingsrook.qqq.backend.core.actions.async.AsyncJobState;
@@ -31,10 +33,13 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 import com.kingsrook.qqq.middleware.javalin.QJavalinAccessLogger;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessInitOrStepOrStatusOutputInterface;
 import com.kingsrook.qqq.middleware.javalin.executors.io.ProcessStatusInput;
 import com.kingsrook.qqq.middleware.javalin.executors.utils.ProcessExecutorUtils;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.JobLogLineV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.JobProgressV1;
 
 
 /*******************************************************************************
@@ -86,7 +91,7 @@ public class ProcessStatusExecutor extends AbstractMiddlewareExecutor<ProcessSta
                {
                   RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());
                   ProcessExecutorUtils.serializeRunProcessResultForCaller(output, processName, runProcessOutput);
-                  java.util.List<com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret> secrets = OneTimeSecretHandoff.take(processUUID);
+                  List<OneTimeSecret> secrets = OneTimeSecretHandoff.take(processUUID);
                   if(!secrets.isEmpty())
                   {
                      output.setOneTimeSecrets(secrets);
@@ -114,6 +119,19 @@ public class ProcessStatusExecutor extends AbstractMiddlewareExecutor<ProcessSta
                output.setMessage(jobStatus.getMessage());
                output.setCurrent(jobStatus.getCurrent());
                output.setTotal(jobStatus.getTotal());
+               if(jobStatus.getProgress() != null)
+               {
+                  output.setProgress(JobsExecutor.convert(jobStatus.getProgress(), JobProgressV1.class));
+               }
+               if(jobStatus.getLogTail() != null)
+               {
+                  List<JobLogLineV1> lines = new ArrayList<>();
+                  for(var line : jobStatus.getLogTail())
+                  {
+                     lines.add(JobsExecutor.convert(line, JobLogLineV1.class));
+                  }
+                  output.setLogTail(lines);
+               }
             }
          }
 

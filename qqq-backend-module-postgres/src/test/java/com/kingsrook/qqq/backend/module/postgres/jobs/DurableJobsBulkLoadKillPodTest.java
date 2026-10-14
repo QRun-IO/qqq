@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -45,8 +46,12 @@ import com.kingsrook.qqq.backend.core.jobs.SystemScope;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
+import com.kingsrook.qqq.backend.core.jobs.model.JobLease;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogLevel;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogWriter;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRef;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
@@ -116,7 +121,7 @@ class DurableJobsBulkLoadKillPodTest extends BaseTest
       {
          try(var walk = Files.walk(storageDir))
          {
-            walk.sorted(java.util.Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
          }
       }
    }
@@ -205,12 +210,32 @@ class DurableJobsBulkLoadKillPodTest extends BaseTest
       assertThat(reclaimed.getValueInstant("createDate").toEpochMilli() - killedAt).isLessThanOrEqualTo((KillTestInstance.LEASE_TTL + KillTestInstance.REAPER_SECS + 1) * 1000L);
       assertThat(store.getChunk(killedChunkId).getValueInteger("attempt")).as("the killed chunk ran twice").isEqualTo(2);
 
+      await("terminal log flushed", Duration.ofSeconds(10), () -> store.query(DurableJobsTables.TABLE_LOG,
+         new QQueryFilter(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, jobId))).stream()
+         .anyMatch(line -> line.getValue("chunkId") == null && line.getValueString("message").startsWith("Completed")));
+      List<QRecord> log = store.query(DurableJobsTables.TABLE_LOG, new QQueryFilter(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, jobId))
+         .withOrderBy(new QFilterOrderBy("id")));
+      assertThat(log.stream().map(r -> r.getValueLong("id")).toList()).isSorted().doesNotHaveDuplicates();
+      assertThat(log.stream().filter(r -> killedChunkId.equals(r.getValueInteger("chunkId")) && Integer.valueOf(1).equals(r.getValueInteger("attempt")) && "INFO".equals(r.getValueString("level"))).count()).isPositive();
+      assertThat(log.stream().filter(r -> killedChunkId.equals(r.getValueInteger("chunkId")) && Integer.valueOf(2).equals(r.getValueInteger("attempt")) && "INFO".equals(r.getValueString("level"))).count()).isPositive();
+      assertThat(log.stream().filter(r -> killedChunkId.equals(r.getValueInteger("chunkId")) && "WARN".equals(r.getValueString("level")) && r.getValueString("message").contains("was interrupted")).count()).isEqualTo(1);
+      var zombieLease = new JobLease(killedChunkId, jobId, killedChunk.getValueInteger("seq"), 1,
+         killedChunk.getValueString("leaseOwner"), killedChunk.getValueString("leaseToken"), killedChunk.getValueInstant("leaseExpiresAt"));
+      var zombie = new JobLogWriter(store, jobId, zombieLease, null);
+      zombie.append(JobLogLevel.ERROR, "load", "zombie line");
+      assertThat(zombie.flush(new JobProgressSnapshot().withPercent(99.0), true)).isFalse();
+      assertThat(store.query(DurableJobsTables.TABLE_LOG, new QQueryFilter(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, jobId)))).hasSize(log.size());
+
       //////////////////////////////////////////////////////////
       // exactly once: 9,980 rows, no duplicates, none missing //
       //////////////////////////////////////////////////////////
       assertThat(count(BulkLoadKillTestParts.TABLE_TARGET, new QQueryFilter())).isEqualTo(ROWS - badRows.size());
       assertThat(job.getValueInteger("rowsOk")).isEqualTo(ROWS - badRows.size());
       assertThat(job.getValueInteger("rowsFailed")).isEqualTo(badRows.size());
+      assertThat(job.getValueInteger("rowsDone")).isEqualTo(ROWS);
+      assertThat(job.getValueInteger("chunksDone")).isEqualTo(ROWS / CHUNK_SIZE);
+      assertThat(job.getValueInteger("percentDone")).isEqualTo(100);
+      assertThat(log.getLast().getValueString("message")).contains("Completed");
 
       ///////////////////////////////////////////////////////////////
       // exactly 20 row errors, at exactly the bad file row numbers //
@@ -254,6 +279,7 @@ class DurableJobsBulkLoadKillPodTest extends BaseTest
       QRecord retried = awaitJob(store, retryId, Duration.ofSeconds(120));
       assertThat(retried.getValueString("status")).as(retried.getValueString("errorMessage")).isEqualTo(JobStatus.COMPLETED.name());
       assertThat(count(BulkLoadKillTestParts.TABLE_TARGET, new QQueryFilter())).isEqualTo(ROWS);
+      assertThat(retried.getValueInteger("percentDone")).isEqualTo(100);
       assertThat(store.query(DurableJobsTables.TABLE_ROW_ERROR, new QQueryFilter(new QFilterCriteria("jobId", QCriteriaOperator.EQUALS, jobId))))
          .allMatch(e -> Boolean.TRUE.equals(e.getValueBoolean("resolved")));
    }

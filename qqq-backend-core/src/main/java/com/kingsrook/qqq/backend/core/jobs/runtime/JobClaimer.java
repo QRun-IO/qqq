@@ -89,6 +89,7 @@ public class JobClaimer
    public Optional<JobLease> claimNext() throws QException
    {
       List<QRecord> jobs = store.query(TABLE_JOB, new QQueryFilter()
+         .withCriteria(new QFilterCriteria("sourceType", QCriteriaOperator.NOT_EQUALS_OR_IS_NULL, "INLINE"))
          .withCriteria(new QFilterCriteria("status", QCriteriaOperator.IN, List.of(JobStatus.QUEUED.name(), JobStatus.RUNNING.name(), JobStatus.PLANNING.name(), JobStatus.PAUSING.name(), JobStatus.CANCELLING.name())))
          .withOrderBy(new QFilterOrderBy("priority", false))
          .withOrderBy(new QFilterOrderBy("queuedAt", true))

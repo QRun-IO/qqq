@@ -74,10 +74,11 @@ class JobSignalsTest extends DurableJobsTestBase
       assertThat(DurableJobsTestSupport.MESSAGES).allSatisfy(message ->
       {
          assertThat(message.getChannel()).isIn("record:jobs_job:" + jobId, "user:" + DEFAULT_USER_ID);
-         assertThat(message.getData().keySet()).isSubsetOf("jobId", "status", "chunksDone", "chunksTotal", "rowsDone", "rowsTotal", "rowsFailed", "rowsPerSecond", "etaSeconds");
+         assertThat(message.getData().keySet()).isSubsetOf("jobId", "status", "chunksDone", "chunksTotal", "rowsDone", "rowsTotal", "rowsFailed", "rowsPerSecond", "etaSeconds",
+            "currentPhase", "percent", "message", "bytesDone", "bytesTotal", "logSeq");
          message.getData().forEach((key, value) ->
          {
-            if(!"status".equals(key) && value != null)
+            if(!List.of("status", "currentPhase", "message").contains(key) && value != null)
             {
                assertThat(value).isInstanceOf(Number.class);
             }

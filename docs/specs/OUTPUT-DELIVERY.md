@@ -153,13 +153,13 @@ fields are the workspace from the user's own connections, then the channel the u
   `destinationKey` is the `output_delivery` id, or the destination name for an ad-hoc delivery, so a
   re-delivery to the same place dedupes. The effect's idempotency key is passed through unchanged as the
   `DeliverOutputAction` key.
-- **The jobs side** (owned by the jobs work, stacked on #1195):
-  - `JobEffects.emitForJob(jobId, effectName, rowKey, payload)`;
-  - a `JobCompletionEffects` hook, called when a job finishes COMPLETED or COMPLETED_WITH_ERRORS, with the
-    job record including `outputStorageJson`.
-
-  Job-level effects don't hold the job open. Their failures go to the Effects list and the
-  `jobs.effect-unresolved` alert.
+- **The jobs side** (QRun-IO/qqq#1201, stacked on #1195): `DurableJobsMetaData.withCompletionEffectProvider(QCodeReference)`
+  registers a `JobCompletionEffects`. Its `effectsFor(job, completingAs)` returns `JobLevelEffect`s.
+  - It is called after the chunks and their effects are done, and before the job turns final. The job
+    waits until the deliveries are SENT or FAILED; a FAILED one gives COMPLETED_WITH_ERRORS.
+  - It may be called repeatedly, so it returns the same effects; keys already written are skipped.
+  - If it throws, the job waits and the provider is asked again.
+  - The target is registered with `withEffectTarget(...)`.
 - **The delivery side** (this spec):
   - `DeliveryJobCompletionEffects`, which turns a job's outputs and its delivery choices into `deliver`
     effects;

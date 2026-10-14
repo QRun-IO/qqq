@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Removed the per-RC Next waiver owner-approval gate by owner decision on 2026-10-13; releases no longer require a comment on #798. The seven Next-owned successor features report missing/pending acceptance evidence without blocking releases. Failed tests and invalid supplied receipts still block strict coverage; non-Next requirements are unchanged.
 
+### Fixed
+- **Qbit configs no longer leak into JSON.** `SourceQBitAware.getSourceQBit()` and `getSourceQBitConfig()` are now `@JsonIgnore`. Before, any serialized table or process meta-data, such as `ChildRecordListData.childTableMetaData`, carried the qbit's server-side config. A config whose runtime pointed back at it (qbit-alerts) made every child list for that qbit fail with "Error in JSON Serialization" at Jackson's 1000-level nesting limit.
+- **JsonUtils names reference cycles.** When serialization exceeds the nesting limit, the `IllegalArgumentException` message now names the repeating reference chain, for example `reference cycle in ChildRecordListData: ... -> AlertsQBitConfig.runtime -> AlertsRuntime.config -> AlertsQBitConfig.runtime (repeats)`. It used to be the bare "Error in JSON Serialization".
+
 ## [4.1.0-RC.6] — candidate (2026-10-13)
 
 Same Next pairing as RC.4/RC.5 (`1.0.0-RC.14`, BOM-managed). Core hooks for the backups qbit

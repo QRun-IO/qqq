@@ -15,6 +15,7 @@ with a deprecation period (see #1156 for the planned package moves).
 | Client channels and deny walls (assistant, sftp, token) | core `model.metadata.permissions.ClientChannelsMetaData`, `QPermissionRules.deniedClients` | UI API | `UI-API-CLIENT-CHANNELS.md` |
 | Scoped credentials (`QCredentialScope` on `QSession`) | core `model.session` | UI API, with qbit-authentik | `UI-API-CLIENT-CHANNELS.md` (scoped credentials) |
 | Raw-route audit and strict mode | `specs.UiApiRouteAuditor`, `QApplicationJavalinServer.withStrictUiApiRoutes` | UI API | `UI-API-EXTENSIONS.md` §2 |
+| UI API / model API parity ("API = admin parity": `UiApiModelApiParityChecker`, `ParityExclusions`) | `qqq-middleware-api` `actions` | UI API | `UI-API-MODEL-API-PARITY.md` |
 
 ## Records and features
 | Contract | Where | Owner | Doc |

@@ -22,23 +22,31 @@ package com.kingsrook.qqq.backend.core.model.metadata.qbits;
 
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.alerts.QAlertTypeMetaData;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.CyclicTestQBitConfig;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.TestQBitConfig;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.TestQBitProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.metadata.OtherTableMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.testqbit.metadata.SomeTableMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 
 /*******************************************************************************
@@ -46,6 +54,32 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  *******************************************************************************/
 class QBitProducerTest extends BaseTest
 {
+
+   /*******************************************************************************
+    ** Source lookups stay out of JSON for every core interface implementer.
+    *******************************************************************************/
+   @Test
+   void testSourceQBitLookupsAreNotSerialized() throws QException
+   {
+      TestQBitConfig config = new CyclicTestQBitConfig()
+         .withOtherTableConfig(ProvidedOrSuppliedTableConfig.provideTableUsingBackendNamed(TestUtils.MEMORY_BACKEND_NAME))
+         .withIsSomeTableEnabled(true);
+      QInstance qInstance = QContext.getQInstance();
+      new TestQBitProducer().withTestQBitConfig(config).produce(qInstance);
+
+      QTableMetaData table = qInstance.getTable(OtherTableMetaDataProducer.NAME);
+      assertNotNull(table.getSourceQBitName());
+      for(SourceQBitAware metaData : List.of(table, new QProcessMetaData(), new QAlertTypeMetaData(), new MetaDataProducerMultiOutput().with(new QTableMetaData())))
+      {
+         metaData.setSourceQBitName(table.getSourceQBitName());
+         assertSame(config, metaData.getSourceQBitConfig());
+         assertNotNull(metaData.getSourceQBit());
+         assertThat(JsonUtils.toJson(metaData)).contains("\"sourceQBitName\":\"" + table.getSourceQBitName() + "\"")
+            .doesNotContain("\"sourceQBitConfig\"", "\"sourceQBit\"");
+      }
+   }
+
+
 
    /*******************************************************************************
     **

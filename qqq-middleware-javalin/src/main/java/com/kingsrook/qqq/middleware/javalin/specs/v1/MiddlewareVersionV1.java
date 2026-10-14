@@ -84,6 +84,9 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new TableVariantsSpecV1());
       list.add(new TableGetSpecV1());
       list.add(new TableRecordFeaturesSpecV1());
+      list.add(new TableFormAdjusterSpecV1());
+      list.add(new TableApisSpecV1());
+      list.add(new TableApiDocumentSpecV1());
       list.add(new TableInsertSpecV1());
       list.add(new TableUpdateSpecV1());
       list.add(new TableDeleteSpecV1());

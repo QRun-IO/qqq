@@ -54,6 +54,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateContingentPossibleValuesHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeEvent;
 import com.kingsrook.qqq.backend.core.actions.tables.listeners.RecordChangeListenerHelper;
@@ -63,6 +64,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.audits.DMLAuditInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.RestoreWriteFlag;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
@@ -494,6 +496,10 @@ public class UpdateAction
       if(updateInput.getInputSource().shouldValidateRequiredFields())
       {
          validateRequiredFields(updateInput);
+         if(updateInput.getInputSource() != QInputSource.SYSTEM)
+         {
+            ValidateContingentPossibleValuesHelper.validate(table, updateInput.getRecords(), oldRecordList.orElse(List.of()), updateInput.getTransaction());
+         }
       }
 
       ///////////////////////////////////////////////////////////////////////////

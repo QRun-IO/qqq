@@ -404,9 +404,9 @@ status, cached for 2 seconds. The flag in `AsyncJobStatus` is not used.
   - This adds typed event schemas to the UI API (a minor bump and a changelog entry). Polling the
     record is the fallback.
 - **Alert types**, declared with `QAlertTypeMetaData`:
-  - `jobs.job_failed`: raised on `FAILED` or `NEEDS_REVIEW`, deduped by job id, and resolved when a
+  - `jobs.job-failed`: raised on `FAILED` or `NEEDS_REVIEW`, deduped by job id, and resolved when a
     retry completes;
-  - `jobs.job_stalled`: `RUNNING` with no progress for `stallMinutes` (default 15), or `QUEUED` past
+  - `jobs.job-stalled`: `RUNNING` with no progress for `stallMinutes` (default 15), or `QUEUED` past
     `queueStallMinutes`;
   - `jobs.reaper` heartbeat: no pod is reaping.
 - **Notifications.** `QAlerts.notify` goes to the owner on `COMPLETED`, `COMPLETED_WITH_ERRORS` and

@@ -52,7 +52,7 @@ import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_JOB;
 /*******************************************************************************
  ** Everything a job tells the outside world: realtime events (job.status on
  ** every change, job.progress throttled to one per second per job - counts
- ** only, never row values), alerts (jobs.job_failed, jobs.job_stalled) and the
+ ** only, never row values), alerts (jobs.job-failed, jobs.job-stalled) and the
  ** owner's completion notification. All best effort: a signal failure never
  ** fails a job. Core never depends on qbit-alerts; QAlerts routes to whatever
  ** sink the app installed.
@@ -61,8 +61,8 @@ public final class JobSignals
 {
    private static final QLogger LOG = QLogger.getLogger(JobSignals.class);
 
-   public static final String ALERT_JOB_FAILED  = "jobs.job_failed";
-   public static final String ALERT_JOB_STALLED = "jobs.job_stalled";
+   public static final String ALERT_JOB_FAILED  = "jobs.job-failed";
+   public static final String ALERT_JOB_STALLED = "jobs.job-stalled";
    public static final String HEARTBEAT_REAPER  = "jobs.reaper";
 
    public static final String EVENT_STATUS   = "job.status";

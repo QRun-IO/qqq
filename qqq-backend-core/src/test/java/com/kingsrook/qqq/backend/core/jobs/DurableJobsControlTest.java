@@ -154,7 +154,7 @@ class DurableJobsControlTest extends DurableJobsTestBase
       assertThat(events(jobId).stream().filter("RETRIED"::equals)).hasSize(2);
       assertThat(DurableJobsTestSupport.ALERTS).anySatisfy(signal ->
       {
-         assertThat(signal.getAlertTypeName()).isEqualTo("jobs.job_failed");
+         assertThat(signal.getAlertTypeName()).isEqualTo("jobs.job-failed");
          assertThat(signal.getEffectiveDedupKey()).isEqualTo(jobId.toString());
       });
 
@@ -168,7 +168,7 @@ class DurableJobsControlTest extends DurableJobsTestBase
       assertThat(DurableJobsTestSupport.runs("step3")).isEqualTo(4);
       assertThat(DurableJobsTestSupport.RESOLUTIONS).anySatisfy(resolution ->
       {
-         assertThat(resolution.getAlertTypeName()).isEqualTo("jobs.job_failed");
+         assertThat(resolution.getAlertTypeName()).isEqualTo("jobs.job-failed");
          assertThat(resolution.getEffectiveDedupKey()).isEqualTo(jobId.toString());
       });
    }

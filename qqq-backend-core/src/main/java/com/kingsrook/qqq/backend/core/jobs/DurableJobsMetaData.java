@@ -338,7 +338,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
 
 
    /*******************************************************************************
-    ** Getter for stallMinutes: RUNNING with no progress this long raises jobs.job_stalled.
+    ** Getter for stallMinutes: RUNNING with no progress this long raises jobs.job-stalled.
     *******************************************************************************/
    public Integer getStallMinutes()
    {
@@ -358,7 +358,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
 
 
    /*******************************************************************************
-    ** Getter for queueStallMinutes: QUEUED this long raises jobs.job_stalled.
+    ** Getter for queueStallMinutes: QUEUED this long raises jobs.job-stalled.
     *******************************************************************************/
    public Integer getQueueStallMinutes()
    {

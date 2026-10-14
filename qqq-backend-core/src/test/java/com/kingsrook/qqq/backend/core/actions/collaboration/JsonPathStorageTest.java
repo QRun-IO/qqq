@@ -43,17 +43,23 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterOrderBy;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeaturesMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.JsonPathStorage;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.statusmessages.RecordVersionConflictError;
 import com.kingsrook.qqq.backend.core.modules.backend.implementations.utils.BackendQueryFilterUtils;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.utils.JsonFieldUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -118,6 +124,51 @@ public class JsonPathStorageTest extends BaseTest
       assertNull(result.getValue("note"));
       assertEquals(21, result.getValue("score"));
       assertEquals(1, query(new QFilterCriteria("note", QCriteriaOperator.IS_BLANK)).size());
+   }
+
+
+
+   /*******************************************************************************
+    ** Versions and realtime compare logical names, including unchanged and cleared JSON keys.
+    *******************************************************************************/
+   @Test
+   void versionConflictsAndRealtimeUseCustomFieldNames() throws Exception
+   {
+      table.withRecordVersionField("version").withField(field("version", QFieldType.INTEGER));
+      RecordFeaturesMetaData.ofOrWithNew(QContext.getQInstance()).withEnabled(RecordFeature.FOLLOW, true);
+      new QInstanceEnricher(QContext.getQInstance()).enrich();
+      new InsertAction().execute(new InsertInput(table.getName()).withRecord(
+         new QRecord().withValue("id", 1).withValue("score", 7).withValue("note", "same").withValue("version", 2)));
+      List<RealtimeMessage> events = new ArrayList<>();
+      try(AutoCloseable subscription = RealtimeBus.get(QContext.getQInstance()).subscribe(events::add))
+      {
+         QRecord stale = new UpdateAction().execute(new UpdateInput(table.getName()).withExpectedVersions(Map.of(1, 1))
+            .withRecord(new QRecord().withValue("id", 1).withValue("score", 9).withValue("note", "same"))).getRecords().get(0);
+         RecordVersionConflictError conflict = assertInstanceOf(RecordVersionConflictError.class, stale.getErrors().get(0));
+         assertEquals(2, conflict.getCurrentVersion());
+         assertEquals(List.of("score"), conflict.getChangedFields());
+         assertEquals(7, query(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)).get(0).getValue("score"));
+         assertTrue(events.isEmpty());
+
+         QRecord changed = new UpdateAction().execute(new UpdateInput(table.getName()).withExpectedVersions(Map.of("1", "2"))
+            .withRecord(new QRecord().withValue("id", 1).withValue("score", 9).withValue("note", "same"))).getRecords().get(0);
+         assertTrue(changed.getErrors().isEmpty());
+         RealtimeMessage event = events.stream().filter(message -> "record.changed".equals(message.getEvent())).findFirst().orElseThrow();
+         assertEquals("record:customTest:1", event.getChannel());
+         assertEquals(List.of("score"), event.getData().get("fields"));
+         assertEquals(2, event.getData().get("version"));
+         assertEquals(9, query(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)).get(0).getValue("score"));
+
+         events.clear();
+         update(new QRecord().withValue("id", 1).withValue("note", null));
+         event = events.stream().filter(message -> "record.changed".equals(message.getEvent())).findFirst().orElseThrow();
+         assertEquals(List.of("note"), event.getData().get("fields"));
+         assertNull(query(new QFilterCriteria("id", QCriteriaOperator.EQUALS, 1)).get(0).getValue("note"));
+      }
+      finally
+      {
+         RealtimeBus.close(QContext.getQInstance());
+      }
    }
 
 

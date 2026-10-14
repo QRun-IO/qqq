@@ -51,10 +51,20 @@ Strict mode (`withStrictUiApiRoutes(true)` or `QQQ_UI_API_STRICT_ROUTES=true`) f
 instead. Strict becomes the default once the alerts, assistant and sql-workbench qbits ship their
 spec'd routes.
 
+## Extensions
+
+| Extension | Prefix | Version | Owner |
+|---|---|---|---|
+| esb | `/esb` | 1.0.0 | qqq-esb (`EsbJavalinMetaDataProducer`) |
+
 ## Versions
 
 ### 1.2.0 (QQQ 4.1.0-RC.6, unreleased)
 1.1.0 was never released; its additions ship here.
+- Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
+  ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
+  expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves
+  `${currentUser}` filter values per session; a missing user matches no records.
 - Added `GET /version` (unsecured): the API semver, base path, supported majors, core features
   and registered extensions.
 - Added the extension point: modules and qbits register endpoint specs
@@ -72,7 +82,24 @@ spec'd routes.
 - `FieldAdornment.type` now lists every adornment type (adds FILE_UPLOAD and TOOLTIP).
   `FieldAdornment.values` documents its known keys.
 - `FrontendComponent.type` now lists every component type (adds the three BULK_LOAD forms).
+- Client channels (`docs/UI-API-CLIENT-CHANNELS.md`):
+  - the `X-QQQ-Client: <channel>[/<detail>]` request header, checked against
+    `ClientChannelsMetaData` (an unknown channel gets 400);
+  - `GET /version` lists the accepted channels in `clientChannels`;
+  - the channel is stored on the session and in audits (`audit.clientChannel`, opt-in);
+  - channel deny rules: `QPermissionRules.withDeniedClients`, plus denied objects and patterns, with a
+    default wall that keeps the assistant away from its own configuration, identity, permissions,
+    audits, API keys, credentials and secrets.
 - Added `docs/UI-API-CLIENTS.md`: how web, CLI, TUI and iOS clients render each type.
+- Record collaboration (docs/COLLABORATION.md):
+  - Table metadata gains `recordFeatures` (`RecordFeaturesV1`), and the metadata responses gain
+    `metaDataGeneration`.
+  - Added `GET /table/{tableName}/{primaryKey}/features` (`RecordFeatureSummaryV1`).
+  - Added `GET /realtime/stream` (Server-Sent Events), with one schema per event type, and
+    `POST /realtime/subscriptions`.
+  - `PATCH /table/{tableName}/{primaryKey}` accepts an optional `expectedVersion`. A stale
+    version returns 409 `RecordConflictV1`.
+  - Core features `recordFeatures` and `realtime` are listed by `GET /version`.
 - Added related-record pickers (`docs/RELATED-RECORD-PICKER.md`): the operations
   `POST /table/{tableName}/relatedRecordPicker/{pickerName}/query|prepare|add|remove` with the
   `RelatedRecordPicker{Query,Prepare,Add,Remove}ResponseV1` schemas, and the table metadata

@@ -77,7 +77,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
- * Builds the bodies of the ESB endpoints (see EsbRouteProvider), as maps in
+ * Builds the bodies of the ESB endpoints (see the specs in the specs package), as maps in
  * exactly the shape of the endpoint contract, from the QContext's instance and
  * session: ESB meta-data, this node's counters (EsbStats) and trigger states
  * (QEsbRuntime), and broker data from the management API when a provider has

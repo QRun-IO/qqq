@@ -104,6 +104,8 @@ Stored fields without explicit placement use `customFields`. Hidden and virtual 
 automatically placed in base sections; virtual fields retain their existing table presentation rules.
 Search fields must satisfy the normal table search validation rules.
 
+Contributed fields may carry AiFieldMetaData with a DataClassification (e.g. PHI); masking, audit and egress controls treat them like code fields.
+
 Validated replacements publish through one copy-on-write table map under the instance lock.
 The instance's startup validation state is preserved. Readers holding an older table object
 may finish using it; new metadata lookups see the replacement. Refresh increments

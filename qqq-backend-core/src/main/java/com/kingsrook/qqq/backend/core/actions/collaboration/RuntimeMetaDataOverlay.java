@@ -45,6 +45,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaDat
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
 
 
@@ -64,7 +66,36 @@ public class RuntimeMetaDataOverlay
     ** Atomically publish a new generation. Invalid provider contributions retain
     ** their previous accepted values. Refresh also invalidates code declarations.
     *******************************************************************************/
-   public static synchronized void refresh(QInstance instance) throws QException
+   public static void refresh(QInstance instance) throws QException
+   {
+      long previousGeneration;
+      long generation;
+      synchronized(RuntimeMetaDataOverlay.class)
+      {
+         previousGeneration = getGeneration(instance);
+         refreshSnapshot(instance);
+         generation = getGeneration(instance);
+      }
+      if(generation != previousGeneration)
+      {
+         try
+         {
+            RealtimeBus.get(instance).publish(new RealtimeMessage()
+               .withChannel("instance").withEvent("metadata.changed").withData(Map.of("generation", generation)));
+         }
+         catch(Exception | LinkageError e)
+         {
+            LOG.warn("Could not publish metadata change after runtime metadata refresh", e);
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Refresh under the overlay lock; publish after releasing it to avoid listener deadlocks.
+    *******************************************************************************/
+   private static void refreshSnapshot(QInstance instance) throws QException
    {
       List<RecordFeatureOverride> overrides = new ArrayList<>();
       long generation = getGeneration(instance) + 1;

@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeatureSummary;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeaturesMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordReference;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
@@ -199,4 +200,31 @@ public class TableRecordFeaturesSpecV1Test extends SpecTestBase
       }
    }
 
+
+
+   /*******************************************************************************
+    ** The HTTP response preserves expression objects and publishes typed ownership.
+    *******************************************************************************/
+   @Test
+   void publishesOwnershipAndBuiltInView() throws Exception
+   {
+      RecordFeaturesMetaData.ofOrWithNew(serverQInstance.getTable("person"))
+         .withEnabled(RecordFeature.ASSIGNMENT, true)
+         .withOwnership(new RecordOwnership().withOwnerFieldName("firstName").withAssigneeFieldName("id"));
+      RuntimeMetaDataOverlay.refresh(serverQInstance);
+      var response = Unirest.get(getBaseUrlAndPath() + "/metaData/table/person").asString();
+      assertEquals(200, response.getStatus(), response.getBody());
+      JSONObject table = new JSONObject(response.getBody());
+      JSONObject ownership = table.getJSONObject("recordFeatures").getJSONObject("ownership");
+      assertEquals("firstName", ownership.getString("ownerFieldName"));
+      assertEquals("id", ownership.getString("assigneeFieldName"));
+      JSONObject view = table.getJSONArray("builtInViews").getJSONObject(0);
+      assertEquals("myRecords", view.getString("name"));
+      assertEquals("My records", view.getString("label"));
+      JSONObject filter = view.getJSONObject("filter");
+      assertEquals("OR", filter.getString("booleanOperator"));
+      assertEquals(2, filter.getJSONArray("criteria").length());
+      assertEquals("CurrentUser", filter.getJSONArray("criteria").getJSONObject(0).getJSONArray("values").getJSONObject(0).getString("type"));
+      assertEquals("string", new RecordFeaturesV1().toSchema().getProperties().get("ownership").getProperties().get("ownerFieldName").getType().toString().toLowerCase());
+   }
 }

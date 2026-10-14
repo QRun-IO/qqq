@@ -25,12 +25,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.BaseTest;
+import com.kingsrook.qqq.backend.core.actions.ai.AiDataClassifications;
+import com.kingsrook.qqq.backend.core.actions.ai.AiFieldMetaData;
+import com.kingsrook.qqq.backend.core.actions.ai.DataClassification;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeaturesMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RuntimeMetaDataContribution;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RuntimeTableMetaDataContribution;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
@@ -38,7 +43,12 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.frontend.QFrontendTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.realtime.InMemoryRealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeBus;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMessage;
+import com.kingsrook.qqq.backend.core.realtime.RealtimeMetaData;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -156,6 +166,136 @@ public class RuntimeFieldOverlayTest extends BaseTest
       Provider.contribution.withTables(Map.of());
       RuntimeMetaDataOverlay.refresh(instance);
       assertNull(instance.getTable("runtimeTest").getVirtualField("computed"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Ownership validates contributed fields and rejects removing a referenced field.
+    *******************************************************************************/
+   @Test
+   void validatesRuntimeOwnershipAndPublishesBuiltInView() throws Exception
+   {
+      RecordFeaturesMetaData.ofOrWithNew(original).withEnabled(RecordFeature.ASSIGNMENT, true)
+         .withOwnership(new RecordOwnership().withOwnerFieldName("cf_owner"));
+      Provider.contribution.withTables(Map.of("runtimeTest", new RuntimeTableMetaDataContribution()
+         .withFields(List.of(JsonPathStorageTest.field("cf_owner", QFieldType.STRING)))));
+      RuntimeMetaDataOverlay.refresh(instance);
+      QTableMetaData accepted = instance.getTable("runtimeTest");
+      assertNotSame(original, accepted);
+      QFrontendTableMetaData frontend = new QFrontendTableMetaData(new QueryInput(), instance.getBackendForTable("runtimeTest"), accepted, true, false);
+      assertTrue(frontend.getFields().containsKey("cf_owner"));
+      assertEquals("cf_owner", frontend.getBuiltInViews().get(0).getFilter().getCriteria().get(0).getFieldName());
+      Provider.contribution.withTables(Map.of());
+      RuntimeMetaDataOverlay.refresh(instance);
+      assertSame(accepted, instance.getTable("runtimeTest"));
+      Provider.contribution.withTables(Map.of("runtimeTest", new RuntimeTableMetaDataContribution()
+         .withFields(List.of(JsonPathStorageTest.field("cf_owner", QFieldType.BOOLEAN)))));
+      RuntimeMetaDataOverlay.refresh(instance);
+      assertSame(accepted, instance.getTable("runtimeTest"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Supplemental classification survives both contribution clones and table enrichment.
+    *******************************************************************************/
+   @Test
+   void preservesContributedDataClassification() throws Exception
+   {
+      QFieldMetaData field = JsonPathStorageTest.field("cf_x", QFieldType.STRING)
+         .withSupplementalMetaData(new AiFieldMetaData().withClassification(DataClassification.PHI).withAiDescription("Sensitive custom field"));
+      Provider.contribution.withTables(Map.of("runtimeTest", new RuntimeTableMetaDataContribution().withFields(List.of(field))));
+      RuntimeMetaDataOverlay.refresh(instance);
+      QTableMetaData published = instance.getTable("runtimeTest");
+      assertNotSame(original, published);
+      assertNotSame(field, published.getField("cf_x"));
+      assertFalse(original.getFields().containsKey("cf_x"));
+      assertEquals(DataClassification.PHI, AiDataClassifications.ofField(published, "cf_x"));
+      assertEquals("Sensitive custom field", AiFieldMetaData.of(published.getField("cf_x")).getAiDescription());
+      RuntimeMetaDataOverlay.refresh(instance);
+      assertNotSame(published, instance.getTable("runtimeTest"));
+      assertEquals(DataClassification.PHI, AiDataClassifications.ofField(instance.getTable("runtimeTest"), "cf_x"));
+      assertEquals(DataClassification.PHI, AiDataClassifications.ofField(published, "cf_x"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Subscribers see the swapped tables and the generation carried by the event.
+    *******************************************************************************/
+   @Test
+   void publishesMetadataAfterSwap() throws Exception
+   {
+      Provider.contribution.withGeneration(10).withTables(Map.of("runtimeTest", new RuntimeTableMetaDataContribution()
+         .withFields(List.of(JsonPathStorageTest.field("custom", QFieldType.STRING)))));
+      List<RealtimeMessage> events = new ArrayList<>();
+      List<QTableMetaData> observedTables = new ArrayList<>();
+      List<Long> observedGenerations = new ArrayList<>();
+      try(AutoCloseable subscription = RealtimeBus.get(instance).subscribe(event ->
+      {
+         events.add(event);
+         observedTables.add(instance.getTable("runtimeTest"));
+         observedGenerations.add(RuntimeMetaDataOverlay.getGeneration(instance));
+      }))
+      {
+         RuntimeMetaDataOverlay.refresh(instance);
+         assertEquals(1, events.size());
+         assertEquals("instance", events.get(0).getChannel());
+         assertEquals("metadata.changed", events.get(0).getEvent());
+         assertEquals(Map.of("generation", 10L), events.get(0).getData());
+         assertSame(instance.getTable("runtimeTest"), observedTables.get(0));
+         assertNotNull(observedTables.get(0).getField("custom"));
+         assertEquals(List.of(10L), observedGenerations);
+         RuntimeMetaDataOverlay.refresh(instance);
+         assertEquals(2, events.size());
+         assertEquals(Map.of("generation", 11L), events.get(1).getData());
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A failed external bus cannot undo or fail an accepted metadata refresh.
+    *******************************************************************************/
+   @Test
+   void publishFailureDoesNotFailRefresh() throws Exception
+   {
+      instance.withSupplementalMetaData(new RealtimeMetaData().withBus(new QCodeReference(FailingBus.class)));
+      Provider.contribution.withTables(Map.of("runtimeTest", new RuntimeTableMetaDataContribution()
+         .withFields(List.of(JsonPathStorageTest.field("custom", QFieldType.STRING)))));
+      RuntimeMetaDataOverlay.refresh(instance);
+      assertEquals(1, RuntimeMetaDataOverlay.getGeneration(instance));
+      assertNotNull(instance.getTable("runtimeTest").getField("custom"));
+      assertNotSame(original, instance.getTable("runtimeTest"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Release realtime executors created by refresh.
+    *******************************************************************************/
+   @AfterEach
+   void closeBus()
+   {
+      RealtimeBus.close(instance);
+   }
+
+
+
+   /*******************************************************************************
+    ** Simulate a transport failure at the bus boundary.
+    *******************************************************************************/
+   public static class FailingBus extends InMemoryRealtimeBus
+   {
+      /*******************************************************************************
+       ** Refuse publication.
+       *******************************************************************************/
+      @Override
+      public void publish(RealtimeMessage message)
+      {
+         throw (new IllegalStateException("Test bus unavailable"));
+      }
    }
 
 

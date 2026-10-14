@@ -51,6 +51,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordDis
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociationJoin;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.QueryStatManager;
+import com.kingsrook.qqq.backend.core.actions.tables.helpers.RecordVersionCheck;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.ValidateRecordSecurityLockHelper;
@@ -208,7 +209,12 @@ public class UpdateAction
       // for "not-found detection", and for the pre-action to use (if there is one) //
       ////////////////////////////////////////////////////////////////////////////////
       Optional<List<QRecord>> oldRecordList      = fetchOldRecords(updateInput, updateInterface);
-      List<QRecord>           listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
+      if(updateInput.getExpectedVersions() != null && !updateInput.getExpectedVersions().isEmpty() && oldRecordList.isEmpty())
+      {
+         oldRecordList = Optional.of(queryOldRecords(updateInput));
+      }
+      RecordVersionCheck.check(updateInput, oldRecordList.orElse(List.of()));
+      List<QRecord> listenerOldRecords = fetchOldRecordsForListeners(updateInput, oldRecordList);
 
       ///////////////////////////////////////////////////////////////////////////////////////
       // allow caller to specify that we don't want to trigger automations. this isn't     //

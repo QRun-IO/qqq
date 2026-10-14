@@ -67,6 +67,8 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  *******************************************************************************/
 public class QTableMetaData implements QAppChildMetaData, Serializable, MetaDataWithPermissionRules, TopLevelMetaDataInterface, SourceQBitAware, Cloneable
 {
+   private String recordVersionField;
+
    private static final QLogger LOG = QLogger.getLogger(QTableMetaData.class);
 
    private String name;
@@ -2073,6 +2075,39 @@ public class QTableMetaData implements QAppChildMetaData, Serializable, MetaData
       this.searchFields = new ArrayList<>(Arrays.asList(searchFields));
       return (this);
    }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for recordVersionField
+    *******************************************************************************/
+   public String getRecordVersionField()
+   {
+      return (recordVersionField);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for recordVersionField
+    *******************************************************************************/
+   public void setRecordVersionField(String recordVersionField)
+   {
+      this.recordVersionField = recordVersionField;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for recordVersionField
+    *******************************************************************************/
+   public QTableMetaData withRecordVersionField(String recordVersionField)
+   {
+      setRecordVersionField(recordVersionField);
+      return (this);
+   }
+
 
 
    /*******************************************************************************

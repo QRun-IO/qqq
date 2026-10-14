@@ -28,6 +28,9 @@ import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.middleware.javalin.QApplicationJavalinServer;
 import com.kingsrook.qqq.middleware.javalin.QJavalinImplementation;
 import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
@@ -62,7 +65,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *******************************************************************************/
 class UiApiExtensionPointTest
 {
-   private static final int PORT = 6271;
+   private static final int    PORT         = 6271;
+   private static final String WALLED_TABLE = "assistant_profile";
 
    private QApplicationJavalinServer javalinServer;
 
@@ -206,6 +210,15 @@ class UiApiExtensionPointTest
          QInstance qInstance = TestUtils.defineInstance();
          MiddlewareSpecExtensionsMetaData.ofOrWithNew(qInstance).withExtension(TestExtensionSpecs.echoExtension());
          QJavalinMetaData.ofOrWithNew(qInstance).withAdditionalRouteProviderReference(new QCodeReference(TestExtensionSpecs.RawRouteProvider.class));
+
+         ///////////////////////////////////////////////////////////////
+         // a table behind the assistant wall (assistant_* by default) //
+         ///////////////////////////////////////////////////////////////
+         qInstance.addTable(new QTableMetaData()
+            .withName(WALLED_TABLE)
+            .withBackendName(TestUtils.BACKEND_NAME_MEMORY)
+            .withPrimaryKeyField("id")
+            .withField(new QFieldMetaData("id", QFieldType.INTEGER)));
          return (qInstance);
       }
    }
@@ -357,6 +370,38 @@ class UiApiExtensionPointTest
       assertEquals(callerUser, byCredentials);
       assertFalse(new UiApiCredentials(null, null, null, null).isPresent());
       assertThat(new UiApiCredentials("secret", null, null, null).toString()).doesNotContain("secret");
+
+      /////////////////////////////////////////////////////////////////////////////////////
+      // client channel: the browser's header lands on the session; an unknown one is a //
+      // 400; the invoker always labels its calls with its own channel (assistant here) //
+      /////////////////////////////////////////////////////////////////////////////////////
+      String echoUrl = "http://localhost:" + PORT + "/qqq/v1/qbit/test-ext/echo/x";
+      assertEquals("next-ui", new JSONObject(Unirest.get(echoUrl).header("Cookie", "sessionUUID=caller-session").header("X-QQQ-Client", "next-ui").asString().getBody()).getString("clientChannel"));
+      assertTrue(new JSONObject(Unirest.get(echoUrl).header("Cookie", "sessionUUID=caller-session").asString().getBody()).isNull("clientChannel"));
+      assertEquals(400, Unirest.get(echoUrl).header("Cookie", "sessionUUID=caller-session").header("X-QQQ-Client", "toaster").asString().getStatus());
+
+      UiApiInvoker assistant = UiApiInvoker.forServer(javalinServer, "assistant");
+      assertEquals("assistant/turn-7", assistant.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/qbit/test-ext/echo/{word}").withPathParam("word", "x")
+         .withSessionUUID("caller-session").withClientDetail("turn-7")).getJson().get("clientChannel").asText());
+      assertEquals("assistant/turn-7x", assistant.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/qbit/test-ext/echo/{word}").withPathParam("word", "x")
+         .withSessionUUID("caller-session").withClientDetail("turn-7/x")).getJson().get("clientChannel").asText());
+      assertThrows(IllegalArgumentException.class, () -> UiApiInvoker.forServer(javalinServer, "assistant/next-ui"));
+
+      ////////////////////////////////////////////////////////////////////////////////
+      // the assistant wall: the same user via next-ui sees and reads the table;    //
+      // via the assistant it is omitted from metaData and refused, as if no access //
+      ////////////////////////////////////////////////////////////////////////////////
+      String tableMetaDataUrl = "http://localhost:" + PORT + "/qqq/v1/metaData/table/" + WALLED_TABLE;
+      assertEquals(200, Unirest.get(tableMetaDataUrl).header("Cookie", "sessionUUID=caller-session").header("X-QQQ-Client", "next-ui").asString().getStatus());
+      assertTrue(new JSONObject(Unirest.get("http://localhost:" + PORT + "/qqq/v1/metaData").header("Cookie", "sessionUUID=caller-session").header("X-QQQ-Client", "next-ui").asString().getBody()).getJSONObject("tables").has(WALLED_TABLE));
+
+      UiApiResponse walledMetaData = assistant.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/metaData").withSessionUUID("caller-session"));
+      assertFalse(walledMetaData.getJson().get("tables").has(WALLED_TABLE));
+      UiApiResponse walledTable = assistant.invoke(new UiApiRequest().withMethod(HttpMethod.GET).withPath("/metaData/table/{tableName}").withPathParam("tableName", WALLED_TABLE).withSessionUUID("caller-session"));
+      assertThat(walledTable.getStatus()).isIn(403, 404);
+      UiApiResponse walledQuery = assistant.invoke(new UiApiRequest().withMethod(HttpMethod.POST).withPath("/table/{tableName}/query").withPathParam("tableName", WALLED_TABLE)
+         .withJsonBody(Map.of("filter", Map.of())).withSessionUUID("caller-session"));
+      assertThat(walledQuery.getStatus()).isIn(403, 404);
 
       UiApiResponse metaData = invoker.invoke(new UiApiRequest()
          .withMethod(HttpMethod.GET)

@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.FrontendRecordFeatures;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeature;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
@@ -110,8 +111,20 @@ public class RecordFeaturesV1 implements ToSchema
       Map<String, Schema> properties = new TreeMap<>();
       properties.put("features", new Schema().withType(Type.ARRAY).withItems(new Schema().withType(Type.STRING).withEnumValues(Arrays.stream(RecordFeature.values()).map(Enum::name).toList())));
       properties.put("settings", new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema().withType(Type.OBJECT).withAdditionalProperties(true)));
+      properties.put("ownership", new Schema().withType(Type.OBJECT).withProperties(new TreeMap<>(Map.of(
+         "ownerFieldName", new Schema().withType(Type.STRING),
+         "assigneeFieldName", new Schema().withType(Type.STRING)))));
       properties.put("capabilities", new Schema().withType(Type.OBJECT).withAdditionalProperties(new Schema().withType(Type.BOOLEAN)));
       return (new Schema().withType(Type.OBJECT).withProperties(properties));
    }
 
+
+
+   /*******************************************************************************
+    ** Declared user-id fields for ownership and assignment.
+    *******************************************************************************/
+   public RecordOwnership getOwnership()
+   {
+      return (wrapped.getOwnership());
+   }
 }

@@ -76,6 +76,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReferenceLambda;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeType;
 import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordFeaturesMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.collaboration.RecordOwnership;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.ParentWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.AdornmentType;
@@ -1127,6 +1128,7 @@ public class QInstanceValidator
       validateTableRecordSecurityLocks(qInstance, table);
       validateTableAssociations(qInstance, table);
       validateTableRelatedRecordPickers(qInstance, table);
+      validateRecordOwnership(qInstance, table);
       validateExposedJoins(qInstance, joinGraph, table);
 
       for(QSupplementalTableMetaData supplementalTableMetaData : CollectionUtils.nonNullMap(table.getSupplementalMetaData()).values())
@@ -3281,5 +3283,51 @@ public class QInstanceValidator
    public List<String> getErrors()
    {
       return errors;
+   }
+
+
+   /*******************************************************************************
+    ** Validate the effective declaration, including inherited ownership field names.
+    *******************************************************************************/
+   private void validateRecordOwnership(QInstance instance, QTableMetaData table)
+   {
+      RecordFeaturesMetaData instanceFeatures = RecordFeaturesMetaData.of(instance);
+      RecordOwnership ownership = instanceFeatures == null ? null : instanceFeatures.getOwnership();
+      for(QAppMetaData app : CollectionUtils.nonNullMap(instance.getApps()).values())
+      {
+         RecordFeaturesMetaData appFeatures = RecordFeaturesMetaData.of(app);
+         if(appFeatures != null && appFeatures.getOwnership() != null)
+         {
+            for(QAppSection section : CollectionUtils.nonNullList(app.getSections()))
+            {
+               if(CollectionUtils.nonNullList(section.getTables()).contains(table.getName()))
+               {
+                  ownership = appFeatures.getOwnership();
+               }
+            }
+         }
+      }
+      RecordFeaturesMetaData tableFeatures = RecordFeaturesMetaData.of(table);
+      if(tableFeatures != null && tableFeatures.getOwnership() != null)
+      {
+         ownership = tableFeatures.getOwnership();
+      }
+      if(ownership == null)
+      {
+         return;
+      }
+      for(String fieldName : new String[] { ownership.getOwnerFieldName(), ownership.getAssigneeFieldName() })
+      {
+         if(fieldName == null)
+         {
+            continue;
+         }
+         QFieldMetaData field = table.getFields().get(fieldName);
+         String prefix = "Table [" + table.getName() + "] ownership field [" + fieldName + "] ";
+         if(assertCondition(field != null, prefix + "does not exist."))
+         {
+            assertCondition(field.getType() == QFieldType.STRING || field.getType() == QFieldType.INTEGER, prefix + "must be STRING or INTEGER.");
+         }
+      }
    }
 }

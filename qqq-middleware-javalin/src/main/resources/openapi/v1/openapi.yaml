@@ -3100,6 +3100,26 @@ components:
           description: "The extension semantic version (MAJOR.MINOR.PATCH)."
           type: "string"
       type: "object"
+    UploadRefResponseV1:
+      properties:
+        contentType:
+          description: "The file's content type, as uploaded."
+          type: "string"
+        expiresAt:
+          description: "When the ref stops working (ISO-8601). A job that uses it\
+            \ extends it."
+          type: "string"
+        fileName:
+          description: "The file's name."
+          type: "string"
+        ref:
+          description: "Opaque ref to the uploaded file, bound to the uploading user.\
+            \ Pass it in uploadRefs."
+          type: "string"
+        sizeBytes:
+          description: "The file's size in bytes."
+          type: "number"
+      type: "object"
     VersionResponseV1:
       properties:
         apiVersion:
@@ -8278,6 +8298,51 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "Run a process as a durable background job"
+      tags:
+      - "Processes"
+  /qqq/v1/uploads:
+    post:
+      description: "Streams a file into the application's uploads storage and returns\
+        \ an opaque, expiring ref bound to the caller. Pass the ref in uploadRefs\
+        \ when launching a job (POST /processes/{processName}/jobs). Send multipart\
+        \ form data with one file field, or the raw file as the request body with\
+        \ the fileName query parameter."
+      parameters:
+      - description: "The file's name, when the body is the raw file (not multipart)."
+        example: "people.csv"
+        in: "query"
+        name: "fileName"
+        required: false
+        schema:
+          type: "string"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              description: "One file field."
+              properties:
+                file:
+                  description: "The file."
+                  format: "binary"
+                  type: "string"
+              type: "object"
+          application/octet-stream:
+            schema:
+              description: "The raw file (give its name in the fileName query parameter)."
+              format: "binary"
+              type: "string"
+        required: false
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadRefResponseV1"
+          description: "The upload's ref, name, size, content type and expiry."
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Upload a file for a job or a bulk load"
       tags:
       - "Processes"
   /qqq/v1/table/{tableName}/export:

@@ -85,6 +85,13 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
     `jobsStart`, `jobsPause`, `jobsResume`, `jobsCancel`, `jobsRetryFailed`, `jobsRestart` and
     `jobsRunAgain`, run with the process operations.
   - The core feature `durableJobs` is listed by `GET /version`.
+  - Added `POST /uploads` (multipart with one file, or the raw body plus a `fileName` query
+    parameter): streams the file into the uploads storage table and returns `UploadRefResponseV1
+    {ref, fileName, sizeBytes, contentType, expiresAt}`. The ref is opaque, bound to the caller, and
+    expires (default 7 days); pass it in `uploadRefs` when launching a job.
+  - A process run over `durableThresholdRows` (or `alwaysDurable`) no longer runs its execute step
+    inline: the step returns at once with the value `durableJobId` and a summary line, and the job
+    does the work.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

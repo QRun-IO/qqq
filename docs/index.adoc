@@ -49,6 +49,7 @@ See the {qqq-tree-url}/qqq-middleware-javalin/src/main/java/com/kingsrook/qqq/mi
 == Custom Application Code
 include::misc/QContext.adoc[leveloffset=+1]
 include::misc/QRecords.adoc[leveloffset=+1]
+include::misc/CustomFields.adoc[leveloffset=+1]
 include::misc/QRecordEntities.adoc[leveloffset=+1]
 include::misc/ProcessBackendSteps.adoc[leveloffset=+1]
 include::misc/RenderingWidgets.adoc[leveloffset=+1]

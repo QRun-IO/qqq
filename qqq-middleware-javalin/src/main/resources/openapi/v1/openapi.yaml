@@ -3172,6 +3172,11 @@ components:
             \ without a value are omitted."
           type: "object"
       type: "object"
+    TableApiDocumentV1:
+      additionalProperties: true
+      description: "An OpenAPI 3 document (the application API's own format, not part\
+        \ of this API's schema)."
+      type: "object"
     TableApiV1:
       description: "An application API that exposes the table."
       properties:
@@ -7910,6 +7915,44 @@ paths:
       - sessionUuidCookie:
         - "N/A"
       summary: "List the APIs that expose a table"
+      tags:
+      - "Tables"
+  /qqq/v1/table/{tableName}/apis/{apiName}/{version}/openapi:
+    get:
+      description: "The OpenAPI 3 document of the table in one version of an application\
+        \ API that exposes it (as listed by `GET /table/{tableName}/apis`).  The caller\
+        \ must be allowed to read the table.  Answers 404 when no API by that name\
+        \ exposes the table in that version."
+      parameters:
+      - description: "Name of the table."
+        in: "path"
+        name: "tableName"
+        required: true
+        schema:
+          type: "string"
+      - description: "The API's name (`name` in `GET /table/{tableName}/apis`)."
+        in: "path"
+        name: "apiName"
+        required: true
+        schema:
+          type: "string"
+      - description: "The API version (`versions[].version`)."
+        in: "path"
+        name: "version"
+        required: true
+        schema:
+          type: "string"
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableApiDocumentV1"
+          description: "Successful Response"
+      security:
+      - sessionUuidCookie:
+        - "N/A"
+      summary: "Get a table's OpenAPI document in an application API"
       tags:
       - "Tables"
   /qqq/v1/table/{tableName}:

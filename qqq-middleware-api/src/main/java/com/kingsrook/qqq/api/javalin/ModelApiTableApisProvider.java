@@ -23,7 +23,10 @@ package com.kingsrook.qqq.api.javalin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import com.kingsrook.qqq.api.actions.GenerateOpenApiSpecAction;
 import com.kingsrook.qqq.api.model.APIVersion;
+import com.kingsrook.qqq.api.model.actions.GenerateOpenApiSpecInput;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaData;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaData;
@@ -88,6 +91,28 @@ public class ModelApiTableApisProvider implements TableApisProviderInterface
       }
 
       return (rs);
+   }
+
+
+
+   /***************************************************************************
+    ** The table's document, as {api.path}{version}/{table}/openapi.json serves
+    ** it - only for an API and version that getTableApis lists for the table.
+    ***************************************************************************/
+   @Override
+   public Optional<String> getTableSpecJson(QInstance qInstance, String apiName, String version, String tableName) throws Exception
+   {
+      boolean listed = getTableApis(qInstance, tableName).stream()
+         .anyMatch(api -> api.name().equals(apiName) && api.versions().stream().anyMatch(v -> v.version().equals(version)));
+      if(!listed)
+      {
+         return (Optional.empty());
+      }
+
+      GenerateOpenApiSpecInput input = new GenerateOpenApiSpecInput().withVersion(version);
+      input.setApiName(apiName);
+      input.setTableName(tableName);
+      return (Optional.ofNullable(new GenerateOpenApiSpecAction().execute(input).getJson()));
    }
 
 }

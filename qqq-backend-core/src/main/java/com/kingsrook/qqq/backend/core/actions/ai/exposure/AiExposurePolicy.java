@@ -31,15 +31,15 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 
 /*******************************************************************************
- ** Decides the effective {@link AiExposure} of tables and fields, from their
- ** explicit {@link AiTableMetaData} / {@link AiFieldMetaData} (which always win)
- ** or else from conservative defaults:
+ ** Default assistant-channel exposure, from explicit {@link AiTableMetaData} /
+ ** {@link AiFieldMetaData} or conservative defaults. FieldAccessHelper combines
+ ** this policy with locks and the instance resolver; this is not final access:
  **
  ** Tables: the assistant's own tables (assistant*), user-session tables
  **    (userSession*) and OAuth tables (*oauth*) are NONE; others get the
  **    settings' defaultExposure.
  ** Fields: hidden fields, password (masked-type) fields and fields with a
- **    FieldSecurityLock (not enforced at runtime by core) are NONE; others get
+ **    FieldSecurityLock (a conservative assistant default) are NONE; others get
  **    the settings' defaultExposure.
  **
  ** A field's effective exposure is then capped by its table's exposure.

@@ -80,6 +80,31 @@ assistant qbit registers its tables, and `assistant_*` is already covered.
 - **Only code or admin metadata can change the rules.** Every surface that edits permissions,
   identity or this configuration is itself behind the wall.
 
+## Field access per channel
+
+`FieldAccessHelper.getDecision(table, field)` combines the field security lock, the
+instance's `FieldAccessResolverMetaData` resolver, and the session channel's policy,
+using the most restrictive tier. Register a `FieldAccessChannelPolicyInterface`
+instance or `QCodeReference` with
+`ClientChannelsMetaData.ofOrWithNew(instance).withFieldAccessPolicy(channelName, policy)`;
+`getFieldAccessPolicy(channelName)` retrieves it. The channel name comes from
+`QSession.getClientChannelName()` (details after `/` do not affect policy).
+
+The `assistant` channel defaults to `AiExposureChannelPolicy`, even without instance
+configuration: NONE maps to HIDDEN, METADATA_ONLY and MASKED to MASKED, and VALUES
+to FULL. Other channels have no default field ceiling. The policy uses the active
+kernel's constructor settings during kernel calls; outside the kernel it uses
+`AiToolKernelSettings` supplemental instance metadata, or default settings if absent.
+The kernel sets `assistant` on a cloned session and restores the caller's context.
+Its compatibility exposure API maps shared tiers back to AI exposure. It retains the
+channel policy's METADATA_ONLY reason so descriptions can name those fields while
+value outputs omit them. All masking uses `FieldValueMasker`.
+
+Registering a resolver opts outermost USER inputs into field access enforcement even
+when core table enforcement is disabled. It does not enable table, join, or record
+permission checks. SKIP and authorized scopes retain their bypass behavior; without
+a resolver, field enforcement continues to follow core permission enforcement.
+
 ## Scoped credentials (access tokens)
 A session created from a scoped credential carries `QSession.credentialScope`, a
 `QCredentialScope`. One example is an Authentik access token minted by qbit-authentik: its

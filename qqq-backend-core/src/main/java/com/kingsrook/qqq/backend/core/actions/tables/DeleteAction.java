@@ -123,15 +123,11 @@ public class DeleteAction
       {
          if(CorePermissionEnforcer.checkTablePermissions(deleteInput, TablePermissionSubType.DELETE))
          {
-            /////////////////////////////////////////////////////////////////////////
-            // a delete filter may not read joined tables or locked fields the   //
-            // user can't (a dry run returns the matched keys, so it's a read). //
-            /////////////////////////////////////////////////////////////////////////
-            if(deleteInput.getQueryFilter() != null)
-            {
-               CorePermissionEnforcer.checkReadCriteria(deleteInput, null, deleteInput.getQueryFilter(), null);
-            }
             CorePermissionEnforcer.checkAssociatedWrites(deleteInput);
+         }
+         if(CorePermissionEnforcer.shouldEnforceFieldAccess(deleteInput) && deleteInput.getQueryFilter() != null)
+         {
+            CorePermissionEnforcer.checkReadCriteria(deleteInput, null, deleteInput.getQueryFilter(), null);
          }
       }
 

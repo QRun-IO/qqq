@@ -43,4 +43,9 @@ public @interface OpenAPIMapValueType
     **
     ***************************************************************************/
    boolean useRef() default false;
+
+   /*******************************************************************************
+    ** Whether each map value is an array of the specified type.
+    *******************************************************************************/
+   boolean array() default false;
 }

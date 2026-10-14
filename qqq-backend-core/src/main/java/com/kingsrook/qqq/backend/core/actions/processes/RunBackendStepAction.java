@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -257,7 +258,13 @@ public class RunBackendStepAction
                PermissionsHelper.checkJoinedTableReadPermissions(queryInput, queryInput.getQueryJoins(), queryInput.getFilter());
             }
 
+            FieldAccessHelper.PendingExactMatch exactMatch = runBackendStepInput.isFieldAccessEnforced()
+               ? FieldAccessHelper.assertCriteriaAllowed(queryInput.getTableName(), queryInput.getQueryJoins(), queryInput.getFilter(), null) : null;
             QueryOutput queryOutput = new QueryAction().execute(queryInput);
+            if(exactMatch != null)
+            {
+               exactMatch.complete(queryOutput.getRecords().size(), "process");
+            }
             runBackendStepInput.setRecords(queryOutput.getRecords());
 
             ////////////////////////////////////////////////////////////////////////////////

@@ -105,7 +105,7 @@ class EsbEventFactoryTest extends EsbTestBase
 
       assertThat(event.getType()).isEqualTo("qqq.table.order.updated");
       assertThat(event.getSubject()).isEqualTo("1");
-      assertThat(event.getData()).containsOnlyKeys("record", "oldRecord");
+      assertThat(event.getData()).containsOnlyKeys("record", "oldRecord", "changedFields");
 
       Map<String, Serializable> expectedRecord = new HashMap<>();
       expectedRecord.put("id", 1);
@@ -131,7 +131,7 @@ class EsbEventFactoryTest extends EsbTestBase
       EsbEvent event  = EsbEventFactory.forRecordChange(INSTANCE_NAME, TABLE_NAME_ORDER, RecordChangeType.UPDATE, record, null);
 
       assertThat(event.getSubject()).isEqualTo("2");
-      assertThat(event.getData()).containsOnlyKeys("record");
+      assertThat(event.getData()).containsOnlyKeys("record", "changedFields");
       assertThat(event.getData().get("record")).isEqualTo(Map.of("id", 2, "status", "SHIPPED"));
    }
 

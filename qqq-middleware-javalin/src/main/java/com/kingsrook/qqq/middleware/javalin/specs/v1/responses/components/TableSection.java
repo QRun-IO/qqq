@@ -24,12 +24,12 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1.responses.components;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSectionAlternativeTypeInterface;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.ToSchema;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIDescription;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIExclude;
+import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIListItems;
 import com.kingsrook.qqq.middleware.javalin.schemabuilder.annotations.OpenAPIMapValueType;
 
 
@@ -156,9 +156,10 @@ public class TableSection implements ToSchema
     **
     ***************************************************************************/
    @OpenAPIDescription("Help Contents for this section table.") // todo describe more
-   public List<QHelpContent> getHelpContents()
+   @OpenAPIListItems(value = HelpContentV1.class, useRef = true)
+   public List<HelpContentV1> getHelpContents()
    {
-      return (this.wrapped.getHelpContents());
+      return (HelpContentV1.of(this.wrapped.getHelpContents()));
    }
 
 

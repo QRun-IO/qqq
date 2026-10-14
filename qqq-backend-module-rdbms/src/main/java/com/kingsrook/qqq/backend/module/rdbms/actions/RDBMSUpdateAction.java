@@ -166,7 +166,7 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
 
          rowValues.addAll(updateValues(table, fieldsBeingUpdated, record));
          Serializable idValue = record.getValue(table.getPrimaryKeyField());
-         idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+         idValue = scrubValue(table, table.getField(table.getPrimaryKeyField()), table.getField(table.getPrimaryKeyField()).getType(), idValue);
          rowValues.add(idValue);
       }
 
@@ -248,7 +248,7 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          for(QRecord record : page)
          {
             Serializable idValue = record.getValue(table.getPrimaryKeyField());
-            idValue = scrubValue(table.getField(table.getPrimaryKeyField()), idValue);
+            idValue = scrubValue(table, table.getField(table.getPrimaryKeyField()), table.getField(table.getPrimaryKeyField()).getType(), idValue);
             params.add(idValue);
          }
 
@@ -298,7 +298,7 @@ public class RDBMSUpdateAction extends AbstractRDBMSAction implements UpdateInte
          }
          else
          {
-            values.add(scrubValue(field, record.getValue(field.getName())));
+            values.add(scrubValue(table, field, field.getType(), record.getValue(field.getName())));
          }
       }
       return (values);

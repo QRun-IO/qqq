@@ -24,10 +24,14 @@ package com.kingsrook.qqq.backend.core.model.metadata.help;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.model.metadata.QMetaDataObject;
+import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
+import org.commonmark.renderer.text.TextContentRenderer;
+import org.jsoup.Jsoup;
 
 
 /*******************************************************************************
@@ -46,6 +50,14 @@ import org.commonmark.renderer.html.HtmlRenderer;
  *******************************************************************************/
 public class QHelpContent implements QMetaDataObject, Cloneable
 {
+   public static final String SLOT_HELP = "help";
+
+   private String summary;
+   private String permissionName;
+   private String clientChannel;
+   private transient boolean fromData;
+   private transient QHelpContent codeContent;
+
    private String        content;
    private HelpFormat    format;
    private Set<HelpRole> roles;
@@ -54,7 +66,7 @@ public class QHelpContent implements QMetaDataObject, Cloneable
    // these appear to be thread safe //
    ////////////////////////////////////
    private static Parser       commonMarkParser   = Parser.builder().build();
-   private static HtmlRenderer commonMarkRenderer = HtmlRenderer.builder().build();
+   private static HtmlRenderer commonMarkRenderer = HtmlRenderer.builder().escapeHtml(true).sanitizeUrls(true).build();
 
 
 
@@ -293,5 +305,211 @@ public class QHelpContent implements QMetaDataObject, Cloneable
       {
          throw new AssertionError();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for summary
+    *******************************************************************************/
+   public String getSummary()
+   {
+      return (this.summary);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for summary
+    *******************************************************************************/
+   public void setSummary(String summary)
+   {
+      this.summary = summary;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for summary
+    *******************************************************************************/
+   public QHelpContent withSummary(String summary)
+   {
+      this.summary = summary;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for permissionName
+    *******************************************************************************/
+   @JsonIgnore
+   public String getPermissionName()
+   {
+      return (this.permissionName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for permissionName
+    *******************************************************************************/
+   public void setPermissionName(String permissionName)
+   {
+      this.permissionName = permissionName;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for permissionName
+    *******************************************************************************/
+   public QHelpContent withPermissionName(String permissionName)
+   {
+      this.permissionName = permissionName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for clientChannel
+    *******************************************************************************/
+   @JsonIgnore
+   public String getClientChannel()
+   {
+      return (this.clientChannel);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for clientChannel
+    *******************************************************************************/
+   public void setClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for clientChannel
+    *******************************************************************************/
+   public QHelpContent withClientChannel(String clientChannel)
+   {
+      this.clientChannel = clientChannel;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for fromData
+    *******************************************************************************/
+   @JsonIgnore
+   public boolean getFromData()
+   {
+      return (this.fromData);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for fromData
+    *******************************************************************************/
+   public void setFromData(boolean fromData)
+   {
+      this.fromData = fromData;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for fromData
+    *******************************************************************************/
+   public QHelpContent withFromData(boolean fromData)
+   {
+      this.fromData = fromData;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for codeContent
+    *******************************************************************************/
+   @JsonIgnore
+   public QHelpContent getCodeContent()
+   {
+      return (this.codeContent);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for codeContent
+    *******************************************************************************/
+   public void setCodeContent(QHelpContent codeContent)
+   {
+      this.codeContent = codeContent;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for codeContent
+    *******************************************************************************/
+   public QHelpContent withCodeContent(QHelpContent codeContent)
+   {
+      this.codeContent = codeContent;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Plain text for search and derived summaries; never includes markup.
+    *******************************************************************************/
+   @JsonIgnore
+   public String getPlainText()
+   {
+      if(!StringUtils.hasContent(content))
+      {
+         return ("");
+      }
+      String text = content;
+      if(HelpFormat.MARKDOWN.equals(format))
+      {
+         text = TextContentRenderer.builder().build().render(commonMarkParser.parse(text));
+      }
+      if(!HelpFormat.TEXT.equals(format))
+      {
+         text = Jsoup.parse(text).text();
+      }
+      return (text.replaceAll("\\s+", " ").trim());
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit summary, or the first plain-text sentence capped at 200 characters.
+    *******************************************************************************/
+   @JsonIgnore
+   public String getSummaryOrDerived()
+   {
+      if(StringUtils.hasContent(summary))
+      {
+         return (summary);
+      }
+      String text = getPlainText();
+      java.text.BreakIterator sentences = java.text.BreakIterator.getSentenceInstance(java.util.Locale.ROOT);
+      sentences.setText(text);
+      int end = sentences.next();
+      if(end != java.text.BreakIterator.DONE)
+      {
+         text = text.substring(0, end).trim();
+      }
+      return (text.length() > 200 ? text.substring(0, 199) + "…" : text);
    }
 }

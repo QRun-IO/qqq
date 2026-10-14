@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Stack;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -90,6 +91,7 @@ public class QContext
    public static void init(QInstance qInstance, QSession qSession, QBackendTransaction transaction, AbstractActionInput actionInput)
    {
       qInstanceThreadLocal.set(qInstance);
+      removeObject(FieldAccessHelper.CACHE_KEY);
       qSessionThreadLocal.set(qSession);
       qBackendTransactionThreadLocal.set(transaction);
       authorizedActionScopeDepthThreadLocal.remove();
@@ -251,6 +253,7 @@ public class QContext
       int depth = getAuthorizedActionScopeDepth();
       if(depth <= 1)
       {
+         removeObject(FieldAccessHelper.CACHE_KEY);
          authorizedActionScopeDepthThreadLocal.remove();
       }
       else
@@ -297,6 +300,7 @@ public class QContext
     *******************************************************************************/
    public static void setQInstance(QInstance qInstance)
    {
+      removeObject(FieldAccessHelper.CACHE_KEY);
       qInstanceThreadLocal.set(qInstance);
    }
 
@@ -307,6 +311,7 @@ public class QContext
     *******************************************************************************/
    public static void setQSession(QSession qSession)
    {
+      removeObject(FieldAccessHelper.CACHE_KEY);
       qSessionThreadLocal.set(qSession);
    }
 

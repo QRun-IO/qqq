@@ -143,6 +143,7 @@ public class StreamedETLPreviewStep extends BaseStreamedETLStep implements Backe
       BackendStepPostRunOutput postRunOutput = new BackendStepPostRunOutput(runBackendStepOutput);
       BackendStepPostRunInput  postRunInput  = new BackendStepPostRunInput(runBackendStepInput);
       transformStep.postRun(postRunInput, postRunOutput);
+      runBackendStepOutput.getOneTimeSecrets().addAll(postRunOutput.getOneTimeSecrets());
 
       //////////////////////////////////////////////////////////////////////
       // propagate data from inner-step state to process-level step state //
@@ -214,6 +215,7 @@ public class StreamedETLPreviewStep extends BaseStreamedETLStep implements Backe
       // pass the records through the transform function //
       /////////////////////////////////////////////////////
       transformStep.runOnePage(streamedBackendStepInput, streamedBackendStepOutput);
+      runBackendStepOutput.getOneTimeSecrets().addAll(streamedBackendStepOutput.getOneTimeSecrets());
 
       //////////////////////////////////////////////////////////////////////
       // propagate data from inner-step state to process-level step state //

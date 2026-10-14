@@ -284,6 +284,16 @@ public abstract class AbstractRDBMSAction
 
 
    /*******************************************************************************
+    ** Retain the owning field's classification during JDBC coercion.
+    *******************************************************************************/
+   protected Serializable scrubValue(QTableMetaData table, QFieldMetaData field, QFieldType type, Serializable value)
+   {
+      return ValueUtils.withFieldConversionContext(table, field, () -> scrubValue(type, value));
+   }
+
+
+
+   /*******************************************************************************
     ** Handle obvious problems with values - like empty string for integer should be null,
     ** and type conversions that we can do "better" than jdbc.
     **
@@ -823,11 +833,11 @@ public abstract class AbstractRDBMSAction
                   if(fieldFunction != null)
                   {
                      FieldFunctionType fieldFunctionType = FieldFunctionTypeRegistry.ofOrWithNew(QContext.getQInstance()).getFieldFunctionType(fieldFunction.getFunctionTypeIdentifier());
-                     scrubbedValue = scrubValue(fieldFunctionType.getReturnType(), value);
+                     scrubbedValue = scrubValue(joinsContext.getTable(joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias())), field, fieldFunctionType.getReturnType(), value);
                   }
                   else
                   {
-                     scrubbedValue = scrubValue(field, value);
+                     scrubbedValue = scrubValue(joinsContext.getTable(joinsContext.resolveTableNameOrAliasToTableName(fieldAndTableNameOrAlias.tableNameOrAlias())), field, field.getType(), value);
                   }
                   valueListIterator.set(scrubbedValue);
                }

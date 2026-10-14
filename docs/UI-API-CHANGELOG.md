@@ -90,6 +90,14 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   `{api}/versions.json` for v1 clients. Modules contribute through `TableApisProviderInterface`
   (found with `ServiceLoader`); `qqq-middleware-api` provides one. The caller must be allowed to
   read the table.
+- Added `GET /table/{tableName}/apis/{apiName}/{version}/openapi` (tag `Tables`): the table's
+  OpenAPI document in one version of an application API, through the UI API (replaces fetching
+  `{api.path}{version}/{table}/openapi.json` from the API middleware). `TableApisProviderInterface`
+  gains `getTableSpecJson`.
+- The API-aware routes (`/qqq/v1/{applicationApiPath}/{applicationApiVersion}/...`,
+  `ApiAwareMiddlewareVersionV1` in qqq-middleware-api) now have a committed document,
+  `qqq-middleware-api/src/main/resources/openapi/v1/api-aware.yaml`, checked by
+  `ApiAwareUiApiContractTest`, so clients can vendor it.
 - `baseline.yaml` is now the RC.7 document (1.3.0).
 
 ### 1.3.0 (QQQ 4.1.0-RC.7)

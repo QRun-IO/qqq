@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.util.List;
+import java.util.Optional;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
@@ -149,6 +150,21 @@ class TableApisSpecV1Test extends SpecTestBase
                new TableApiVersion("1", null, "/api/1/person/openapi.json"),
                new TableApiVersion("2", "2.1.0", "/api/2/person/openapi.json"))),
             new TableApi("a-api", "A API", "/a-api/", null, List.of())));
+      }
+
+
+
+      /***************************************************************************
+       ** a tiny document for person in test 2
+       ***************************************************************************/
+      @Override
+      public Optional<String> getTableSpecJson(QInstance qInstance, String apiName, String version, String tableName)
+      {
+         if("person".equals(tableName) && "test".equals(apiName) && "2".equals(version))
+         {
+            return (Optional.of("{\"openapi\":\"3.0.3\",\"info\":{\"title\":\"person\",\"version\":\"2\"}}"));
+         }
+         return (Optional.empty());
       }
    }
 

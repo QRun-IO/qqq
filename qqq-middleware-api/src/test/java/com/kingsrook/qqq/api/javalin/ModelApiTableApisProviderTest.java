@@ -29,10 +29,13 @@ import com.kingsrook.qqq.api.TestUtils;
 import com.kingsrook.qqq.api.model.metadata.ApiInstanceMetaDataContainer;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaData;
 import com.kingsrook.qqq.api.model.metadata.tables.ApiTableMetaDataContainer;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.TableApisProviderInterface;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.TableApisProviderInterface.TableApi;
 import com.kingsrook.qqq.middleware.javalin.specs.v1.TableApisProviderInterface.TableApiVersion;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -87,6 +90,24 @@ class ModelApiTableApisProviderTest extends BaseTest
       assertTrue(new ModelApiTableApisProvider().getTableApis(qInstance, TestUtils.TABLE_NAME_ORDER).isEmpty());
       assertTrue(new ModelApiTableApisProvider().getTableApis(qInstance, "notATable").isEmpty());
       assertTrue(new ModelApiTableApisProvider().getTableApis(new QInstance(), TestUtils.TABLE_NAME_PERSON).isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    ** the table's document, only for a listed API and version
+    *******************************************************************************/
+   @Test
+   void testTableSpecJson() throws Exception
+   {
+      QInstance qInstance = TestUtils.defineInstance();
+      QContext.init(qInstance, new QSession());
+      String json = new ModelApiTableApisProvider().getTableSpecJson(qInstance, TestUtils.API_NAME, TestUtils.V2023_Q1, TestUtils.TABLE_NAME_PERSON).orElseThrow();
+      assertTrue(new JSONObject(json).getJSONObject("paths").keySet().stream().anyMatch(path -> path.contains("person")), json);
+
+      assertTrue(new ModelApiTableApisProvider().getTableSpecJson(qInstance, TestUtils.API_NAME, "1999.Q1", TestUtils.TABLE_NAME_PERSON).isEmpty());
+      assertTrue(new ModelApiTableApisProvider().getTableSpecJson(qInstance, "nope", TestUtils.V2023_Q1, TestUtils.TABLE_NAME_PERSON).isEmpty());
+      assertTrue(new ModelApiTableApisProvider().getTableSpecJson(qInstance, TestUtils.ALTERNATIVE_API_NAME, TestUtils.V2023_Q1, TestUtils.TABLE_NAME_ORDER).isEmpty());
    }
 
 

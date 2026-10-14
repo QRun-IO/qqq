@@ -23,6 +23,7 @@ package com.kingsrook.qqq.middleware.javalin.specs.v1;
 
 
 import java.util.List;
+import java.util.Optional;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 
 
@@ -44,6 +45,19 @@ public interface TableApisProviderInterface
     ** the caller may read).
     ***************************************************************************/
    List<TableApi> getTableApis(QInstance qInstance, String tableName);
+
+
+
+   /***************************************************************************
+    ** The table's OpenAPI document (JSON) in one version of one of this
+    ** provider's APIs - empty when the provider does not serve that API, or the
+    ** API does not expose the table in that version.  Serves
+    ** GET /qqq/v1/table/{tableName}/apis/{apiName}/{version}/openapi.
+    ***************************************************************************/
+   default Optional<String> getTableSpecJson(QInstance qInstance, String apiName, String version, String tableName) throws Exception
+   {
+      return (Optional.empty());
+   }
 
 
 

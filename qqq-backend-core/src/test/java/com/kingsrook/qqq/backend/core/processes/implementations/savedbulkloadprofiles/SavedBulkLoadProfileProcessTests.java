@@ -24,14 +24,19 @@ package com.kingsrook.qqq.backend.core.processes.implementations.savedbulkloadpr
 import java.util.List;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
+import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.savedbulkloadprofiles.SavedBulkLoadProfile;
 import com.kingsrook.qqq.backend.core.model.savedbulkloadprofiles.SavedBulkLoadProfileMetaDataProvider;
+import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert.model.BulkLoadProfile;
 import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
@@ -182,4 +187,68 @@ class SavedBulkLoadProfileProcessTests extends BaseTest
       }
    }
 
+
+
+
+   /*******************************************************************************
+    ** An update keeps the profile's owner, whoever saves it (a user it is
+    ** shared with must not take it over).
+    *******************************************************************************/
+   @Test
+   void testUpdateKeepsOwner() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      new SavedBulkLoadProfileMetaDataProvider().defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+      String tableName = TestUtils.TABLE_NAME_PERSON_MEMORY;
+
+      QContext.getQSession().setUser(new QUser().withIdReference("owner"));
+      Integer id = store(null, "Owner's Profile", tableName).get(0).getValueInteger("id");
+
+      QContext.getQSession().setUser(new QUser().withIdReference("someone-else"));
+      store(id, "Renamed", tableName);
+
+      QRecord record = new GetAction().executeForRecord(new GetInput(SavedBulkLoadProfile.TABLE_NAME).withPrimaryKey(id));
+      assertEquals("Renamed", record.getValueString("label"));
+      assertEquals("owner", record.getValueString("userId"));
+
+      assertThatThrownBy(() -> store(9999, "Missing", tableName))
+         .isInstanceOf(QNotFoundException.class);
+   }
+
+
+
+   /*******************************************************************************
+    ** A record the backend refuses is an error, not a silent success.
+    *******************************************************************************/
+   @Test
+   void testRecordErrorsAreThrown() throws QException
+   {
+      QInstance qInstance = QContext.getQInstance();
+      new SavedBulkLoadProfileMetaDataProvider().defineAll(qInstance, TestUtils.MEMORY_BACKEND_NAME, null);
+
+      ////////////////////////////////////////////////////////////////
+      // tableName is limited to 250 characters, with ERROR behavior //
+      ////////////////////////////////////////////////////////////////
+      assertThatThrownBy(() -> store(null, "Too Long", "x".repeat(300)))
+         .isInstanceOf(QUserFacingException.class)
+         .hasMessageContaining("Error saving Bulk Load Profile");
+   }
+
+
+
+   /*******************************************************************************
+    ** Run the store process.
+    *******************************************************************************/
+   @SuppressWarnings("unchecked")
+   private static List<QRecord> store(Integer id, String label, String tableName) throws QException
+   {
+      RunProcessInput runProcessInput = new RunProcessInput();
+      runProcessInput.setProcessName(StoreSavedBulkLoadProfileProcess.getProcessMetaData().getName());
+      runProcessInput.addValue("id", id);
+      runProcessInput.addValue("label", label);
+      runProcessInput.addValue("tableName", tableName);
+      runProcessInput.addValue("mappingJson", JsonUtils.toJson(new BulkLoadProfile()));
+      RunProcessOutput runProcessOutput = new RunProcessAction().execute(runProcessInput);
+      return ((List<QRecord>) runProcessOutput.getValues().get("savedBulkLoadProfileList"));
+   }
 }

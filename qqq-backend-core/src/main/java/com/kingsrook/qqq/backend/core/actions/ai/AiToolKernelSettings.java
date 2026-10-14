@@ -65,6 +65,12 @@ public class AiToolKernelSettings implements QSupplementalInstanceMetaData
    private Set<String>   allowedWidgetNames      = new HashSet<>();
    private Set<String>   hiddenWidgetNames       = new HashSet<>();
 
+   //////////////////////////////////////////////////////////////////////////
+   // how data tools read data - null: CoreAiDataGateway (core actions).   //
+   // The assistant sets the UI API gateway (reads through /qqq/v1).       //
+   //////////////////////////////////////////////////////////////////////////
+   private AiDataGateway dataGateway;
+
 
 
    /*******************************************************************************
@@ -324,6 +330,38 @@ public class AiToolKernelSettings implements QSupplementalInstanceMetaData
    public AiToolKernelSettings withAllowedWidgetNames(Set<String> allowedWidgetNames)
    {
       this.allowedWidgetNames = allowedWidgetNames;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for dataGateway (null means the core actions)
+    *******************************************************************************/
+   public AiDataGateway getDataGateway()
+   {
+      return (this.dataGateway);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for dataGateway
+    *******************************************************************************/
+   public void setDataGateway(AiDataGateway dataGateway)
+   {
+      this.dataGateway = dataGateway;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for dataGateway: how the data tools read data (e.g. the UI
+    ** API gateway, so every read is a /qqq/v1 operation as the user).
+    *******************************************************************************/
+   public AiToolKernelSettings withDataGateway(AiDataGateway dataGateway)
+   {
+      this.dataGateway = dataGateway;
       return (this);
    }
 }

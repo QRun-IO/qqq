@@ -32,6 +32,8 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
  *******************************************************************************/
 public class PossibleValuesInput extends AbstractMiddlewareInput
 {
+   private boolean missingDependency;
+
    private String                    possibleValueSourceName;
    private String                    tableName;
    private String                    processName;
@@ -547,6 +549,37 @@ public class PossibleValuesInput extends AbstractMiddlewareInput
    public PossibleValuesInput withLimit(Integer limit)
    {
       this.limit = limit;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for missingDependency
+    *******************************************************************************/
+   public boolean getMissingDependency()
+   {
+      return (this.missingDependency);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for missingDependency
+    *******************************************************************************/
+   public void setMissingDependency(boolean missingDependency)
+   {
+      this.missingDependency = missingDependency;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for missingDependency
+    *******************************************************************************/
+   public PossibleValuesInput withMissingDependency(boolean missingDependency)
+   {
+      this.missingDependency = missingDependency;
       return (this);
    }
 }

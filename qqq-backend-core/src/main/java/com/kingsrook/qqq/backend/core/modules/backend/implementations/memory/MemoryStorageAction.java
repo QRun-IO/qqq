@@ -28,11 +28,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.interfaces.QStorageInterface;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.GetAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QNotFoundException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -52,6 +55,21 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
  *******************************************************************************/
 public class MemoryStorageAction implements QStorageInterface
 {
+
+   /*******************************************************************************
+    ** Delete an object, including an incomplete report output.
+    *******************************************************************************/
+   @Override
+   public void deleteObject(StorageInput storageInput) throws QException
+   {
+      DeleteOutput output = new DeleteAction().execute(new DeleteInput(storageInput.getTableName()).withPrimaryKey(storageInput.getReference()));
+      if(CollectionUtils.nullSafeHasContents(output.getRecordsWithErrors()))
+      {
+         throw new QException("Could not delete memory storage object [" + storageInput.getReference() + "]");
+      }
+   }
+
+
 
    /*******************************************************************************
     **

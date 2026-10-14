@@ -24,36 +24,55 @@ package com.kingsrook.qqq.esb.api;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
-import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
-import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
-import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.esb.api.specs.EsbDeadLettersSpecV1;
+import com.kingsrook.qqq.esb.api.specs.EsbMessagesSpecV1;
+import com.kingsrook.qqq.esb.api.specs.EsbOverviewSpecV1;
+import com.kingsrook.qqq.esb.api.specs.EsbProcessSpecV1;
+import com.kingsrook.qqq.esb.api.specs.EsbTableSpecV1;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtension;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
 
 
 /*******************************************************************************
- * Registers EsbRouteProvider (the /qqq/v1/esb endpoints) with the Javalin
- * server, through the instance's QJavalinMetaData - as HealthMetaDataProducer
- * does for the health endpoints.  Only for Javalin applications: this class
- * needs qqq-middleware-javalin.
+ * Registers the ESB endpoints (/qqq/v1/esb/...) as an extension of the UI API:
+ * endpoint specs, served by the middleware version and described in its
+ * OpenAPI document (QRun-IO/qqq docs/UI-API-EXTENSIONS.md).  The URLs are the
+ * ones the route provider served before.  Only for Javalin applications: this
+ * class needs qqq-middleware-javalin.
  *******************************************************************************/
-public class EsbJavalinMetaDataProducer extends MetaDataProducer<QJavalinMetaData>
+public class EsbJavalinMetaDataProducer extends MetaDataProducer<MiddlewareSpecExtensionsMetaData>
 {
+   public static final String EXTENSION_NAME    = "esb";
+   public static final String EXTENSION_VERSION = "1.0.0";
+
+
 
    /*******************************************************************************
-    ** Add the route provider reference (once, however many times this runs).
+    ** The ESB extension of the UI API.
+    *******************************************************************************/
+   public static MiddlewareSpecExtension defineExtension()
+   {
+      return (new MiddlewareSpecExtension()
+         .withName(EXTENSION_NAME)
+         .withPathPrefix("/esb")
+         .withSemanticVersion(EXTENSION_VERSION)
+         .withDescription("ESB overview, the ESB of tables and processes, and messages and dead letters on destinations.")
+         .withSpec(EsbOverviewSpecV1.class)
+         .withSpec(EsbTableSpecV1.class)
+         .withSpec(EsbProcessSpecV1.class)
+         .withSpec(EsbDeadLettersSpecV1.class)
+         .withSpec(EsbMessagesSpecV1.class));
+   }
+
+
+
+   /*******************************************************************************
+    ** Register the extension (replacing it, however many times this runs).
     *******************************************************************************/
    @Override
-   public QJavalinMetaData produce(QInstance qInstance) throws QException
+   public MiddlewareSpecExtensionsMetaData produce(QInstance qInstance) throws QException
    {
-      QJavalinMetaData javalinMetaData = QJavalinMetaData.ofOrWithNew(qInstance);
-
-      boolean registered = CollectionUtils.nonNullList(javalinMetaData.getAdditionalRouteProviderReferences()).stream()
-         .anyMatch(codeReference -> codeReference != null && EsbRouteProvider.class.getName().equals(codeReference.getName()));
-      if(!registered)
-      {
-         javalinMetaData.withAdditionalRouteProviderReference(new QCodeReference(EsbRouteProvider.class));
-      }
-
-      return (javalinMetaData);
+      return (MiddlewareSpecExtensionsMetaData.ofOrWithNew(qInstance).withExtension(defineExtension()));
    }
 
 }

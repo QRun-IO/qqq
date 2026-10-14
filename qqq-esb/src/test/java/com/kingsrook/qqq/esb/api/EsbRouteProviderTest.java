@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import com.kingsrook.qqq.backend.core.instances.QInstanceValidator;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
@@ -44,7 +45,7 @@ import com.kingsrook.qqq.esb.model.QEsbDestinationMetaData;
 import com.kingsrook.qqq.esb.model.QEsbProviderMetaData;
 import com.kingsrook.qqq.esb.runtime.QEsbRuntime;
 import com.kingsrook.qqq.esb.stats.EsbStats;
-import com.kingsrook.qqq.middleware.javalin.QJavalinMetaData;
+import com.kingsrook.qqq.middleware.javalin.specs.extensions.MiddlewareSpecExtensionsMetaData;
 import jakarta.jms.MessageConsumer;
 import jakarta.jms.MessageProducer;
 import jakarta.jms.Session;
@@ -516,19 +517,23 @@ class EsbRouteProviderTest extends EsbApiTestBase
 
 
    /*******************************************************************************
-    ** The meta-data producer registers the route provider with Javalin once.
+    ** The meta-data producer registers the ESB extension of the UI API once,
+    ** and it validates.
     *******************************************************************************/
    @Test
-   void testJavalinMetaDataProducerRegistersRouteProvider() throws Exception
+   void testJavalinMetaDataProducerRegistersExtension() throws Exception
    {
       QInstance instance = defineInstance();
       new EsbJavalinMetaDataProducer().produce(instance);
-      QJavalinMetaData javalinMetaData = new EsbJavalinMetaDataProducer().produce(instance);
+      MiddlewareSpecExtensionsMetaData registry = new EsbJavalinMetaDataProducer().produce(instance);
 
-      assertThat(javalinMetaData.getAdditionalRouteProviderReferences())
-         .extracting(QCodeReference::getName)
-         .containsExactly(EsbRouteProvider.class.getName());
-      assertThat(QJavalinMetaData.of(instance)).isSameAs(javalinMetaData);
+      assertThat(registry.getExtensions()).containsOnlyKeys("esb");
+      assertThat(registry.getExtensions().get("esb").getSpecs()).hasSize(5);
+      assertThat(MiddlewareSpecExtensionsMetaData.of(instance)).isSameAs(registry);
+
+      QInstanceValidator validator = new QInstanceValidator();
+      registry.validate(instance, validator);
+      assertThat(validator.getErrors()).isEmpty();
    }
 
 

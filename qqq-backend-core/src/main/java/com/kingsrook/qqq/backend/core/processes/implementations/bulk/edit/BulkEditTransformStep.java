@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.actions.values.QPossibleValueTranslator;
 import com.kingsrook.qqq.backend.core.actions.values.QValueFormatter;
@@ -101,6 +102,12 @@ public class BulkEditTransformStep extends AbstractTransformStep
 
       String enabledFieldsString = runBackendStepInput.getValueString(FIELD_ENABLED_FIELDS);
       enabledFields = enabledFieldsString.split(",");
+      if(runBackendStepInput.isFieldAccessEnforced())
+      {
+         QRecord supplied = new QRecord();
+         setUpdatedFieldsInRecord(runBackendStepInput, enabledFields, supplied);
+         FieldAccessHelper.assertWritesAllowed(QContext.getQInstance().getTable(runBackendStepInput.getTableName()), List.of(supplied));
+      }
 
       buildInfoSummaryLines(runBackendStepInput, table, infoSummaries, isExecuteStep);
    }

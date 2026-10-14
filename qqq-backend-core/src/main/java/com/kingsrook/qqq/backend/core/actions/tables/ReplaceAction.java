@@ -33,8 +33,8 @@ import com.kingsrook.qqq.backend.core.actions.ActionHelper;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.metadata.personalization.TableMetaDataPersonalizerAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
-import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
 import com.kingsrook.qqq.backend.core.actions.permissions.TablePermissionSubType;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.AssociatedRecordUpdate;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.RestoreWriteHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
@@ -86,14 +86,16 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
    {
       CorePermissionEnforcer.checkRestoreWriteFlag(input, input.getFlags());
 
+      boolean enforce = false;
       if(input.getTableName() != null && input.getTable() != null)
       {
-         boolean enforce = input.getPerformDeletes()
+         enforce = input.getPerformDeletes()
             ? CorePermissionEnforcer.checkTablePermissions(input, TablePermissionSubType.INSERT, TablePermissionSubType.EDIT, TablePermissionSubType.DELETE)
             : CorePermissionEnforcer.checkTablePermissions(input, TablePermissionSubType.INSERT, TablePermissionSubType.EDIT);
+         enforce = CorePermissionEnforcer.shouldEnforceFieldAccess(input);
          if(enforce)
          {
-            FieldSecurityLockHelper.assertWritesAccessible(input.getTable(), input.getRecords());
+            FieldAccessHelper.assertWritesAllowed(input.getTable(), input.getRecords());
             if(input.getFilter() != null)
             {
                CorePermissionEnforcer.checkReadCriteria(input, null, input.getFilter(), null);
@@ -103,7 +105,19 @@ public class ReplaceAction extends AbstractQActionFunction<ReplaceInput, Replace
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
       {
-         return (executeInAuthorizedScope(input));
+         ReplaceOutput output = executeInAuthorizedScope(input);
+         if(enforce)
+         {
+            if(output.getInsertOutput() != null)
+            {
+               FieldAccessHelper.applyToRecords(input.getTableName(), null, output.getInsertOutput().getRecords(), "insert");
+            }
+            if(output.getUpdateOutput() != null)
+            {
+               FieldAccessHelper.applyToRecords(input.getTableName(), null, output.getUpdateOutput().getRecords(), "update");
+            }
+         }
+         return (output);
       }
    }
 

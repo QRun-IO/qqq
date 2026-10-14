@@ -688,10 +688,27 @@ components:
       type: "object"
     FieldMetaData:
       properties:
+        accessTier:
+          description: "Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN.\
+            \ Omitted means FULL. Restricted values are strings, regardless of field\
+            \ type."
+          enum:
+          - "FULL"
+          - "REVEALABLE"
+          - "MASKED"
+          - "HIDDEN"
+          type: "string"
         adornments:
           description: "Special UI dressings to add to the field."
           items:
             $ref: "#/components/schemas/FieldAdornment"
+          type: "array"
+        allowedFilterOperators:
+          description: "Allowed filter operators when restricted: EQUALS and IN for\
+            \ REVEALABLE when exact match is enabled, otherwise empty. Omitted means\
+            \ unrestricted."
+          items:
+            type: "string"
           type: "array"
         behaviors:
           description: "Names of the field's behaviors that a frontend applies while\
@@ -809,6 +826,9 @@ components:
           type: "boolean"
         isRequired:
           description: "Indicate if a value in this field is required."
+          type: "boolean"
+        isSortable:
+          description: "False for restricted fields; omitted means sortable."
           type: "boolean"
         label:
           description: "User-facing name for this field"
@@ -3097,6 +3117,10 @@ components:
             $ref: "#/components/schemas/FieldMetaData"
           description: "Fields in this table"
           type: "object"
+        hasRestrictedFields:
+          description: "True when any field has REVEALABLE, MASKED, or HIDDEN access\
+            \ for the current session."
+          type: "boolean"
         helpContents:
           description: "Help Contents for this table."
           type: "object"
@@ -3294,6 +3318,10 @@ components:
             $ref: "#/components/schemas/FieldMetaData"
           description: "Fields in this table"
           type: "object"
+        hasRestrictedFields:
+          description: "True when any field has REVEALABLE, MASKED, or HIDDEN access\
+            \ for the current session."
+          type: "boolean"
         helpContents:
           description: "Help Contents for this table."
           type: "object"
@@ -3592,10 +3620,27 @@ components:
       type: "object"
     VirtualFieldMetaData:
       properties:
+        accessTier:
+          description: "Effective field access: FULL, REVEALABLE, MASKED, or HIDDEN.\
+            \ Omitted means FULL. Restricted values are strings, regardless of field\
+            \ type."
+          enum:
+          - "FULL"
+          - "REVEALABLE"
+          - "MASKED"
+          - "HIDDEN"
+          type: "string"
         adornments:
           description: "Special UI dressings to add to the field."
           items:
             $ref: "#/components/schemas/FieldAdornment"
+          type: "array"
+        allowedFilterOperators:
+          description: "Allowed filter operators when restricted: EQUALS and IN for\
+            \ REVEALABLE when exact match is enabled, otherwise empty. Omitted means\
+            \ unrestricted."
+          items:
+            type: "string"
           type: "array"
         behaviors:
           description: "Names of the field's behaviors that a frontend applies while\
@@ -3721,6 +3766,9 @@ components:
           type: "boolean"
         isRequired:
           description: "Indicate if a value in this field is required."
+          type: "boolean"
+        isSortable:
+          description: "False for restricted fields; omitted means sortable."
           type: "boolean"
         label:
           description: "User-facing name for this field"
@@ -4011,10 +4059,27 @@ components:
               fieldMetaData:
                 description: "Metadata to define the field that this block controls"
                 properties:
+                  accessTier:
+                    description: "Effective field access: FULL, REVEALABLE, MASKED,\
+                      \ or HIDDEN. Omitted means FULL. Restricted values are strings,\
+                      \ regardless of field type."
+                    enum:
+                    - "FULL"
+                    - "REVEALABLE"
+                    - "MASKED"
+                    - "HIDDEN"
+                    type: "string"
                   adornments:
                     description: "Special UI dressings to add to the field."
                     items:
                       $ref: "#/components/schemas/FieldAdornment"
+                    type: "array"
+                  allowedFilterOperators:
+                    description: "Allowed filter operators when restricted: EQUALS\
+                      \ and IN for REVEALABLE when exact match is enabled, otherwise\
+                      \ empty. Omitted means unrestricted."
+                    items:
+                      type: "string"
                     type: "array"
                   behaviors:
                     description: "Names of the field's behaviors that a frontend applies\
@@ -4133,6 +4198,9 @@ components:
                     type: "boolean"
                   isRequired:
                     description: "Indicate if a value in this field is required."
+                    type: "boolean"
+                  isSortable:
+                    description: "False for restricted fields; omitted means sortable."
                     type: "boolean"
                   label:
                     description: "User-facing name for this field"
@@ -6837,6 +6905,7 @@ paths:
                           label: "Id"
                           name: "id"
                           type: "INTEGER"
+                      hasRestrictedFields: false
                       icon:
                         name: "person_outline"
                       insertPermission: true

@@ -1726,6 +1726,7 @@ public class GenerateOpenApiSpecAction extends AbstractQActionFunction<GenerateO
 
          String defaultDescription = fieldLabel + " for the " + table.getLabel() + ".";
          Schema fieldSchema        = getFieldSchema(field, defaultDescription, apiInstanceMetaData);
+         // TODO: Add x-qqq-access-tier when the shared OpenAPI Schema model supports vendor extensions.
          if(field instanceof QVirtualFieldMetaData)
          {
             ///////////////////////////////////////////////////////////////

@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.permissions.CorePermissionEnforcer;
 import com.kingsrook.qqq.backend.core.actions.permissions.FieldSecurityLockHelper;
-import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
+import com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess.FieldAccessHelper;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QBadRequestException;
@@ -81,6 +81,7 @@ public class SearchPossibleValueSourceAction
    private static final Set<String> warnedAboutUnexpectedNoOfFieldsToSearchByLabel = Collections.synchronizedSet(new HashSet<>());
 
    private QPossibleValueTranslator possibleValueTranslator;
+   private boolean enforceFieldAccess;
 
 
 
@@ -98,11 +99,12 @@ public class SearchPossibleValueSourceAction
       // under ENFORCE, a caller-supplied filter still may not use fields that  //
       // a field security lock denies on the possible-value source's table.     //
       ////////////////////////////////////////////////////////////////////////////
+      enforceFieldAccess = CorePermissionEnforcer.shouldEnforceFieldAccess(input);
       QPossibleValueSource possibleValueSource = QContext.getQInstance() == null ? null : QContext.getQInstance().getPossibleValueSource(input.getPossibleValueSourceName());
-      if(PermissionEnforcement.ENFORCE.equals(input.getPermissionEnforcement()) && possibleValueSource != null && possibleValueSource.getTableName() != null)
+      if(enforceFieldAccess && possibleValueSource != null && possibleValueSource.getTableName() != null)
       {
-         FieldSecurityLockHelper.assertCriteriaAccessible(possibleValueSource.getTableName(), null, input.getDefaultQueryFilter(), null);
-         FieldSecurityLockHelper.assertCriteriaAccessible(possibleValueSource.getTableName(), null, input.getPickerFilter(), null);
+         FieldAccessHelper.assertCriteriaAllowed(possibleValueSource.getTableName(), null, input.getDefaultQueryFilter(), null, false);
+         FieldAccessHelper.assertCriteriaAllowed(possibleValueSource.getTableName(), null, input.getPickerFilter(), null, false);
       }
 
       try(CorePermissionEnforcer.AuthorizedScope ignored = CorePermissionEnforcer.openAuthorizedScope())
@@ -125,7 +127,7 @@ public class SearchPossibleValueSourceAction
          throw new QException("Missing possible value source named [" + input.getPossibleValueSourceName() + "]");
       }
 
-      possibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession());
+      possibleValueTranslator = new QPossibleValueTranslator(QContext.getQInstance(), QContext.getQSession()).withFieldAccessEnforcement(enforceFieldAccess);
       SearchPossibleValueSourceOutput output = null;
       if(possibleValueSource.getType().equals(QPossibleValueSourceType.ENUM))
       {
@@ -309,10 +311,14 @@ public class SearchPossibleValueSourceAction
     ** does - PostgreSQL's LIKE is case-sensitive), dates/date-times by
     ** equality, other types as integers.
     *******************************************************************************/
-   private static void addSearchCriteria(QQueryFilter queryFilter, QTableMetaData table, List<String> searchFields, String searchTerm, QCriteriaOperator stringOperator)
+   private void addSearchCriteria(QQueryFilter queryFilter, QTableMetaData table, List<String> searchFields, String searchTerm, QCriteriaOperator stringOperator)
    {
       for(String valueField : CollectionUtils.nonNullList(searchFields))
       {
+         if(enforceFieldAccess && !FieldAccessHelper.getTier(table, valueField).canQuickSearch())
+         {
+            continue;
+         }
          try
          {
             QFieldMetaData field = table.getField(valueField);
@@ -358,6 +364,10 @@ public class SearchPossibleValueSourceAction
             //////////////////////////////////////////////////////////////////////////////////////////
             queryFilter.addCriteria(new QFilterCriteria(valueField, QCriteriaOperator.IN, List.of()));
          }
+      }
+      if(!queryFilter.hasAnyCriteria())
+      {
+         queryFilter.addCriteria(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, List.of()));
       }
    }
 
@@ -430,7 +440,13 @@ public class SearchPossibleValueSourceAction
       queryInput.setFilter(queryFilter);
       queryInput.setShouldGenerateDisplayValues(true);
       queryInput.setShouldTranslatePossibleValues(true);
+      FieldAccessHelper.PendingExactMatch exactMatch = enforceFieldAccess ? FieldAccessHelper.assertCriteriaAllowed(table.getName(), null, queryFilter, null) : null;
       List<QRecord> records = new QueryAction().execute(queryInput).getRecords();
+      if(enforceFieldAccess)
+      {
+         FieldAccessHelper.applyToRecords(table.getName(), null, records, "search");
+         exactMatch.complete(records.size(), "search");
+      }
 
       SearchPossibleValueSourceOutput output = new SearchPossibleValueSourceOutput();
       output.setHasMore(records.size() > limit);
@@ -439,7 +455,7 @@ public class SearchPossibleValueSourceAction
          records = new ArrayList<>(records.subList(0, limit));
       }
 
-      Set<String>                                  deniedFields  = FieldSecurityLockHelper.getDeniedFieldNames(table);
+      Set<String>                                  deniedFields  = enforceFieldAccess ? FieldSecurityLockHelper.getDeniedFieldNames(table) : Set.of();
       Map<Serializable, Map<String, Serializable>> values        = new LinkedHashMap<>();
       Map<Serializable, Map<String, String>>       displayValues = new LinkedHashMap<>();
       List<Serializable>                           ids           = new ArrayList<>();
@@ -588,7 +604,12 @@ public class SearchPossibleValueSourceAction
             }
          }
 
-         if(fieldNames.size() == 1)
+         fieldNames.removeIf(name -> enforceFieldAccess && !FieldAccessHelper.getTier(table, name).canQuickSearch());
+         if(fieldNames.isEmpty())
+         {
+            queryFilter.addCriteria(new QFilterCriteria(table.getPrimaryKeyField(), QCriteriaOperator.IN, List.of()));
+         }
+         else if(fieldNames.size() == 1)
          {
             queryFilter.addCriteria(new QFilterCriteria(fieldNames.get(0), QCriteriaOperator.IN, input.getLabelList()));
          }
@@ -624,11 +645,16 @@ public class SearchPossibleValueSourceAction
       queryFilter.setLimit(input.getLimit());
       queryFilter.setSkip(input.getSkip());
 
-      queryFilter.setOrderBys(possibleValueSource.getOrderByFields());
+      queryFilter.setOrderBys(CollectionUtils.nonNullList(possibleValueSource.getOrderByFields()).stream().filter(order -> !enforceFieldAccess || FieldAccessHelper.getTier(table, order.getFieldName()).canSort()).toList());
 
       queryInput.setFilter(queryFilter);
 
+      FieldAccessHelper.PendingExactMatch exactMatch = enforceFieldAccess ? FieldAccessHelper.assertCriteriaAllowed(table.getName(), null, queryFilter, null) : null;
       QueryOutput queryOutput = new QueryAction().execute(queryInput);
+      if(exactMatch != null)
+      {
+         exactMatch.complete(queryOutput.getRecords().size(), "search");
+      }
 
       String fieldName;
       if(StringUtils.hasContent(possibleValueSource.getOverrideIdField()))

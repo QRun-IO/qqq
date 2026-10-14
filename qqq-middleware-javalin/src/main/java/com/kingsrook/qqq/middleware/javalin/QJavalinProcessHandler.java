@@ -89,6 +89,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeConsumer;
 import com.kingsrook.qqq.backend.core.utils.lambdas.UnsafeFunction;
+import com.kingsrook.qqq.middleware.javalin.executors.utils.ProcessExecutorUtils;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.Context;
 import io.javalin.http.HttpResponseException;
@@ -442,7 +443,7 @@ public class QJavalinProcessHandler
             LOG.debug("Process result output value: " + outputField.getName() + ": " + runProcessOutput.getValues().get(outputField.getName()));
          }
 
-         serializeRunProcessResultForCaller(resultForCaller, runProcessOutput);
+         serializeRunProcessResultForCaller(resultForCaller, processName, runProcessOutput);
          if(!runProcessOutput.getOneTimeSecrets().isEmpty())
          {
             resultForCaller.put("oneTimeSecrets", runProcessOutput.getOneTimeSecrets());
@@ -536,7 +537,7 @@ public class QJavalinProcessHandler
     ** Whether a step finished synchronously or asynchronously, return its data
     ** to the caller the same way.
     *******************************************************************************/
-   private static void serializeRunProcessResultForCaller(Map<String, Object> resultForCaller, RunProcessOutput runProcessOutput)
+   private static void serializeRunProcessResultForCaller(Map<String, Object> resultForCaller, String processName, RunProcessOutput runProcessOutput)
    {
       if(runProcessOutput.getException().isPresent())
       {
@@ -545,7 +546,7 @@ public class QJavalinProcessHandler
          ////////////////////////////////////////////////////////////////
          serializeRunProcessExceptionForCaller(resultForCaller, runProcessOutput.getException().get());
       }
-      resultForCaller.put("values", runProcessOutput.getValues());
+      resultForCaller.put("values", ProcessExecutorUtils.valuesForCaller(processName, runProcessOutput.getValues()));
       runProcessOutput.getProcessState().getNextStepName().ifPresent(nextStep -> resultForCaller.put("nextStep", nextStep));
       runProcessOutput.getProcessState().getBackStepName().ifPresent(backStep -> resultForCaller.put("backStep", backStep));
 
@@ -824,7 +825,7 @@ public class QJavalinProcessHandler
                if(processState.isPresent())
                {
                   RunProcessOutput runProcessOutput = new RunProcessOutput(processState.get());
-                  serializeRunProcessResultForCaller(resultForCaller, runProcessOutput);
+                  serializeRunProcessResultForCaller(resultForCaller, processName, runProcessOutput);
                   java.util.List<com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret> secrets = OneTimeSecretHandoff.take(processUUID);
                   if(!secrets.isEmpty())
                   {
@@ -895,7 +896,7 @@ public class QJavalinProcessHandler
          else
          {
             List<QRecord> recordPage = CollectionUtils.safelyGetPage(records, skip, limit);
-            resultForCaller.put("records", recordPage);
+            resultForCaller.put("records", ProcessExecutorUtils.recordsForCaller(context.pathParam("processName"), processState, recordPage));
             resultForCaller.put("totalRecords", records.size());
          }
 

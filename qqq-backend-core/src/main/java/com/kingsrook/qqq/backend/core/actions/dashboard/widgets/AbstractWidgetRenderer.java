@@ -53,6 +53,8 @@ import com.kingsrook.qqq.backend.core.utils.collections.MapBuilder;
 /*******************************************************************************
  ** Base class for rendering qqq dashboard widgets
  **
+ ** Custom HTML and derived text cannot be masked automatically. Renderers must apply
+ ** FieldAccessHelper to source records before embedding field values in HTML or text.
  *******************************************************************************/
 public abstract class AbstractWidgetRenderer
 {

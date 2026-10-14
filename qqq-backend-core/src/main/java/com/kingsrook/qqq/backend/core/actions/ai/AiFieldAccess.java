@@ -25,7 +25,7 @@ import java.io.Serializable;
 
 
 /*******************************************************************************
- ** The AI exposure of one field (visible to the user) and why: "hidden",
+ ** Compatibility view of the core FieldAccessHelper decision and why: "hidden",
  ** "password", "field security lock", "metadata" (explicit AiFieldMetaData),
  ** "table" (capped by the table's exposure) or "default".  canPropose is the
  ** user's own edit permission on the table and exposure other than NONE

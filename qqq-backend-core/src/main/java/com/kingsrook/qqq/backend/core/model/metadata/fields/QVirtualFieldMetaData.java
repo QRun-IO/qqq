@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.functions.FieldFunction;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueDependencyBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.security.FieldSecurityLock;
 
@@ -546,4 +547,40 @@ public class QVirtualFieldMetaData extends QFieldMetaData implements Cloneable
 
 
 
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for possibleValueSourceDependsOn
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withPossibleValueSourceDependsOn(List<String> possibleValueSourceDependsOn)
+   {
+      super.withPossibleValueSourceDependsOn(possibleValueSourceDependsOn);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for possibleValueSourceDependencyBehavior
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withPossibleValueSourceDependencyBehavior(PossibleValueDependencyBehavior possibleValueSourceDependencyBehavior)
+   {
+      super.withPossibleValueSourceDependencyBehavior(possibleValueSourceDependencyBehavior);
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for validatePossibleValueSourceOnWrite
+    *******************************************************************************/
+   @Override
+   public QVirtualFieldMetaData withValidatePossibleValueSourceOnWrite(Boolean validatePossibleValueSourceOnWrite)
+   {
+      super.withValidatePossibleValueSourceOnWrite(validatePossibleValueSourceOnWrite);
+      return (this);
+   }
 }

@@ -870,6 +870,20 @@ components:
           description: "When this field has a picker, the table its possible value\
             \ source reads, whose metadata describes the picker's fields."
           type: "string"
+        possibleValueSourceDependencyBehavior:
+          description: "DISABLE_UNTIL_SET disables a contingent field until its dependencies\
+            \ are set (default). SHOW_ALL_UNTIL_SET keeps it enabled and omits criteria\
+            \ with missing inputs in form searches. Absent for non-contingent fields."
+          enum:
+          - "DISABLE_UNTIL_SET"
+          - "SHOW_ALL_UNTIL_SET"
+          type: "string"
+        possibleValueSourceDependsOn:
+          description: "Names of fields controlling this field's choices, including\
+            \ explicit and filter dependencies. Absent for non-contingent fields."
+          items:
+            type: "string"
+          type: "array"
         possibleValueSourceName:
           description: "If this field's values should come from a possible value source,\
             \ then that PVS is named here."
@@ -3687,6 +3701,20 @@ components:
           description: "When this field has a picker, the table its possible value\
             \ source reads, whose metadata describes the picker's fields."
           type: "string"
+        possibleValueSourceDependencyBehavior:
+          description: "DISABLE_UNTIL_SET disables a contingent field until its dependencies\
+            \ are set (default). SHOW_ALL_UNTIL_SET keeps it enabled and omits criteria\
+            \ with missing inputs in form searches. Absent for non-contingent fields."
+          enum:
+          - "DISABLE_UNTIL_SET"
+          - "SHOW_ALL_UNTIL_SET"
+          type: "string"
+        possibleValueSourceDependsOn:
+          description: "Names of fields controlling this field's choices, including\
+            \ explicit and filter dependencies. Absent for non-contingent fields."
+          items:
+            type: "string"
+          type: "array"
         possibleValueSourceName:
           description: "If this field's values should come from a possible value source,\
             \ then that PVS is named here."
@@ -4091,6 +4119,22 @@ components:
                       \ value source reads, whose metadata describes the picker's\
                       \ fields."
                     type: "string"
+                  possibleValueSourceDependencyBehavior:
+                    description: "DISABLE_UNTIL_SET disables a contingent field until\
+                      \ its dependencies are set (default). SHOW_ALL_UNTIL_SET keeps\
+                      \ it enabled and omits criteria with missing inputs in form\
+                      \ searches. Absent for non-contingent fields."
+                    enum:
+                    - "DISABLE_UNTIL_SET"
+                    - "SHOW_ALL_UNTIL_SET"
+                    type: "string"
+                  possibleValueSourceDependsOn:
+                    description: "Names of fields controlling this field's choices,\
+                      \ including explicit and filter dependencies. Absent for non-contingent\
+                      \ fields."
+                    items:
+                      type: "string"
+                    type: "array"
                   possibleValueSourceName:
                     description: "If this field's values should come from a possible\
                       \ value source, then that PVS is named here."

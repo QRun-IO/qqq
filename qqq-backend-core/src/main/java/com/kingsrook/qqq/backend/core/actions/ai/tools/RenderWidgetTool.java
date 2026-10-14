@@ -21,23 +21,18 @@
 package com.kingsrook.qqq.backend.core.actions.ai.tools;
 
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolKind;
 import com.kingsrook.qqq.backend.core.actions.ai.AiToolOutcome;
-import com.kingsrook.qqq.backend.core.actions.dashboard.RenderWidgetAction;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
-import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface;
 import com.kingsrook.qqq.backend.core.utils.CollectionUtils;
-import com.kingsrook.qqq.backend.core.utils.JsonUtils;
 
 
 /*******************************************************************************
@@ -152,20 +147,12 @@ public class RenderWidgetTool extends AbstractAiTool
          renderWidgetInput.addQueryParam(param.getRequiredString("name"), param.getOptionalString("value"));
       }
 
-      RenderWidgetOutput output = new RenderWidgetAction().execute(renderWidgetInput);
+      Map<String, Object> rawData = context.getDataGateway().renderWidget(renderWidgetInput);
 
       Object data = null;
-      if(output != null && output.getWidgetData() != null)
+      if(rawData != null)
       {
-         try
-         {
-            Map<String, Object> rawData = JsonUtils.toObject(JsonUtils.toJson(output.getWidgetData()), new TypeReference<>() {});
-            data = sanitizeTree(context, rawData, 0, new int[] {MAX_TREE_NODES});
-         }
-         catch(IOException e)
-         {
-            throw (new QException("Error reading widget data", e));
-         }
+         data = sanitizeTree(context, rawData, 0, new int[] {MAX_TREE_NODES});
       }
 
       Map<String, Object> render = new LinkedHashMap<>();

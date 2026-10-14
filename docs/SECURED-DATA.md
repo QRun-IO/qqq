@@ -642,7 +642,7 @@ public record ProtectedAuditValues(String oldToken, String newToken, String mess
   writes `hmac:v1:<keyId>:<mac>`. With no key configured, it writes `changed:v1` (no derivative)
   and logs one WARN at startup.
 - **Unclassified fields** are unchanged: their values are audited as today.
-- **Verifying a known value.** `AuditValueTokens.verify(table, field, pk, candidate, token)` checks
+- **Verifying a known value.** `ClassifiedValueTokens.verify(...)` (§14.5) checks
   a value against an `hmac:` token, or against a `shred:` token while its key still exists. The
   qbit uses it for an admin-only "Verify a value" record action on audit details, and that action
   is itself access-logged.
@@ -694,6 +694,35 @@ All tokens are ASCII, at most 200 characters, and are stored in `auditDetail.old
 - **KEK:** without `QQQ_SECURED_DATA_KEK` (from Infisical, via the environment) the keys in the
   table are useless, so a database dump alone reveals nothing. KEK rotation re-wraps the rows in
   place.
+
+### 14.5 Reusable token helper (core)
+The token helper is not audit-specific: email outboxes, ESB, webhooks and logs use it too.
+Package `com.kingsrook.qqq.backend.core.actions.permissions.fieldaccess`:
+
+```java
+public final class ClassifiedValueTokens
+{
+   // record-bound value: m = table  field  pk  canonical(value); hmac:v1 or shred:v1 per the protector
+   static String forRecordField(QTableMetaData table, QFieldMetaData field, Serializable pk, Serializable value);
+   // non-record value: m = domain  part1  ...  canonical(value), e.g. ("email", template, variable, messageId); hmac:v1 only
+   static String forContext(List<String> bindingParts, Serializable value);
+   static String changed();                                   // "changed:v1"
+   static boolean verifyRecordField(QTableMetaData table, QFieldMetaData field, Serializable pk, Serializable candidate, String token);
+   static boolean verifyContext(List<String> bindingParts, Serializable candidate, String token);
+   static String canonical(Serializable value);
+}
+public interface ClassifiedValueKeySource { Optional<KeyAndId> instanceKey(); Optional<KeyAndId> keyForRecordField(String table, String field, Serializable pk); }
+public interface LogRedactorInterface { String redact(String message); }   // registered on QLogger; QRecord logPair values are masked by core
+```
+
+- The instance key is `QQQ_AUDIT_HMAC_KEY` (one instance key for every use). Without it, every
+  method returns `changed:v1`.
+- `forRecordField` uses the record-field DEK (shred) when the field shreds (§14.3), so a wipe
+  also shreds tokens of that value held elsewhere (an email outbox snapshot of a record-bound
+  variable).
+- Non-record low-entropy values get `changed:v1`: there is no record key to shred.
+- The non-record binding always starts with a domain (`email`, `esb`, `webhook`), so it can never
+  collide with a record binding.
 
 ### 14.4 qbit-worm-audit
 - qbit-worm-audit seals `audit` and `auditDetail` rows as written, including these tokens.

@@ -93,8 +93,30 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   is stored). Uploads are read through `BulkLoadUploadSources` by their opaque ref, as the session
   user. The `X-QQQ-AI-Route: hipaa` request header allows sample values of classified and unmapped
   columns; without it they are left out.
-- `baseline.yaml` is now the RC.6 document (1.2.0). The bulk-load operations above were first
-  listed under 1.2.0, but they merged after RC.6 was cut, so they ship in 1.3.0.
+- Added contingent field metadata: `possibleValueSourceDependsOn` lists explicit and
+  inferred input dependencies; `possibleValueSourceDependencyBehavior` defaults to
+  `DISABLE_UNTIL_SET`. Both properties are absent for non-contingent fields.
+- Added `SHOW_ALL_UNTIL_SET`: FORM searches omit missing-input criteria while
+  retaining criteria for supplied inputs. FILTER searches remain unrestricted by
+  missing inputs; use-case parsing is consistent and case-insensitive.
+- User-sourced table writes validate contingent choices in batches, including
+  partial updates and custom providers; fields can opt out with
+  `validatePossibleValueSourceOnWrite(false)`. SYSTEM writes are excluded.
+  See [Contingent possible values](CONTINGENT-POSSIBLE-VALUES.md) for examples,
+  frontend obligations, sample fixtures and the process-step validation limitation.
+- AI tool kernel data access goes through the UI API (no change to the document).
+  `AiToolKernelSettings.withDataGateway(new UiApiAiDataGateway(...))` makes every query, count,
+  get, search and widget render a `/qqq/v1` call, made as the user through the assistant channel.
+  `CoreAiDataGateway` remains the default for other kernels. The assistant wall makes `audit*`
+  write-denied only: the assistant can read a record's history, but cannot write audits.
+- Scoped credentials (no change to the document): `QSession.credentialScope` (`QCredentialScope`)
+  narrows a session to the apps, tables, processes, reports, widgets and operations it lists,
+  optionally read-only.
+  - It is intersected with the user's live permissions.
+  - The session's client channel is `token:<id>`; "token" is a new default channel.
+  - Access tokens from qbit-authentik set it.
+- `baseline.yaml` is now the RC.6 document (1.2.0). The bulk-load and contingent-field additions
+  above were first listed under 1.2.0, but they merged after RC.6 was cut, so they ship in 1.3.0.
 
 ### 1.2.0 (QQQ 4.1.0-RC.6)
 1.1.0 was never released; its additions ship here.

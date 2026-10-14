@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.Set;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.actions.interfaces.AggregateInterface;
+import com.kingsrook.qqq.backend.core.actions.interfaces.ConditionalUpdateInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.CountInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.DeleteInterface;
 import com.kingsrook.qqq.backend.core.actions.interfaces.GetInterface;
@@ -158,6 +159,17 @@ public interface QBackendModuleInterface
       throwNotImplemented("Aggregate");
       return null;
    }
+
+
+   /*******************************************************************************
+    ** The CONDITIONAL_UPDATE capability (atomic compare-and-set update), or null
+    ** when the backend does not support it (the default).
+    *******************************************************************************/
+   default ConditionalUpdateInterface getConditionalUpdateInterface()
+   {
+      return (null);
+   }
+
 
 
    /*******************************************************************************

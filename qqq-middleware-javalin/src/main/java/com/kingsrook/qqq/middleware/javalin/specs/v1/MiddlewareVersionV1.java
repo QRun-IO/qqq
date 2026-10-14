@@ -47,7 +47,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
    public static final List<String> FEATURES = List.of(
       "metaData", "tables", "recordSearch", "tableVariants", "recordDeveloper", "possibleValues",
       "widgets", "processes", "processCancel", "reports", "exports", "downloads", "version", "extensions", "recordFeatures", "realtime",
-      "help", "preferences");
+      "help", "preferences", "durableJobs");
 
    private final List<AbstractEndpointSpec<?, ?, ?>> list = new ArrayList<>();
 
@@ -107,6 +107,7 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new ProcessStatusSpecV1());
       list.add(new ProcessRecordsSpecV1());
       list.add(new ProcessCancelSpecV1());
+      list.add(new ProcessJobLaunchSpecV1());
 
       list.add(new TableExportSpecV1());
 

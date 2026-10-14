@@ -77,6 +77,15 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 ### Unreleased (after 1.2.0; no change to the document)
 - Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
 ### 1.3.0 (unreleased)
+- Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):
+  - Added `POST /processes/{processName}/jobs`: launch an eligible process as a durable background
+    job (`ProcessJobLaunchResponseV1 {jobId, status}`). Over the per-user queue cap it returns
+    429. From the `assistant` client channel the job is created `AWAITING_CONFIRMATION`.
+  - Jobs are the standard tables `jobs_job`, `jobs_chunk`, `jobs_row_error`, `jobs_event` and
+    `jobs_worker`, read with the table operations. Control actions are the record-action processes
+    `jobsStart`, `jobsPause`, `jobsResume`, `jobsCancel`, `jobsRetryFailed`, `jobsRestart` and
+    `jobsRunAgain`, run with the process operations.
+  - The core feature `durableJobs` is listed by `GET /version`.
 - Process init/step responses now optionally include `oneTimeSecrets` using the shared
   `PreferenceSecretV1` schema, with `Cache-Control: no-store`. A synchronous step returns them
   in its own response; a step that went async hands them, once, to the first status poll that

@@ -22,6 +22,7 @@ package com.kingsrook.qqq.middleware.javalin;
 
 
 import java.nio.charset.Charset;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +32,7 @@ import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QInstanceValidationException;
 import com.kingsrook.qqq.backend.core.instances.AbstractQQQApplication;
+import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
 import com.kingsrook.qqq.backend.core.logging.LogUtils;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -351,6 +353,13 @@ public class QApplicationJavalinServer
       }
 
       service.start(port);
+
+      ///////////////////////////////////////////////////////////////////
+      // durable jobs (when the instance enables them): this pod's     //
+      // workers and lease reaper start with the server, and drain on  //
+      // stop (and on SIGTERM, through the runtime's shutdown hook).   //
+      ///////////////////////////////////////////////////////////////////
+      DurableJobsRuntime.start(qInstance);
    }
 
 
@@ -534,6 +543,11 @@ public class QApplicationJavalinServer
       {
          LOG.info("Stop called, but there is no javalin service, so noop.");
          return;
+      }
+
+      if(this.qInstance != null)
+      {
+         DurableJobsRuntime.stop(this.qInstance, Duration.ofSeconds(25));
       }
 
       for(AbstractMiddlewareVersion version : middlewareVersionList)

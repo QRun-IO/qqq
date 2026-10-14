@@ -22,6 +22,7 @@
 package com.kingsrook.qqq.backend.core.jobs;
 
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,6 +63,7 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    private Integer assistantMaxActiveJobs = 2;
    private Boolean scheduledRunsAsJobs = true;
    private String scheduledJobsUserId;
+   private List<QCodeReference> completionEffectProviders = new ArrayList<>();
    private Set<String> eligibleProcessNames = new HashSet<>();
    private String podId;
    private String uploadsStorageTableName;
@@ -764,6 +766,38 @@ public class DurableJobsMetaData implements QSupplementalInstanceMetaData
    public DurableJobsMetaData withEffectTarget(String name, QCodeReference codeReference)
    {
       this.effectTargets.put(name, codeReference);
+      return (this);
+   }
+
+
+   /*******************************************************************************
+    ** Getter for completionEffectProviders: JobCompletionEffects providers asked for job-level effects (e.g., output delivery) when a job is about to complete
+    *******************************************************************************/
+   public List<QCodeReference> getCompletionEffectProviders()
+   {
+      return (this.completionEffectProviders);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for completionEffectProviders
+    *******************************************************************************/
+   public DurableJobsMetaData withCompletionEffectProviders(List<QCodeReference> completionEffectProviders)
+   {
+      this.completionEffectProviders = completionEffectProviders;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Register a JobCompletionEffects provider (job-level effects, such as
+    ** delivering a job's outputs, written when a job is about to complete).
+    *******************************************************************************/
+   public DurableJobsMetaData withCompletionEffectProvider(QCodeReference codeReference)
+   {
+      this.completionEffectProviders.add(codeReference);
       return (this);
    }
 }

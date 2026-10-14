@@ -44,9 +44,11 @@ import com.kingsrook.qqq.backend.core.jobs.effects.EffectStatus;
 import com.kingsrook.qqq.backend.core.jobs.effects.EffectStore;
 import com.kingsrook.qqq.backend.core.jobs.effects.EffectTarget;
 import com.kingsrook.qqq.backend.core.jobs.effects.EffectTargets;
+import com.kingsrook.qqq.backend.core.jobs.effects.JobCompletionEffects;
 import com.kingsrook.qqq.backend.core.jobs.effects.JobEffectDeclaration;
 import com.kingsrook.qqq.backend.core.jobs.effects.JobEffectType;
 import com.kingsrook.qqq.backend.core.jobs.effects.JobEffects;
+import com.kingsrook.qqq.backend.core.jobs.effects.JobLevelEffect;
 import com.kingsrook.qqq.backend.core.jobs.effects.ReconcileResult;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.LaunchRequest;
@@ -374,6 +376,45 @@ class JobEffectsTest extends BaseTest
 
 
    /*******************************************************************************
+    ** Job-level completion effects (e.g., delivering outputs): asked for when
+    ** the job is about to complete, written once (key jobId:-1:rowKey:name),
+    ** delivered before the job turns COMPLETED; a provider that throws is asked
+    ** again and never fails the job.
+    *******************************************************************************/
+   @Test
+   void completionEffectsAreDeliveredBeforeTheJobCompletes() throws Exception
+   {
+      DurableJobsMetaData.of(instance).withCompletionEffectProvider(new QCodeReference(DeliverOutputs.class));
+      DeliverOutputs.CALLS.clear();
+      DeliverOutputs.failNext = true;
+      Integer jobId = runChunks();
+
+      dispatcher().dispatchOnce();
+      assertThat(StubTarget.DELIVERIES).as("the chunk effects").hasSize(5);
+      assertThat(store.getJob(jobId).getValueString("status")).as("the provider threw; asked again later").isEqualTo(JobStatus.RUNNING.name());
+
+      DurableJobs.evaluate(jobId);
+      DurableJobs.evaluate(jobId);
+      String deliverKey = EffectKeys.key(jobId, JobEffects.JOB_LEVEL_CHUNK_SEQ, "dest-1", "deliver");
+      assertThat(effectsOf(jobId).stream().filter(e -> deliverKey.equals(e.getValueString("idempotencyKey")))).as("written once").hasSize(1);
+      assertThat(store.getJob(jobId).getValueString("status")).as("waits for the delivery").isEqualTo(JobStatus.RUNNING.name());
+      assertThat(DeliverOutputs.CALLS).allMatch(status -> status == JobStatus.COMPLETED);
+
+      dispatcher().dispatchOnce();
+      assertThat(StubTarget.DELIVERIES).contains(deliverKey).hasSize(6);
+      assertThat(store.getJob(jobId).getValueString("status")).isEqualTo(JobStatus.COMPLETED.name());
+
+      DurableJobs.evaluate(jobId);
+      dispatcher().dispatchOnce();
+      assertThat(StubTarget.DELIVERIES).as("never delivered twice").hasSize(6);
+
+      assertThatThrownBy(() -> JobEffects.emitForJob(jobId, new JobLevelEffect("x", "stub", JobEffectType.LOCAL_TX, "r", Map.of(), null))).hasMessageContaining("must be");
+      assertThatThrownBy(() -> JobEffects.emitForJob(jobId, new JobLevelEffect("x", "nope", JobEffectType.IDEMPOTENT_EXTERNAL, "r", Map.of(), null))).hasMessageContaining("not registered");
+   }
+
+
+
+   /*******************************************************************************
     ** Launch the notify process over every item, chunk size 2.
     *******************************************************************************/
    private Integer launch() throws QException
@@ -488,6 +529,35 @@ class JobEffectsTest extends BaseTest
       public ArrayList<ProcessSummaryLineInterface> getProcessSummary(RunBackendStepOutput output, boolean isForResultScreen)
       {
          return (new ArrayList<>(List.of(ok)));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A completion provider: deliver the job's outputs to one destination; the
+    ** first call throws (a provider outage).
+    *******************************************************************************/
+   public static class DeliverOutputs implements JobCompletionEffects
+   {
+      static final List<JobStatus> CALLS = new CopyOnWriteArrayList<>();
+      static volatile boolean failNext = false;
+
+
+
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public List<JobLevelEffect> effectsFor(QRecord job, JobStatus completingAs)
+      {
+         if(failNext)
+         {
+            failNext = false;
+            throw (new IllegalStateException("delivery settings unavailable"));
+         }
+         CALLS.add(completingAs);
+         return (List.of(new JobLevelEffect("deliver", "stub", JobEffectType.IDEMPOTENT_EXTERNAL, "dest-1", Map.of("job", job.getValueInteger("id")), null)));
       }
    }
 

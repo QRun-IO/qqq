@@ -140,10 +140,27 @@ public class JobFinalizer
       // the chunks are done; their outbox effects must be delivered (or    //
       // resolved) before the job finishes (spec section 2.13)              //
       ////////////////////////////////////////////////////////////////////////
-      EffectStore.EffectCounts effects = new EffectStore(store.getSettings()).countsForJob(jobId);
+      EffectStore              effectStore = new EffectStore(store.getSettings());
+      EffectStore.EffectCounts effects     = effectStore.countsForJob(jobId);
       if(effects.outstanding() > 0)
       {
          return (status);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // job-level completion effects (e.g., delivering the job's outputs):    //
+      // asked for before the job turns final, with the status it would end    //
+      // with; written idempotently (same keys every pass), and the job waits  //
+      // for them like any other effect - a crash here never loses a delivery  //
+      ///////////////////////////////////////////////////////////////////////////
+      if(needsReview == 0 && failed == 0 && effects.needsReview() == 0)
+      {
+         int       rowsFailedSoFar = ValueUtils.getValueAsInteger(job.getValue("rowsFailed")) == null ? 0 : ValueUtils.getValueAsInteger(job.getValue("rowsFailed"));
+         JobStatus provisional     = rowsFailedSoFar > 0 || effects.failed() > 0 ? JobStatus.COMPLETED_WITH_ERRORS : JobStatus.COMPLETED;
+         if(JobCompletionEffectsRunner.emit(job, provisional))
+         {
+            return (status);
+         }
       }
 
       ///////////////////////////////

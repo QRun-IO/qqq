@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.FailedRows;
+import com.kingsrook.qqq.backend.core.jobs.effects.EffectStore;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkStatus;
 import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
@@ -135,12 +136,39 @@ public class JobFinalizer
          return (status);
       }
 
+      ////////////////////////////////////////////////////////////////////////
+      // the chunks are done; their outbox effects must be delivered (or    //
+      // resolved) before the job finishes (spec section 2.13)              //
+      ////////////////////////////////////////////////////////////////////////
+      EffectStore              effectStore = new EffectStore(store.getSettings());
+      EffectStore.EffectCounts effects     = effectStore.countsForJob(jobId);
+      if(effects.outstanding() > 0)
+      {
+         return (status);
+      }
+
+      ///////////////////////////////////////////////////////////////////////////
+      // job-level completion effects (e.g., delivering the job's outputs):    //
+      // asked for before the job turns final, with the status it would end    //
+      // with; written idempotently (same keys every pass), and the job waits  //
+      // for them like any other effect - a crash here never loses a delivery  //
+      ///////////////////////////////////////////////////////////////////////////
+      if(needsReview == 0 && failed == 0 && effects.needsReview() == 0)
+      {
+         int       rowsFailedSoFar = ValueUtils.getValueAsInteger(job.getValue("rowsFailed")) == null ? 0 : ValueUtils.getValueAsInteger(job.getValue("rowsFailed"));
+         JobStatus provisional     = rowsFailedSoFar > 0 || effects.failed() > 0 ? JobStatus.COMPLETED_WITH_ERRORS : JobStatus.COMPLETED;
+         if(JobCompletionEffectsRunner.emit(job, provisional))
+         {
+            return (status);
+         }
+      }
+
       ///////////////////////////////
       // no work left: finish it.  //
       ///////////////////////////////
       int       rowsFailed = ValueUtils.getValueAsInteger(job.getValue("rowsFailed")) == null ? 0 : ValueUtils.getValueAsInteger(job.getValue("rowsFailed"));
       JobStatus finalStatus;
-      if(needsReview > 0)
+      if(needsReview > 0 || effects.needsReview() > 0)
       {
          finalStatus = JobStatus.NEEDS_REVIEW;
       }
@@ -148,7 +176,7 @@ public class JobFinalizer
       {
          finalStatus = JobStatus.FAILED;
       }
-      else if(rowsFailed > 0)
+      else if(rowsFailed > 0 || effects.failed() > 0)
       {
          finalStatus = JobStatus.COMPLETED_WITH_ERRORS;
       }
@@ -156,16 +184,26 @@ public class JobFinalizer
       {
          finalStatus = JobStatus.COMPLETED;
       }
+      if(finalStatus == status)
+      {
+         return (status);
+      }
 
       Map<String, Serializable> values = finished(now, null);
       values.put("errorMessage", firstError == null ? null : StringUtils.safeTruncate(firstError, 4000));
       if(finalStatus == JobStatus.NEEDS_REVIEW)
       {
          values.remove("finishedAt");
-         values.put("statusReason", needsReview + (needsReview == 1 ? " chunk" : " chunks") + " may have partly run; review, then retry or skip.");
+         values.put("statusReason", needsReview > 0
+            ? needsReview + (needsReview == 1 ? " chunk" : " chunks") + " may have partly run; review, then retry or skip."
+            : effects.needsReview() + (effects.needsReview() == 1 ? " effect" : " effects") + " may or may not have been delivered (" + effects.firstReview() + "); review them on the job's Effects list.");
+      }
+      else if(effects.failed() > 0)
+      {
+         values.put("statusReason", effects.failed() + (effects.failed() == 1 ? " effect was" : " effects were") + " not delivered.");
       }
       JobEventType eventType = (finalStatus == JobStatus.COMPLETED || finalStatus == JobStatus.COMPLETED_WITH_ERRORS) ? JobEventType.COMPLETED : JobEventType.FAILED;
-      return (transition(job, EnumSet.of(JobStatus.QUEUED, JobStatus.PLANNING, JobStatus.RUNNING, JobStatus.PAUSING), finalStatus, values, eventType));
+      return (transition(job, EnumSet.of(JobStatus.QUEUED, JobStatus.PLANNING, JobStatus.RUNNING, JobStatus.PAUSING, JobStatus.NEEDS_REVIEW), finalStatus, values, eventType));
    }
 
 

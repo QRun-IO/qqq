@@ -24,7 +24,9 @@ package com.kingsrook.qqq.backend.core.jobs.plans;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import com.kingsrook.qqq.backend.core.actions.QBackendTransaction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -49,10 +51,22 @@ public final class JobChunkScope implements AutoCloseable
 {
    private static final ThreadLocal<JobChunkScope> CURRENT = new ThreadLocal<>();
 
-   private final QBackendTransaction transaction;
-   private final PageCheck           pageCheck;
-   private final List<RowError>      rowErrors = new ArrayList<>();
-   private final JobChunkScope       previous;
+   private final QBackendTransaction  transaction;
+   private final PageCheck            pageCheck;
+   private final ChunkIdentity        identity;
+   private final List<RowError>       rowErrors = new ArrayList<>();
+   private final Map<String, QRecord> effects   = new LinkedHashMap<>();
+   private final JobChunkScope        previous;
+
+
+
+   /*******************************************************************************
+    ** Which job chunk this scope runs: the parts of an effect's idempotency key,
+    ** and the process whose effect declarations apply.
+    *******************************************************************************/
+   public record ChunkIdentity(Integer jobId, Integer chunkId, Integer chunkSeq, String processName)
+   {
+   }
 
 
 
@@ -102,7 +116,19 @@ public final class JobChunkScope implements AutoCloseable
     *******************************************************************************/
    public static JobChunkScope open(QBackendTransaction transaction, PageCheck pageCheck)
    {
-      JobChunkScope scope = new JobChunkScope(transaction, pageCheck, CURRENT.get());
+      return (open(transaction, pageCheck, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Open a scope for an identified job chunk: side effects emitted in it
+    ** (JobEffects.emit) are buffered here and written to the outbox with the
+    ** chunk's progress.
+    *******************************************************************************/
+   public static JobChunkScope open(QBackendTransaction transaction, PageCheck pageCheck, ChunkIdentity identity)
+   {
+      JobChunkScope scope = new JobChunkScope(transaction, pageCheck, identity, CURRENT.get());
       CURRENT.set(scope);
       return (scope);
    }
@@ -128,10 +154,11 @@ public final class JobChunkScope implements AutoCloseable
    /*******************************************************************************
     ** Constructor
     *******************************************************************************/
-   private JobChunkScope(QBackendTransaction transaction, PageCheck pageCheck, JobChunkScope previous)
+   private JobChunkScope(QBackendTransaction transaction, PageCheck pageCheck, ChunkIdentity identity, JobChunkScope previous)
    {
       this.transaction = transaction;
       this.pageCheck = pageCheck;
+      this.identity = identity;
       this.previous = previous;
    }
 
@@ -233,4 +260,42 @@ public final class JobChunkScope implements AutoCloseable
       }
    }
 
+
+
+   /*******************************************************************************
+    ** Getter for identity (null for a scope that is not a job chunk).
+    *******************************************************************************/
+   public ChunkIdentity getIdentity()
+   {
+      return (this.identity);
+   }
+
+
+
+   /*******************************************************************************
+    ** Buffer an outbox effect row; the same idempotency key twice keeps one.
+    *******************************************************************************/
+   public void addEffect(QRecord effect)
+   {
+      synchronized(effects)
+      {
+         effects.putIfAbsent(effect.getValueString("idempotencyKey"), effect);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Take the buffered effects (the buffer is emptied: a STEPS job writes them
+    ** at each step boundary).
+    *******************************************************************************/
+   public List<QRecord> drainEffects()
+   {
+      synchronized(effects)
+      {
+         List<QRecord> list = new ArrayList<>(effects.values());
+         effects.clear();
+         return (list);
+      }
+   }
 }

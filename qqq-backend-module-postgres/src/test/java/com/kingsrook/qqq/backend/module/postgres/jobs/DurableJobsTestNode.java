@@ -46,6 +46,11 @@ public class DurableJobsTestNode
       System.setProperty(KillTestInstance.POD_PROPERTY, podId);
 
       QInstance instance = KillTestInstance.define(args[0], Integer.parseInt(args[1]), args[2], args[3], args[4], podId, 1, args.length > 6 ? args[6] : null);
+      if(System.getProperty(EffectsKillTestParts.PROPERTY_ENABLED) != null)
+      {
+         EffectsKillTestParts.add(instance, KillTestInstance.BACKEND, args[0], Integer.parseInt(args[1]), args[2], args[3], args[4]);
+         DurableJobsRuntime.setEffectFaultHook(EffectsKillTestParts.faultHookFromProperty());
+      }
       QContext.init(instance, new QSystemUserSession());
       DurableJobsRuntime.start(instance);
       ////////////////////////////////////////////////////////////////////

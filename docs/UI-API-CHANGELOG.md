@@ -46,10 +46,9 @@ When cutting an RC or GA, the release captain refreshes the baseline with
 `PublishAPI -r <repo root> --baseline`. Several additive PRs between releases can share one MINOR
 bump.
 
-Raw routes under `/qqq/v1` that have no spec are logged at startup (`UiApiRouteAuditor`).
-Strict mode (`withStrictUiApiRoutes(true)` or `QQQ_UI_API_STRICT_ROUTES=true`) fails startup
-instead. Strict becomes the default once the alerts, assistant and sql-workbench qbits ship their
-spec'd routes.
+Raw routes under `/qqq/v1` that have no spec are detected at startup (`UiApiRouteAuditor`).
+Since 1.3.0 (#1159) such routes fail startup by default (strict mode). `withStrictUiApiRoutes(false)`
+or `QQQ_UI_API_STRICT_ROUTES=false` only logs them, as a temporary opt-out.
 
 ## Extensions
 
@@ -84,6 +83,12 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 - Added JVM-local loopback-only session tokens, streamed responses and multipart uploads to
   `UiApiInvoker` (in-process invocation; no change to the document).
 - Added `UiApiRequest.withHeader(name, value)` (no change to the document) for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
+### 1.3.0 (unreleased)
+- Added `UiApiRequest.withHeader(name, value)` for custom invocation headers; null values remove headers, and the invoker drops reserved credential, client-channel and request-metadata headers case-insensitively.
+- Strict UI API routes are the default (#1159): startup fails when a route under `/qqq/v1` has no
+  spec (core or extension). `QQQ_UI_API_STRICT_ROUTES=false` (or `withStrictUiApiRoutes(false)`)
+  opts out temporarily. Applications must run the spec'd alerts, assistant and sql-workbench qbit
+  releases.
 - The assistant wall denies `audit*` (reads and writes) by default again; `withAssistantAuditReads()`
   is the host opt-in for reads. See the security record in UI-API-CLIENT-CHANNELS.md.
 - Durable jobs (docs/specs/DURABLE-JOBS-AND-ASSISTED-BULK-LOAD.md):

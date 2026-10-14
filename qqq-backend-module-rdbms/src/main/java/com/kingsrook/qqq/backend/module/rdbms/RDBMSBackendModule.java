@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
 import com.kingsrook.qqq.backend.core.model.actions.consistentread.ConsistentReadInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryLockMode;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -372,5 +373,19 @@ public class RDBMSBackendModule implements QBackendModuleInterface
    public ConditionalUpdateInterface getConditionalUpdateInterface()
    {
       return (new RDBMSConditionalUpdateAction());
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Row locks, as the backend's SQL dialect (action strategy) supports them.
+    *******************************************************************************/
+   @Override
+   public boolean supportsQueryLockMode(QBackendMetaData backendMetaData, QueryLockMode lockMode)
+   {
+      return (lockMode == QueryLockMode.FOR_UPDATE_SKIP_LOCKED
+         && backendMetaData instanceof RDBMSBackendMetaData rdbmsBackend
+         && rdbmsBackend.getActionStrategy().supportsForUpdateSkipLocked());
    }
 }

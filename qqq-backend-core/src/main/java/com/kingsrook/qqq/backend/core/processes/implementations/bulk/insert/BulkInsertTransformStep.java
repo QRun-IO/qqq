@@ -24,6 +24,7 @@ package com.kingsrook.qqq.backend.core.processes.implementations.bulk.insert;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -43,6 +44,7 @@ import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.actions.tables.helpers.UniqueKeyHelper;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.jobs.DurableTableMetaData;
 import com.kingsrook.qqq.backend.core.jobs.plans.JobChunkScope;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLine;
@@ -104,6 +106,9 @@ public class BulkInsertTransformStep extends AbstractTransformStep
    private Map<String, ProcessSummaryLine>                      associationsToInsertSummaries = new HashMap<>();
 
    private QTableMetaData table;
+
+   private String             jobRowKeyField;
+   private ProcessSummaryLine alreadyLoadedSummary = new ProcessSummaryLine(Status.OK, 0, "rows already loaded by an earlier attempt of this job");
 
    private Map<UniqueKey, Set<List<Serializable>>> keysInThisFile = new HashMap<>();
 
@@ -713,12 +718,41 @@ public class BulkInsertTransformStep extends AbstractTransformStep
          }
       }
 
+      /////////////////////////////////////////////////////////////////////////
+      // Use original file rows so chunk boundaries and attempts do not      //
+      // change the dedupe key. Records without file rows keep their values. //
+      /////////////////////////////////////////////////////////////////////////
+      JobChunkScope        scope   = JobChunkScope.current().orElse(null);
+      DurableTableMetaData durable = DurableTableMetaData.of(table);
+      jobRowKeyField = scope != null && scope.getIdentity() != null && durable != null ? durable.getJobRowKeyField() : null;
+      if(jobRowKeyField != null)
+      {
+         for(QRecord record : records)
+         {
+            if(record.getBackendDetail("fileRows") != null)
+            {
+               List<Integer> fileRowNumbers = BulkLoadRecordUtils.getFileRowNos(record);
+               if(!fileRowNumbers.isEmpty() && fileRowNumbers.get(0) != null)
+               {
+                  record.setValue(jobRowKeyField, DurableTableMetaData.rowKey(scope.getIdentity().jobId(), fileRowNumbers.get(0)));
+               }
+            }
+         }
+      }
+
       ///////////////////////////////////////////////////////////////////////////////
       // If the table has unique keys - then capture all values on these records   //
       // for each key and set up a processSummaryLine for each of the table's UK's //
       ///////////////////////////////////////////////////////////////////////////////
       Map<UniqueKey, Set<List<Serializable>>> existingKeys = new HashMap<>();
-      List<UniqueKey>                         uniqueKeys   = CollectionUtils.nonNullList(table.getUniqueKeys());
+      List<UniqueKey>                         uniqueKeys   = new ArrayList<>(CollectionUtils.nonNullList(table.getUniqueKeys()));
+      if(jobRowKeyField != null)
+      {
+         /////////////////////////////////////////////////////////////////////
+         // Prefer the already-loaded summary even if a natural key matches. //
+         /////////////////////////////////////////////////////////////////////
+         uniqueKeys.sort(Comparator.comparing(key -> !key.getFieldNames().equals(List.of(jobRowKeyField))));
+      }
       for(UniqueKey uniqueKey : uniqueKeys)
       {
          existingKeys.put(uniqueKey, UniqueKeyHelper.getExistingKeys(null, table, records, uniqueKey).keySet());
@@ -904,6 +938,13 @@ public class BulkInsertTransformStep extends AbstractTransformStep
                Optional<List<Serializable>> keyValues = UniqueKeyHelper.getKeyValues(table, uniqueKey, record);
                if(keyValues.isPresent() && (existingKeys.get(uniqueKey).contains(keyValues.get()) || keysInThisFile.get(uniqueKey).contains(keyValues.get())))
                {
+                  if(jobRowKeyField != null && uniqueKey.getFieldNames().equals(List.of(jobRowKeyField)) && existingKeys.get(uniqueKey).contains(keyValues.get()))
+                  {
+                     alreadyLoadedSummary.incrementCount();
+                     foundDupe = true;
+                     break;
+                  }
+
                   ProcessSummaryLineWithUKSampleValues processSummaryLineWithUKSampleValues = ukErrorSummaries.get(uniqueKey);
                   processSummaryLineWithUKSampleValues.incrementCount();
                   if(processSummaryLineWithUKSampleValues.sampleValues.size() < 3)
@@ -984,6 +1025,7 @@ public class BulkInsertTransformStep extends AbstractTransformStep
          }
       }
 
+      alreadyLoadedSummary.addSelfToListIfAnyCount(rs);
       for(Map.Entry<UniqueKey, ProcessSummaryLineWithUKSampleValues> entry : ukErrorSummaries.entrySet())
       {
          UniqueKey                            uniqueKey      = entry.getKey();

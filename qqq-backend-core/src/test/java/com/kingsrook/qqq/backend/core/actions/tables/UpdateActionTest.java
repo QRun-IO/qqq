@@ -940,7 +940,7 @@ class UpdateActionTest extends BaseTest
       ///////////////////////////////////////////////////////////////
       QContext.getQSession().getUser().setIdReference(userWithoutPesonalizedTable);
       new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("id", id).withValue("lastName", "Simpson")).withInputSource(QInputSource.USER));
-      assertEquals("Simpson", insertOutput.getRecords().get(0).getValueString("lastName"));
+      assertEquals("Simpson", GetAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, id).getValueString("lastName"));
 
       //////////////////////////////////////////////////////////////////////////////
       // now as personalized user - first get an error for missing required value //
@@ -954,7 +954,7 @@ class UpdateActionTest extends BaseTest
       ///////////////////////////////////////////////////////
       updateOutput = new UpdateAction().execute(new UpdateInput(TestUtils.TABLE_NAME_PERSON_MEMORY).withRecord(new QRecord().withValue("id", id).withValue("lastName", "Jefferson").withValue("noOfShoes", 3)).withInputSource(QInputSource.USER));
       assertThat(updateOutput.getRecords().get(0).getErrors()).isNullOrEmpty();
-      assertEquals("Jef...", insertOutput.getRecords().get(0).getValueString("lastName"));
+      assertEquals("Jef...", GetAction.execute(TestUtils.TABLE_NAME_PERSON_MEMORY, id).getValueString("lastName"));
 
       //////////////////////////////////////////////////////////////////////////////////////////////////////////
       // now remove a field from the table for that user - then make sure values in that field don't get set. //

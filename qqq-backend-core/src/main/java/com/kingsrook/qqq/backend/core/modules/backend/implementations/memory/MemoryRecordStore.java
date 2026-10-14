@@ -327,7 +327,7 @@ public class MemoryRecordStore
    {
       QueryInput queryInput = input.newQueryInput();
       List<Serializable> keys = new ArrayList<>();
-      for(QRecord record : getTableData(queryInput.getTable()).values())
+      for(QRecord record : snapshot(getTableData(queryInput.getTable())))
       {
          if(BackendQueryFilterUtils.doesRecordMatch(queryInput.getFilter(), record))
          {
@@ -346,7 +346,7 @@ public class MemoryRecordStore
    {
       QueryInput query = input.newQueryInput();
       List<QRecord> result = new ArrayList<>();
-      for(QRecord record : getTableData(query.getTable()).values())
+      for(QRecord record : snapshot(getTableData(query.getTable())))
       {
          if(input.matches(record))
          {
@@ -367,7 +367,7 @@ public class MemoryRecordStore
    {
       QueryInput query = input.newQueryInput();
       List<QRecord> result = new ArrayList<>();
-      for(QRecord record : getTableData(query.getTable()).values())
+      for(QRecord record : snapshot(getTableData(query.getTable())))
       {
          if(input.matches(record))
          {
@@ -393,7 +393,7 @@ public class MemoryRecordStore
 
       incrementStatistic(input);
 
-      Collection<QRecord> tableData = getTableData(input.getTable()).values();
+      Collection<QRecord> tableData = snapshot(getTableData(input.getTable()));
       List<QRecord>       records   = new ArrayList<>();
 
       QQueryFilter filter       = clonedOrNewFilter(input.getFilter());
@@ -571,7 +571,7 @@ public class MemoryRecordStore
    {
       List<QRecord>  crossProduct = new ArrayList<>();
       QTableMetaData leftTable    = table;
-      for(QRecord record : getTableData(leftTable).values())
+      for(QRecord record : snapshot(getTableData(leftTable)))
       {
          QRecord productRecord = new QRecord().withTableName(table.getName());
          addRecordToProduct(productRecord, record, null);
@@ -581,7 +581,7 @@ public class MemoryRecordStore
       for(QueryJoin queryJoin : queryJoins)
       {
          QTableMetaData      nextTable        = joinsContext.getTable(queryJoin.getJoinTable());
-         Collection<QRecord> nextTableRecords = getTableData(nextTable).values();
+         Collection<QRecord> nextTableRecords = snapshot(getTableData(nextTable));
          QQueryFilter joinFilter = new QQueryFilter();
          joinFilter.setCriteria(queryJoin.getSecurityCriteria());
 
@@ -1020,7 +1020,11 @@ public class MemoryRecordStore
 
             if(tableData.containsKey(primaryKeyValue))
             {
-               QRecord recordToUpdate = tableData.get(primaryKeyValue);
+               ////////////////////////////////////////////////////////////////////
+               // copy on write: readers on other threads may be iterating the   //
+               // stored record (e.g., building a join), so never mutate it      //
+               ////////////////////////////////////////////////////////////////////
+               QRecord recordToUpdate = new QRecord(tableData.get(primaryKeyValue));
                for(Map.Entry<String, Serializable> valueEntry : record.getValues().entrySet())
                {
                   if(!table.getFields().containsKey(valueEntry.getKey()))
@@ -1046,6 +1050,8 @@ public class MemoryRecordStore
                      recordToUpdate.setValue(fieldName, valueEntry.getValue());
                   }
                }
+
+               tableData.put(primaryKeyValue, recordToUpdate);
 
                if(returnUpdatedRecords)
                {
@@ -1073,15 +1079,21 @@ public class MemoryRecordStore
          int                        count     = 0;
          synchronized(tableData)
          {
-            for(QRecord record : tableData.values())
+            for(Map.Entry<Serializable, QRecord> stored : new ArrayList<>(tableData.entrySet()))
             {
-               if(BackendQueryFilterUtils.doesRecordMatch(input.getFilter(), record))
+               if(BackendQueryFilterUtils.doesRecordMatch(input.getFilter(), stored.getValue()))
                {
+                  ////////////////////////////////////////////////
+                  // copy on write (see update): never mutate a //
+                  // stored record another thread may be reading //
+                  ////////////////////////////////////////////////
+                  QRecord record = new QRecord(stored.getValue());
                   for(Map.Entry<String, Serializable> entry : input.getValues().entrySet())
                   {
                      QFieldMetaData field = table.getField(entry.getKey());
                      record.setValue(field.getName(), ValueUtils.getValueAsFieldType(field.getType(), entry.getValue()));
                   }
+                  tableData.put(stored.getKey(), record);
                   count++;
                }
             }
@@ -1648,4 +1660,16 @@ public class MemoryRecordStore
    }
 
 
+
+   /*******************************************************************************
+    ** A table's records, copied under its lock: callers iterate the copy, so a
+    ** concurrent insert or delete on another thread cannot break the iteration.
+    *******************************************************************************/
+   private static List<QRecord> snapshot(Map<Serializable, QRecord> tableData)
+   {
+      synchronized(tableData)
+      {
+         return (new ArrayList<>(tableData.values()));
+      }
+   }
 }

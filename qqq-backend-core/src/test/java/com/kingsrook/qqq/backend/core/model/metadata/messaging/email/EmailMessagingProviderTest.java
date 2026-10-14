@@ -21,9 +21,6 @@
 package com.kingsrook.qqq.backend.core.model.metadata.messaging.email;
 
 
-import cloud.localstack.ServiceName;
-import cloud.localstack.docker.LocalstackDockerExtension;
-import cloud.localstack.docker.annotation.LocalstackDockerProperties;
 import com.kingsrook.qqq.backend.core.BaseTest;
 import com.kingsrook.qqq.backend.core.actions.messaging.SendMessageAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -32,17 +29,25 @@ import com.kingsrook.qqq.backend.core.model.actions.messaging.Content;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.MultiParty;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.Party;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageInput;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageOutput;
+import com.kingsrook.qqq.backend.core.model.actions.messaging.SendMessageStatus;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailContentRole;
 import com.kingsrook.qqq.backend.core.model.actions.messaging.email.EmailPartyRole;
 import com.kingsrook.qqq.backend.core.model.metadata.messaging.QMessagingProviderMetaData;
 import com.kingsrook.qqq.backend.core.utils.TestUtils;
+import jakarta.mail.Message;
+import jakarta.mail.Transport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.MockedStatic;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.utility.DockerImageName;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
 
 
 /*******************************************************************************
@@ -94,6 +99,31 @@ class EmailMessagingProviderTest extends BaseTest
 
       assertThatThrownBy(() -> new SendMessageAction().execute(new SendMessageInput().withMessagingProviderName("notFound")))
          .hasMessageContaining("was not found");
+   }
+
+
+
+   /*******************************************************************************
+    ** EMAIL reports SENT and ignores advisory rich fields without opening SMTP.
+    *******************************************************************************/
+   @Test
+   void testSynchronousStatusWithoutSmtp() throws QException
+   {
+      SendMessageInput input = new SendMessageInput()
+         .withMessagingProviderName(TestUtils.EMAIL_MESSAGING_PROVIDER_NAME)
+         .withTo(new Party().withAddress("to@example.com"))
+         .withFrom(new Party().withAddress("from@example.com"))
+         .withSubject("Test message")
+         .withContent(new Content().withContentRole(EmailContentRole.TEXT).withBody("Test body"))
+         .withCategory("UNKNOWN_ADVISORY_CATEGORY").withLinkedRecord("order", 42L)
+         .withSenderName("qbit-orders").withLocale("en-US").withVariable("count", 3);
+      try(MockedStatic<Transport> transport = mockStatic(Transport.class))
+      {
+         assertEquals(SendMessageStatus.SENT, new EmailMessagingProvider().sendMessage(input).getStatus());
+         SendMessageOutput output = new SendMessageAction().execute(input);
+         assertEquals(SendMessageStatus.SENT, output.getStatus());
+         transport.verify(() -> Transport.send(any(Message.class)), times(2));
+      }
    }
 
 }

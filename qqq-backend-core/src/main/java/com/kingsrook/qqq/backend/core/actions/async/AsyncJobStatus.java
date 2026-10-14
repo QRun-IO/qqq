@@ -22,8 +22,11 @@ package com.kingsrook.qqq.backend.core.actions.async;
 
 
 import java.io.Serializable;
+import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.kingsrook.qqq.backend.core.actions.processes.ProcessStateAccess;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogLine;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 
 
 /*******************************************************************************
@@ -40,6 +43,9 @@ public class AsyncJobStatus implements Serializable
    private Integer       current;
    private Integer       total;
    private Exception     caughtException;
+
+   private JobProgressSnapshot progress;
+   private List<JobLogLine> logTail;
 
    private boolean cancelRequested;
 
@@ -242,4 +248,67 @@ public class AsyncJobStatus implements Serializable
    {
       this.stateAccess = stateAccess;
    }
+
+
+
+   /*******************************************************************************
+    ** Getter for progress
+    *******************************************************************************/
+   public JobProgressSnapshot getProgress()
+   {
+      return (this.progress);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for progress
+    *******************************************************************************/
+   public void setProgress(JobProgressSnapshot progress)
+   {
+      this.progress = progress;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for progress
+    *******************************************************************************/
+   public AsyncJobStatus withProgress(JobProgressSnapshot progress)
+   {
+      this.progress = progress;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for logTail
+    *******************************************************************************/
+   public List<JobLogLine> getLogTail()
+   {
+      return (this.logTail);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for logTail
+    *******************************************************************************/
+   public void setLogTail(List<JobLogLine> logTail)
+   {
+      this.logTail = logTail;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for logTail
+    *******************************************************************************/
+   public AsyncJobStatus withLogTail(List<JobLogLine> logTail)
+   {
+      this.logTail = logTail;
+      return (this);
+   }
+
 }

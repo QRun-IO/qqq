@@ -53,6 +53,7 @@ import com.kingsrook.qqq.backend.core.jobs.plans.ChunkedProcessPlan;
 import com.kingsrook.qqq.backend.core.jobs.plans.JobPlan;
 import com.kingsrook.qqq.backend.core.jobs.plans.JobPlans;
 import com.kingsrook.qqq.backend.core.jobs.plans.StepsJobPlan;
+import com.kingsrook.qqq.backend.core.jobs.runtime.DurableJobsRuntime;
 import com.kingsrook.qqq.backend.core.jobs.runtime.JobFinalizer;
 import com.kingsrook.qqq.backend.core.jobs.runtime.JobSignals;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
@@ -608,4 +609,18 @@ public final class DurableJobs
       return (count == null ? 0 : count);
    }
 
+
+
+   /*******************************************************************************
+    ** Run again and return the child id to clients.
+    *******************************************************************************/
+   public static Integer runAgain(Integer jobId) throws QException
+   {
+      QRecord job = controllableJob(jobId, JobAction.RUN_AGAIN);
+      if("INLINE".equals(job.getValueString("sourceType")))
+      {
+         return (DurableJobsRuntime.start(QContext.getQInstance()).getInlineJobTracker().runAgain(job));
+      }
+      return (launch(JobControl.relaunchRequest(job)));
+   }
 }

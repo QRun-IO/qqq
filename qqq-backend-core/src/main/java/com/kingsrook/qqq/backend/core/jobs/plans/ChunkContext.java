@@ -31,6 +31,7 @@ import com.kingsrook.qqq.backend.core.jobs.effects.EffectStore;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkOutcome;
 import com.kingsrook.qqq.backend.core.jobs.model.JobLease;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgress;
 import com.kingsrook.qqq.backend.core.jobs.store.DurableJobStore;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 
@@ -50,6 +51,8 @@ public class ChunkContext
    private final DurableJobStore store;
    private final BooleanSupplier draining;
    private final AtomicBoolean   leaseLost = new AtomicBoolean(false);
+
+   private JobProgress progress;
 
    private boolean completedByPlan = false;
 
@@ -154,6 +157,7 @@ public class ChunkContext
     *******************************************************************************/
    public void completeInTransaction(ChunkOutcome outcome, List<QRecord> rowErrors, List<QRecord> effects, QBackendTransaction transaction) throws QException
    {
+      getProgress().flush();
       store.recordRowErrors(rowErrors, transaction);
       new EffectStore(store.getSettings()).insertEffects(effects, transaction);
       store.completeChunk(lease, outcome, transaction);
@@ -251,4 +255,17 @@ public class ChunkContext
       return (this.store);
    }
 
+
+
+   /*******************************************************************************
+    ** One progress reporter per lease attempt.
+    *******************************************************************************/
+   public synchronized JobProgress getProgress()
+   {
+      if(progress == null)
+      {
+         progress = new JobProgress(this);
+      }
+      return (progress);
+   }
 }

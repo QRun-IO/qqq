@@ -74,6 +74,27 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
 ## Versions
 
 ### 1.4.0 (unreleased)
+- Added `GET /jobs`, `GET /jobs/{jobId}`, `GET /jobs/{jobId}/progress`,
+  `POST /jobs/{jobId}/cancel`, `POST /jobs/{jobId}/retry`, and `POST /jobs/track`.
+  These routes require the durable jobs tables, `jobs_job.read`, and the owner record lock.
+  `scope=all` requires `jobs_admin`; hidden jobs return 404 and invalid transitions return 409.
+  `/jobs` is reserved for core routes.
+- Added `JobSummaryV1`, `JobDetailV1`, `JobProgressV1`, `JobPhaseV1`, `JobLogLineV1`,
+  `JobListResponseV1`, `JobProgressPollV1`, `JobTrackRequestV1`, and `JobActionResponseV1`.
+  Poll responses include a twenty-id overlap; clients deduplicate lines by id.
+- Added weighted phases, byte/count progress, monotonic attempt percentages, and sliding-window ETA.
+  `jobs_job.percentDone` is an INTEGER rounded down; snapshots retain fractional precision.
+  `jobs_log` inherits the job lock and is append-only for users. Every line is redacted.
+  Oldest INFO/DEBUG entries over `logMaxLines` (default 2000) are pruned and counted in `logDropped`;
+  WARN/ERROR are retained even if they alone exceed the cap.
+- Progress and log flushes use a separate lease-fenced transaction. Reclaim preserves attempt
+  logs and resets live progress to committed work; completion adds a final line and 100 percent.
+- Added `INLINE` tracking of already-running foreground processes. The owning pod mirrors status
+  each second; loss of its heartbeat fails the job with an explanation that foreground work cannot
+  resume. Chunk workers never claim INLINE jobs.
+- Running process status gains optional `progress` and redacted `logTail` (last 200 lines).
+  Existing async callbacks adapt to durable progress. `RealtimeJobProgressEventV1` includes
+  optional `currentPhase`, `percent`, `message`, `bytesDone`, `bytesTotal`, and `logSeq`.
 - Added the core extension `health` 1.0.0 (central health monitoring, `docs/specs/HEALTH.md`):
   `GET /health/summary`, `GET /health/components/{name}`, `GET /health/checks/{name}/history` and
   `POST /health/checks/{name}/run`, with `Health...V1` schemas. It is registered when an app adds

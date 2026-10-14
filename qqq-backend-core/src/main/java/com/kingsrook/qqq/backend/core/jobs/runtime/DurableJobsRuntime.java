@@ -105,6 +105,7 @@ public class DurableJobsRuntime
    private final DurableJobsMetaData settings;
    private final DurableJobStore     store;
    private final String              podId;
+   private final InlineJobTracker inlineJobTracker;
 
    private final AtomicBoolean draining = new AtomicBoolean(false);
    private final AtomicInteger busy     = new AtomicInteger(0);
@@ -127,6 +128,7 @@ public class DurableJobsRuntime
       this.settings = settings;
       this.store = new DurableJobStore(settings);
       this.podId = StringUtils.hasContent(settings.getPodId()) ? settings.getPodId() : defaultPodId();
+      this.inlineJobTracker = new InlineJobTracker(store, podId);
    }
 
 
@@ -215,6 +217,7 @@ public class DurableJobsRuntime
       workers = Executors.newFixedThreadPool(Math.max(1, threads), runnable -> daemon(runnable, "qqq-jobs-worker-" + podId));
 
       withSystemContext(this::registerWorkerRow);
+      scheduler.scheduleWithFixedDelay(() -> withSystemContext(inlineJobTracker::tick), 1, 1, TimeUnit.SECONDS);
       scheduler.scheduleWithFixedDelay(() -> withSystemContext(this::reaperPass), jitterMillis(1000), settings.getReaperIntervalSeconds() * 1000L, TimeUnit.MILLISECONDS);
       scheduler.scheduleWithFixedDelay(() -> withSystemContext(this::workerRowHeartbeat), 15, 15, TimeUnit.SECONDS);
 
@@ -355,6 +358,7 @@ public class DurableJobsRuntime
 
          if(!context.isCompletedByPlan())
          {
+            context.getProgress().flush();
             store.completeChunk(lease, outcome[0], null);
          }
          if(outcome[0].outputsJson() != null)
@@ -364,6 +368,7 @@ public class DurableJobsRuntime
       }
       catch(Exception e)
       {
+         context.getProgress().flush();
          handleChunkException(lease, context, e);
       }
       finally
@@ -460,6 +465,7 @@ public class DurableJobsRuntime
    {
       try
       {
+         inlineJobTracker.reap();
          Set<Integer> jobIds = new HashSet<>();
          for(QRecord chunk : store.reapExpired(podId))
          {
@@ -703,4 +709,13 @@ public class DurableJobsRuntime
       return (this.store);
    }
 
+
+
+   /*******************************************************************************
+    ** Tracker for this pod.
+    *******************************************************************************/
+   public InlineJobTracker getInlineJobTracker()
+   {
+      return (inlineJobTracker);
+   }
 }

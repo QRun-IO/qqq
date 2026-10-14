@@ -47,6 +47,10 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobEventType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobIdempotency;
 import com.kingsrook.qqq.backend.core.jobs.model.JobLease;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogWriter;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressLifecycle;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressMath;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressSnapshot;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
@@ -349,6 +353,14 @@ public class DurableJobStore
       {
          return (Optional.empty());
       }
+      if(attempt > 1)
+      {
+         QRecord job = getJob(chunk.getValueInteger("jobId"));
+         var snapshot = new JobProgressSnapshot().withUnitLabel("rows");
+         new JobProgressMath().update(snapshot, job, attempt, now);
+         cas(TABLE_JOB, JobLogWriter.progressValues(snapshot),
+            new QQueryFilter(new QFilterCriteria("id", QCriteriaOperator.EQUALS, chunk.getValueInteger("jobId"))), transaction);
+      }
       return (Optional.of(new JobLease(chunk.getValueInteger("id"), chunk.getValueInteger("jobId"), chunk.getValueInteger("seq"), attempt, podId, token, expiresAt)));
    }
 
@@ -359,8 +371,18 @@ public class DurableJobStore
     *******************************************************************************/
    public boolean heartbeat(JobLease lease, int leaseTtlSeconds) throws QException
    {
+      return (heartbeat(lease, leaseTtlSeconds, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Renew under the progress transaction, holding the fence until its commit.
+    *******************************************************************************/
+   public boolean heartbeat(JobLease lease, int leaseTtlSeconds, QBackendTransaction transaction) throws QException
+   {
       Instant now = now();
-      return (cas(TABLE_CHUNK, Map.of("leaseExpiresAt", now.plusSeconds(leaseTtlSeconds), "heartbeatAt", now), fence(lease), null) == 1);
+      return (cas(TABLE_CHUNK, Map.of("leaseExpiresAt", now.plusSeconds(leaseTtlSeconds), "heartbeatAt", now), fence(lease), transaction) == 1);
    }
 
 
@@ -492,12 +514,14 @@ public class DurableJobStore
          int count = cas(TABLE_CHUNK, values, new QQueryFilter()
             .withCriteria(new QFilterCriteria("id", QCriteriaOperator.EQUALS, chunk.getValueInteger("id")))
             .withCriteria(new QFilterCriteria("leaseVersion", QCriteriaOperator.EQUALS, version))
+            .withCriteria(new QFilterCriteria("leaseExpiresAt", QCriteriaOperator.LESS_THAN, now))
             .withCriteria(new QFilterCriteria("status", QCriteriaOperator.EQUALS, ChunkStatus.RUNNING.name())), null);
 
          if(count == 1)
          {
             chunk.setValue("status", next.name());
             reclaimed.add(chunk);
+            JobProgressLifecycle.reclaimed(this, chunk);
             recordEvent(jobId, chunk.getValueInteger("id"), JobEventType.RECLAIMED, null, null, reaperPodId,
                "Chunk " + chunk.getValueInteger("seq") + " (attempt " + attempt + ") reclaimed from " + chunk.getValueString("leaseOwner") + "; now " + next.name());
             LOG.info("Reclaimed expired job chunk", logPair("jobId", jobId), logPair("chunkId", chunk.getValueInteger("id")), logPair("from", chunk.getValueString("leaseOwner")), logPair("to", next));
@@ -610,6 +634,13 @@ public class DurableJobStore
       values.put("lastProgressAt", now());
       updateJob(jobId, values);
 
+      QRecord refreshed = getJob(jobId);
+      var snapshot = JobProgressLifecycle.snapshot(refreshed);
+      if((snapshot.getPhases() == null || snapshot.getPhases().isEmpty()) && snapshot.getTotal() == null && snapshot.getBytesTotal() == null)
+      {
+         new JobProgressMath().update(snapshot, refreshed, 0, now());
+         updateJob(jobId, JobLogWriter.progressValues(snapshot));
+      }
       return (chunks);
    }
 

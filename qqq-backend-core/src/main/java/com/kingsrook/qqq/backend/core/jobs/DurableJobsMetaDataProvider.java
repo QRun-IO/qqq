@@ -38,10 +38,12 @@ import com.kingsrook.qqq.backend.core.jobs.model.JobSourceType;
 import com.kingsrook.qqq.backend.core.jobs.model.JobStatus;
 import com.kingsrook.qqq.backend.core.jobs.processes.JobControlProcesses;
 import com.kingsrook.qqq.backend.core.jobs.processes.JobEffectReviewProcesses;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobLogPermissions;
 import com.kingsrook.qqq.backend.core.jobs.uploads.UploadRefs;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DisplayFormat;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
@@ -49,9 +51,13 @@ import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
+import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.security.QSecurityKeyType;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.Association;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.ExposedJoin;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Tier;
@@ -65,6 +71,7 @@ import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_CHUNK;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_EFFECT;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_EVENT;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_JOB;
+import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_LOG;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_ROW_ERROR;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_UPLOAD;
 import static com.kingsrook.qqq.backend.core.jobs.DurableJobsTables.TABLE_WORKER;
@@ -113,6 +120,7 @@ public class DurableJobsMetaDataProvider
       instance.addTable(enrich(defineChunkTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineRowErrorTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineEventTable(backendName), backendDetailEnricher));
+      instance.addTable(enrich(defineLogTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineWorkerTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineUploadTable(backendName), backendDetailEnricher));
       instance.addTable(enrich(defineEffectTable(backendName), backendDetailEnricher));
@@ -129,6 +137,7 @@ public class DurableJobsMetaDataProvider
       instance.addJoin(childJoin(TABLE_CHUNK));
       instance.addJoin(childJoin(TABLE_ROW_ERROR));
       instance.addJoin(childJoin(TABLE_EVENT));
+      instance.addJoin(childJoin(TABLE_LOG));
       instance.addJoin(childJoin(TABLE_EFFECT));
 
       for(var process : JobControlProcesses.defineAll())
@@ -172,7 +181,7 @@ public class DurableJobsMetaDataProvider
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static <T extends com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum<String>> void addEnumPvs(QInstance instance, String name, T[] values)
+   private static <T extends PossibleValueEnum<String>> void addEnumPvs(QInstance instance, String name, T[] values)
    {
       if(instance.getPossibleValueSource(name) == null)
       {
@@ -276,6 +285,8 @@ public class DurableJobsMetaDataProvider
    {
       return (new QTableMetaData()
          .withName(TABLE_JOB)
+         .withAssociation(new Association().withName(TABLE_LOG).withAssociatedTableName(TABLE_LOG).withJoinName(childJoinName(TABLE_LOG)))
+         .withExposedJoin(new ExposedJoin().withJoinTable(TABLE_LOG).withJoinPath(List.of(childJoinName(TABLE_LOG))).withLabel("Log"))
          .withLabel("Job")
          .withIcon(new QIcon("pending_actions"))
          .withBackendName(backendName)
@@ -302,6 +313,16 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("semantics", QFieldType.STRING).withPossibleValueSourceName(JobSemantics.NAME).withMaxLength(20))
          .withField(readOnly("chunkSize", QFieldType.INTEGER))
          .withField(readOnly("maxParallelChunks", QFieldType.INTEGER))
+         .withField(readOnly("currentPhase", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("percentDone", QFieldType.INTEGER))
+         .withField(readOnly("progressMessage", QFieldType.STRING).withMaxLength(1000))
+         .withField(readOnly("bytesDone", QFieldType.LONG))
+         .withField(readOnly("bytesTotal", QFieldType.LONG))
+         .withField(readOnly("etaSeconds", QFieldType.LONG))
+         .withField(readOnly("progressJson", QFieldType.TEXT))
+         .withField(readOnly("logSeq", QFieldType.LONG))
+         .withField(readOnly("logDropped", QFieldType.INTEGER))
+         .withField(readOnly("leaseOwner", QFieldType.STRING).withMaxLength(250))
          .withField(readOnly("rowsTotal", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
          .withField(readOnly("rowsDone", QFieldType.INTEGER).withDisplayFormat(DisplayFormat.COMMAS))
          .withField(readOnly("rowsOk", QFieldType.INTEGER).withLabel("Rows OK").withDisplayFormat(DisplayFormat.COMMAS))
@@ -323,9 +344,9 @@ public class DurableJobsMetaDataProvider
          .withField(readOnly("createDate", QFieldType.DATE_TIME))
          .withField(readOnly("modifyDate", QFieldType.DATE_TIME))
          .withSection(new QFieldSection("identity", new QIcon("badge"), Tier.T1, List.of("id", "label", "status", "statusReason", "processName", "tableName", "mode", "userId")))
-         .withSection(new QFieldSection("progress", "Progress", new QIcon("speed"), Tier.T2, List.of("rowsTotal", "rowsDone", "rowsOk", "rowsFailed", "chunksTotal", "chunksDone", "chunksFailed", "lastProgressAt", "errorMessage")))
+         .withSection(new QFieldSection("progress", "Progress", new QIcon("speed"), Tier.T2, List.of("currentPhase", "percentDone", "progressMessage", "bytesDone", "bytesTotal", "etaSeconds", "rowsTotal", "rowsDone", "rowsOk", "rowsFailed", "chunksTotal", "chunksDone", "chunksFailed", "lastProgressAt", "errorMessage")))
          .withSection(new QFieldSection("settings", "Settings", new QIcon("tune"), Tier.T2, List.of("priority", "notifyEmail", "sourceType", "idempotency", "semantics", "chunkSize", "maxParallelChunks", "parentJobId", "savedBulkLoadProfileId", "clientChannel")))
-         .withSection(new QFieldSection("data", "Data", new QIcon("data_object"), Tier.T3, List.of("summaryJson", "outputStorageJson", "sourceJson", "paramsJson", "credentialScopeJson", "leaseVersion")))
+         .withSection(new QFieldSection("data", "Data", new QIcon("data_object"), Tier.T3, List.of("progressJson", "logSeq", "logDropped", "leaseOwner", "summaryJson", "outputStorageJson", "sourceJson", "paramsJson", "credentialScopeJson", "leaseVersion")))
          .withSection(new QFieldSection("dates", new QIcon("calendar_month"), Tier.T3, List.of("queuedAt", "startedAt", "finishedAt", "createDate", "modifyDate"))));
    }
 
@@ -551,4 +572,30 @@ public class DurableJobsMetaDataProvider
          .withSection(new QFieldSection("storage", "Storage", new QIcon("folder"), Tier.T2, List.of("ref", "storageTableName", "storageReference", "createDate"))));
    }
 
+
+
+   /*******************************************************************************
+    ** Append-only redacted log, secured through the parent job.
+    *******************************************************************************/
+   public QTableMetaData defineLogTable(String backendName)
+   {
+      return (new QTableMetaData()
+         .withName(TABLE_LOG)
+         .withLabel("Job Log")
+         .withBackendName(backendName)
+         .withPrimaryKeyField("id")
+         .withRecordLabelFormat("%s")
+         .withRecordLabelFields("message")
+         .withPermissionRules(new QPermissionRules().withCustomPermissionChecker(new QCodeReference(JobLogPermissions.class)))
+         .withRecordSecurityLock(ownerLock(TABLE_JOB + ".userId", List.of(childJoinName(TABLE_LOG))))
+         .withField(readOnly("id", QFieldType.LONG))
+         .withField(readOnly("jobId", QFieldType.INTEGER).withPossibleValueSourceName(TABLE_JOB))
+         .withField(readOnly("chunkId", QFieldType.INTEGER).withPossibleValueSourceName(TABLE_CHUNK))
+         .withField(readOnly("attempt", QFieldType.INTEGER))
+         .withField(readOnly("level", QFieldType.STRING).withMaxLength(10))
+         .withField(readOnly("loggedAt", QFieldType.DATE_TIME))
+         .withField(readOnly("phase", QFieldType.STRING).withMaxLength(250))
+         .withField(readOnly("message", QFieldType.STRING).withMaxLength(1000))
+         .withSection(new QFieldSection("log", new QIcon("notes"), Tier.T1, List.of("id", "loggedAt", "level", "phase", "message", "jobId", "chunkId", "attempt"))));
+   }
 }

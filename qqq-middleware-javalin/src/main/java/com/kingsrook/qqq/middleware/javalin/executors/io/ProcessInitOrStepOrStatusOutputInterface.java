@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessMetaDataAdjustment;
 import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.JobLogLineV1;
+import com.kingsrook.qqq.middleware.javalin.specs.v1.responses.JobProgressV1;
 
 
 /*******************************************************************************
@@ -111,4 +113,23 @@ public interface ProcessInitOrStepOrStatusOutputInterface extends AbstractMiddle
     ** Setter for processMetaDataAdjustment
     *******************************************************************************/
    void setProcessMetaDataAdjustment(ProcessMetaDataAdjustment processMetaDataAdjustment);
+
+
+   /*******************************************************************************
+    ** Optional rich progress for inline async processes.
+    *******************************************************************************/
+   default void setProgress(JobProgressV1 progress)
+   {
+      // Older output adapters may omit rich progress.
+   }
+
+
+   /*******************************************************************************
+    ** Optional rich logTail for inline async processes.
+    *******************************************************************************/
+   default void setLogTail(List<JobLogLineV1> logTail)
+   {
+      // Older output adapters may omit rich progress.
+   }
+
 }

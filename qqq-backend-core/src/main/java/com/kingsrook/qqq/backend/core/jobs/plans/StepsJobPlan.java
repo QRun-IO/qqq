@@ -34,6 +34,7 @@ import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.jobs.model.ChunkOutcome;
 import com.kingsrook.qqq.backend.core.jobs.model.JobSemantics;
+import com.kingsrook.qqq.backend.core.jobs.progress.JobProgressAsyncJobCallback;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessState;
 import com.kingsrook.qqq.backend.core.model.actions.processes.QUploadedFile;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
@@ -122,6 +123,7 @@ public class StepsJobPlan implements JobPlan
       String          processUUID = UUID.randomUUID().toString();
       RunProcessInput input       = new RunProcessInput();
       input.setProcessName(process.getName());
+      input.setAsyncJobCallback(new JobProgressAsyncJobCallback(context.getProgress()));
       input.setProcessUUID(processUUID);
       input.setFrontendStepBehavior(RunProcessInput.FrontendStepBehavior.SKIP);
       input.setValues(new LinkedHashMap<>(values));
@@ -161,7 +163,7 @@ public class StepsJobPlan implements JobPlan
          context.check();
       });
 
-      try(JobChunkScope scope = JobChunkScope.open(null, null, context.identity()))
+      try(JobChunkScope scope = JobChunkScope.open(null, context::check, context.identity()).withProgress(context.getProgress()))
       {
          context.check();
          RunProcessOutput output = new RunProcessAction().execute(input);
@@ -169,6 +171,7 @@ public class StepsJobPlan implements JobPlan
          {
             throw (output.getException().get());
          }
+         context.getProgress().flush();
          context.recordEffects(scope.drainEffects());
 
          Integer recordCount = ValueUtils.getValueAsInteger(output.getValues().get(StreamedETLProcess.FIELD_RECORD_COUNT));

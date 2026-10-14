@@ -28,6 +28,8 @@ package com.kingsrook.qqq.backend.core.jobs;
  *******************************************************************************/
 public final class DurableJobsTables
 {
+   public static final String TABLE_LOG = "jobs_log";
+
    public static final String TABLE_JOB       = "jobs_job";
    public static final String TABLE_CHUNK     = "jobs_chunk";
    public static final String TABLE_ROW_ERROR = "jobs_row_error";

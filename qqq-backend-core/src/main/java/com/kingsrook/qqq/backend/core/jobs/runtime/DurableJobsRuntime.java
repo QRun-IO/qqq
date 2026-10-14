@@ -426,7 +426,7 @@ public class DurableJobsRuntime
 
    /*******************************************************************************
     ** RUNNING with no progress for stallMinutes, or QUEUED past
-    ** queueStallMinutes, raises jobs.job_stalled (deduped per job by QAlerts).
+    ** queueStallMinutes, raises jobs.job-stalled (deduped per job by QAlerts).
     *******************************************************************************/
    private void detectStalls() throws QException
    {

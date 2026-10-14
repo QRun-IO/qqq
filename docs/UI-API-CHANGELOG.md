@@ -95,6 +95,12 @@ Next UI makes no calls to them (see `UI-API-AUDIT.md`).
   and `PreferenceSectionPatchRequestV1` describe typed fields, fixed rows, inline ENUM
   choices and partial updates scoped to the signed-in user. `preferences` is a core
   feature and `/preferences` is reserved by core.
+- Added the assisted bulk-load operations (tag `Bulk Load`, design spec #1171 section 3.2):
+  `GET /bulkLoad/uploads/{uploadRef}/profile`, `POST /bulkLoad/{tableName}/suggestMapping` and
+  `POST /bulkLoad/{tableName}/validate` (a dry run through the table's bulk-insert process; nothing
+  is stored). Uploads are read through `BulkLoadUploadSources` by their opaque ref, as the session
+  user. The `X-QQQ-AI-Route: hipaa` request header allows sample values of classified and unmapped
+  columns; without it they are left out.
 - Added typed `recordFeatures.ownership` and `builtInViews` to table metadata for
   ASSIGNMENT-enabled tables. The "My records" filter preserves `CurrentUser`
   expression objects (`type: CurrentUser`, displayed as "Me"). Core also resolves

@@ -111,6 +111,10 @@ public class MiddlewareVersionV1 extends AbstractMiddlewareVersion
       list.add(new RecordFieldDownloadSpecV1());
       list.add(new GeneralDownloadSpecV1());
       list.add(new ReportRunSpecV1());
+
+      list.add(new BulkLoadUploadProfileSpecV1());
+      list.add(new BulkLoadSuggestMappingSpecV1());
+      list.add(new BulkLoadValidateSpecV1());
    }
 
    /***************************************************************************
